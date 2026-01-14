@@ -107,7 +107,11 @@ public unsafe struct FixedString64
     /// <returns>The string representation.</returns>
     public string ToStringAllocated()
     {
+#if NETSTANDARD2_0
+        return Encoding.UTF8.GetString(AsUtf8Span().ToArray());
+#else
         return Encoding.UTF8.GetString(AsUtf8Span());
+#endif
     }
 
     /// <inheritdoc/>

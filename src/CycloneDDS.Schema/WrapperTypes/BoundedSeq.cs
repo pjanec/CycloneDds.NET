@@ -79,7 +79,12 @@ public struct BoundedSeq<T> : IEnumerable<T>
     public Span<T> AsSpan()
     {
         if (_storage == null) return Span<T>.Empty;
+#if NET5_0_OR_GREATER
         return CollectionsMarshal.AsSpan(_storage);
+#else
+        if (_storage == null) return Span<T>.Empty;
+        return new Span<T>(_storage.ToArray());
+#endif
     }
 
     /// <summary>
