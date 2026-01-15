@@ -442,10 +442,8 @@ namespace Test
     }
 
     [Fact]
-    public void Marshaller_MarshalsPrimitiveArray()
+    public void Marshaller_MarshalsPrimitiveArray_Runtime()
     {
-        // Note: This is a simplified test that checks generated code structure
-        // Full round-trip test would require native type generation with IntPtr fields
         var csCode = @"
 namespace Test
 {
@@ -458,16 +456,36 @@ namespace Test
         var type = ParseType(csCode);
         var emitter = new MarshallerEmitter();
         var marshallerCode = emitter.GenerateMarshaller(type, "Test");
+        var nativeEmitter = new NativeTypeEmitter();
+        var nativeCode = nativeEmitter.GenerateNativeStruct(type, "Test");
 
-        // Verify array marshalling code is generated
-        Assert.Contains("Marshal array Numbers", marshallerCode);
-        Assert.Contains("Numbers_Ptr", marshallerCode);
-        Assert.Contains("Numbers_Length", marshallerCode);
-        Assert.Contains("AllocHGlobal", marshallerCode);
+        var assembly = CompileToAssembly(csCode, nativeCode, marshallerCode);
+        var marshallerType = assembly.GetType("Test.TestTopicMarshaller");
+        var topicType = assembly.GetType("Test.TestTopic");
+        var nativeType = assembly.GetType("Test.TestTopicNative");
+
+        var marshaller = Activator.CreateInstance(marshallerType);
+        var topic = Activator.CreateInstance(topicType);
+        topicType.GetField("Numbers").SetValue(topic, new int[] { 1, 2, 3 });
+
+        var native = Activator.CreateInstance(nativeType);
+
+        // Marshal
+        var marshalMethod = marshallerType.GetMethod("Marshal");
+        var args = new object[] { topic, native };
+        marshalMethod.Invoke(marshaller, args);
+        native = args[1];
+
+        // Verify IntPtr allocated and length set
+        var ptr = (IntPtr)nativeType.GetField("Numbers_Ptr").GetValue(native);
+        var length = (int)nativeType.GetField("Numbers_Length").GetValue(native);
+
+        Assert.NotEqual(IntPtr.Zero, ptr); // Actual allocation check
+        Assert.Equal(3, length); // Actual length check
     }
 
     [Fact]
-    public void Marshaller_UnmarshalsPrimitiveArray()
+    public void Marshaller_UnmarshalsPrimitiveArray_Runtime()
     {
         var csCode = @"
 namespace Test
@@ -481,15 +499,40 @@ namespace Test
         var type = ParseType(csCode);
         var emitter = new MarshallerEmitter();
         var marshallerCode = emitter.GenerateMarshaller(type, "Test");
+        var nativeEmitter = new NativeTypeEmitter();
+        var nativeCode = nativeEmitter.GenerateNativeStruct(type, "Test");
 
-        // Verify array unmarshalling code is generated
-        Assert.Contains("Unmarshal array Numbers", marshallerCode);
-        Assert.Contains("new int[native.Numbers_Length]", marshallerCode);
-        Assert.Contains("Array.Empty<int>()", marshallerCode);
+        var assembly = CompileToAssembly(csCode, nativeCode, marshallerCode);
+        var marshallerType = assembly.GetType("Test.TestTopicMarshaller");
+        var nativeType = assembly.GetType("Test.TestTopicNative");
+
+        // Create native with allocated array
+        var native = Activator.CreateInstance(nativeType);
+        var numbers = new int[] { 10, 20, 30 };
+        var ptr = Marshal.AllocHGlobal(numbers.Length * sizeof(int));
+        Marshal.Copy(numbers, 0, ptr, numbers.Length);
+        nativeType.GetField("Numbers_Ptr").SetValue(native, ptr);
+        nativeType.GetField("Numbers_Length").SetValue(native, numbers.Length);
+
+        // Unmarshal
+        var marshaller = Activator.CreateInstance(marshallerType);
+        var unmarshalMethod = marshallerType.GetMethod("Unmarshal");
+        var args = new object[] { native };
+        var topic = unmarshalMethod.Invoke(marshaller, args);
+
+        var topicType = assembly.GetType("Test.TestTopic");
+        var resultArray = (int[])topicType.GetField("Numbers").GetValue(topic);
+
+        Assert.NotNull(resultArray);
+        Assert.Equal(3, resultArray.Length);
+        Assert.Equal(new int[] { 10, 20, 30 }, resultArray);
+
+        // Cleanup
+        Marshal.FreeHGlobal(ptr);
     }
 
     [Fact]
-    public void Marshaller_EmptyArray_HandledCorrectly()
+    public void Marshaller_EmptyArray_SetsZeroPointer()
     {
         var csCode = @"
 namespace Test
@@ -503,9 +546,31 @@ namespace Test
         var type = ParseType(csCode);
         var emitter = new MarshallerEmitter();
         var marshallerCode = emitter.GenerateMarshaller(type, "Test");
+        var nativeEmitter = new NativeTypeEmitter();
+        var nativeCode = nativeEmitter.GenerateNativeStruct(type, "Test");
 
-        // Verify empty array handling
-        Assert.Contains("IntPtr.Zero", marshallerCode);
-        Assert.Contains("Array.Empty<int>()", marshallerCode);
+        var assembly = CompileToAssembly(csCode, nativeCode, marshallerCode);
+        var marshallerType = assembly.GetType("Test.TestTopicMarshaller");
+        var topicType = assembly.GetType("Test.TestTopic");
+        var nativeType = assembly.GetType("Test.TestTopicNative");
+
+        var marshaller = Activator.CreateInstance(marshallerType);
+        var topic = Activator.CreateInstance(topicType);
+        topicType.GetField("Numbers").SetValue(topic, null); // Null array
+
+        var native = Activator.CreateInstance(nativeType);
+
+        // Marshal
+        var marshalMethod = marshallerType.GetMethod("Marshal");
+        var args = new object[] { topic, native };
+        marshalMethod.Invoke(marshaller, args);
+        native = args[1];
+
+        // Verify IntPtr is Zero and length is 0
+        var ptr = (IntPtr)nativeType.GetField("Numbers_Ptr").GetValue(native);
+        var length = (int)nativeType.GetField("Numbers_Length").GetValue(native);
+
+        Assert.Equal(IntPtr.Zero, ptr); // Null array should result in zero pointer
+        Assert.Equal(0, length);
     }
 }
