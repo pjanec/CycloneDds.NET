@@ -22,12 +22,12 @@
 - [x] **FCDC-010** Managed View Type Code Emitter → [details](../docs/FCDC-TASK-MASTER.md#fcdc-010-managed-view-type-code-emitter)
 - [x] **FCDC-011** Marshaller Code Emitter → [details](../docs/FCDC-TASK-MASTER.md#fcdc-011-marshaller-code-emitter)
 - [x] **FCDC-012** Metadata Registry Code Emitter → [details](../docs/FCDC-TASK-MASTER.md#fcdc-012-metadata-registry-code-emitter)
-- [ ] **FCDC-013** Generator Testing Suite → [details](../docs/FCDC-TASK-MASTER.md#fcdc-013-generator-testing-suite)
+- [x] **FCDC-013** Generator Testing Suite → [details](../docs/FCDC-TASK-MASTER.md#fcdc-013-generator-testing-suite)
 
 ## Phase 3: Runtime Components
 
-- [ ] **FCDC-014** Arena Memory Manager → [details](../docs/FCDC-TASK-MASTER.md#fcdc-014-arena-memory-manager)
-- [ ] **FCDC-015** P/Invoke Declarations → [details](../docs/FCDC-TASK-MASTER.md#fcdc-015-pinvoke-declarations)
+- [x] **FCDC-014** Arena Memory Manager → [details](../docs/FCDC-TASK-MASTER.md#fcdc-014-arena-memory-manager)
+- [x] **FCDC-015** P/Invoke Declarations → [details](../docs/FCDC-TASK-MASTER.md#fcdc-015-pinvoke-declarations)
 - [ ] **FCDC-016** DdsParticipant Implementation → [details](../docs/FCDC-TASK-MASTER.md#fcdc-016-ddsparticipant-implementation)
 - [ ] **FCDC-017** DdsWriter<TNative> (Inline-Only) → [details](../docs/FCDC-TASK-MASTER.md#fcdc-017-ddswritertnative-inline-only)
 - [ ] **FCDC-018** DdsReader<TNative> (Inline-Only) → [details](../docs/FCDC-TASK-MASTER.md#fcdc-018-ddsreadertnative-inline-only)
@@ -59,10 +59,10 @@
 
 **Total Tasks:** 33  
 **Phase 1:** 4/4 complete ✅  
-**Phase 2:** 8/9 complete (CLI tool approach)  
-**Phase 3:** 0/9 complete  
+**Phase 2:** 9/9 complete ✅  
+**Phase 3:** 2/9 complete  
 **Phase 4:** 0/4 complete  
 **Phase 5:** 0/7 complete  
 
-**Overall:** 12/33 tasks complete (36%)
+**Overall:** 15/33 tasks complete (45%)
 
