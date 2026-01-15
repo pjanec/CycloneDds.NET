@@ -1,20 +1,23 @@
-using Microsoft.CodeAnalysis;
+using System;
 
 namespace CycloneDDS.Generator.Models
 {
-    internal sealed record SchemaUnionType
+    internal sealed class SchemaUnionType : IEquatable<SchemaUnionType>
     {
-        public required INamedTypeSymbol Symbol { get; init; }
-        
+        public required string Namespace { get; init; }
+        public required string TypeName { get; init; }
+        public required string DefinitionName { get; init; }
+
         public bool Equals(SchemaUnionType? other)
         {
-            if (other is null) return false;
-            return SymbolEqualityComparer.Default.Equals(Symbol, other.Symbol);
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return DefinitionName == other.DefinitionName;
         }
-        
-        public override int GetHashCode()
-        {
-            return SymbolEqualityComparer.Default.GetHashCode(Symbol);
-        }
+
+        public override bool Equals(object? obj) => 
+            ReferenceEquals(this, obj) || (obj is SchemaUnionType other && Equals(other));
+
+        public override int GetHashCode() => DefinitionName.GetHashCode();
     }
 }

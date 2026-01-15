@@ -1,39 +1,70 @@
-using Microsoft.CodeAnalysis;
+using System;
+using System.Linq; // Required for SequenceEqual
 using System.Collections.Immutable;
 using CycloneDDS.Schema;
 
 namespace CycloneDDS.Generator.Models
 {
-    internal sealed record SchemaTopicType
+    internal sealed class SchemaTopicType : IEquatable<SchemaTopicType>
     {
-        public required INamedTypeSymbol Symbol { get; init; }
+        public required string Namespace { get; init; }
+        public required string TypeName { get; init; }
         public required string TopicName { get; init; }
+        public required string DefinitionName { get; init; }
+
         public DdsQosSettings? Qos { get; set; }
         public ImmutableArray<SchemaField> Fields { get; set; }
         public ImmutableArray<int> KeyFieldIndices { get; set; }
-        public string? TypeName { get; set; }
-        
+
         public bool Equals(SchemaTopicType? other)
         {
-            if (other is null) return false;
-            // For incremental caching, we want to know if the *content* relevant to generation changed.
-            // Symbol equality checks reference, which changes on every compilation. 
-            // We should rely on structural equality of names/data.
-            // BUT for now, to fix the specific test, verifying structural integrity is key.
-            // Ideally we only store strings. But we need Symbol later.
-            // Let's rely on default record equality which includes Symbol reference.
-            // If Symbol changes, it generates again. This is "correct" for correctness, but bad for perf.
-            // To pass the test we need to show caching works. 
-            // The test modifies a COMMENT. This creates a new compilation.
-            // Does ForAttributeWithMetadataName reuse the object?
-            // If it does, Symbol is the OLD symbol. 
-            return SymbolEqualityComparer.Default.Equals(Symbol, other.Symbol) && 
-                   TopicName == other.TopicName;
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            // Check basic strings
+            if (Namespace != other.Namespace)
+            {
+               // throw new Exception($"Namespace diff: '{Namespace}' vs '{other.Namespace}'");
+               return false;
+            }
+            if (TypeName != other.TypeName ||
+                TopicName != other.TopicName ||
+                DefinitionName != other.DefinitionName)
+            {
+                return false;
+            }
+
+            // Check QoS object equality (record handles nulls and value comparison)
+            if (!Equals(Qos, other.Qos)) return false;
+
+            // CRITICAL: Use SequenceEqual for ImmutableArrays
+            // Default equality for ImmutableArray is Reference Equality, which fails here.
+            if (!Fields.SequenceEqual(other.Fields)) return false;
+            if (!KeyFieldIndices.SequenceEqual(other.KeyFieldIndices)) return false;
+
+            return true;
         }
+
+        public override bool Equals(object? obj) =>
+            ReferenceEquals(this, obj) || (obj is SchemaTopicType other && Equals(other));
 
         public override int GetHashCode()
         {
-            return SymbolEqualityComparer.Default.GetHashCode(Symbol) ^ TopicName.GetHashCode();
+            unchecked
+            {
+                var hashCode = Namespace.GetHashCode();
+                hashCode = (hashCode * 397) ^ TypeName.GetHashCode();
+                hashCode = (hashCode * 397) ^ TopicName.GetHashCode();
+                hashCode = (hashCode * 397) ^ DefinitionName.GetHashCode();
+                
+                // Add QoS hash
+                if (Qos != null) hashCode = (hashCode * 397) ^ Qos.GetHashCode();
+                
+                // We typically don't hash arrays for performance, but if needed, hash the length
+                hashCode = (hashCode * 397) ^ Fields.Length;
+                
+                return hashCode;
+            }
         }
     }
 }

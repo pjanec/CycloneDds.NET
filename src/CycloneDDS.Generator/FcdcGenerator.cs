@@ -20,7 +20,10 @@ namespace CycloneDDS.Generator
                     fullyQualifiedMetadataName: "CycloneDDS.Schema.DdsTopicAttribute",
                     predicate: static (node, _) => node is ClassDeclarationSyntax or StructDeclarationSyntax,
                     transform: static (ctx, _) => TransformTopicType(ctx))
-                .Where(static type => type is not null);
+                .Where(static type => type is not null)
+                .Select(static (type, _) => type!)
+                .Collect()
+                .WithComparer(new ImmutableArraySequenceEqualComparer<SchemaTopicType>());
 
             // Pipeline 2: Discover [DdsUnion] types
             var unionTypes = context.SyntaxProvider
@@ -28,7 +31,10 @@ namespace CycloneDDS.Generator
                     fullyQualifiedMetadataName: "CycloneDDS.Schema.DdsUnionAttribute",
                     predicate: static (node, _) => node is ClassDeclarationSyntax or StructDeclarationSyntax,
                     transform: static (ctx, _) => TransformUnionType(ctx))
-                .Where(static type => type is not null);
+                .Where(static type => type is not null)
+                .Select(static (type, _) => type!)
+                .Collect()
+                .WithComparer(new ImmutableArraySequenceEqualComparer<SchemaUnionType>());
 
             // Pipeline 3: Discover [DdsTypeMap] assembly attributes
             var typeMappings = context.SyntaxProvider
@@ -37,26 +43,31 @@ namespace CycloneDDS.Generator
                     predicate: static (node, _) => true, 
                     transform: static (ctx, _) => TransformTypeMap(ctx))
                 .Where(static map => map is not null)
-                .Collect(); 
+                .Select(static (map, _) => map!)
+                .Collect()
+                .WithComparer(new ImmutableArraySequenceEqualComparer<GlobalTypeMapping>());
                 
-            var allInput = topicTypes.Collect()
-                .Combine(unionTypes.Collect())
-                .Combine(typeMappings);
+            var allInput = topicTypes
+                .Combine(unionTypes)
+                .Combine(typeMappings)
+                .Select(static (source, _) => new GenerationInput
+                {
+                    Topics = source.Left.Left,
+                    Unions = source.Left.Right,
+                    Mappings = source.Right
+                })
+                .WithComparer(System.Collections.Generic.EqualityComparer<GenerationInput>.Default);
 
-            context.RegisterSourceOutput(allInput, static (spc, source) =>
+            context.RegisterSourceOutput(allInput, static (spc, input) =>
             {
-                var (topicAndUnion, globalMappings) = source;
-                var (topics, unions) = topicAndUnion;
-
-                GenerateCode(spc, topics!, unions!, globalMappings!);
+                GenerateCode(spc, input.Topics, input.Unions, input.Mappings);
             });
         }
         
         private static SchemaTopicType? TransformTopicType(GeneratorAttributeSyntaxContext context)
         {
             var symbol = context.TargetSymbol as INamedTypeSymbol;
-            if (symbol is null)
-                return null;
+            if (symbol is null) return null;
 
             var topicAttr = context.Attributes.FirstOrDefault();
             if (topicAttr == null) return null;
@@ -67,10 +78,22 @@ namespace CycloneDDS.Generator
                 topicName = topicAttr.ConstructorArguments[0].Value as string ?? "";
             }
 
+            // Handle Global Namespace
+            string ns = symbol.ContainingNamespace.IsGlobalNamespace 
+                ? string.Empty 
+                : symbol.ContainingNamespace.ToDisplayString();
+
             return new SchemaTopicType
             {
-                Symbol = symbol,
-                TopicName = topicName
+                Namespace = ns,
+                TypeName = symbol.Name,
+                TopicName = topicName,
+                DefinitionName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                
+                // Initialize arrays to Empty instead of default/null to be safe with SequenceEqual
+                Fields = ImmutableArray<SchemaField>.Empty, 
+                KeyFieldIndices = ImmutableArray<int>.Empty,
+                Qos = null // Or parse QoS here if implemented
             };
         }
 
@@ -82,7 +105,9 @@ namespace CycloneDDS.Generator
 
             return new SchemaUnionType
             {
-                Symbol = symbol
+                Namespace = symbol.ContainingNamespace.ToDisplayString(),
+                TypeName = symbol.Name,
+                DefinitionName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
             };
         }
         
@@ -105,8 +130,9 @@ namespace CycloneDDS.Generator
                     
                     return new GlobalTypeMapping
                     {
-                        SourceType = sourceType,
-                        WireKind = wireKind
+                        SourceTypeName = sourceType.Name,
+                        WireKind = wireKind,
+                        DefinitionName = sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
                     };
                 }
             }
@@ -125,8 +151,8 @@ namespace CycloneDDS.Generator
                 {
                     context.ReportDiagnostic(Diagnostic.Create(
                         DiagnosticDescriptors.TopicNameMissing,
-                        topic.Symbol.Locations.FirstOrDefault(),
-                        topic.Symbol.Name));
+                        Location.None,
+                        topic.TypeName));
                     continue; 
                 }
 
@@ -134,37 +160,44 @@ namespace CycloneDDS.Generator
                     DiagnosticDescriptors.TopicDiscovered,
                     Location.None,
                     topic.TopicName,
-                    topic.Symbol.ToDisplayString()));
+                    topic.DefinitionName));
+
+                var nsDeclaration = string.IsNullOrEmpty(topic.Namespace) 
+                    ? "" 
+                    : $"namespace {topic.Namespace}";
+                
+                var openingBrace = string.IsNullOrEmpty(topic.Namespace) ? "" : "{";
+                var closingBrace = string.IsNullOrEmpty(topic.Namespace) ? "" : "}";
 
                 var code = $@"// Auto-generated for topic: {topic.TopicName}
-// Type: {topic.Symbol.ToDisplayString()}
+// Type: {topic.DefinitionName}
 
-namespace {topic.Symbol.ContainingNamespace}
-{{
-    partial class {topic.Symbol.Name}
+{nsDeclaration}
+{openingBrace}
+    partial class {topic.TypeName}
     {{
         // FCDC-005: Discovery placeholder
     }}
-}}";
-                context.AddSource($"{topic.Symbol.Name}.Discovery.g.cs", code);
+{closingBrace}";
+                context.AddSource($"{topic.TypeName}.Discovery.g.cs", code);
             }
 
             foreach (var union in unions)
             {
-                 var code = $@"// Auto-generated for union: {union.Symbol.Name}
-namespace {union.Symbol.ContainingNamespace}
+                 var code = $@"// Auto-generated for union: {union.TypeName}
+namespace {union.Namespace}
 {{
-    partial class {union.Symbol.Name}
+    partial class {union.TypeName}
     {{
         // FCDC-005: Discovery placeholder
     }}
 }}";
-                 context.AddSource($"{union.Symbol.Name}.Discovery.g.cs", code);
+                 context.AddSource($"{union.TypeName}.Discovery.g.cs", code);
             }
             
             if (typeMappings.Any())
             {
-                var mapLines = string.Join("\n", typeMappings.Select(m => $"// Map: {m.SourceType.Name} -> {m.WireKind}"));
+                var mapLines = string.Join("\n", typeMappings.Select(m => $"// Map: {m.SourceTypeName} -> {m.WireKind}"));
                 context.AddSource("GlobalTypeMaps.Discovery.g.cs", $@"// Auto-generated type maps
 {mapLines}
 ");

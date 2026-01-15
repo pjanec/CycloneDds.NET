@@ -2,11 +2,12 @@ using CycloneDDS.Schema;
 
 namespace CycloneDDS.Generator.Models
 {
-    internal sealed class DdsQosSettings
+    // Changed to record for automatic value equality
+    internal sealed record DdsQosSettings
     {
-        public DdsReliability Reliability { get; set; }
-        public DdsDurability Durability { get; set; }
-        public DdsHistoryKind HistoryKind { get; set; }
-        public int HistoryDepth { get; set; }
+        public DdsReliability Reliability { get; init; }
+        public DdsDurability Durability { get; init; }
+        public DdsHistoryKind HistoryKind { get; init; }
+        public int HistoryDepth { get; init; }
     }
 }
