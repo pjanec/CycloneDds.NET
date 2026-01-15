@@ -108,7 +108,7 @@ public static class IdlTypeMapper
         {
             "Guid" or "System.Guid" => "typedef octet Guid16[16];",
             "DateTime" or "System.DateTime" => "typedef long long Int64TicksUtc;",
-            _ when csType.Contains("Quaternion") => "typedef QuaternionF32x4 { float x, y, z, w; };",
+            _ when csType.Contains("Quaternion") => "struct QuaternionF32x4 { float x; float y; float z; float w; };",
             _ => $"// Unknown typedef for {csType}"
         };
     }

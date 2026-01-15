@@ -258,4 +258,40 @@ public partial class ComplexType
         Assert.Contains("octet[32] ShortName;", idl);
         Assert.Contains("MyEnum Status;", idl);
     }
+
+    [Fact]
+    public void StructWithQuaternion_EmitsStructDefinition()
+    {
+        var csCode = @"
+[DdsTopic(""QuaternionTopic"")]
+public partial class QuaternionType
+{
+    public Quaternion Rotation;
+}";
+        
+        var type = ParseType(csCode);
+        var emitter = new IdlEmitter();
+        var idl = emitter.GenerateIdl(type, "QuaternionTopic");
+        
+        Assert.Contains("struct QuaternionF32x4 { float x; float y; float z; float w; };", idl);
+        Assert.Contains("QuaternionF32x4 Rotation;", idl);
+    }
+
+    [Fact]
+    public void StructWithBoundedSeq_EmitsBoundedSequence()
+    {
+        var csCode = @"
+[DdsTopic(""BoundedSeqTopic"")]
+public partial class BoundedSeqType
+{
+    public BoundedSeq<int, 100> LimitedData;
+}";
+        
+        var type = ParseType(csCode);
+        var emitter = new IdlEmitter();
+        var idl = emitter.GenerateIdl(type, "BoundedSeqTopic");
+        
+        // Should emit: sequence<long, 100> LimitedData;
+        Assert.Contains("sequence<long, 100> LimitedData;", idl);
+    }
 }

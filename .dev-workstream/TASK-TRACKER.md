@@ -12,11 +12,11 @@
 - [x] **FCDC-003** Global Type Map Registry → [details](../docs/FCDC-TASK-MASTER.md#fcdc-003-global-type-map-registry)
 - [x] **FCDC-004** QoS and Error Type Definitions → [details](../docs/FCDC-TASK-MASTER.md#fcdc-004-qos-and-error-type-definitions)
 
-## Phase 2: Roslyn Source Generator
+## Phase 2: CLI Code Generator (Not Roslyn)
 
-- [ ] **FCDC-005** Generator Infrastructure → [details](../docs/FCDC-TASK-MASTER.md#fcdc-005-generator-infrastructure)
-- [ ] **FCDC-006** Schema Validation Logic → [details](../docs/FCDC-TASK-MASTER.md#fcdc-006-schema-validation-logic)
-- [ ] **FCDC-007** IDL Code Emitter → [details](../docs/FCDC-TASK-MASTER.md#fcdc-007-idl-code-emitter)
+- [x] **FCDC-005** Generator Infrastructure (CLI tool) → [details](../docs/FCDC-TASK-MASTER.md#fcdc-005-generator-infrastructure)
+- [x] **FCDC-006** Schema Validation Logic → [details](../docs/FCDC-TASK-MASTER.md#fcdc-006-schema-validation-logic)
+- [x] **FCDC-007** IDL Code Emitter → [details](../docs/FCDC-TASK-MASTER.md#fcdc-007-idl-code-emitter)
 - [ ] **FCDC-008** Alignment and Layout Calculator → [details](../docs/FCDC-TASK-MASTER.md#fcdc-008-alignment-and-layout-calculator)
 - [ ] **FCDC-009** Native Type Code Emitter → [details](../docs/FCDC-TASK-MASTER.md#fcdc-009-native-type-code-emitter)
 - [ ] **FCDC-010** Managed View Type Code Emitter → [details](../docs/FCDC-TASK-MASTER.md#fcdc-010-managed-view-type-code-emitter)
@@ -59,9 +59,10 @@
 
 **Total Tasks:** 33  
 **Phase 1:** 4/4 complete ✅  
-**Phase 2:** 0/9 complete  
+**Phase 2:** 3/9 complete (CLI tool approach)  
 **Phase 3:** 0/9 complete  
 **Phase 4:** 0/4 complete  
 **Phase 5:** 0/7 complete  
 
-**Overall:** 4/33 tasks complete (12%)
+**Overall:** 7/33 tasks complete (21%)
+
