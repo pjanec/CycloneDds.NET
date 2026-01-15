@@ -1,0 +1,271 @@
+using System.Text;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis;
+using System.Linq;
+using System.Collections.Generic;
+
+namespace CycloneDDS.CodeGen.Emitters;
+
+public class IdlEmitter
+{
+    private readonly StringBuilder _sb = new();
+    private int _indentLevel = 0;
+    
+    public string GenerateIdl(TypeDeclarationSyntax type, string topicName)
+    {
+        _sb.Clear();
+        _indentLevel = 0;
+        
+        // IDL header
+        EmitLine("// Auto-generated IDL from C# schema");
+        EmitLine($"// Topic: {topicName}");
+        EmitLine();
+        
+        // Module (namespace)
+        var namespaceName = GetNamespace(type);
+        EmitLine($"@appendable");
+        EmitLine($"module {namespaceName} {{");
+        _indentLevel++;
+        
+        // Emit typedefs if needed
+        EmitTypedefs(type);
+        
+        // Emit the main struct
+        EmitStruct(type);
+        
+        _indentLevel--;
+        EmitLine("};");
+        
+        return _sb.ToString();
+    }
+    
+    public string GenerateUnionIdl(TypeDeclarationSyntax type)
+    {
+        _sb.Clear();
+        _indentLevel = 0;
+        
+        EmitLine("// Auto-generated Union IDL");
+        EmitLine();
+        
+        var namespaceName = GetNamespace(type);
+        EmitLine($"@appendable");
+        EmitLine($"module {namespaceName} {{");
+        _indentLevel++;
+        
+        EmitUnion(type);
+        
+        _indentLevel--;
+        EmitLine("};");
+        
+        return _sb.ToString();
+    }
+
+    public string GenerateEnumIdl(EnumDeclarationSyntax enumDecl)
+    {
+        _sb.Clear();
+        _indentLevel = 0;
+
+        EmitLine("// Auto-generated Enum IDL");
+        EmitLine();
+
+        var namespaceName = GetNamespace(enumDecl);
+        EmitLine($"@appendable");
+        EmitLine($"module {namespaceName} {{");
+        _indentLevel++;
+
+        EmitEnum(enumDecl);
+
+        _indentLevel--;
+        EmitLine("};");
+
+        return _sb.ToString();
+    }
+    
+    private void EmitTypedefs(TypeDeclarationSyntax type)
+    {
+        var fields = type.Members.OfType<FieldDeclarationSyntax>();
+        var uniqueTypedefs = new HashSet<string>();
+        
+        foreach (var field in fields)
+        {
+            var fieldType = field.Declaration.Type.ToString();
+            if (IdlTypeMapper.RequiresTypedef(fieldType) && uniqueTypedefs.Add(fieldType))
+            {
+                EmitLine(IdlTypeMapper.GetTypedefMapping(fieldType));
+            }
+        }
+        
+        if (uniqueTypedefs.Any())
+            EmitLine();
+    }
+    
+    private void EmitStruct(TypeDeclarationSyntax type)
+    {
+        EmitLine($"@appendable");
+        EmitLine($"struct {type.Identifier.Text} {{");
+        _indentLevel++;
+        
+        var fields = type.Members.OfType<FieldDeclarationSyntax>().ToList();
+        
+        foreach (var field in fields)
+        {
+            EmitField(field);
+        }
+        
+        _indentLevel--;
+        EmitLine("};");
+    }
+    
+    private void EmitField(FieldDeclarationSyntax field)
+    {
+        var fieldType = field.Declaration.Type.ToString();
+        var fieldName = field.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "unknown";
+        
+        var idlType = IdlTypeMapper.MapToIdl(fieldType);
+        
+        // Check for @key attribute
+        var hasKeyAttr = field.AttributeLists
+            .SelectMany(al => al.Attributes)
+            .Any(attr => attr.Name.ToString() is "DdsKey" or "DdsKeyAttribute");
+            
+        // Check for nullable (optional)
+        var isOptional = IdlTypeMapper.IsNullableType(fieldType);
+        
+        var annotations = new List<string>();
+        if (hasKeyAttr) annotations.Add("@key");
+        if (isOptional) annotations.Add("@optional");
+        
+        var prefix = "";
+        if (annotations.Any())
+        {
+            prefix = string.Join(" ", annotations) + " ";
+        }
+        
+        EmitLine($"{prefix}{idlType} {fieldName};");
+    }
+    
+    private void EmitUnion(TypeDeclarationSyntax type)
+    {
+        // Find discriminator
+        var discriminatorField = type.Members
+            .OfType<FieldDeclarationSyntax>()
+            .FirstOrDefault(f => f.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .Any(attr => attr.Name.ToString() is "DdsDiscriminator" or "DdsDiscriminatorAttribute"));
+                
+        if (discriminatorField == null)
+        {
+            EmitLine("// ERROR: Union missing discriminator");
+            return;
+        }
+        
+        var discriminatorType = discriminatorField.Declaration.Type.ToString();
+        var discriminatorName = discriminatorField.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "discriminator";
+        
+        EmitLine($"@appendable");
+        EmitLine($"union {type.Identifier.Text} switch({IdlTypeMapper.MapToIdl(discriminatorType)}) {{");
+        _indentLevel++;
+        
+        // Emit cases
+        var caseFields = type.Members
+            .OfType<FieldDeclarationSyntax>()
+            .Where(f => f.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .Any(attr => attr.Name.ToString() is "DdsCase" or "DdsCaseAttribute"));
+                
+        foreach (var caseField in caseFields)
+        {
+            var caseAttr = caseField.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .FirstOrDefault(attr => attr.Name.ToString() is "DdsCase" or "DdsCaseAttribute");
+                
+            if (caseAttr?.ArgumentList?.Arguments.Count > 0)
+            {
+                var caseValue = caseAttr.ArgumentList.Arguments[0].Expression.ToString();
+                var caseType = caseField.Declaration.Type.ToString();
+                var caseName = caseField.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "case";
+                
+                EmitLine($"case {caseValue}: {IdlTypeMapper.MapToIdl(caseType)} {caseName};");
+            }
+        }
+        
+        // Emit default case if present
+        var defaultField = type.Members
+            .OfType<FieldDeclarationSyntax>()
+            .FirstOrDefault(f => f.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .Any(attr => attr.Name.ToString() is "DdsDefaultCase" or "DdsDefaultCaseAttribute"));
+                
+        if (defaultField != null)
+        {
+            var defaultType = defaultField.Declaration.Type.ToString();
+            var defaultName = defaultField.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "default";
+            EmitLine($"default: {IdlTypeMapper.MapToIdl(defaultType)} {defaultName};");
+        }
+        
+        _indentLevel--;
+        EmitLine("};");
+    }
+
+    private void EmitEnum(EnumDeclarationSyntax enumDecl)
+    {
+        var underlyingType = "long";  // Default
+        if (enumDecl.BaseList?.Types.Count > 0)
+        {
+            var baseType = enumDecl.BaseList.Types[0].Type.ToString();
+            underlyingType = IdlTypeMapper.MapToIdl(baseType);
+        }
+        
+        EmitLine($"@appendable");
+        EmitLine($"enum {enumDecl.Identifier.Text} : {underlyingType} {{");
+        _indentLevel++;
+        
+        var members = enumDecl.Members;
+        for (int i = 0; i < members.Count; i++)
+        {
+            var member = members[i];
+            var comma = i < members.Count - 1 ? "," : "";
+            
+            if (member.EqualsValue != null)
+            {
+                var value = member.EqualsValue.Value.ToString();
+                EmitLine($"{member.Identifier.Text} = {value}{comma}");
+            }
+            else
+            {
+                EmitLine($"{member.Identifier.Text}{comma}");
+            }
+        }
+        
+        _indentLevel--;
+        EmitLine("};");
+    }
+    
+    private string GetNamespace(SyntaxNode node)
+    {
+        var namespaceDecl = node.Ancestors().OfType<NamespaceDeclarationSyntax>().FirstOrDefault();
+        if (namespaceDecl != null)
+            return namespaceDecl.Name.ToString();
+
+        var fileScopedNs = node.Ancestors().OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault();
+        if (fileScopedNs != null)
+            return fileScopedNs.Name.ToString();
+
+        return "Default";
+    }
+    
+    private void Emit(string text)
+    {
+        _sb.Append(text);
+    }
+    
+    private void EmitLine(string text = "")
+    {
+        if (!string.IsNullOrEmpty(text))
+        {
+            _sb.Append(new string(' ', _indentLevel * 4));
+            _sb.Append(text);
+        }
+        _sb.AppendLine();
+    }
+}
