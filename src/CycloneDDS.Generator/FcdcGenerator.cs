@@ -22,8 +22,7 @@ namespace CycloneDDS.Generator
                     transform: static (ctx, _) => TransformTopicType(ctx))
                 .Where(static type => type is not null)
                 .Select(static (type, _) => type!)
-                .Collect()
-                .WithComparer(new ImmutableArraySequenceEqualComparer<SchemaTopicType>());
+                .Collect();
 
             // Pipeline 2: Discover [DdsUnion] types
             var unionTypes = context.SyntaxProvider
@@ -33,8 +32,7 @@ namespace CycloneDDS.Generator
                     transform: static (ctx, _) => TransformUnionType(ctx))
                 .Where(static type => type is not null)
                 .Select(static (type, _) => type!)
-                .Collect()
-                .WithComparer(new ImmutableArraySequenceEqualComparer<SchemaUnionType>());
+                .Collect();
 
             // Pipeline 3: Discover [DdsTypeMap] assembly attributes
             var typeMappings = context.SyntaxProvider
@@ -44,8 +42,7 @@ namespace CycloneDDS.Generator
                     transform: static (ctx, _) => TransformTypeMap(ctx))
                 .Where(static map => map is not null)
                 .Select(static (map, _) => map!)
-                .Collect()
-                .WithComparer(new ImmutableArraySequenceEqualComparer<GlobalTypeMapping>());
+                .Collect();
                 
             var allInput = topicTypes
                 .Combine(unionTypes)
@@ -55,8 +52,7 @@ namespace CycloneDDS.Generator
                     Topics = source.Left.Left,
                     Unions = source.Left.Right,
                     Mappings = source.Right
-                })
-                .WithComparer(System.Collections.Generic.EqualityComparer<GenerationInput>.Default);
+                });
 
             context.RegisterSourceOutput(allInput, static (spc, input) =>
             {
@@ -90,10 +86,9 @@ namespace CycloneDDS.Generator
                 TopicName = topicName,
                 DefinitionName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 
-                // Initialize arrays to Empty instead of default/null to be safe with SequenceEqual
-                Fields = ImmutableArray<SchemaField>.Empty, 
-                KeyFieldIndices = ImmutableArray<int>.Empty,
-                Qos = null // Or parse QoS here if implemented
+                // No need to manually init arrays if you set default in record, 
+                // but if you have data, cast it:
+                // Fields = fields.ToImmutableArray() 
             };
         }
 

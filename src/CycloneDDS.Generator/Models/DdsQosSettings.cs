@@ -2,7 +2,6 @@ using CycloneDDS.Schema;
 
 namespace CycloneDDS.Generator.Models
 {
-    // Changed to record for automatic value equality
     internal sealed record DdsQosSettings
     {
         public DdsReliability Reliability { get; init; }
