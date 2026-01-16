@@ -1,0 +1,12 @@
+<Project>
+  <Target Name="CycloneDDSCodeGen" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <CodeGenToolPath>$(MSBuildThisFileDirectory)..\tools\net8.0\CycloneDDS.CodeGen.exe</CodeGenToolPath>
+      <SourcePath>$(MSBuildProjectDirectory)</SourcePath>
+      <OutputPath>$(MSBuildProjectDirectory)\obj\Generated</OutputPath>
+    </PropertyGroup>
+    
+    <Message Text="Running CycloneDDS Code Generator..." Importance="high" />
+    <Exec Command="&quot;$(CodeGenToolPath)&quot; &quot;$(SourcePath)&quot; &quot;$(OutputPath)&quot;" />
+  </Target>
+</Project>

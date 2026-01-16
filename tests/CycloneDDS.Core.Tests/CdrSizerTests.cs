@@ -114,19 +114,10 @@ namespace CycloneDDS.Core.Tests
             var cdr = new CdrWriter(writer);
             cdr.WriteInt32(42);
             cdr.WriteString("Test");
-            // cdr.Complete() is not in the CdrWriter API I saw earlier in BATCH-01, but the instructions use it.
-            // I should check if CdrWriter has Complete(). If not, I'll remove it or check the file.
-            // Assuming it might not exist based on previous batches, but let's check.
-            // Actually, I'll check CdrWriter.cs content to be sure.
+            cdr.Complete();
             
-            // For now I will comment out Complete() if it's not there, or assume it's implicit/not needed if the writer writes directly.
-            // But wait, the instructions explicitly used `cdr.Complete();`.
-            // I will assume it exists or I should add it if I was editing CdrWriter, but I am not editing CdrWriter unless needed.
-            // Let's check CdrWriter.cs content in a moment.
-            
-            // Checking CdrWriter.cs content via tool would be good.
-            // But for this file creation, I'll include it and if it fails to compile I'll fix it.
-            // Actually, better to check first.
+            // CRITICAL ASSERTION: Verify CdrSizer prediction matches actual output
+            Assert.Equal(expectedSize, writer.WrittenCount);
         }
     }
 }
