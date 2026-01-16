@@ -68,9 +68,32 @@ namespace CycloneDDS.Core
             _cursor += 1; // NUL terminator
         }
         
+        public void Skip(int bytes)
+        {
+            _cursor += bytes;
+        }
+
         public void WriteFixedString(ReadOnlySpan<byte> utf8Bytes, int fixedSize)
         {
             _cursor += fixedSize;
+        }
+
+        public void WriteUInt8(byte value) => _cursor += 1;
+        
+        public void WriteInt8(sbyte value) => _cursor += 1;
+        
+        public void WriteBool(bool value) => _cursor += 1;
+
+        public void WriteInt16(short value)
+        {
+            _cursor = AlignmentMath.Align(_cursor, 2);
+            _cursor += 2;
+        }
+
+        public void WriteUInt16(ushort value)
+        {
+            _cursor = AlignmentMath.Align(_cursor, 2);
+            _cursor += 2;
         }
         
         /// <summary>

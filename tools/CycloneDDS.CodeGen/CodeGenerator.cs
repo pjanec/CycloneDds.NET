@@ -39,6 +39,11 @@ namespace CycloneDDS.CodeGen
                 var idl = _idlEmitter.EmitIdl(topic);
                 File.WriteAllText(Path.Combine(outputDir, $"{topic.Name}.idl"), idl);
                 Console.WriteLine($"    Generated {topic.Name}.idl");
+
+                var serializerEmitter = new SerializerEmitter();
+                var serializerCode = serializerEmitter.EmitSerializer(topic);
+                File.WriteAllText(Path.Combine(outputDir, $"{topic.Name}.Serializer.cs"), serializerCode);
+                Console.WriteLine($"    Generated {topic.Name}.Serializer.cs");
             }
             
             Console.WriteLine($"Output will go to: {outputDir}");
