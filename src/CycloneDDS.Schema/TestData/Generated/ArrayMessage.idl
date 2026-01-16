@@ -1,0 +1,15 @@
+// Auto-generated IDL from C# schema
+// Topic: ArrayMessage
+
+module CycloneDDS {
+    module Schema {
+        module TestData {
+            @appendable
+            struct ArrayMessage {
+                @key long Id;
+                long FixedIntArray[5];
+                double FixedDoubleArray[3];
+            };
+        };
+    };
+};

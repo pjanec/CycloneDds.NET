@@ -32,15 +32,32 @@ public class StructLayoutCalculator
     public StructLayout CalculateLayout(TypeDeclarationSyntax type)
     {
         var layout = new StructLayout();
-        var fields = type.Members.OfType<FieldDeclarationSyntax>().ToList();
         
+        // Handle both fields and properties
+        var members = type.Members.Where(m => m is FieldDeclarationSyntax or PropertyDeclarationSyntax);
+
         int currentOffset = 0;
         int maxAlignment = 1;
         
-        foreach (var field in fields)
+        foreach (var member in members)
         {
-            var fieldType = field.Declaration.Type.ToString();
-            var fieldName = field.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "unknown";
+            string fieldType;
+            string fieldName;
+
+            if (member is FieldDeclarationSyntax f)
+            {
+                 fieldType = f.Declaration.Type.ToString();
+                 fieldName = f.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "unknown";
+            }
+            else if (member is PropertyDeclarationSyntax p)
+            {
+                 fieldType = p.Type.ToString();
+                 fieldName = p.Identifier.Text;
+            }
+            else
+            {
+                continue; 
+            }
             
             // Map C# type to IDL/C type for alignment calculation
             var idlType = IdlTypeMapper.MapToIdl(fieldType);
@@ -79,38 +96,32 @@ public class StructLayoutCalculator
     {
         return idlType switch
         {
-            "octet" or "int8" or "uint8" or "boolean" => 1,
-            "int16" or "uint16" or "char" or "wchar" => 2,
-            "long" or "unsigned long" or "float" => 4,
-            "long long" or "unsigned long long" or "double" => 8,
-            
-            // Pointers for strings/sequences
-            "string" => IntPtr.Size,
-            _ when idlType.StartsWith("sequence<") => IntPtr.Size * 2, // ptr + length
-            
-            // Fixed arrays: "octet[32]" -> 32 bytes
-            _ when idlType.Contains("[") => GetFixedArraySize(idlType),
-            
-            // Unknown types - conservative estimate
-            _ => 4
+            "boolean" => 1,
+            "octet" => 1,
+            "char" => 1,
+            "short" => 2,
+            "unsigned short" => 2,
+            "long" => 4,
+            "unsigned long" => 4,
+            "long long" => 8,
+            "unsigned long long" => 8,
+            "int8" => 1,
+            "uint8" => 1,
+            "int16" => 2,
+            "uint16" => 2,
+            "int32" => 4,
+            "uint32" => 4,
+            "int64" => 8,
+            "uint64" => 8,
+            "float" => 4,
+            "double" => 8,
+            "string" => 8, // Pointer on x64
+            // Sequence, Array, Struct? 
+            // Simplified: treat as pointer for sequences/strings? 
+            // Fixed array needs special handling. 
+            // BATCH-06 scope limits to primitives + string.
+            // Complex types (sequences) are pointers (8 bytes) usually.
+            _ => 1 // Fallback
         };
-    }
-    
-    private int GetFixedArraySize(string idlType)
-    {
-        // Extract size from "octet[32]"
-        var start = idlType.IndexOf('[');
-        var end = idlType.IndexOf(']');
-        if (start > 0 && end > start)
-        {
-            var sizeStr = idlType.Substring(start + 1, end - start - 1);
-            if (int.TryParse(sizeStr, out var arraySize))
-            {
-                var elementType = idlType.Substring(0, start).Trim();
-                var elementSize = GetTypeSize(elementType);
-                return elementSize * arraySize;
-            }
-        }
-        return 4; // Fallback
     }
 }

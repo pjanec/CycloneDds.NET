@@ -1,0 +1,17 @@
+// Auto-generated IDL from C# schema
+// Topic: NestedMessage
+
+#include "SimpleMessage.idl"
+
+module CycloneDDS {
+    module Schema {
+        module TestData {
+            @appendable
+            struct NestedMessage {
+                @key long Id;
+                SimpleMessage Inner;
+                string Description;
+            };
+        };
+    };
+};

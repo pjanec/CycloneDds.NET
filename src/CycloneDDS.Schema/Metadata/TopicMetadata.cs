@@ -1,7 +1,7 @@
 using System;
-using CycloneDDS.Runtime.Descriptors;
+using CycloneDDS.Schema.Descriptors;
 
-namespace CycloneDDS.CodeGen.Runtime;
+namespace CycloneDDS.Schema.Metadata;
 
 public class TopicMetadata
 {

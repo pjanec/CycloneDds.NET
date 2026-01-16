@@ -28,7 +28,7 @@ public class MarshallerEmitter
         EmitLine("using System;");
         EmitLine("using System.Text;");
         EmitLine("using System.Runtime.InteropServices;");
-        EmitLine("using CycloneDDS.CodeGen.Marshalling;");
+        EmitLine("using CycloneDDS.Schema.Marshalling;");
         EmitLine();
         EmitLine($"namespace {namespaceName};");
         EmitLine();
@@ -294,7 +294,7 @@ public class MarshallerEmitter
         EmitLine();
         EmitLine("using System;");
         EmitLine("using System.Runtime.InteropServices;");
-        EmitLine("using CycloneDDS.CodeGen.Marshalling;");
+        EmitLine("using CycloneDDS.Schema.Marshalling;");
         EmitLine();
         EmitLine($"namespace {namespaceName};");
         EmitLine();

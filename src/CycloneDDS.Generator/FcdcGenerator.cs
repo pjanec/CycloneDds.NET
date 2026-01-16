@@ -5,7 +5,6 @@ using System.Linq;
 using CycloneDDS.Generator.Models;
 using CycloneDDS.Generator.Diagnostics;
 using CycloneDDS.Generator.Utilities;
-using CycloneDDS.Schema;
 
 namespace CycloneDDS.Generator
 {
@@ -121,7 +120,6 @@ namespace CycloneDDS.Generator
                 {
                     DdsWire wireKind = DdsWire.Guid16; // Default
                     if (wireKindVal is int val) wireKind = (DdsWire)val;
-                    else if (wireKindVal is DdsWire w) wireKind = w;
                     
                     return new GlobalTypeMapping
                     {

@@ -1,0 +1,20 @@
+// Auto-generated IDL from C# schema
+// Topic: ComplexMessage
+
+#include "SimpleMessage.idl"
+
+module CycloneDDS {
+    module Schema {
+        module TestData {
+            @appendable
+            struct ComplexMessage {
+                @key long Id;
+                string Name;
+                SimpleMessage NestedStruct;
+                SimpleMessage StructArray[3];
+                sequence<string, 10> StringSeq;
+                long IntArray[5];
+            };
+        };
+    };
+};

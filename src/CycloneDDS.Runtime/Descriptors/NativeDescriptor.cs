@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using CycloneDDS.Schema.Descriptors;
 
 namespace CycloneDDS.Runtime.Descriptors;
 

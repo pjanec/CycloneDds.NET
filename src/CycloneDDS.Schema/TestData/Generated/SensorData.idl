@@ -1,0 +1,18 @@
+// Auto-generated IDL from C# schema
+// Topic: SensorData
+
+module CycloneDDS {
+    module Schema {
+        module TestData {
+            @appendable
+            struct SensorData {
+                @key long SensorId;
+                @key long DeviceId;
+                long long Timestamp;
+                double Temperature;
+                double Pressure;
+                double Humidity;
+            };
+        };
+    };
+};

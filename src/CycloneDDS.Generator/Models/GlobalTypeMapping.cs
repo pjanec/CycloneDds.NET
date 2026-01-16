@@ -1,4 +1,3 @@
-using CycloneDDS.Schema;
 
 namespace CycloneDDS.Generator.Models
 {

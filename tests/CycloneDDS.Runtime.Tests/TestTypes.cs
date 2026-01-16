@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using CycloneDDS.CodeGen.Runtime;
+using CycloneDDS.Schema.Metadata;
 
 namespace CycloneDDS.Runtime.Tests;
 

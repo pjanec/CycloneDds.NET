@@ -1,0 +1,22 @@
+// Auto-generated Enum IDL
+
+module CycloneDDS {
+    module Schema {
+        @appendable
+        enum DdsReturnCode : long {
+            Ok = 0,
+            Error = -1,
+            Unsupported = -2,
+            BadParameter = -3,
+            PreconditionNotMet = -4,
+            OutOfResources = -5,
+            NotEnabled = -6,
+            ImmutablePolicy = -7,
+            InconsistentPolicy = -8,
+            AlreadyDeleted = -9,
+            Timeout = -10,
+            NoData = -11,
+            IllegalOperation = -12
+        };
+    };
+};

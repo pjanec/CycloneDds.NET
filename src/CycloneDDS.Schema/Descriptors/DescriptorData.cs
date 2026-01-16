@@ -1,6 +1,6 @@
 using System;
 
-namespace CycloneDDS.Runtime.Descriptors;
+namespace CycloneDDS.Schema.Descriptors;
 
 public class DescriptorData
 {

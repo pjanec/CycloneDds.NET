@@ -1,0 +1,13 @@
+// Auto-generated IDL from C# schema
+// Topic: EmptyMessage
+
+module CycloneDDS {
+    module Schema {
+        module TestData {
+            @appendable
+            struct EmptyMessage {
+                octet Dummy;
+            };
+        };
+    };
+};

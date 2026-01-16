@@ -1,5 +1,6 @@
 using Xunit;
 using CycloneDDS.Runtime.Descriptors;
+using CycloneDDS.Schema.Descriptors;
 using System;
 using System.Runtime.InteropServices;
 

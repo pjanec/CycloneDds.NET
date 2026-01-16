@@ -2,9 +2,10 @@ using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using CycloneDDS.Runtime.Interop;
-using CycloneDDS.CodeGen.Runtime;
-
+using CycloneDDS.Schema.Metadata;
+using CycloneDDS.Schema.Descriptors;
 using CycloneDDS.Runtime.Descriptors;
+using CycloneDDS.CodeGen.Runtime;
 
 namespace CycloneDDS.Runtime;
 

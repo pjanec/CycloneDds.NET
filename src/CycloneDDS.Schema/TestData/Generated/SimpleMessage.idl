@@ -1,0 +1,15 @@
+// Auto-generated IDL from C# schema
+// Topic: SimpleMessage
+
+module CycloneDDS {
+    module Schema {
+        module TestData {
+            @appendable
+            struct SimpleMessage {
+                @key long Id;
+                string Name;
+                double Value;
+            };
+        };
+    };
+};

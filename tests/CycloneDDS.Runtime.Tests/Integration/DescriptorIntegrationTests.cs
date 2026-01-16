@@ -2,6 +2,8 @@ using Xunit;
 using CycloneDDS.Runtime;
 using CycloneDDS.CodeGen.Runtime;
 using CycloneDDS.Runtime.Descriptors;
+using CycloneDDS.Schema.Descriptors;
+using CycloneDDS.Schema.Metadata;
 using System;
 using System.Runtime.InteropServices;
 

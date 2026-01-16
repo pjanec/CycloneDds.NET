@@ -1,0 +1,47 @@
+{
+  "SimpleMessage": {
+    "TypeName": "SimpleMessage",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  },
+  "AllPrimitivesMessage": {
+    "TypeName": "AllPrimitivesMessage",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  },
+  "ArrayMessage": {
+    "TypeName": "ArrayMessage",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  },
+  "SequenceMessage": {
+    "TypeName": "SequenceMessage",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  },
+  "NestedMessage": {
+    "TypeName": "NestedMessage",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  },
+  "StructArrayMessage": {
+    "TypeName": "StructArrayMessage",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  },
+  "ComplexMessage": {
+    "TypeName": "ComplexMessage",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  },
+  "SensorData": {
+    "TypeName": "SensorData",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  },
+  "EmptyMessage": {
+    "TypeName": "EmptyMessage",
+    "Hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Members": []
+  }
+}

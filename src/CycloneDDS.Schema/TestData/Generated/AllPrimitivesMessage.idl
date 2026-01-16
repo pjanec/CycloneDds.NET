@@ -1,0 +1,21 @@
+// Auto-generated IDL from C# schema
+// Topic: AllPrimitivesMessage
+
+module CycloneDDS {
+    module Schema {
+        module TestData {
+            @appendable
+            struct AllPrimitivesMessage {
+                @key long Id;
+                boolean BoolField;
+                octet ByteField;
+                int16 Int16Field;
+                long Int32Field;
+                long long Int64Field;
+                float FloatField;
+                double DoubleField;
+                string StringField;
+            };
+        };
+    };
+};

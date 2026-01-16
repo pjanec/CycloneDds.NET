@@ -1,0 +1,15 @@
+// Auto-generated IDL from C# schema
+// Topic: SequenceMessage
+
+module CycloneDDS {
+    module Schema {
+        module TestData {
+            @appendable
+            struct SequenceMessage {
+                @key long Id;
+                sequence<long, 100> BoundedIntSeq;
+                sequence<string, 50> BoundedStringSeq;
+            };
+        };
+    };
+};

@@ -20,12 +20,24 @@ public class IdlEmitter
         EmitLine("// Auto-generated IDL from C# schema");
         EmitLine($"// Topic: {topicName}");
         EmitLine();
+
+        // Includes
+        var customTypes = GetCustomTypes(type).Distinct().ToList();
+        foreach (var customType in customTypes)
+        {
+            EmitLine($"#include \"{customType}.idl\"");
+        }
+        if (customTypes.Any()) EmitLine();
         
         // Module (namespace)
         var namespaceName = GetNamespace(type);
-        EmitLine($"@appendable");
-        EmitLine($"module {namespaceName} {{");
-        _indentLevel++;
+        var modules = namespaceName.Split('.');
+        
+        foreach (var module in modules)
+        {
+            EmitLine($"module {module} {{");
+            _indentLevel++;
+        }
         
         // Emit typedefs if needed
         EmitTypedefs(type);
@@ -33,8 +45,11 @@ public class IdlEmitter
         // Emit the main struct
         EmitStruct(type);
         
-        _indentLevel--;
-        EmitLine("};");
+        for (int i = 0; i < modules.Length; i++)
+        {
+            _indentLevel--;
+            EmitLine("};");
+        }
         
         return _sb.ToString();
     }
@@ -46,16 +61,31 @@ public class IdlEmitter
         
         EmitLine("// Auto-generated Union IDL");
         EmitLine();
+
+        // Includes (for unions too)
+        var customTypes = GetCustomTypes(type).Distinct().ToList();
+        foreach (var customType in customTypes)
+        {
+            EmitLine($"#include \"{customType}.idl\"");
+        }
+        if (customTypes.Any()) EmitLine();
         
         var namespaceName = GetNamespace(type);
-        EmitLine($"@appendable");
-        EmitLine($"module {namespaceName} {{");
-        _indentLevel++;
+        var modules = namespaceName.Split('.');
+        
+        foreach (var module in modules)
+        {
+            EmitLine($"module {module} {{");
+            _indentLevel++;
+        }
         
         EmitUnion(type);
         
-        _indentLevel--;
-        EmitLine("};");
+        for (int i = 0; i < modules.Length; i++)
+        {
+            _indentLevel--;
+            EmitLine("};");
+        }
         
         return _sb.ToString();
     }
@@ -69,29 +99,89 @@ public class IdlEmitter
         EmitLine();
 
         var namespaceName = GetNamespace(enumDecl);
-        EmitLine($"@appendable");
-        EmitLine($"module {namespaceName} {{");
-        _indentLevel++;
+        var modules = namespaceName.Split('.');
+        
+        foreach (var module in modules)
+        {
+            EmitLine($"module {module} {{");
+            _indentLevel++;
+        }
 
         EmitEnum(enumDecl);
 
-        _indentLevel--;
-        EmitLine("};");
+        for (int i = 0; i < modules.Length; i++)
+        {
+            _indentLevel--;
+            EmitLine("};");
+        }
 
         return _sb.ToString();
     }
+
+    private IEnumerable<string> GetCustomTypes(TypeDeclarationSyntax type)
+    {
+        var members = type.Members.OfType<MemberDeclarationSyntax>()
+            .Where(m => m is FieldDeclarationSyntax or PropertyDeclarationSyntax);
+            
+        foreach (var member in members)
+        {
+            string typeName = null;
+            if (member is FieldDeclarationSyntax field) typeName = field.Declaration.Type.ToString();
+            else if (member is PropertyDeclarationSyntax prop) typeName = prop.Type.ToString();
+            
+            if (typeName != null)
+            {
+                 // Handle arrays
+                 if (typeName.EndsWith("[]")) typeName = typeName.Substring(0, typeName.Length - 2);
+                 
+                 if (!IsPrimitive(typeName))
+                 {
+                     yield return typeName;
+                 }
+            }
+        }
+    }
+
+    private bool IsPrimitive(string typeName)
+    {
+        switch (typeName)
+        {
+            case "byte": case "sbyte": case "short": case "ushort":
+            case "int": case "uint": case "long": case "ulong":
+            case "float": case "double": case "bool": case "char":
+            case "string":
+            case "FixedString32": case "FixedString64": case "FixedString128":
+            case "Guid": case "System.Guid":
+            case "DateTime": case "System.DateTime":
+                return true;
+            default: return false;
+        }
+    }
     
+    // ... existing methods ...
     private void EmitTypedefs(TypeDeclarationSyntax type)
     {
         var fields = type.Members.OfType<FieldDeclarationSyntax>();
+        var properties = type.Members.OfType<PropertyDeclarationSyntax>();
         var uniqueTypedefs = new HashSet<string>();
         
+        // Check fields
         foreach (var field in fields)
         {
             var fieldType = field.Declaration.Type.ToString();
             if (IdlTypeMapper.RequiresTypedef(fieldType) && uniqueTypedefs.Add(fieldType))
             {
                 EmitLine(IdlTypeMapper.GetTypedefMapping(fieldType));
+            }
+        }
+        
+        // Check properties
+        foreach (var prop in properties)
+        {
+            var propType = prop.Type.ToString();
+            if (IdlTypeMapper.RequiresTypedef(propType) && uniqueTypedefs.Add(propType))
+            {
+                EmitLine(IdlTypeMapper.GetTypedefMapping(propType));
             }
         }
         
@@ -105,29 +195,93 @@ public class IdlEmitter
         EmitLine($"struct {type.Identifier.Text} {{");
         _indentLevel++;
         
-        var fields = type.Members.OfType<FieldDeclarationSyntax>().ToList();
+        var members = type.Members.OfType<MemberDeclarationSyntax>()
+            .Where(m => m is FieldDeclarationSyntax or PropertyDeclarationSyntax)
+            .ToList();
         
-        foreach (var field in fields)
+        foreach (var member in members)
         {
-            EmitField(field);
+            EmitMember(member);
         }
         
         _indentLevel--;
         EmitLine("};");
     }
     
-    private void EmitField(FieldDeclarationSyntax field)
+    private void EmitMember(MemberDeclarationSyntax member)
     {
-        var fieldType = field.Declaration.Type.ToString();
-        var fieldName = field.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "unknown";
+        string fieldType;
+        string fieldName;
+        SyntaxList<AttributeListSyntax> attributeLists;
         
+        if (member is FieldDeclarationSyntax field)
+        {
+            fieldType = field.Declaration.Type.ToString();
+            fieldName = field.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "unknown";
+            attributeLists = field.AttributeLists;
+        }
+        else if (member is PropertyDeclarationSyntax prop)
+        {
+            fieldType = prop.Type.ToString();
+            fieldName = prop.Identifier.Text;
+            attributeLists = prop.AttributeLists;
+        }
+        else
+        {
+            return;
+        }
+
         var idlType = IdlTypeMapper.MapToIdl(fieldType);
         
+        var attributes = attributeLists.SelectMany(al => al.Attributes).ToList();
+
         // Check for @key attribute
-        var hasKeyAttr = field.AttributeLists
-            .SelectMany(al => al.Attributes)
-            .Any(attr => attr.Name.ToString() is "DdsKey" or "DdsKeyAttribute");
+        var hasKeyAttr = attributes.Any(attr => 
+            attr.Name.ToString() is "DdsKey" or "DdsKeyAttribute" or "Key" or "KeyAttribute");
+        
+        // Check for array/sequence bounds
+        var arrayLenAttr = attributes.FirstOrDefault(attr => 
+            attr.Name.ToString() is "ArrayLength" or "ArrayLengthAttribute");
             
+        var maxLengthAttr = attributes.FirstOrDefault(attr => 
+            attr.Name.ToString() is "MaxLength" or "MaxLengthAttribute");
+
+        // Handle array overrides
+        if (arrayLenAttr != null && arrayLenAttr.ArgumentList?.Arguments.Count > 0)
+        {
+            // Fixed array: int[] + [ArrayLength(5)] -> long fieldName[5]
+            var len = arrayLenAttr.ArgumentList.Arguments[0].ToString();
+            if (fieldType.EndsWith("[]"))
+            {
+                // Strip sequence wrapper if IdlTypeMapper used it
+                var elementType = fieldType.Substring(0, fieldType.Length - 2);
+                var idlElementType = IdlTypeMapper.MapToIdl(elementType);
+                idlType = $"{idlElementType}";
+                fieldName = $"{fieldName}[{len}]";
+            }
+        }
+        else if (maxLengthAttr != null && maxLengthAttr.ArgumentList?.Arguments.Count > 0)
+        {
+             // Bounded sequence/string: int[] + [MaxLength(10)] -> sequence<long, 10>
+             // string + [MaxLength(10)] -> string<10>
+             var len = maxLengthAttr.ArgumentList.Arguments[0].ToString();
+             
+             if (idlType == "string")
+             {
+                 idlType = $"string<{len}>";
+             }
+             else if (idlType.StartsWith("sequence<"))
+             {
+                 // Insert bound
+                 // sequence<T> -> sequence<T, N>
+                 // Assuming format "sequence<T>"
+                 if (idlType.EndsWith(">"))
+                 {
+                     idlType = idlType.Substring(0, idlType.Length - 1) + $", {len}>";
+                 }
+             }
+        }
+
         // Check for nullable (optional)
         var isOptional = IdlTypeMapper.IsNullableType(fieldType);
         
@@ -254,6 +408,9 @@ public class IdlEmitter
         return "Default";
     }
     
+    // Helper to get requires typedef info from Mapper without exposing
+    // Just using IdlTypeMapper.RequiresTypedef()
+
     private void Emit(string text)
     {
         _sb.Append(text);

@@ -1,0 +1,11 @@
+// Auto-generated Enum IDL
+
+module CycloneDDS {
+    module Schema {
+        @appendable
+        enum DdsHistoryKind : long {
+            KeepLast = 0,
+            KeepAll = 1
+        };
+    };
+};

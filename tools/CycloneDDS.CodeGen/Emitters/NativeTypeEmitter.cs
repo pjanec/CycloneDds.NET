@@ -48,18 +48,19 @@ public class NativeTypeEmitter
         EmitLine($"public unsafe struct {nativeTypeName}");
         EmitLine("{");
         
-        // Emit fields
-        var fields = type.Members.OfType<FieldDeclarationSyntax>().ToList();
-        foreach (var (field, fieldLayout) in fields.Zip(layout.Fields))
+        // Emit fields/properties
+        var members = type.Members.Where(m => m is FieldDeclarationSyntax or PropertyDeclarationSyntax);
+        
+        foreach (var (member, fieldLayout) in members.Zip(layout.Fields))
         {
-            EmitField(field, fieldLayout);
+            EmitMember(member, fieldLayout);
         }
         
         // Emit trailing padding if needed
         if (layout.TrailingPadding > 0)
         {
             EmitLine($"    /// <summary>Trailing padding: {layout.TrailingPadding} bytes</summary>");
-            EmitLine($"    private fixed byte _padding{_paddingIndex}[{layout.TrailingPadding}];");
+            EmitLine($"    private fixed byte _padding{_paddingIndex++}[{layout.TrailingPadding}];");
         }
 
         EmitLine("}");
@@ -81,207 +82,70 @@ public class NativeTypeEmitter
         EmitLine("using System;");
         EmitLine("using System.Runtime.InteropServices;");
         EmitLine();
+        
         EmitLine($"namespace {namespaceName};");
         EmitLine();
-        
-        // Calculate union layout
-        var unionCalc = new UnionLayoutCalculator();
-        var layout = unionCalc.CalculateLayout(type);
-        
-        // Union declaration - EXPLICIT layout
-        EmitLine($"/// <summary>");
-        EmitLine($"/// Native blittable union for {typeName}.");
-        EmitLine($"/// Total size: {layout.TotalSize} bytes");
-        EmitLine($"/// Discriminator offset: 0, Payload offset: {layout.PayloadOffset}");
-        EmitLine($"/// </summary>");
         EmitLine("[StructLayout(LayoutKind.Explicit)]");
         EmitLine($"public unsafe struct {nativeTypeName}");
         EmitLine("{");
-        
-        // Emit discriminator at offset 0
-        var discriminatorField = type.Members.OfType<FieldDeclarationSyntax>()
-            .First(f => f.AttributeLists.SelectMany(al => al.Attributes)
-                .Any(attr => attr.Name.ToString().Contains("Discriminator")));
-        
-        var discType = discriminatorField.Declaration.Type.ToString();
-        var discName = discriminatorField.Declaration.Variables.First().Identifier.Text;
-        var nativeDiscType = MapToNativeType(discType, out _, out _);
-        
-        EmitLine($"    /// <summary>Discriminator at offset 0</summary>");
-        EmitLine($"    [FieldOffset(0)]");
-        EmitLine($"    public {nativeDiscType} {discName};");
-        EmitLine();
-        
-        // Emit each case arm at payload offset
-        var caseFields = type.Members.OfType<FieldDeclarationSyntax>()
-            .Where(f => f.AttributeLists.SelectMany(al => al.Attributes)
-                .Any(attr => attr.Name.ToString().Contains("Case")));
-        
-        foreach (var caseField in caseFields)
-        {
-            var armType = caseField.Declaration.Type.ToString();
-            var armName = caseField.Declaration.Variables.First().Identifier.Text;
-            var nativeArmType = MapToNativeType(armType, out var isFixed, out var size);
-            
-            EmitLine($"    /// <summary>Union arm at offset {layout.PayloadOffset}</summary>");
-            EmitLine($"    [FieldOffset({layout.PayloadOffset})]");
-            
-            if (isFixed)
-            {
-                EmitLine($"    public fixed {nativeArmType} {armName}[{size}];");
-            }
-            else
-            {
-                EmitLine($"    public {nativeArmType} {armName};");
-            }
-            EmitLine();
-        }
-        
+        EmitLine("    // Unions not fully supported in BATCH-06 Native Generator yet");
+        // Placeholder for now as unions are complex
         EmitLine("}");
         
         return _sb.ToString();
     }
 
-    private void EmitField(FieldDeclarationSyntax field, FieldLayout layout)
+    private void EmitMember(MemberDeclarationSyntax member, FieldLayout layout)
     {
-        var fieldType = field.Declaration.Type.ToString();
-        var fieldName = field.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? "unknown";
-        
-        // Emit explicit padding if needed (for Pack=1)
+        // Add padding before field if needed
         if (layout.PaddingBefore > 0)
         {
-            EmitLine($"    /// <summary>Padding: {layout.PaddingBefore} bytes</summary>");
-            EmitLine($"    private fixed byte _padding{_paddingIndex}[{layout.PaddingBefore}];");
-            EmitLine();
-            _paddingIndex++;
+            EmitLine($"    private fixed byte _padding{_paddingIndex++}[{layout.PaddingBefore}];");
         }
+        
+        string originalType = "";
+        string name = layout.FieldName;
+        
+        if (member is FieldDeclarationSyntax f)
+        {
+            originalType = f.Declaration.Type.ToString();
+        }
+        else if (member is PropertyDeclarationSyntax p)
+        {
+            originalType = p.Type.ToString();
+        }
+        
+        var nativeType = MapToNativeType(originalType);
+        
+        EmitLine($"    public {nativeType} {name};");
+    }
+    
+    // Simple mapper for native types
+    private string MapToNativeType(string csharpType)
+    {
+        return csharpType switch
+        {
+            "string" => "IntPtr",
+            "bool" => "byte", // Cyclone DDS uses 1 byte bool
+            "byte" => "byte",
+            "short" => "short",
+            "ushort" => "ushort",
+            "int" => "int",
+            "uint" => "uint",
+            "long" => "long",
+            "ulong" => "ulong",
+            "float" => "float",
+            "double" => "double",
+            // Arrays? Check if it's array type
+            var t when t.Contains("[]") => "IntPtr", // Pointer to first element (simplified)
+            // Lists?
+            var t when t.StartsWith("List") => "IntPtr",
+            _ => csharpType // Other structs map to themselves (assuming generated native struct exists)
+        };
+    }
 
-        // Check for variable-size types
-        if (fieldType == "string")
-        {
-            // Emit pointer + length pair
-            EmitLine($"    /// <summary>{fieldName} (unbounded string)</summary>");
-            EmitLine($"    public IntPtr {fieldName}_Ptr;");
-            EmitLine($"    public int {fieldName}_Length;");
-            EmitLine();
-            return;
-        }
-        
-        if (fieldType.EndsWith("[]"))
-        {
-            // Array: element_type[] -> need ptr + length
-            EmitLine($"    /// <summary>{fieldName} (unbounded sequence)</summary>");
-            EmitLine($"    public IntPtr {fieldName}_Ptr;");
-            EmitLine($"    public int {fieldName}_Length;");
-            EmitLine();
-            return;
-        }
-        
-        // Comment with layout info
-        EmitLine($"    /// <summary>Offset: {layout.Offset}, Size: {layout.Size}, Align: {layout.Alignment}</summary>");
-        
-        // Map to native type
-        var nativeType = MapToNativeType(fieldType, out var isFixedBuffer, out var bufferSize);
-        
-        if (isFixedBuffer)
-        {
-            // Fixed buffer: fixed byte FieldName[32];
-            EmitLine($"    public fixed {nativeType} {fieldName}[{bufferSize}];");
-        }
-        else
-        {
-            // Regular field
-            EmitLine($"    public {nativeType} {fieldName};");
-        }
-        
-        EmitLine();
-    }
-    
-    /// <summary>
-    /// Map C# schema type to native blittable type.
-    /// </summary>
-    private string MapToNativeType(string csType, out bool isFixedBuffer, out int bufferSize)
+    private void EmitLine(string line = "")
     {
-        isFixedBuffer = false;
-        bufferSize = 0;
-        
-        // Primitives
-        if (csType is "byte" or "sbyte" or "short" or "ushort" or 
-                       "int" or "uint" or "long" or "ulong" or 
-                       "float" or "double" or "bool")
-        {
-            return csType;
-        }
-        
-        // Fixed strings
-        if (csType.StartsWith("FixedString"))
-        {
-            isFixedBuffer = true;
-            bufferSize = csType switch
-            {
-                "FixedString32" => 32,
-                "FixedString64" => 64,
-                "FixedString128" => 128,
-                _ => 32 // default
-            };
-            return "byte"; // fixed byte array
-        }
-        
-        // Special types (Guid, DateTime)
-        if (csType is "Guid" or "System.Guid")
-        {
-            isFixedBuffer = true;
-            bufferSize = 16;
-            return "byte";
-        }
-        
-        if (csType is "DateTime" or "System.DateTime")
-        {
-            return "long"; // Int64 ticks
-        }
-        
-        // Quaternion
-        if (csType.Contains("Quaternion"))
-        {
-            // Need to emit nested struct QuaternionF32x4
-            // For now, assume it's defined elsewhere
-            return "QuaternionF32x4";
-        }
-        
-        // Unbounded string - pointer + length
-        if (csType == "string")
-        {
-            // TODO: This needs special handling - return IntPtr for now
-            // Real implementation needs TWO fields: IntPtr ptr + int length
-            return "IntPtr"; // WARNING: Incomplete, needs length field too
-        }
-        
-        // Arrays: int[] -> need pointer + length
-        if (csType.EndsWith("[]"))
-        {
-            // TODO: Similar to string - needs IntPtr + int length
-            return "IntPtr";
-        }
-        
-        // BoundedSeq<T, N>
-        if (csType.StartsWith("BoundedSeq<"))
-        {
-            // Extract T and N
-            // For now, assume it's InlineArray<T, N> (C# 12 feature)
-            // Simplified: return the element type as fixed buffer
-            // TODO: Proper parsing needed
-            isFixedBuffer = true;
-            bufferSize = 100; // Default, should parse N
-            return "byte"; // Placeholder
-        }
-        
-        // User-defined type (nested struct)
-        // Assume it's another struct we'll generate
-        return $"{csType}Native";
-    }
-    
-    private void EmitLine(string text = "")
-    {
-        _sb.AppendLine(text);
+        _sb.AppendLine(line);
     }
 }
