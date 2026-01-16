@@ -36,7 +36,6 @@ namespace CycloneDDS.Core
 
         public void WriteInt32(int value)
         {
-            Align(4);
             EnsureSize(sizeof(int));
             BinaryPrimitives.WriteInt32LittleEndian(_span.Slice(_buffered), value);
             _buffered += sizeof(int);
@@ -44,7 +43,6 @@ namespace CycloneDDS.Core
 
         public void WriteUInt32(uint value)
         {
-            Align(4);
             EnsureSize(sizeof(uint));
             BinaryPrimitives.WriteUInt32LittleEndian(_span.Slice(_buffered), value);
             _buffered += sizeof(uint);
@@ -52,7 +50,6 @@ namespace CycloneDDS.Core
 
         public void WriteInt64(long value)
         {
-            Align(8);
             EnsureSize(sizeof(long));
             BinaryPrimitives.WriteInt64LittleEndian(_span.Slice(_buffered), value);
             _buffered += sizeof(long);
@@ -60,7 +57,6 @@ namespace CycloneDDS.Core
 
         public void WriteUInt64(ulong value)
         {
-            Align(8);
             EnsureSize(sizeof(ulong));
             BinaryPrimitives.WriteUInt64LittleEndian(_span.Slice(_buffered), value);
             _buffered += sizeof(ulong);
@@ -68,7 +64,6 @@ namespace CycloneDDS.Core
 
         public void WriteFloat(float value)
         {
-            Align(4);
             EnsureSize(sizeof(float));
             int val = BitConverter.SingleToInt32Bits(value);
             BinaryPrimitives.WriteInt32LittleEndian(_span.Slice(_buffered), val);
@@ -77,7 +72,6 @@ namespace CycloneDDS.Core
 
         public void WriteDouble(double value)
         {
-            Align(8);
             EnsureSize(sizeof(double));
             long val = BitConverter.DoubleToInt64Bits(value);
             BinaryPrimitives.WriteInt64LittleEndian(_span.Slice(_buffered), val);
@@ -102,7 +96,6 @@ namespace CycloneDDS.Core
 
         public void WriteInt16(short value)
         {
-            Align(2);
             EnsureSize(sizeof(short));
             BinaryPrimitives.WriteInt16LittleEndian(_span.Slice(_buffered), value);
             _buffered += sizeof(short);
@@ -110,7 +103,6 @@ namespace CycloneDDS.Core
 
         public void WriteUInt16(ushort value)
         {
-            Align(2);
             EnsureSize(sizeof(ushort));
             BinaryPrimitives.WriteUInt16LittleEndian(_span.Slice(_buffered), value);
             _buffered += sizeof(ushort);

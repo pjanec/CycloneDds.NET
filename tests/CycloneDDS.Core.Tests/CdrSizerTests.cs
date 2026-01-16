@@ -27,6 +27,7 @@ namespace CycloneDDS.Core.Tests
         public void WriteInt32_FromOffset1_Size7()
         {
             var sizer = new CdrSizer(1);
+            sizer.Align(4);
             sizer.WriteInt32(123);
             // 1 -> align 4 -> 4. 4 + 4 = 8.
             // Wait, the instruction said: "WriteInt32 from offset 1 -> align to 4, then +4 = size 7 total"
@@ -52,6 +53,7 @@ namespace CycloneDDS.Core.Tests
         public void WriteDouble_FromOffset5_Size11()
         {
             var sizer = new CdrSizer(5);
+            sizer.Align(8);
             sizer.WriteDouble(1.23);
             // 5 -> align 8 -> 8.
             // 8 + 8 = 16.
@@ -89,7 +91,9 @@ namespace CycloneDDS.Core.Tests
         {
             var sizer = new CdrSizer(0);
             sizer.WriteByte(1); // pos 1
+            sizer.Align(4);
             sizer.WriteInt32(2); // align 4 -> 4, +4 -> 8
+            sizer.Align(8);
             sizer.WriteDouble(3.0); // align 8 -> 8, +8 -> 16
             Assert.Equal(16, sizer.Position);
         }

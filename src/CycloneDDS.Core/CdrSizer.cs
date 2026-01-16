@@ -17,6 +17,11 @@ namespace CycloneDDS.Core
         }
         
         public int Position => _cursor;
+
+        public void Align(int alignment)
+        {
+            _cursor = AlignmentMath.Align(_cursor, alignment);
+        }
         
         // Primitives (mirrors CdrWriter)
         public void WriteByte(byte value)
@@ -26,43 +31,36 @@ namespace CycloneDDS.Core
         
         public void WriteInt32(int value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 4);
             _cursor += 4;
         }
         
         public void WriteUInt32(uint value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 4);
             _cursor += 4;
         }
         
         public void WriteInt64(long value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 8);
             _cursor += 8;
         }
         
         public void WriteUInt64(ulong value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 8);
             _cursor += 8;
         }
         
         public void WriteFloat(float value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 4);
             _cursor += 4;
         }
         
         public void WriteDouble(double value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 8);
             _cursor += 8;
         }
         
         public void WriteString(ReadOnlySpan<char> value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 4); // Length header
             _cursor += 4; // Length (Int32)
             _cursor += Encoding.UTF8.GetByteCount(value);
             _cursor += 1; // NUL terminator
@@ -86,13 +84,11 @@ namespace CycloneDDS.Core
 
         public void WriteInt16(short value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 2);
             _cursor += 2;
         }
 
         public void WriteUInt16(ushort value)
         {
-            _cursor = AlignmentMath.Align(_cursor, 2);
             _cursor += 2;
         }
         

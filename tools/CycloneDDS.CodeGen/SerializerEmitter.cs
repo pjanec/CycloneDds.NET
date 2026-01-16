@@ -52,6 +52,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("            var sizer = new CdrSizer(currentOffset);");
             sb.AppendLine();
             sb.AppendLine("            // DHEADER (required for @appendable)");
+            sb.AppendLine("            sizer.Align(4);");
             sb.AppendLine("            sizer.WriteUInt32(0);");
             sb.AppendLine();
             sb.AppendLine("            // Struct body");
@@ -73,6 +74,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("        public void Serialize(ref CdrWriter writer)");
             sb.AppendLine("        {");
             sb.AppendLine("            // DHEADER");
+            sb.AppendLine("            writer.Align(4);");
             sb.AppendLine("            int dheaderPos = writer.Position;");
             sb.AppendLine("            writer.WriteUInt32(0);");
             sb.AppendLine();
@@ -98,7 +100,7 @@ namespace CycloneDDS.CodeGen
             // 1. Strings (Variable)
             if (field.TypeName == "string" && field.HasAttribute("DdsManaged"))
             {
-                 return $"sizer.WriteString(this.{ToPascalCase(field.Name)})";
+                 return $"sizer.Align(4); sizer.WriteString(this.{ToPascalCase(field.Name)})";
             }
 
             // 2. Sequences
@@ -112,7 +114,7 @@ namespace CycloneDDS.CodeGen
             {
                  var size = new string(field.TypeName.Where(char.IsDigit).ToArray());
                  if (string.IsNullOrEmpty(size)) size = "32"; 
-                 return $"sizer.WriteFixedString(null, {size})";
+                 return $"sizer.Align(1); sizer.WriteFixedString(null, {size})";
             }
 
             string method = TypeMapper.GetSizerMethod(field.TypeName);
@@ -120,7 +122,8 @@ namespace CycloneDDS.CodeGen
             {
                 string dummy = "0";
                 if (method == "WriteBool") dummy = "false";
-                return $"sizer.{method}({dummy})";
+                int align = GetAlignment(field.TypeName);
+                return $"sizer.Align({align}); sizer.{method}({dummy})";
             }
             else
             {
@@ -137,7 +140,7 @@ namespace CycloneDDS.CodeGen
             // 1. Strings (Variable)
             if (field.TypeName == "string" && field.HasAttribute("DdsManaged"))
             {
-                 return $"writer.WriteString({fieldAccess})";
+                 return $"writer.Align(4); writer.WriteString({fieldAccess})";
             }
 
             // 2. Sequences
@@ -150,13 +153,14 @@ namespace CycloneDDS.CodeGen
             {
                  var size = new string(field.TypeName.Where(char.IsDigit).ToArray());
                  if (string.IsNullOrEmpty(size)) size = "32"; 
-                 return $"writer.WriteFixedString({fieldAccess}, {size})";
+                 return $"writer.Align(1); writer.WriteFixedString({fieldAccess}, {size})";
             }
 
             string method = TypeMapper.GetWriterMethod(field.TypeName);
             if (method != null)
             {
-                return $"writer.{method}({fieldAccess})";
+                int align = GetAlignment(field.TypeName);
+                return $"writer.Align({align}); writer.{method}({fieldAccess})";
             }
             else
             {
@@ -177,11 +181,12 @@ namespace CycloneDDS.CodeGen
             {
                 string dummy = "0";
                 if (sizerMethod == "WriteBool") dummy = "false";
+                int align = GetAlignment(elementType);
                 
-                return $@"sizer.WriteUInt32(0); // Sequence Length
+                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
             for (int i = 0; i < {fieldAccess}.Count; i++)
             {{
-                sizer.{sizerMethod}({dummy});
+                sizer.Align({align}); sizer.{sizerMethod}({dummy});
             }}";
             }
             
@@ -189,15 +194,15 @@ namespace CycloneDDS.CodeGen
             // If element is string
             if (elementType == "string") 
             {
-                return $@"sizer.WriteUInt32(0); // Sequence Length
+                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
             for (int i = 0; i < {fieldAccess}.Count; i++)
             {{
-                sizer.WriteString({fieldAccess}[i]);
+                sizer.Align(4); sizer.WriteString({fieldAccess}[i]);
             }}";
             }
              
             // Nested structs
-            return $@"sizer.WriteUInt32(0); // Sequence Length
+            return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
             for (int i = 0; i < {fieldAccess}.Count; i++)
             {{
                 sizer.Skip({fieldAccess}[i].GetSerializedSize(sizer.Position));
@@ -210,15 +215,16 @@ namespace CycloneDDS.CodeGen
             string elementType = ExtractSequenceElementType(field.TypeName);
             
             string writerMethod = TypeMapper.GetWriterMethod(elementType);
+            int align = GetAlignment(elementType);
             
             string loopBody;
             if (writerMethod != null)
             {
-                loopBody = $"writer.{writerMethod}({fieldAccess}[i]);";
+                loopBody = $"writer.Align({align}); writer.{writerMethod}({fieldAccess}[i]);";
             }
             else if (elementType == "string")
             {
-                loopBody = $"writer.WriteString({fieldAccess}[i]);";
+                loopBody = $"writer.Align(4); writer.WriteString({fieldAccess}[i]);";
             }
             else
             {
@@ -237,11 +243,27 @@ namespace CycloneDDS.CodeGen
                 item.Serialize(ref writer);";
             }
 
-            return $@"writer.WriteUInt32((uint){fieldAccess}.Count);
+            return $@"writer.Align(4); writer.WriteUInt32((uint){fieldAccess}.Count);
             for (int i = 0; i < {fieldAccess}.Count; i++)
             {{
                 {loopBody}
             }}";
+        }
+
+        private int GetAlignment(string typeName)
+        {
+            if (typeName == "string") return 4;
+            if (typeName.StartsWith("BoundedSeq") || typeName.Contains("BoundedSeq<")) return 4;
+            if (typeName.Contains("FixedString")) return 1;
+            
+            return typeName.ToLower() switch
+            {
+                "byte" or "uint8" or "sbyte" or "int8" or "bool" or "boolean" => 1,
+                "short" or "int16" or "ushort" or "uint16" => 2,
+                "int" or "int32" or "uint" or "uint32" or "float" => 4,
+                "long" or "int64" or "ulong" or "uint64" or "double" => 8,
+                _ => 1
+            };
         }
 
         private string ExtractSequenceElementType(string typeName)
