@@ -124,8 +124,8 @@ The **design-talk.md** cumulative document (3092 lines) captures extensive archi
 └─────────────────────────────────────────────────────────────┘
                     │                      │
         ┌───────────▼──────────┐  ┌────────▼─────────┐
-        │ Roslyn Source        │  │  Build Process   │
-        │ Generator            │  │  - Generate IDL  │
+        │ CLI Code Generator   │  │  Build Process   │
+        │ (Build Tool)         │  │  - Generate IDL  │
         │ - Parse Schema       │  │  - Run idlc      │
         │ - Emit Serializers   │  │  (for discovery) │
         │ - Validate XCDR2     │  │                  │
@@ -219,12 +219,15 @@ dds_take(reader, ...)
 
 **Success Criteria:** 100% byte-identical output with Cyclone native serialization
 
-### Stage 2: Source Generator Core
+### Stage 2: CLI Code Generator Core
 
-**Goal:** Generate serialization code from C# schema types
+**Goal:** Generate XCDR2-compliant serialization code from C# schema types
 
 **Deliverables:**
-1. Roslyn `IIncrementalGenerator`
+1. **CLI Tool (`CycloneDDS.CodeGen`)**
+   - Console Application (net8.0)
+   - Uses `Microsoft.CodeAnalysis` to parse `.cs` files from disk
+   - Runs via MSBuild Target (not compiler plugin)
    - Discover types with `[DdsTopic]`
    - Validate appendable evolution rules
    - Emit IDL (for discovery registration)
@@ -235,7 +238,15 @@ dds_take(reader, ...)
    - Generate `Deserialize(ref CdrReader, out TView)` method
    - Handle fixed fields, variable fields, unions, optionals
 
-**Reference:** old_implem/docs/FCDC-TASK-MASTER.md Phase 2
+3. `IdlcRunner`
+   - Orchestrate `idlc.exe` execution
+   - Manage descriptor files
+
+4. `DescriptorParser`
+   - Use CppAst (libclang) to parse `idlc` output
+   - Extract `m_ops` and `m_keys` metadata robustly (no regex)
+
+**Reference:** design-talk.md §3092-3332
 
 **Success Criteria:** Generated code compiles and passes round-trip tests
 
@@ -310,11 +321,14 @@ dds_take(reader, ...)
    - `CdrSizeCalculator` (static helpers)
    - Target: net8.0
 
-3. **CycloneDDS.Generator** (Source Generator)
+3. **CycloneDDS.CodeGen** (CLI Tool)
    - `SerializerEmitter` (replaces NativeTypeEmitter + MarshallerEmitter)
-   - `IdlEmitter` (keep for discovery)
-   - `SchemaValidator` (reuse from old)
-   - Target: netstandard2.0
+   - `ViewEmitter` (generates ref struct views)
+   - `IdlEmitter` (generates .idl files for idlc)
+   - `DescriptorParser` (uses CppAst to parse idlc output)
+   - `IdlcRunner` (orchestrates idlc.exe execution)
+   - `SchemaValidator` (reuse schema validation logic)
+   - **Target: net8.0 (Exe)**
 
 4. **CycloneDDS.Runtime** (DDS Wrappers)
    - `DdsParticipant` (reuse)
