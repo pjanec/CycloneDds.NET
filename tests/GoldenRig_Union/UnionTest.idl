@@ -1,0 +1,10 @@
+@appendable
+union TestUnion switch(long) {
+    case 1: long valueA;
+    case 2: double valueB;
+};
+
+@appendable
+struct Container {
+    TestUnion u;
+};

@@ -1,0 +1,2 @@
+call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64
+cl /I"d:\Work\FastCycloneDdsCsharpBindings\cyclonedds\src\core\ddsc\include" /I"d:\Work\FastCycloneDdsCsharpBindings\tests\GoldenRig\include" /I"d:\Work\FastCycloneDdsCsharpBindings\cyclonedds\src\ddsrt\include" /I"d:\Work\FastCycloneDdsCsharpBindings\cyclonedds\src\core\cdr\include" test_forward_compat.c UnionNew.c /link /LIBPATH:"d:\Work\FastCycloneDdsCsharpBindings\cyclone-bin\Release" ddsc.lib /OUT:test_forward_compat.exe
