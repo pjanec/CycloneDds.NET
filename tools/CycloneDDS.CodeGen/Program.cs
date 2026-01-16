@@ -10,6 +10,7 @@ namespace CycloneDDS.CodeGen
     {
         public static int Main(string[] args)
         {
+            //DumpCppAst.Dump();
             if (args.Length < 2)
             {
                 Console.Error.WriteLine("Usage: CycloneDDS.CodeGen <source-directory> <output-directory>");

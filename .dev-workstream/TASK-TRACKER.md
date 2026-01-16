@@ -26,14 +26,14 @@
 ## Stage 2: Code Generation - Serializer Emitter ⏳
 
 **Goal:** Generate XCDR2-compliant serialization code from C# schemas  
-**Status:** ⏳ In Progress (BATCH-04 assigned)
+**Status:** ⏳ In Progress (BATCH-05.1 assigned - corrective)
 
 - [x] **FCDC-S006** Schema Package Migration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s006-schema-package-migration) ✅
 - [x] **FCDC-S007** CLI Tool Generator Infrastructure → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s007-cli-tool-generator-infrastructure) ✅
-- [ ] **FCDC-S008** Schema Validator → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s008-schema-validator) ⏳
-- [ ] **FCDC-S008b** IDL Compiler Orchestration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s008b-idl-compiler-orchestration) 🔵
-- [ ] **FCDC-S009** IDL Text Emitter (Discovery) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s009-idl-text-emitter-discovery-only) ⏳
-- [ ] **FCDC-S009b** Descriptor Parser (CppAst) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s009b-descriptor-parser-cppast-replacement) 🔵
+- [x] **FCDC-S008** Schema Validator → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s008-schema-validator) ✅
+- [ ] **FCDC-S008b** IDL Compiler Orchestration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s008b-idl-compiler-orchestration) ⚠️
+- [x] **FCDC-S009** IDL Text Emitter (Discovery) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s009-idl-text-emitter-discovery-only) ✅
+- [ ] **FCDC-S009b** Descriptor Parser (CppAst) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s009b-descriptor-parser-cppast-replacement) ⚠️
 - [ ] **FCDC-S010** Serializer - Fixed Types → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s010-serializer-code-emitter---fixed-types) 🔵
 - [ ] **FCDC-S011** Serializer - Variable Types → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s011-serializer-code-emitter---variable-types) 🔵
 - [ ] **FCDC-S012** Deserializer + Views → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s012-deserializer-code-emitter--view-structs) 🔵
@@ -42,7 +42,7 @@
 - [ ] **FCDC-S015** [DdsManaged] Support → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s015-ddsmanaged-support-managed-types) 🔵
 - [ ] **FCDC-S016** Generator Testing Suite → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s016-generator-testing-suite) 🔵
 
-**Batches:** BATCH-03 ✅ | BATCH-04 ⏳ | BATCH-05 (planned) | ...
+**Batches:** BATCH-03 ✅ | BATCH-04 ✅ | BATCH-05 ⚠️ | BATCH-05.1 ⏳ | ...
 
 ---
 
@@ -86,7 +86,7 @@
 
 ## Completed Batches Summary
 
-### ✅ BATCH-01 (Stage 1 Foundation - Part 1)
+### ✅ BATCH-01 (Stage 1Foundation - Part 1)
 **Completed:** 2026-01-16  
 **Tasks:** FCDC-S001, FCDC-S002, FCDC-S003  
 **Review:** `.dev-workstream/reviews/BATCH-01-REVIEW.md`  
@@ -110,31 +110,44 @@
 **Tests:** 20 new (10 Schema + 10 CodeGen), 77 total passing  
 **Quality:** Excellent test quality - actual behavior verification with real C# code samples
 
+### ✅ BATCH-04 (Schema Validation & IDL Generation)
+**Completed:** 2026-01-16  
+**Tasks:** FCDC-S008, FCDC-S009  
+**Review:** `.dev-workstream/reviews/BATCH-04-REVIEW.md`  
+**Tests:** 18 new (10 Validator + 8 IDL), 94 total passing  
+**Quality:** Excellent - validates actual logic and IDL syntax
+
+### ⚠️ BATCH-05 (IDL Compiler & Descriptor Parser)
+**Status:** Needs Fix (compilation error)  
+**Tasks:** FCDC-S008b, FCDC-S009b (partially)  
+**Review:** `.dev-workstream/reviews/BATCH-05-REVIEW.md`  
+**Issue:** Compilation error prevents test verification
+
 ---
 
 ## Current Batch Status
 
-**Active:** BATCH-04 (Schema Validation & IDL Generation)  
+**Active:** BATCH-05.1 (Corrective - Fix Compilation Error)  
 **Assigned:** 2026-01-16  
-**Tasks:** FCDC-S008 (Schema Validator), FCDC-S009 (IDL Emitter)  
-**Instructions:** `.dev-workstream/batches/BATCH-04-INSTRUCTIONS.md`  
-**Status:** 🔵 Assigned, awaiting developer start
+**Parent:** BATCH-05  
+**Instructions:** `.dev-workstream/batches/BATCH-05.1-INSTRUCTIONS.md`  
+**Status:** ⏳ Awaiting compilation fix
 
-**Next Planned:** BATCH-05 (IDL Compiler Integration + Descriptor Parser)
+**Next Planned:** BATCH-06 (Serializer Code Emitter - Fixed Types) - blocked by BATCH-05.1
 
 ---
 
 ## Progress Statistics
 
 **Total Tasks:** 32 (updated from original 30 with S008b, S009b)  
-**Completed:** 7 tasks (FCDC-S001 through S007)  
-**In Progress:** 2 tasks (FCDC-S008, S009)  
-**Remaining:** 23 tasks
+**Completed:** 9 tasks (FCDC-S001 through S009)  
+**Needs Fix:** 2 tasks (FCDC-S008b, S009b - compilation error)  
+**Remaining:** 21 tasks
 
-**Test Count:** 77 passing tests  
+**Test Count:** 94 passing tests (when compilation works)  
 **Validation Gates Passed:** 1/3 (Golden Rig ✅)
 
-**Estimated Progress:** ~22% complete (Stage 1 done, Stage 2 in progress)
+**Estimated Progress:** ~28% complete (Stage 1 done, Stage 2 ~56% done)
 
 ---
 
