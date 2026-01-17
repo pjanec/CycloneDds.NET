@@ -15,6 +15,28 @@ namespace CycloneDDS.CodeGen
             var topics = _discovery.DiscoverTopics(sourceDir);
             
             Console.WriteLine($"Found {topics.Count} topic(s)");
+
+            // Managed Type Validation
+            var managedValidator = new ManagedTypeValidator();
+            var allDiagnostics = new List<ValidationMessage>();
+
+            foreach (var topic in topics)
+            {
+                var validationErrors = managedValidator.Validate(topic);
+                allDiagnostics.AddRange(validationErrors);
+            }
+
+            if (allDiagnostics.Any(d => d.Severity == ValidationSeverity.Error))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                foreach (var diagnostic in allDiagnostics.Where(d => d.Severity == ValidationSeverity.Error))
+                {
+                    Console.WriteLine($"ERROR: {diagnostic.Message}");
+                }
+                Console.ResetColor();
+                Console.WriteLine("Generation failed due to validation errors.");
+                return;
+            }
             
             if (!Directory.Exists(outputDir))
             {
