@@ -2,7 +2,7 @@
 
 **Project:** FastCycloneDDS C# Bindings (Serdata-Based)  
 **Status:** Stage 2 - Code Generation  
-**Last Updated:** 2026-01-16
+**Last Updated:** 2026-01-17
 
 **Reference:** See [SERDATA-TASK-MASTER.md](../docs/SERDATA-TASK-MASTER.md) for detailed task descriptions
 
@@ -26,23 +26,23 @@
 ## Stage 2: Code Generation - Serializer Emitter ⏳
 
 **Goal:** Generate XCDR2-compliant serialization code from C# schemas  
-**Status:** ⏳ In Progress (BATCH-05.1 assigned - corrective)
+**Status:** ⏳ In Progress (BATCH-10 prepared)
 
 - [x] **FCDC-S006** Schema Package Migration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s006-schema-package-migration) ✅
 - [x] **FCDC-S007** CLI Tool Generator Infrastructure → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s007-cli-tool-generator-infrastructure) ✅
 - [x] **FCDC-S008** Schema Validator → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s008-schema-validator) ✅
-- [ ] **FCDC-S008b** IDL Compiler Orchestration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s008b-idl-compiler-orchestration) ⚠️
+- [x] **FCDC-S008b** IDL Compiler Orchestration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s008b-idl-compiler-orchestration) ✅
 - [x] **FCDC-S009** IDL Text Emitter (Discovery) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s009-idl-text-emitter-discovery-only) ✅
-- [ ] **FCDC-S009b** Descriptor Parser (CppAst) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s009b-descriptor-parser-cppast-replacement) ⚠️
-- [ ] **FCDC-S010** Serializer - Fixed Types → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s010-serializer-code-emitter---fixed-types) 🔵
-- [ ] **FCDC-S011** Serializer - Variable Types → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s011-serializer-code-emitter---variable-types) 🔵
-- [ ] **FCDC-S012** Deserializer + Views → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s012-deserializer-code-emitter--view-structs) 🔵
-- [ ] **FCDC-S013** Union Support → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s013-union-support) 🔵
-- [ ] **FCDC-S014** Optional Members → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s014-optional-members-support) 🔵
+- [x] **FCDC-S009b** Descriptor Parser (CppAst) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s009b-descriptor-parser-cppast-replacement) ✅
+- [x] **FCDC-S010** Serializer - Fixed Types → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s010-serializer-code-emitter---fixed-types) ✅
+- [x] **FCDC-S011** Serializer - Variable Types → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s011-serializer-code-emitter---variable-types) ✅
+- [x] **FCDC-S012** Deserializer + Views → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s012-deserializer-code-emitter--view-structs) ✅
+- [x] **FCDC-S013** Union Support → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s013-union-support) ✅ **🎉 VERIFIED**
+- [ ] **FCDC-S014** Optional Members → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s014-optional-members-support) ⏳
 - [ ] **FCDC-S015** [DdsManaged] Support → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s015-ddsmanaged-support-managed-types) 🔵
 - [ ] **FCDC-S016** Generator Testing Suite → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s016-generator-testing-suite) 🔵
 
-**Batches:** BATCH-03 ✅ | BATCH-04 ✅ | BATCH-05 ⚠️ | BATCH-05.1 ⏳ | ...
+**Batches:** BATCH-03 ✅ | BATCH-04 ✅ | BATCH-05 ✅ | BATCH-05.1 ✅ | BATCH-06 ✅ | BATCH-07 ✅ | BATCH-08 ✅ | BATCH-09 ✅ | BATCH-09.1 ✅ | BATCH-09.2 ✅ | BATCH-10 ⏳
 
 ---
 
@@ -86,7 +86,7 @@
 
 ## Completed Batches Summary
 
-### ✅ BATCH-01 (Stage 1Foundation - Part 1)
+### ✅ BATCH-01 (Stage 1 Foundation - Part 1)
 **Completed:** 2026-01-16  
 **Tasks:** FCDC-S001, FCDC-S002, FCDC-S003  
 **Review:** `.dev-workstream/reviews/BATCH-01-REVIEW.md`  
@@ -117,37 +117,92 @@
 **Tests:** 18 new (10 Validator + 8 IDL), 94 total passing  
 **Quality:** Excellent - validates actual logic and IDL syntax
 
-### ⚠️ BATCH-05 (IDL Compiler & Descriptor Parser)
-**Status:** Needs Fix (compilation error)  
-**Tasks:** FCDC-S008b, FCDC-S009b (partially)  
+### ✅ BATCH-05 (IDL Compiler & Descriptor Parser)
+**Completed:** 2026-01-16 (after BATCH-05.1 fix)  
+**Tasks:** FCDC-S008b, FCDC-S009b  
 **Review:** `.dev-workstream/reviews/BATCH-05-REVIEW.md`  
-**Issue:** Compilation error prevents test verification
+**Tests:** 37 passing (IdlcRunner + DescriptorParser)  
+**Quality:** Gold standard - mock batch file for idlc, CppAst for robust parsing
+
+### ✅ BATCH-05.1 (Corrective - Compilation Fix)
+**Completed:** 2026-01-16  
+**Parent:** BATCH-05  
+**Fix:** Resolved compilation error blocking test verification
+
+### ✅ BATCH-06 (Serializer - Fixed Types)
+**Completed:** 2026-01-16  
+**Tasks:** FCDC-S010  
+**Review:** `.dev-workstream/reviews/BATCH-06-REVIEW.md`  
+**Tests:** 1 comprehensive Golden Rig test (MVP - test count waived)  
+**Quality:** Excellent - byte-perfect validation against Cyclone DDS C code
+
+### ✅ BATCH-07 (Serializer - Variable Types)
+**Completed:** 2026-01-16  
+**Tasks:** FCDC-S011  
+**Review:** `.dev-workstream/reviews/BATCH-07-REVIEW.md`  
+**Tests:** 3 comprehensive Golden Rig tests (strings, sequences, nested)  
+**Quality:** Excellent - byte-perfect DHEADER and variable size handling
+
+### ✅ BATCH-08 (Deserializer + Views)
+**Completed:** 2026-01-16  
+**Tasks:** FCDC-S012  
+**Review:** `.dev-workstream/reviews/BATCH-08-REVIEW.md`  
+**Tests:** 2 comprehensive roundtrip tests, 110 total passing  
+**Quality:** Excellent - zero-copy views, alignment refactor successful
+
+### ✅ BATCH-09 (Union Support)
+**Completed:** 2026-01-17  
+**Tasks:** FCDC-S013  
+**Review:** `.dev-workstream/reviews/BATCH-09-REVIEW.md`  
+**Tests:** 4 union tests, 111 total passing  
+**Quality:** Implementation correct, Golden Rig verification needed
+
+### ✅ BATCH-09.1 (Golden Rig - Basic Union Verification)
+**Completed:** 2026-01-17  
+**Parent:** BATCH-09  
+**Purpose:** Verify Union DHEADER presence via C test  
+**Results:** DHEADER confirmed (12 bytes: [DHEADER:4][Disc:4][Value:4])
+
+### ✅ BATCH-09.2 (Golden Rig - Complete Verification)
+**Completed:** 2026-01-17  
+**Parent:** BATCH-09  
+**Purpose:** Forward compatibility + C#-to-C byte match  
+**Results:**  
+- ✅ Forward compat: Unknown arm (case 3) skipped correctly via DHEADER
+- ✅ C#-to-C match: BYTE-PERFECT (08 00 00 00 01 00 00 00 EF BE AD DE)
+- ✅ 112 tests passing (all)  
+**Quality:** Production-ready - C/C# interop proven
 
 ---
 
 ## Current Batch Status
 
-**Active:** BATCH-05.1 (Corrective - Fix Compilation Error)  
-**Assigned:** 2026-01-16  
-**Parent:** BATCH-05  
-**Instructions:** `.dev-workstream/batches/BATCH-05.1-INSTRUCTIONS.md`  
-**Status:** ⏳ Awaiting compilation fix
+**Active:** BATCH-10 (Optional Members Support)  
+**Assigned:** 2026-01-17  
+**Tasks:** FCDC-S014  
+**Instructions:** `.dev-workstream/batches/BATCH-10-INSTRUCTIONS.md`  
+**Status:** ⏳ Awaiting implementation
 
-**Next Planned:** BATCH-06 (Serializer Code Emitter - Fixed Types) - blocked by BATCH-05.1
+**Next Planned:** BATCH-11 (Generator Testing Suite)
 
 ---
 
 ## Progress Statistics
 
-**Total Tasks:** 32 (updated from original 30 with S008b, S009b)  
-**Completed:** 9 tasks (FCDC-S001 through S009)  
-**Needs Fix:** 2 tasks (FCDC-S008b, S009b - compilation error)  
-**Remaining:** 21 tasks
+**Total Tasks:** 32  
+**Completed:** 13 tasks (FCDC-S001 through S013) ✅  
+**In Progress:** 1 task (FCDC-S014) ⏳  
+**Remaining:** 18 tasks
 
-**Test Count:** 94 passing tests (when compilation works)  
-**Validation Gates Passed:** 1/3 (Golden Rig ✅)
+**Test Count:** 112 passing tests (57 Core + 10 Schema + 45 CodeGen)  
+**Validation Gates Passed:** 2/3 (Golden Rig ✅, Union Interop ✅)
 
-**Estimated Progress:** ~28% complete (Stage 1 done, Stage 2 ~56% done)
+**Estimated Progress:** ~41% complete  
+- Stage 1: 100% ✅ (5/5 tasks)
+- Stage 2: 72% ⏳ (10/14 tasks, FCDC-S014 in progress)
+- Stage 3-5: 0% 🔵
+
+**Milestone:** Union support VERIFIED with byte-perfect C/C# interop! 🎉
 
 ---
 

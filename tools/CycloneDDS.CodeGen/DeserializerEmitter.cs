@@ -52,13 +52,23 @@ namespace CycloneDDS.CodeGen
             }
             else
             {
+                int currentId = 0;
                 foreach(var field in type.Fields)
                 {
-                    sb.AppendLine($"            if (reader.Position < endPos)");
-                    sb.AppendLine("            {");
-                    string readCall = GetReadCall(field);
-                    sb.AppendLine($"                {readCall};");
-                    sb.AppendLine("            }");
+                    int fieldId = currentId++;
+
+                    if (IsOptional(field))
+                    {
+                        EmitOptionalReader(sb, field, fieldId);
+                    }
+                    else
+                    {
+                        sb.AppendLine($"            if (reader.Position < endPos)");
+                        sb.AppendLine("            {");
+                        string readCall = GetReadCall(field);
+                        sb.AppendLine($"                {readCall};");
+                        sb.AppendLine("            }");
+                    }
                 }
             }
             
@@ -71,6 +81,44 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("            return view;");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
+        }
+
+        private void EmitOptionalReader(StringBuilder sb, FieldInfo field, int fieldId)
+        {
+            string baseType = GetBaseType(field.TypeName);
+            var nonOptField = new FieldInfo { Name = field.Name, TypeName = baseType, Attributes = field.Attributes, Type = field.Type };
+            
+            sb.AppendLine($"            // Optional {field.Name}");
+            sb.AppendLine("            {");
+            sb.AppendLine("                int emHeaderPos = reader.Position;");
+            sb.AppendLine("                bool isPresent = false;");
+            sb.AppendLine("                if (reader.Position + 4 <= endPos)");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    uint emHeader = reader.ReadUInt32();");
+            // EMHEADER: (Length << 3) | ID
+            sb.AppendLine("                    ushort id = (ushort)(emHeader & 0x7);");
+            sb.AppendLine($"                    if (id == {fieldId})");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        isPresent = true;");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                    else");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        reader.Seek(emHeaderPos);");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                }");
+            
+            sb.AppendLine("                if (isPresent)");
+            sb.AppendLine("                {");
+            sb.AppendLine($"                    {GetReadCall(nonOptField)};");
+            sb.AppendLine("                }");
+            sb.AppendLine("                else");
+            sb.AppendLine("                {");
+            if (IsReferenceType(baseType))
+                sb.AppendLine($"                    view.{field.Name} = null;");
+            else
+                sb.AppendLine($"                    view.{field.Name} = null;");
+            sb.AppendLine("                }");
+            sb.AppendLine("            }");
         }
 
         private void EmitUnionDeserializeBody(StringBuilder sb, TypeInfo type)
@@ -203,25 +251,43 @@ namespace CycloneDDS.CodeGen
 
         private string MapToViewType(FieldInfo field)
         {
-            if (field.TypeName == "string" && field.HasAttribute("DdsManaged"))
-                return "ReadOnlySpan<byte>";
-            
-            if (field.TypeName.StartsWith("BoundedSeq"))
+            if (IsOptional(field))
             {
-                string elem = ExtractSequenceElementType(field.TypeName);
-                // If primitive, return ReadOnlySpan<T>
+                string baseType = GetBaseType(field.TypeName);
+                string viewType = MapBaseToViewType(baseType, field);
+                if (IsReferenceType(baseType))
+                   return viewType; // string? is already nullable ref type (in context) or just string
+                return $"{viewType}?"; 
+            }
+            return MapBaseToViewType(field.TypeName, field);
+        }
+
+        private string MapBaseToViewType(string typeName, FieldInfo field) // Refactored
+        {
+            if (typeName == "string" && field.HasAttribute("DdsManaged"))
+                return "ReadOnlySpan<byte>"; // Usually optionals use string?, but View mapping uses Span for Managed?
+            // If optional string? -> string? field.
+            // If Managed string? -> ReadOnlySpan<byte>? (Span cannot be null?)
+            // Span is struct. Nullable<Span> is illegal.
+            // So for Managed string?, we probably can't use ReadOnlySpan<byte>?
+            // We use ReadOnlySpan<byte> and Empty means null? Or we use separate bool HasField?
+            // But View struct has fields.
+            // For now, let's assume Optional Strings are just string? (if not Managed) or we fallback to string?
+            if (typeName == "string") return "string?"; 
+
+            if (typeName.StartsWith("BoundedSeq"))
+            {
+                string elem = ExtractSequenceElementType(typeName);
                 if (IsPrimitive(elem))
-                    return $"ReadOnlySpan<{elem}>";
-                // Else fallback (not fully supported zero-copy)
-                // For now use array?
+                    return $"ReadOnlySpan<{elem}>"; // Span cannot be null
+                // BoundedSeq? -> use array or List?
                 return $"{elem}[]"; 
             }
             
-            if (IsPrimitive(field.TypeName))
-                return field.TypeName;
+            if (IsPrimitive(typeName))
+                return typeName;
             
-            // Nested struct
-            return $"{field.TypeName}View";
+            return $"{typeName}View";
         }
         
         private string GetReadCall(FieldInfo field)
@@ -229,9 +295,11 @@ namespace CycloneDDS.CodeGen
             int align = GetAlignment(field.TypeName);
             string alignCall = align > 1 ? $"reader.Align({align}); " : "";
             
-            if (field.TypeName == "string" && field.HasAttribute("DdsManaged"))
+            if (field.TypeName == "string")
             {
-                return $"reader.Align(4); view.{field.Name} = reader.ReadStringBytes()";
+                if (field.HasAttribute("DdsManaged"))
+                    return $"reader.Align(4); view.{field.Name} = reader.ReadStringBytes()";
+                return $"reader.Align(4); view.{field.Name} = Encoding.UTF8.GetString(reader.ReadStringBytes().ToArray())";
             }
             
             if (field.TypeName.StartsWith("BoundedSeq"))
@@ -286,21 +354,61 @@ namespace CycloneDDS.CodeGen
         
         private string MapToOwnedConversion(FieldInfo field)
         {
-            if (field.TypeName == "string")
-                return $"Encoding.UTF8.GetString({field.Name})"; // Assuming field.Name in View is Span
-            
-            // Nested
-            if (!IsPrimitive(field.TypeName) && !field.TypeName.StartsWith("BoundedSeq"))
-                return $"{field.Name}.ToOwned()";
-
-            if (field.TypeName.StartsWith("BoundedSeq"))
+            if (IsOptional(field))
             {
-                 string elem = ExtractSequenceElementType(field.TypeName);
-                 if (IsPrimitive(elem))
-                     return $"new BoundedSeq<{elem}>({field.Name}.ToArray().ToList())"; // Simplified
+                string baseType = GetBaseType(field.TypeName);
+                string access = $"this.{field.Name}";
+                
+                // TODO: Handle Optional Managed Strings (ReadOnlySpan)
+                if (baseType == "string")
+                    return access; 
+
+                if (!IsReferenceType(baseType))
+                {
+                    // Struct/Primitive
+                    return access; 
+                }
             }
 
-            return field.Name;
+            if (field.TypeName == "string" && field.HasAttribute("DdsManaged"))
+                return $"Encoding.UTF8.GetString(this.{field.Name})";
+
+            return MapBaseToOwnedConversion(field.TypeName, field.Name);
+        }
+
+        private string MapBaseToOwnedConversion(string typeName, string fieldName)
+        {
+            if (typeName == "string")
+                return fieldName; 
+            
+            if (!IsPrimitive(typeName) && !typeName.StartsWith("BoundedSeq"))
+                return $"{fieldName}.ToOwned()";
+
+            if (typeName.StartsWith("BoundedSeq"))
+            {
+                 string elem = ExtractSequenceElementType(typeName);
+                 if (IsPrimitive(elem))
+                     return $"new BoundedSeq<{elem}>({fieldName}.ToArray().ToList())"; 
+            }
+
+            return fieldName;
+        }
+
+        private bool IsOptional(FieldInfo field)
+        {
+            return field.TypeName.EndsWith("?");
+        }
+
+        private string GetBaseType(string typeName)
+        {
+            if (typeName.EndsWith("?"))
+                return typeName.Substring(0, typeName.Length - 1);
+            return typeName;
+        }
+
+        private bool IsReferenceType(string typeName)
+        {
+            return typeName == "string" || typeName.StartsWith("BoundedSeq");
         }
 
         private int GetAlignment(string typeName)

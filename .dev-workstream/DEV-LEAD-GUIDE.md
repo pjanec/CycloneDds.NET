@@ -271,6 +271,9 @@ This batch is DONE when:
 
 **Why:** Single focus makes reviews easier. Combined batches allowed for fast developers BUT require strict workflow.
 
+#### explicit and precise paths
+All the paths must be relative to the root of the repository. You need to be very precise and explicit to avoid any guessing. If the developer is to use some tools or projects, provide path to them, not just their name.
+
 **For Combined Batches - MANDATORY WORKFLOW:**
 
 ```markdown
@@ -1156,7 +1159,7 @@ Copy this for each review:
 - [ ] All required tests from spec present
 - [ ] Tests verify behavior (not just compilation)
 - [ ] Edge cases from spec covered
-- [ ] Tests pass (verified by running them)
+- [ ] Tests pass (verified by running them) - all tests, not just for the new code
 
 ### Issues Found
 - [ ] Incomplete implementation: [list or "none"]

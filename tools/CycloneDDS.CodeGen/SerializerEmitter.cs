@@ -14,6 +14,7 @@ namespace CycloneDDS.CodeGen
             // Using directives
             sb.AppendLine("using CycloneDDS.Core;");
             sb.AppendLine("using System.Runtime.InteropServices;"); // Just in case
+            sb.AppendLine("using System.Text;");
             sb.AppendLine();
             
             // Namespace
@@ -68,8 +69,15 @@ namespace CycloneDDS.CodeGen
                 
                 foreach (var field in type.Fields)
                 {
-                    string sizerCall = GetSizerCall(field);
-                    sb.AppendLine($"            {sizerCall}; // {field.Name}");
+                    if (IsOptional(field))
+                    {
+                        EmitOptionalSizer(sb, field);
+                    }
+                    else
+                    {
+                        string sizerCall = GetSizerCall(field);
+                        sb.AppendLine($"            {sizerCall}; // {field.Name}");
+                    }
                 }
             }
             
@@ -151,10 +159,19 @@ namespace CycloneDDS.CodeGen
             {
                 sb.AppendLine("            // Struct body");
                 
+                int currentId = 0;
                 foreach (var field in type.Fields)
                 {
-                    string writerCall = GetWriterCall(field);
-                    sb.AppendLine($"            {writerCall}; // {field.Name}");
+                    int fieldId = currentId++;
+                    if (IsOptional(field))
+                    {
+                        EmitOptionalSerializer(sb, field, fieldId);
+                    }
+                    else
+                    {
+                        string writerCall = GetWriterCall(field);
+                        sb.AppendLine($"            {writerCall}; // {field.Name}");
+                    }
                 }
             }
             
@@ -207,10 +224,139 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("            }");
         }
         
+        private void EmitOptionalSizer(StringBuilder sb, FieldInfo field)
+        {
+            string access = $"this.{ToPascalCase(field.Name)}";
+            string check = field.TypeName == "string?" ? $"{access} != null" : $"{access}.HasValue";
+            
+            sb.AppendLine($"            if ({check})");
+            sb.AppendLine("            {");
+            sb.AppendLine("                sizer.WriteUInt32(0); // EMHEADER");
+            
+            // For optional, we need to size the value as if it was not optional
+            var nonOptionalField = new FieldInfo 
+            { 
+                Name = field.Name, 
+                TypeName = GetBaseType(field.TypeName),
+                Attributes = field.Attributes,
+                Type = field.Type 
+            };
+            
+            // Special handling for ".Value" access if value type
+            string baseType = GetBaseType(field.TypeName);
+            if (baseType != "string" && !IsReferenceType(baseType))
+            {
+                 // We need to trick GetSizerCall to use .Value
+                 // Actually GetSizerCall uses "this.Name", so we might need a modified version or just hack it
+                 // The easiest way is to use a temporary variable or change how GetSizerCall works.
+                 // But proper way since we are inside `if (HasValue)`:
+                 // The field passed to GetSizerCall will generate `this.Name`. 
+                 // If it is nullable int?, `this.Name` refers to Nullable<int>.
+                 // `sizer.WriteInt32(nullable)` might work if overload exists? No.
+                 // We need `sizer.WriteInt32(nullable.Value)`.
+                 
+                 // However, TypeMapper methods usually take the value.
+                 // GetSizerCall generates: `sizer.Method(this.FieldName)`
+                 // We want: `sizer.Method(this.FieldName.Value)`
+                 
+                 // Let's manually constructing the sizer call here for optionals might be cleaner
+                 string sizerCall = GetSizerCall(nonOptionalField);
+                 // Replace `this.Name` with `this.Name.Value` if needed
+                 if (!sizerCall.Contains(".Value") && !sizerCall.Contains(".ToString")) 
+                    sizerCall = sizerCall.Replace($"this.{ToPascalCase(field.Name)}", $"this.{ToPascalCase(field.Name)}.Value");
+                 
+                 sb.AppendLine($"                {sizerCall};");
+            }
+            else
+            {
+                 // Reference type (string?), just use name
+                 string sizerCall = GetSizerCall(nonOptionalField);
+                 sb.AppendLine($"                {sizerCall};");
+            }
+
+            sb.AppendLine("            }");
+        }
+
+        private void EmitOptionalSerializer(StringBuilder sb, FieldInfo field, int fieldId)
+        {
+            string access = $"this.{ToPascalCase(field.Name)}";
+            string check = field.TypeName == "string?" ? $"{access} != null" : $"{access}.HasValue";
+            
+            sb.AppendLine($"            if ({check})");
+            sb.AppendLine("            {");
+            
+            sb.AppendLine("                int emHeaderPos = writer.Position;");
+            sb.AppendLine("                writer.WriteUInt32(0); // Placeholder");
+            sb.AppendLine("                int emBodyStart = writer.Position;");
+
+            string baseType = GetBaseType(field.TypeName);
+            var nonOptionalField = new FieldInfo 
+            { 
+                Name = field.Name, 
+                TypeName = baseType,
+                Attributes = field.Attributes,
+                Type = field.Type 
+            };
+            
+            string writerCall = GetWriterCall(nonOptionalField);
+            if (baseType != "string" && !IsReferenceType(baseType))
+            {
+                 writerCall = writerCall.Replace($"this.{ToPascalCase(field.Name)}", $"this.{ToPascalCase(field.Name)}.Value");
+            }
+            
+            sb.AppendLine($"                {writerCall};");
+            
+            sb.AppendLine("                int emBodyLen = writer.Position - emBodyStart;");
+            // XCDR2 EMHEADER format: [M:1bit][Length:28bits][ID:3bits]
+            // M=0 for appendable, Length in bits 30-3, ID in bits 2-0
+            sb.AppendLine($"                uint emHeader = ((uint)emBodyLen << 3) | (uint)({fieldId} & 0x7);");
+            sb.AppendLine("                writer.PatchUInt32(emHeaderPos, emHeader);");
+
+            sb.AppendLine("            }");
+        }
+
+        private bool IsOptional(FieldInfo field)
+        {
+            return field.TypeName.EndsWith("?");
+        }
+
+        private string GetBaseType(string typeName)
+        {
+            if (typeName.EndsWith("?"))
+                return typeName.Substring(0, typeName.Length - 1);
+            return typeName;
+        }
+
+        private bool IsReferenceType(string typeName)
+        {
+            return typeName == "string" || typeName.StartsWith("BoundedSeq");
+        }
+        
+        private bool IsPrimitive(string typeName)
+        {
+            return typeName.ToLower() is 
+                "byte" or "uint8" or "sbyte" or "int8" or "bool" or "boolean" or
+                "short" or "int16" or "ushort" or "uint16" or
+                "int" or "int32" or "uint" or "uint32" or "float" or
+                "long" or "int64" or "ulong" or "uint64" or "double";
+        }
+        
+        private int GetSize(string typeName)
+        {
+            return typeName.ToLower() switch
+            {
+                "byte" or "uint8" or "sbyte" or "int8" or "bool" or "boolean" => 1,
+                "short" or "int16" or "ushort" or "uint16" => 2,
+                "int" or "int32" or "uint" or "uint32" or "float" => 4,
+                "long" or "int64" or "ulong" or "uint64" or "double" => 8,
+                _ => 1
+            };
+        }
+
         private string GetSizerCall(FieldInfo field)
         {
             // 1. Strings (Variable)
-            if (field.TypeName == "string" && field.HasAttribute("DdsManaged"))
+            if (field.TypeName == "string")
             {
                  return $"sizer.Align(4); sizer.WriteString(this.{ToPascalCase(field.Name)})";
             }
@@ -250,7 +396,7 @@ namespace CycloneDDS.CodeGen
             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
             
             // 1. Strings (Variable)
-            if (field.TypeName == "string" && field.HasAttribute("DdsManaged"))
+            if (field.TypeName == "string")
             {
                  return $"writer.Align(4); writer.WriteString({fieldAccess})";
             }
