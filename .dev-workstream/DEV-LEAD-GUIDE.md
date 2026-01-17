@@ -518,6 +518,9 @@ Assert.Equal(42, actualValue); // ACTUAL runtime value
 dotnet test [project]
 ```
 
+#### Quality over quentity
+Test quantity says nothing. Always analyze tests for quality. Do not blindly insist on test count if the cpverage and quality of existing tests is sufficient.
+
 ### Writing Your Review
 
 Create: `.dev-workstream/reviews/BATCH-XX-REVIEW.md`

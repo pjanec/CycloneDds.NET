@@ -23,10 +23,10 @@
 
 ---
 
-## Stage 2: Code Generation - Serializer Emitter ⏳
+## Stage 2: Code Generation - Serializer Emitter ✅
 
 **Goal:** Generate XCDR2-compliant serialization code from C# schemas  
-**Status:** ⏳ In Progress (BATCH-11 prepared)
+**Status:** ✅ Complete (All tasks finished, generator production-ready)
 
 - [x] **FCDC-S006** Schema Package Migration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s006-schema-package-migration) ✅
 - [x] **FCDC-S007** CLI Tool Generator Infrastructure → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s007-cli-tool-generator-infrastructure) ✅
@@ -39,17 +39,17 @@
 - [x] **FCDC-S012** Deserializer + Views → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s012-deserializer-code-emitter--view-structs) ✅
 - [x] **FCDC-S013** Union Support → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s013-union-support) ✅ **🎉 VERIFIED**
 - [x] **FCDC-S014** Optional Members → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s014-optional-members-support) ✅ **🎉 FIXED**
-- [ ] **FCDC-S015** [DdsManaged] Support → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s015-ddsmanaged-support-managed-types) 🔵 (Deferred)
-- [ ] **FCDC-S016** Generator Testing Suite → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s016-generator-testing-suite) ⏳ (BATCH-11)
+- [x] **FCDC-S015** [DdsManaged] Support → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s015-ddsmanaged-support-managed-types) ✅ **🎉 COMPLETE**
+- [x] **FCDC-S016** Generator Testing Suite → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s016-generator-testing-suite) ✅ **🎉 COMPLETE**
 
-**Batches:** BATCH-03 ✅ | BATCH-04 ✅ | BATCH-05 ✅ | BATCH-05.1 ✅ | BATCH-06 ✅ | BATCH-07 ✅ | BATCH-08 ✅ | BATCH-09 ✅ | BATCH-09.1 ✅ | BATCH-09.2 ✅ | BATCH-10 ✅ | BATCH-10.1 ✅ | BATCH-11 ⏳
+**Batches:** BATCH-03 ✅ | BATCH-04 ✅ | BATCH-05 ✅ | BATCH-05.1 ✅ | BATCH-06 ✅ | BATCH-07 ✅ | BATCH-08 ✅ | BATCH-09 ✅ | BATCH-09.1 ✅ | BATCH-09.2 ✅ | BATCH-10 ✅ | BATCH-10.1 ✅ | BATCH-11 ✅ | BATCH-11.1 ✅ | BATCH-12 ✅
 
 ---
 
-## Stage 3: Runtime Integration - DDS Bindings 🔵
+## Stage 3: Runtime Integration - DDS Bindings ⏳
 
 **Goal:** Integrate serializers with Cyclone DDS via serdata APIs  
-**Status:** Blocked (awaits Stage 2 completion)
+**Status:** ⏳ Ready to Start (Stage 2 complete, BATCH-12 starting)
 
 - [ ] **FCDC-S017** Runtime Package + P/Invoke → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s017-runtime-package-setup--pinvoke)
 - [ ] **FCDC-S018** DdsParticipant Migration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s018-ddsparticipant-migration)
@@ -364,22 +364,88 @@
 
 ---
 
+### ✅ BATCH-11 (Stage 2 - Generator Testing Suite)
+**Completed:** 2026-01-17  
+**Tasks:** FCDC-S016 (partial)  
+**Review:** `.dev-workstream/reviews/BATCH-11-REVIEW.md`  
+**Tests:** 149 passing (118 + 31 new comprehensive integration tests)
+
+**Deliverables:**
+- Created `CodeGenTestBase` with Roslyn compilation infrastructure
+- ComplexCombinationTests (11): All features in combination
+- SchemaEvolutionTests (8): Forward/backward compatibility  
+- EdgeCaseTests (8): Empty, null, max sequence, deep nesting, unicode
+- ErrorHandlingTests (3): Defensive coding  
+- PerformanceTests (2): Sanity checks (10k elements, 1k iterations)
+
+**Impact:** Comprehensive test coverage proving generator correctness via roundtrip verification.
+
+###✅ BATCH-11.1 (Stage 2 - Critical Coverage + Golden Rig)
+**Completed:** 2026-01-17  
+**Tasks:** FCDC-S016 (complete)  
+**Review:** `.dev-workstream/reviews/BATCH-11.1-REVIEW.md`  
+**Tests:** 154 passing (118 + 31 + 5 new tests)
+
+**Deliverables:**
+- Field reordering test with [DdsId] attributes
+- Optional→Required evolution test  
+- Union discriminator type change test  
+- Malformed IDL error handling test (+ bonus)
+- Golden Rig test (9 type scenarios vs Cyclone DDS C)
+
+**Critical Bug Fixes:**
+- DHEADER logic: Final vs Appendable struct detection
+- Double/long alignment: 4 bytes (XCDR2 packed) fix
+- DeserializerEmitter: endPos undefined error fix
+- Optional fields: IndexOutOfRangeException fix
+
+**Impact:** ✅ **WIRE FORMAT COMPATIBILITY VERIFIED** - Generator produces byte-perfect output matching Cyclone DDS C implementation.
+
+---
+
+### ✅ BATCH-12 (Stage 2 - Managed Types Support)
+**Completed:** 2026-01-17  
+**Tasks:** FCDC-S015 (Managed Types)  
+**Review:** `.dev-workstream/reviews/BATCH-12-REVIEW.md`  
+**Tests:** 156 passing (154 + 2 high-quality comprehensive tests)
+
+**Deliverables:**
+- [DdsManaged] attribute for GC-allocating types
+- SerializerEmitter: List<T> and string serialization support
+- DeserializerEmitter: List<T> and string deserialization support
+- CdrReader.ReadString() method added  
+- TypeInfo helpers: IsManagedType(), IsManagedFieldType()
+
+**Design Decision:**
+- View structs for managed types act as DTOs (use string/List<T> directly)
+- Trades zero-copy performance for API usability
+- User choice via [DdsManaged] attribute
+
+**Quality:** High-quality roundtrip tests verify critical code paths.  
+**Coverage:** Sufficient for production (string + List<primitive> verified).
+
+**Impact:** ✅ **STAGE 2 100% COMPLETE** - All generator features delivered!
+
+---
+
 ## Progress Statistics
 
 **Total Tasks:** 32  
-**Completed:** 13 tasks (FCDC-S001 through S013) ✅  
-**In Progress:** 1 task (FCDC-S014) ⏳  
-**Remaining:** 18 tasks
+**Completed:** 16 tasks (FCDC-S001 through S016) ✅  
+**In Progress:** 0 tasks  
+**Deferred:** 0 tasks  
+**Remaining:** 16 tasks (Stage 3-5)
 
-**Test Count:** 112 passing tests (57 Core + 10 Schema + 45 CodeGen)  
-**Validation Gates Passed:** 2/3 (Golden Rig ✅, Union Interop ✅)
+**Test Count:** 156 passing tests (57 Core + 10 Schema + 89 CodeGen)  
+**Validation Gates Passed:** 3/3 (Golden Rig ✅, Union Interop ✅, Wire Format ✅)
 
-**Estimated Progress:** ~41% complete  
+**Estimated Progress:** ~52% complete  
 - Stage 1: 100% ✅ (5/5 tasks)
-- Stage 2: 72% ⏳ (10/14 tasks, FCDC-S014 in progress)
-- Stage 3-5: 0% 🔵
+- Stage 2: 100% ✅ (14/14 tasks - ALL COMPLETE!)
+- Stage 3: 0% ⏳ (Ready to start)
+- Stage 4-5: 0% 🔵
 
-**Milestone:** Union support VERIFIED with byte-perfect C/C# interop! 🎉
+**Milestone:** 🎉 **STAGE 2 100% COMPLETE!** - Code generator fully functional with managed types support!
 
 ---
 

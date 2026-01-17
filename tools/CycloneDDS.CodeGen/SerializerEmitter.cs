@@ -384,6 +384,12 @@ namespace CycloneDDS.CodeGen
                  return $"sizer.Align(4); sizer.WriteString(this.{ToPascalCase(field.Name)})";
             }
 
+            // Handle List<T>
+            if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
+            {
+                 return EmitListSizer(field);
+            }
+
             // 2. Sequences
             if (field.TypeName.StartsWith("BoundedSeq") || field.TypeName.Contains("BoundedSeq<"))
             {
@@ -422,6 +428,12 @@ namespace CycloneDDS.CodeGen
             if (field.TypeName == "string")
             {
                  return $"writer.Align(4); writer.WriteString({fieldAccess})";
+            }
+
+            // Handle List<T>
+            if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
+            {
+                 return EmitListWriter(field);
             }
 
             // 2. Sequences
@@ -596,6 +608,78 @@ namespace CycloneDDS.CodeGen
                  if (idAttr.Arguments[0] is string s && int.TryParse(s, out int sid)) return sid;
             }
             return defaultId;
+        }
+
+        private string ExtractGenericType(string typeName)
+        {
+            int start = typeName.IndexOf('<') + 1;
+            int end = typeName.LastIndexOf('>');
+            return typeName.Substring(start, end - start).Trim();
+        }
+
+        private string EmitListWriter(FieldInfo field)
+        {
+             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
+             string elementType = ExtractGenericType(field.TypeName);
+             
+             string writerMethod = TypeMapper.GetWriterMethod(elementType);
+             int align = GetAlignment(elementType);
+             
+             string loopBody;
+             if (writerMethod != null)
+             {
+                 loopBody = $"writer.Align({align}); writer.{writerMethod}(item);";
+             }
+             else if (elementType == "string")
+             {
+                 loopBody = "writer.Align(4); writer.WriteString(item);";
+             }
+             else
+             {
+                 loopBody = "item.Serialize(ref writer);";
+             }
+             
+             return $@"writer.Align(4); writer.WriteUInt32((uint){fieldAccess}.Count);
+            foreach (var item in {fieldAccess})
+            {{
+                {loopBody}
+            }}";
+        }
+
+        private string EmitListSizer(FieldInfo field)
+        {
+            string fieldAccess = $"this.{ToPascalCase(field.Name)}";
+            string elementType = ExtractGenericType(field.TypeName);
+            
+            string sizerMethod = TypeMapper.GetSizerMethod(elementType);
+            
+            if (sizerMethod != null)
+            {
+                string dummy = "0";
+                if (sizerMethod == "WriteBool") dummy = "false";
+                int align = GetAlignment(elementType);
+                
+                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
+            foreach (var item in {fieldAccess})
+            {{
+                sizer.Align({align}); sizer.{sizerMethod}({dummy});
+            }}";
+            }
+            
+            if (elementType == "string")
+            {
+                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
+            foreach (var item in {fieldAccess})
+            {{
+                sizer.Align(4); sizer.WriteString(item);
+            }}";
+            }
+            
+            return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
+            foreach (var item in {fieldAccess})
+            {{
+                sizer.Skip(item.GetSerializedSize(sizer.Position));
+            }}";
         }
 
         private string ToPascalCase(string name)

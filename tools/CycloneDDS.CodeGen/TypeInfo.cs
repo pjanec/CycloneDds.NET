@@ -14,6 +14,12 @@ namespace CycloneDDS.CodeGen
 
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
         public AttributeInfo? GetAttribute(string name) => Attributes.FirstOrDefault(a => a.Name == name || a.Name == name + "Attribute");
+
+        public bool IsManagedType()
+        {
+            return Attributes != null && 
+                   Attributes.Any(a => a.Name == "DdsManaged");
+        }
     }
 
     public class FieldInfo
@@ -25,6 +31,13 @@ namespace CycloneDDS.CodeGen
 
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
         public AttributeInfo? GetAttribute(string name) => Attributes.FirstOrDefault(a => a.Name == name || a.Name == name + "Attribute");
+
+        public bool IsManagedFieldType()
+        {
+            return TypeName == "string" || 
+                   TypeName.StartsWith("List<") ||
+                   TypeName.StartsWith("System.Collections.Generic.List<");
+        }
     }
 
     public class AttributeInfo

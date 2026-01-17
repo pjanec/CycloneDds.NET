@@ -138,6 +138,12 @@ namespace CycloneDDS.Core
             return span;
         }
 
+        public string ReadString()
+        {
+            var span = ReadStringBytes();
+            return Encoding.UTF8.GetString(span);
+        }
+
         public ReadOnlySpan<byte> ReadFixedBytes(int count)
         {
             if (_position + count > _data.Length)

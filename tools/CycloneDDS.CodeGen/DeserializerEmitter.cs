@@ -237,10 +237,7 @@ namespace CycloneDDS.CodeGen
                  string typeName = MapToViewType(field);
                  sb.AppendLine($"        public {typeName} {field.Name};");
                  
-                 // String convenience accessor
-                 if (field.TypeName == "string" && field.HasAttribute("DdsManaged")) {
-                      sb.AppendLine($"        public string Get{field.Name}() => Encoding.UTF8.GetString({field.Name});");
-                 }
+
              }
              
              // ToOwned
@@ -317,14 +314,14 @@ namespace CycloneDDS.CodeGen
         private string MapBaseToViewType(string typeName, FieldInfo field) // Refactored
         {
             if (typeName == "string" && field.HasAttribute("DdsManaged"))
-                return "ReadOnlySpan<byte>"; // Usually optionals use string?, but View mapping uses Span for Managed?
-            // If optional string? -> string? field.
-            // If Managed string? -> ReadOnlySpan<byte>? (Span cannot be null?)
-            // Span is struct. Nullable<Span> is illegal.
-            // So for Managed string?, we probably can't use ReadOnlySpan<byte>?
-            // We use ReadOnlySpan<byte> and Empty means null? Or we use separate bool HasField?
-            // But View struct has fields.
-            // For now, let's assume Optional Strings are just string? (if not Managed) or we fallback to string?
+                return "string";
+
+            // Handle List<T>
+             if (typeName.StartsWith("List<") || typeName.StartsWith("System.Collections.Generic.List<"))
+             {
+                 return typeName;
+             }
+
             if (typeName == "string") return "string?"; 
 
             if (typeName.StartsWith("BoundedSeq"))
@@ -357,13 +354,19 @@ namespace CycloneDDS.CodeGen
             if (field.TypeName == "string")
             {
                 if (field.HasAttribute("DdsManaged"))
-                    return $"reader.Align(4); view.{field.Name} = reader.ReadStringBytes()";
+                    return $"reader.Align(4); view.{field.Name} = reader.ReadString()";
                 return $"reader.Align(4); view.{field.Name} = Encoding.UTF8.GetString(reader.ReadStringBytes().ToArray())";
             }
             
             if (field.TypeName.StartsWith("BoundedSeq"))
             {
                 return EmitSequenceReader(field);
+            }
+
+            // Handle List<T>
+            if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
+            {
+                 return EmitListReader(field);
             }
             
             if (IsPrimitive(field.TypeName))
@@ -448,16 +451,19 @@ namespace CycloneDDS.CodeGen
                 }
             }
 
-            if (field.TypeName == "string" && field.HasAttribute("DdsManaged"))
-                return $"Encoding.UTF8.GetString(this.{field.Name})";
-
             return MapBaseToOwnedConversion(field.TypeName, field.Name);
         }
 
         private string MapBaseToOwnedConversion(string typeName, string fieldName)
         {
             if (typeName == "string")
-                return fieldName; 
+                return fieldName;
+
+             // Handle List<T>
+             if (typeName.StartsWith("List<") || typeName.StartsWith("System.Collections.Generic.List<"))
+             {
+                 return fieldName;
+             }
             
             if (!IsPrimitive(typeName) && !typeName.StartsWith("BoundedSeq"))
                 return $"{fieldName}.ToOwned()";
@@ -536,6 +542,43 @@ namespace CycloneDDS.CodeGen
                 return content.Trim();
             }
             return "int";
+        }
+
+        private string ExtractGenericType(string typeName)
+        {
+            int start = typeName.IndexOf('<') + 1;
+            int end = typeName.LastIndexOf('>');
+            return typeName.Substring(start, end - start).Trim();
+        }
+
+        private string EmitListReader(FieldInfo field)
+        {
+            string elementType = ExtractGenericType(field.TypeName);
+            string sizerMethod = TypeMapper.GetSizerMethod(elementType);
+            string readMethod = sizerMethod?.Replace("Write", "Read");
+            
+            string addStatement;
+            if (readMethod != null)
+            {
+                 int align = GetAlignment(elementType);
+                 addStatement = $"reader.Align({align}); view.{field.Name}.Add(reader.{readMethod}());";
+            }
+            else if (elementType == "string")
+            {
+                 addStatement = $"reader.Align(4); view.{field.Name}.Add(reader.ReadString());";
+            }
+            else
+            {
+                 addStatement = $"view.{field.Name}.Add({elementType}.Deserialize(ref reader).ToOwned());";
+            }
+
+            return $@"reader.Align(4);
+            uint {field.Name}_len = reader.ReadUInt32();
+            view.{field.Name} = new List<{elementType}>((int){field.Name}_len);
+            for(int i=0; i<{field.Name}_len; i++)
+            {{
+                {addStatement}
+            }}";
         }
 
         private bool IsPrimitive(string typeName)
