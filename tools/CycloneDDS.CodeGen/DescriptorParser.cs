@@ -62,8 +62,7 @@ namespace CycloneDDS.CodeGen
                 ParseSystemIncludes = false
             };
             
-            string fileContent = System.IO.File.ReadAllText(cFilePath);
-
+            string[] lines = System.IO.File.ReadAllLines(cFilePath);
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("typedef unsigned int uint32_t;");
             sb.AppendLine("typedef unsigned int uint;");
@@ -75,7 +74,23 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine($"    {kvp.Key} = {kvp.Value}u,");
             }
             sb.AppendLine("};");
-            sb.AppendLine(fileContent);
+            sb.AppendLine("#define NULL 0");
+
+            bool skipping = false;
+            foreach (var line in lines)
+            {
+                string trimmed = line.Trim();
+                if (trimmed.StartsWith("#include")) continue;
+
+                if (trimmed.Contains("dds_topic_descriptor_t")) skipping = true;
+                
+                if (!skipping)
+                {
+                    sb.AppendLine(line);
+                }
+
+                if (skipping && trimmed.EndsWith(";")) skipping = false;
+            }
 
             var compilation = CppParser.Parse(sb.ToString(), options);
             

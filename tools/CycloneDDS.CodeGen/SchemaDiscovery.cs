@@ -18,7 +18,13 @@ namespace CycloneDDS.CodeGen
             }
 
             // 1. Find all .cs files
-            var files = Directory.GetFiles(sourceDirectory, "*.cs", SearchOption.AllDirectories);
+            var files = Directory.GetFiles(sourceDirectory, "*.cs", SearchOption.AllDirectories)
+                .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
+                            !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
+                            !f.EndsWith(".Descriptor.cs") && 
+                            !f.EndsWith(".Serializer.cs") &&
+                            !f.EndsWith(".Deserializer.cs"))
+                .ToArray();
             
             if (files.Length == 0)
             {

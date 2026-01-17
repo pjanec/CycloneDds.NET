@@ -368,13 +368,25 @@
 
 ## Current Batch Status
 
-**Active:** BATCH-10 (Optional Members Support)  
+**Active:** BATCH-13 (Stage 3 - Runtime Integration - Complete)  
 **Assigned:** 2026-01-17  
-**Tasks:** FCDC-S014  
-**Instructions:** `.dev-workstream/batches/BATCH-10-INSTRUCTIONS.md`  
-**Status:** ⏳ Awaiting implementation
+**Tasks:** FCDC-S017, FCDC-S018, FCDC-S019, FCDC-S020, FCDC-S021, FCDC-S022  
+**Instructions:** `.dev-workstream/batches/BATCH-13-INSTRUCTIONS.md`  
+**Status:** ✅ Ready for developer assignment
 
-**Next Planned:** BATCH-11 (Generator Testing Suite)
+**Scope:** Entire Stage 3 - Connect code generator to Cyclone DDS via serdata APIs  
+**Effort:** 18-24 days (3-4 weeks)  
+**Tests Required:** Minimum 39 tests  
+**Validation Gate:** End-to-end integration tests with zero GC allocations
+
+**Focus Areas:**
+1. P/Invoke declarations for serdata APIs
+2. DdsParticipant wrapper
+3. DdsWriter<T> with ArrayPool + serdata
+4. DdsReader<T> with loaned buffers + view scopes
+5. Integration tests proving zero-alloc pub/sub
+
+**Next Planned:** Stage 4 (XCDR2 Compliance) or Stage 6 (Advanced Optimizations) in parallel
 
 ---
 

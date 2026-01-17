@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageId>CycloneDDS.Runtime</PackageId>
+    <Version>2.0.0-alpha1</Version>
+    <Authors>FastCycloneDDS</Authors>
+    <Description>Cyclone DDS Runtime bindings</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CycloneDDS.Core\CycloneDDS.Core.csproj" />
+    <ProjectReference Include="..\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
+  </ItemGroup>
+
+</Project>

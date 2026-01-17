@@ -19,6 +19,7 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine("using System.Runtime.InteropServices;");
                 sb.AppendLine("using System.Text;");
                 sb.AppendLine("using System.Linq;");
+                sb.AppendLine("using System.Collections.Generic;");
                 sb.AppendLine();
             }
             
@@ -29,7 +30,7 @@ namespace CycloneDDS.CodeGen
             }
             
             EmitPartialStruct(sb, type);
-            EmitViewStruct(sb, type);
+            // EmitViewStruct(sb, type); // View not used for simple structs in this binding mode
             
             if (!string.IsNullOrEmpty(type.Namespace))
             {
@@ -49,9 +50,9 @@ namespace CycloneDDS.CodeGen
         {
             sb.AppendLine($"    public partial struct {type.Name}");
             sb.AppendLine("    {");
-            sb.AppendLine($"        public static {type.Name}View Deserialize(ref CdrReader reader)");
+            sb.AppendLine($"        public static {type.Name} Deserialize(ref CdrReader reader)");
             sb.AppendLine("        {");
-            sb.AppendLine($"            var view = new {type.Name}View();");
+            sb.AppendLine($"            var view = new {type.Name}();");
             
             if (IsAppendable(type))
             {
@@ -116,6 +117,12 @@ namespace CycloneDDS.CodeGen
             
             sb.AppendLine("            return view;");
             sb.AppendLine("        }");
+            
+            sb.AppendLine($"        public {type.Name} ToOwned()");
+            sb.AppendLine("        {");
+            sb.AppendLine("            return this;");
+            sb.AppendLine("        }");
+
             sb.AppendLine("    }");
         }
 
@@ -398,7 +405,10 @@ namespace CycloneDDS.CodeGen
             uint {field.Name}_len = reader.ReadUInt32();
             {boundsCheck}
             reader.Align({GetAlignment(elem)});
-            view.{field.Name} = MemoryMarshal.Cast<byte, {elem}>(reader.ReadFixedBytes((int){field.Name}_len * {elemSize}))";
+            {{
+                var span = MemoryMarshal.Cast<byte, {elem}>(reader.ReadFixedBytes((int){field.Name}_len * {elemSize}));
+                view.{field.Name} = new BoundedSeq<{elem}>(new System.Collections.Generic.List<{elem}>(span.ToArray()));
+            }}";
             }
             
             if (elem == "string")
@@ -406,30 +416,29 @@ namespace CycloneDDS.CodeGen
                 return $@"reader.Align(4);
             uint {field.Name}_len = reader.ReadUInt32();
             {boundsCheck}
-            view.{field.Name} = new string[{field.Name}_len];
+            var list = new System.Collections.Generic.List<string>((int){field.Name}_len);
             for(int i=0; i<{field.Name}_len; i++)
             {{
                 reader.Align(4);
-                view.{field.Name}[i] = Encoding.UTF8.GetString(reader.ReadStringBytes().ToArray());
-            }}";
+                list.Add(Encoding.UTF8.GetString(reader.ReadStringBytes().ToArray()));
+            }}
+            view.{field.Name} = new BoundedSeq<string>(list);";
             }
 
             // Non-primitive sequence
-            string itemType;
-            string deserializerCall;
-            
-            itemType = _generatedRefStructs.Contains(elem) ? elem : $"{elem}View";
-            string toOwned = _generatedRefStructs.Contains(elem) ? ".ToOwned()" : "";
-            deserializerCall = $"{elem}.Deserialize(ref reader){toOwned}";
+            // Assuming Own Types for now
+            string itemType = elem; 
+            string deserializerCall = $"{elem}.Deserialize(ref reader).ToOwned()";
             
             return $@"reader.Align(4);
             uint {field.Name}_len = reader.ReadUInt32();
             {boundsCheck}
-            view.{field.Name} = new {itemType}[{field.Name}_len];
+            var list = new System.Collections.Generic.List<{itemType}>((int){field.Name}_len);
             for(int i=0; i<{field.Name}_len; i++)
             {{
-                view.{field.Name}[i] = {deserializerCall};
-            }}";
+                list.Add({deserializerCall});
+            }}
+            view.{field.Name} = new BoundedSeq<{itemType}>(list);";
         }
         
         private string MapToOwnedConversion(FieldInfo field)

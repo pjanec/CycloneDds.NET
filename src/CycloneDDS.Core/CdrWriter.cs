@@ -7,11 +7,21 @@ namespace CycloneDDS.Core
 {
     public ref struct CdrWriter
     {
-        private IBufferWriter<byte> _output;
+        private IBufferWriter<byte>? _output;
         private Span<byte> _span;
         private int _buffered;
         private int _totalWritten;
 
+        // NEW: Zero-Alloc Constructor for Fixed Buffers
+        public CdrWriter(Span<byte> buffer)
+        {
+            _output = null;  // Fixed buffer mode - no IBufferWriter
+            _span = buffer;
+            _buffered = 0;
+            _totalWritten = 0;
+        }
+
+        // EXISTING: Keep this for dynamic buffers
         public CdrWriter(IBufferWriter<byte> output)
         {
             _output = output;
@@ -208,18 +218,27 @@ namespace CycloneDDS.Core
 
         public void Complete()
         {
-            if (_buffered > 0)
+            if (_output != null && _buffered > 0)
             {
                 _output.Advance(_buffered);
                 _totalWritten += _buffered;
                 _buffered = 0;
-                _span = default; // Make sure we don't use old span unless we get it again, though next call to GetSpan is needed. 
-                // But this struct is likely disposed or done after Complete.
             }
+            // For fixed buffer, Complete() is no-op
         }
 
         private void EnsureSize(int size)
         {
+            // If fixed buffer mode (_output == null)
+            if (_output == null)
+            {
+                if (_buffered + size > _span.Length)
+                    throw new InvalidOperationException(
+                        $"CdrWriter buffer overflow. Needed {_buffered + size}, " +
+                        $"Capacity {_span.Length}");
+                return;
+            }
+
             if (_buffered + size > _span.Length)
             {
                 _output.Advance(_buffered);
