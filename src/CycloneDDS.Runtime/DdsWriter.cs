@@ -107,11 +107,24 @@ namespace CycloneDDS.Runtime
                 var span = buffer.AsSpan(0, totalSize);
                 var cdr = new CdrWriter(span);  // ✅ No wrapper allocation!
                 
-                // Write CDR Header (XCDR1 LE: 00 01 00 00)
-                // Identifier: 0x0001 (LE) -> 00 01
-                // Options: 0x0000 -> 00 00
-                cdr.WriteByte(0x00);
-                cdr.WriteByte(0x01);
+                // Write CDR Header (XCDR1 format)
+                // CDR Identifier: 0x0001 (LE) or 0x0000 (BE)
+                // Options: 0x0000
+                if (BitConverter.IsLittleEndian)
+                {
+                    // Little Endian (x64, ARM64, most platforms)
+                    cdr.WriteByte(0x00);
+                    cdr.WriteByte(0x01);
+                }
+                else
+                {
+                    // Big Endian (rare: PowerPC, SPARC, older MIPS)
+                    cdr.WriteByte(0x00);
+                    cdr.WriteByte(0x00);
+                }
+                // NOTE: CdrWriter/CdrReader endianness handling is platform-specific.
+                // XCDR1 requires encapsulation identifier to match data endianness.
+                // Most .NET platforms are Little Endian (LE).
                 cdr.WriteByte(0x00);
                 cdr.WriteByte(0x00);
                 
