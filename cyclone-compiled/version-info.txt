@@ -1,0 +1,7 @@
+compiled with vs2022 from
+
+https://github.com/eclipse-cyclonedds/cyclonedds.git
+c49206be5cfbe76de546e0adad172a0d80726f77
+
+from 14.12.2025 "Update cmake minimum version  to  3.21"
+
