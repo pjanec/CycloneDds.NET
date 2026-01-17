@@ -145,10 +145,14 @@ namespace CycloneDDS.Runtime
                                 throw new DdsException((DdsApi.DdsReturnCode)ret, $"dds_writecdr failed: {ret}");
                             }
                         }
+                        // dds_writecdr consumes the reference to serdata on success (and most failure paths),
+                        // so we must NOT unref it here to avoid double-free.
+                        // Ideally, we would detect if dds_writecdr *didn't* consume it (e.g. lock failure),
+                        // but that requires native changes to be robust. 
+                        // Only leak is on rare lock failure.
                         finally
                         {
-                             // Release our reference to the serdata
-                             DdsApi.ddsi_serdata_unref(serdata);
+                             // No-op
                         }
                     }
                 }
