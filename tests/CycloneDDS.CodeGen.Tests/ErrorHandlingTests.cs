@@ -119,7 +119,13 @@ module Test {
             
             try {
                 var runner = new IdlcRunner();
-                runner.IdlcPathOverride = @"d:\Work\FastCycloneDdsCsharpBindings\cyclone-compiled\bin\idlc.exe";
+                // Determine path relative to test assembly to ensure portability
+                var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                // Traverse up 5 levels: net8.0 -> Debug -> bin -> CycloneDDS.CodeGen.Tests -> tests -> RepoRoot
+                var repoRoot = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", "..", ".."));
+                var idlcPath = Path.Combine(repoRoot, "cyclone-compiled", "bin", "idlc.exe");
+                
+                runner.IdlcPathOverride = idlcPath;
                 var result = runner.RunIdlc(tempIdl, Path.GetTempPath());
                 Assert.NotEqual(0, result.ExitCode);
             }

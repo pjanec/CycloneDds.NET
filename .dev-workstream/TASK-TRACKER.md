@@ -391,11 +391,45 @@
 
 ## Current Batch Status
 
-**Latest:** BATCH-15.1 (Stage 4 - Test Validation)  
+**Latest:** BATCH-15.3 (Stage 4 - Portability Fix)  
 **Completed:** 2026-01-18  
-**Status:** ✅ **VALIDATED! All 95 tests passing**
+**Status:** ✅ **READY TO MERGE** (15.1 + 15.2 + 15.3 together)
 
 **Next Planned:** Performance benchmarks or Stage 5
+
+---
+
+### ✅ BATCH-15.3 (Stage 4 - Relative Path Portability)
+**Completed:** 2026-01-18  
+**Parent:** BATCH-15.2  
+**Review:** `.dev-workstream/reviews/BATCH-15.3-REVIEW.md`  
+**Results:**  
+- ✅ Removed absolute paths (`d:\Work\...`)
+- ✅ Runtime relative path calculation
+- ✅ Works with Debug AND Release builds (verified!)
+- ✅ Cross-machine portable (any drive, any path)
+- ✅ CI/CD compatible
+- ✅ Well-documented implementation
+- ✅ Tests: 95/95 PASS
+- ✅ No hardcoded paths remaining (grep verified)
+**Quality:** Excellent - Robust depth handling ⭐⭐⭐⭐⭐
+
+**Critical Fix:** Path depth identical for Debug/Release (both 5 levels)!
+
+**Portability Achieved:** Works on any machine, drive, or CI/CD system!
+
+---
+
+### ✅ BATCH-15.2 (Stage 4 - idlc.exe Path Cleanup)
+**Completed:** 2026-01-18  
+**Parent:** BATCH-15.1  
+**Review:** `.dev-workstream/reviews/BATCH-15.2-REVIEW.md`  
+**Results:**  
+- ✅ Removed duplicate idlc.exe from cyclone-bin
+- ✅ Tests use source location (cyclone-compiled)
+- ✅ Single source of truth
+- ⚠️ Required BATCH-15.3 for portability
+**Quality:** Good - Fixed in 15.3
 
 ---
 
