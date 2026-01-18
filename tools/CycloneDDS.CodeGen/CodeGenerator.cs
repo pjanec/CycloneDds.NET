@@ -153,19 +153,22 @@ namespace CycloneDDS.CodeGen
                 {
                      if (attr.ConstructorArguments.Length >= 3)
                      {
-                         string mappedType = attr.ConstructorArguments[0].Value as string;
-                         if (mappedType == fullTypeName)
+                         string? mappedType = attr.ConstructorArguments[0].Value as string;
+                         if (mappedType != null && mappedType == fullTypeName)
                          {
-                             string idlFile = attr.ConstructorArguments[1].Value as string;
-                             string idlModule = attr.ConstructorArguments[2].Value as string;
+                             string? idlFile = attr.ConstructorArguments[1].Value as string;
+                             string? idlModule = attr.ConstructorArguments[2].Value as string;
                              
-                             return new IdlTypeDefinition
+                             if (idlFile != null && idlModule != null)
                              {
-                                 CSharpFullName = fullTypeName,
-                                 TargetIdlFile = idlFile,
-                                 TargetModule = idlModule,
-                                 IsExternal = true
-                             };
+                                 return new IdlTypeDefinition
+                                 {
+                                     CSharpFullName = fullTypeName,
+                                     TargetIdlFile = idlFile,
+                                     TargetModule = idlModule,
+                                     IsExternal = true
+                                 };
+                             }
                          }
                      }
                 }
@@ -193,7 +196,7 @@ namespace CycloneDDS.CodeGen
         private void GenerateDescriptors(GlobalTypeRegistry registry, string outputDir)
         {
             var fileGroups = registry.LocalTypes
-                .Where(t => t.TypeInfo.IsTopic)
+                .Where(t => t.TypeInfo != null && t.TypeInfo.IsTopic)
                 .GroupBy(t => t.TargetIdlFile);
 
             var idlcRunner = new IdlcRunner();
@@ -225,6 +228,7 @@ namespace CycloneDDS.CodeGen
                         
                         foreach(var topic in group)
                         {
+                             if (topic.TypeInfo == null) continue;
                              try 
                              {
                                  var metadata = parser.ParseDescriptor(cFile, topic.TypeInfo.Name);

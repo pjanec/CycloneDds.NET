@@ -170,9 +170,12 @@ namespace CycloneDDS.CodeGen
             
             if (attr != null && attr.Arguments.Count > 0)
             {
-                string fileName = attr.Arguments[0] as string;
-                ValidateIdlFileName(fileName, type.Name);
-                return fileName;
+                string? fileName = attr.Arguments[0] as string;
+                if (fileName != null)
+                {
+                    ValidateIdlFileName(fileName, type.Name);
+                    return fileName;
+                }
             }
             
             // Default: Use C# source filename without extension
@@ -186,9 +189,12 @@ namespace CycloneDDS.CodeGen
             
             if (attr != null && attr.Arguments.Count > 0)
             {
-                string modulePath = attr.Arguments[0] as string;
-                ValidateIdlModule(modulePath, type.Name);
-                return modulePath;
+                string? modulePath = attr.Arguments[0] as string;
+                if (modulePath != null)
+                {
+                    ValidateIdlModule(modulePath, type.Name);
+                    return modulePath;
+                }
             }
             
             // Default: Convert C# namespace to IDL modules

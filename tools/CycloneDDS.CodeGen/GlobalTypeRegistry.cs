@@ -65,7 +65,7 @@ namespace CycloneDDS.CodeGen
                         $"Type '{newDef.CSharpFullName}' and '{existing.CSharpFullName}' both map to:\n" +
                         $"  File: {newDef.TargetIdlFile}.idl\n" +
                         $"  Module: {newDef.TargetModule}\n" +
-                        $"  Name: {newDef.TypeInfo.Name}\n" +
+                        $"  Name: {newDef.TypeInfo?.Name}\n" +
                         $"Use [DdsIdlModule] or [DdsIdlFile] to resolve this."
                     );
                 }

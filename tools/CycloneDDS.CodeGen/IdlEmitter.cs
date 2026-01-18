@@ -125,11 +125,12 @@ namespace CycloneDDS.CodeGen
             
             foreach (var type in types)
             {
+                if (type.TypeInfo == null) continue;
                 foreach (var field in type.TypeInfo.Fields)
                 {
                     string fieldType = StripGenerics(field.TypeName);
                     
-                    if (registry.TryGetDefinition(fieldType, out var dep))
+                    if (registry.TryGetDefinition(fieldType, out var dep) && dep != null)
                     {
                         // Don't include self-references
                         if (dep.TargetIdlFile != type.TargetIdlFile)
@@ -155,8 +156,10 @@ namespace CycloneDDS.CodeGen
             }
             
             // Emit types - Using name sorting as per design doc
-            foreach (var type in types.OrderBy(t => t.TypeInfo.Name))
+            foreach (var type in types.OrderBy(t => t.TypeInfo?.Name ?? ""))
             {
+                if (type.TypeInfo == null) continue;
+
                 if (type.TypeInfo.IsEnum)
                      EmitEnum(sb, type.TypeInfo, indent);
                 else if (type.TypeInfo.HasAttribute("DdsUnion"))

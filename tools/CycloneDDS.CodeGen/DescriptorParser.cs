@@ -54,7 +54,7 @@ namespace CycloneDDS.CodeGen
         private const uint DDS_OP_MASK = 0xff000000;
         private const uint DDS_OP_TYPE_MASK = 0x007f0000;
 
-        public DescriptorMetadata ParseDescriptor(string cFilePath, string typeName = null)
+        public DescriptorMetadata ParseDescriptor(string cFilePath, string? typeName = null)
         {
             var options = new CppParserOptions
             {
