@@ -404,7 +404,7 @@ namespace CycloneDDS.CodeGen
                  return $"sizer.Align(1); sizer.WriteFixedString((string)null, {size})";
             }
 
-            string method = TypeMapper.GetSizerMethod(field.TypeName);
+            string? method = TypeMapper.GetSizerMethod(field.TypeName);
             if (method != null)
             {
                 string dummy = "0";
@@ -454,7 +454,7 @@ namespace CycloneDDS.CodeGen
                  return $"writer.Align(1); writer.WriteFixedString({fieldAccess}, {size})";
             }
 
-            string method = TypeMapper.GetWriterMethod(field.TypeName);
+            string? method = TypeMapper.GetWriterMethod(field.TypeName);
             if (method != null)
             {
                 int align = GetAlignment(field.TypeName);
@@ -485,7 +485,7 @@ namespace CycloneDDS.CodeGen
             }
             
             // Loop code similar to sequence
-            string sizerMethod = TypeMapper.GetSizerMethod(elementType);
+            string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
             if (sizerMethod != null)
             {
                 string dummy = "0";
@@ -535,7 +535,7 @@ namespace CycloneDDS.CodeGen
             }
             
             // Loop fallback
-            string writerMethod = TypeMapper.GetWriterMethod(elementType);
+            string? writerMethod = TypeMapper.GetWriterMethod(elementType);
             int alignEl = GetAlignment(elementType);
             string loopBody;
             if (writerMethod != null)
@@ -560,7 +560,7 @@ namespace CycloneDDS.CodeGen
             
             // For primitive sequences, we can loop calling WritePrimitive(0)
             // This handles alignment correctly via CdrSizer methods.
-            string sizerMethod = TypeMapper.GetSizerMethod(elementType);
+            string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
             
             if (sizerMethod != null)
             {
@@ -614,7 +614,7 @@ namespace CycloneDDS.CodeGen
             }}";
             }
             
-            string writerMethod = TypeMapper.GetWriterMethod(elementType);
+            string? writerMethod = TypeMapper.GetWriterMethod(elementType);
             int align = GetAlignment(elementType);
             
             string loopBody;
@@ -751,7 +751,7 @@ namespace CycloneDDS.CodeGen
             }}";
              }
              
-             string writerMethod = TypeMapper.GetWriterMethod(elementType);
+             string? writerMethod = TypeMapper.GetWriterMethod(elementType);
              int align = GetAlignment(elementType);
              
              string loopBody;
@@ -780,7 +780,7 @@ namespace CycloneDDS.CodeGen
             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
             string elementType = ExtractGenericType(field.TypeName);
             
-            string sizerMethod = TypeMapper.GetSizerMethod(elementType);
+            string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
             
             if (sizerMethod != null)
             {

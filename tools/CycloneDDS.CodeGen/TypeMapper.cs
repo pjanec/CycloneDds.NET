@@ -4,7 +4,7 @@ namespace CycloneDDS.CodeGen
 {
     public static class TypeMapper
     {
-        public static string GetWriterMethod(string typeName)
+        public static string? GetWriterMethod(string typeName)
         {
             return typeName switch
             {
@@ -32,7 +32,7 @@ namespace CycloneDDS.CodeGen
             };
         }
 
-        public static string GetSizerMethod(string typeName)
+        public static string? GetSizerMethod(string typeName)
         {
             return GetWriterMethod(typeName);
         }

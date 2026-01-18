@@ -231,35 +231,35 @@ namespace CycloneDDS.Core
         public void WriteVector2(System.Numerics.Vector2 value)
         {
             EnsureSize(8);
-            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), ref value);
+            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), in value);
             _buffered += 8;
         }
 
         public void WriteVector3(System.Numerics.Vector3 value)
         {
             EnsureSize(12);
-            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), ref value);
+            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), in value);
             _buffered += 12;
         }
 
         public void WriteVector4(System.Numerics.Vector4 value)
         {
             EnsureSize(16);
-            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), ref value);
+            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), in value);
             _buffered += 16;
         }
 
         public void WriteQuaternion(System.Numerics.Quaternion value)
         {
             EnsureSize(16);
-            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), ref value);
+            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), in value);
             _buffered += 16;
         }
 
         public void WriteMatrix4x4(System.Numerics.Matrix4x4 value)
         {
             EnsureSize(64);
-            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), ref value);
+            System.Runtime.InteropServices.MemoryMarshal.Write(_span.Slice(_buffered), in value);
             _buffered += 64;
         }
 

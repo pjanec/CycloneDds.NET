@@ -383,7 +383,7 @@ namespace CycloneDDS.CodeGen
             
             if (IsPrimitive(field.TypeName))
             {
-                 string method = TypeMapper.GetSizerMethod(field.TypeName).Replace("Write", "Read"); // Method names match?
+                 string method = TypeMapper.GetSizerMethod(field.TypeName)!.Replace("Write", "Read"); // Method names match?
                  // WriteInt32 -> ReadInt32
                  return $"{alignCall}view.{field.Name} = reader.{method}()";
             }
@@ -415,8 +415,8 @@ namespace CycloneDDS.CodeGen
             }
 
             // Fallback loop
-            string writerMethod = TypeMapper.GetWriterMethod(elementType);
-            string readMethod = writerMethod?.Replace("Write", "Read");
+            string? writerMethod = TypeMapper.GetWriterMethod(elementType);
+            string? readMethod = writerMethod?.Replace("Write", "Read");
             if (readMethod == "ReadBool") readMethod = "ReadBoolean";
             
              if (readMethod != null)
@@ -646,8 +646,8 @@ namespace CycloneDDS.CodeGen
             System.Runtime.InteropServices.MemoryMarshal.Cast<byte, {elementType}>(sourceBytes).CopyTo(targetSpan);";
             }
 
-            string sizerMethod = TypeMapper.GetSizerMethod(elementType);
-            string readMethod = sizerMethod?.Replace("Write", "Read");
+            string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
+            string? readMethod = sizerMethod?.Replace("Write", "Read");
             
             string addStatement;
             if (readMethod != null)

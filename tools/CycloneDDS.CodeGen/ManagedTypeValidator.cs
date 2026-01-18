@@ -59,7 +59,7 @@ namespace CycloneDDS.CodeGen
     public class ValidationMessage 
     {
         public ValidationSeverity Severity { get; set; }
-        public string Message { get; set; }
+        public required string Message { get; set; }
     }
 
     public enum ValidationSeverity

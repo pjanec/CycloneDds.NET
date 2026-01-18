@@ -151,7 +151,10 @@ namespace CycloneDDS.CodeGen
 
                 foreach (var arg in attr.ConstructorArguments)
                 {
-                    attrInfo.Arguments.Add(arg.Value);
+                    if (arg.Value != null)
+                    {
+                        attrInfo.Arguments.Add(arg.Value);
+                    }
                 }
                 attributes.Add(attrInfo);
             }

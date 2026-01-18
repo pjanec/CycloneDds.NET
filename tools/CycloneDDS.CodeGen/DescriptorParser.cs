@@ -179,7 +179,7 @@ namespace CycloneDDS.CodeGen
                     uint padding = (align - (currentOffset % align)) % align;
                     currentOffset += padding;
                     
-                    if (!rawValues[i].HasValue || rawValues[i].Value == 0xBADF00D)
+                    if (!rawValues[i].HasValue || rawValues[i].GetValueOrDefault() == 0xBADF00D)
                     {
                         result[i] = currentOffset;
                     }
@@ -254,7 +254,8 @@ namespace CycloneDDS.CodeGen
             }
             
             // Handle raw names (macros/enums) via ToString()
-            var text = expression.ToString().Trim();
+            var text = expression?.ToString()?.Trim();
+            if (string.IsNullOrEmpty(text)) return null;
             // Console.Error.WriteLine($"  Raw text: '{text}'");
              if (MacroValues.TryGetValue(text, out var mVal))
                 return mVal;

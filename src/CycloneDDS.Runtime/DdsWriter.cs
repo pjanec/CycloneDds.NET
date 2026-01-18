@@ -79,6 +79,7 @@ namespace CycloneDDS.Runtime
         public void WriteViaDdsWrite(in T sample)
         {
              if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+             #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type ('T')
              unsafe
              {
                  fixed (void* p = &sample)
@@ -87,11 +88,13 @@ namespace CycloneDDS.Runtime
                      if (ret < 0) throw new DdsException((DdsApi.DdsReturnCode)ret, $"dds_write failed: {ret}");
                  }
              }
+             #pragma warning restore CS8500
         }
 
         private void PerformOperation(in T sample, Func<DdsApi.DdsEntity, IntPtr, int> operation)
         {
             if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+            if (_topicHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
 
             // 1. Get Size (no alloc)
             // Start at offset 4 because we will prepend 4-byte CDR header
