@@ -8480,3 +8480,471 @@ If Cyclone DDS eventually enables the SQL parser and you want the **Publisher** 
 3.  **No new P/Invokes** required.
 4.  **No new Classes** required.
 ---
+
+
+
+
+
+
+
+Here is the updated `README.md` reflecting the new capabilities (Async/Await, Filtering, Sender Tracking, Instance Management, Lifecycle) and removing the outdated "Stage 3" limitations.
+
+---
+
+# FastCycloneDDS C# Bindings
+
+A modern, high-performance, zero-allocation .NET binding for Eclipse Cyclone DDS.
+
+**Status:** Production Ready (Stage 4)  
+**Philosophy:** Zero-Copy Core + Idiomatic C# Extensions
+
+See a [short feature presentation](docs/CsharpBindings_presentation.pdf).
+
+## Key Features
+
+### 🚀 Performance Core
+- **Zero-Allocation Writes:** Custom CDR serializer writes directly to pooled buffers (ArrayPool).
+- **Zero-Copy Reads:** Read directly from native DDS buffers using `ref struct` views.
+- **Serdata Integration:** Bypasses legacy C marshalling for raw speed.
+- **Lazy Deserialization:** Only parse fields when you access them.
+
+### 🛠️ Extended Capabilities
+- **Async/Await:** `WaitDataAsync` for non-blocking, task-based consumers.
+- **Client-Side Filtering:** High-performance predicates (`view => view.Id > 5`) compiled to JIT code.
+- **Instance Management:** O(1) history lookup for keyed topics (e.g., "Get history for Robot #5").
+- **Sender Tracking:** Know *who* sent the message (Computer Name, Process ID, AppDomain).
+- **Discovery Events:** Strongly-typed C# events for connection status (`PublicationMatched`).
+
+---
+
+## 1. Defining Data (The Schema)
+
+Define your data using standard C# `partial structs`. No external IDL compiler required—the build tools generate everything.
+
+```csharp
+using CycloneDDS.Schema;
+
+[DdsTopic("SensorData")]
+public partial struct SensorData
+{
+    [DdsKey, DdsId(0)]
+    public int SensorId;
+
+    [DdsId(1)]
+    public double Value;
+
+    // Zero-Allocation fixed string (fastest)
+    [DdsId(2)]
+    public FixedString32 LocationId;
+
+    // Managed types (convenient, but allocate)
+    [DdsId(3), DdsManaged]
+    public string? LogMessage;
+    
+    // Sequences
+    [DdsId(4), DdsManaged]
+    public List<double> History;
+}
+```
+
+---
+
+## 2. Basic Usage (Zero-Copy)
+
+### Publishing
+```csharp
+using var participant = new DdsParticipant();
+using var writer = new DdsWriter<SensorData>(participant, "SensorData");
+
+// Zero-allocation write
+writer.Write(new SensorData 
+{ 
+    SensorId = 1, 
+    Value = 25.5 
+});
+```
+
+### Subscribing (Polling)
+```csharp
+using var reader = new DdsReader<SensorData, SensorData>(participant, "SensorData");
+
+// "Take" removes data from cache. "Scope" manages the loan.
+using var scope = reader.Take();
+
+foreach (var sample in scope)
+{
+    Console.WriteLine($"Received: {sample.SensorId} = {sample.Value}");
+}
+// Loan returned automatically when scope disposes
+```
+
+---
+
+## 3. Async/Await (Modern Loop)
+
+Bridge the gap between real-time DDS and .NET Tasks. No blocking threads required.
+
+```csharp
+Console.WriteLine("Waiting for data...");
+
+// Efficiently waits for data without burning CPU
+// Uses native Listeners under the hood, but exposes Task API
+while (await reader.WaitDataAsync())
+{
+    using var scope = reader.Take();
+    
+    foreach (var sample in scope)
+    {
+        Process(sample);
+    }
+}
+```
+
+---
+
+## 4. Advanced Filtering
+
+Filter data **before** you pay the cost of processing it. This implementation runs client-side but uses JIT optimization to read raw memory offsets, making it extremely fast.
+
+```csharp
+// 1. Set a filter predicate on the View
+// Logic executes during iteration, skipping irrelevant samples instantly
+reader.SetFilter(view => view.Value > 100.0 && view.LocationId.ToString() == "Lab_1");
+
+// 2. Iterate
+using var scope = reader.Take();
+foreach (var highValueSample in scope)
+{
+    // Guaranteed to be > 100.0 and from Lab_1
+}
+
+// 3. Update filter dynamically at runtime
+reader.SetFilter(view => view.Value > 200.0);
+```
+
+---
+
+## 5. Instance Management (Keyed Topics)
+
+For systems tracking many objects (fleets, tracks, sensors), you often need to query a specific object's history without iterating the entire database.
+
+```csharp
+// 1. Create a key template for the object we care about
+var key = new SensorData { SensorId = 5 };
+
+// 2. Lookup the Handle (O(1) hashing)
+DdsInstanceHandle handle = reader.LookupInstance(key);
+
+if (!handle.IsNil)
+{
+    // 3. Read history for ONLY Sensor 5
+    // Ignores Sensor 1, 2, 3... Zero iteration overhead.
+    using var history = reader.ReadInstance(handle, maxSamples: 100);
+    
+    foreach (var snapshot in history)
+    {
+        Plot(snapshot.Value);
+    }
+}
+```
+
+---
+
+## 6. Sender Tracking (Identity)
+
+Identify exactly which application instance sent a message. Useful for debugging multi-process systems.
+
+### Setup (Sender)
+```csharp
+var config = new SenderIdentityConfig 
+{ 
+    AppDomainId = 1, 
+    AppInstanceId = 100 
+};
+
+// Enable tracking BEFORE creating writers
+participant.EnableSenderTracking(config);
+
+// Now, every writer created by this participant automatically broadcasts identity
+using var writer = new DdsWriter<LogMsg>(participant, "Logs");
+```
+
+### Usage (Receiver)
+```csharp
+// Enable tracking on the reader
+reader.EnableSenderTracking(participant.SenderRegistry);
+
+using var scope = reader.Take();
+for (int i = 0; i < scope.Count; i++)
+{
+    // O(1) Lookup of sender info
+    var sender = scope.GetSender(i); 
+    var msg = scope[i];
+
+    if (sender != null)
+    {
+        Console.WriteLine($"[{sender.ComputerName} : PID {sender.ProcessId}] says: {msg.Text}");
+    }
+}
+```
+
+---
+
+## 7. Status & Discovery
+
+Know when peers connect or disconnect using standard C# Events.
+
+```csharp
+// Writer Side
+writer.PublicationMatched += (s, status) => 
+{
+    if (status.CurrentCountChange > 0)
+        Console.WriteLine($"Subscriber connected! Total: {status.CurrentCount}");
+    else
+        Console.WriteLine("Subscriber lost.");
+};
+
+// Reliable Startup (Wait for Discovery)
+// Solves the "Lost First Message" problem
+await writer.WaitForReaderAsync(TimeSpan.FromSeconds(5));
+writer.Write(new Message("Hello")); // Guaranteed to have a route
+```
+
+---
+
+## 8. Lifecycle (Dispose & Unregister)
+
+Properly manage the lifecycle of data instances.
+
+```csharp
+// 1. Data is invalid/deleted
+// Readers receive NOT_ALIVE_DISPOSED state
+writer.DisposeInstance(new SensorData { SensorId = 1 });
+
+// 2. Writer is shutting down (graceful disconnect)
+// Readers receive NOT_ALIVE_NO_WRITERS state (if ownership is exclusive)
+writer.UnregisterInstance(new SensorData { SensorId = 1 });
+```
+
+---
+
+## Dependencies
+
+*   `CycloneDDS.Core`: CDR Serialization primitives (Zero Alloc)
+*   `CycloneDDS.Schema`: Attributes and Type System
+*   `CycloneDDS.Runtime`: The high-level API described above
+*   `ddsc.dll`: Native Cyclone DDS library (custom build with serdata exports)
+
+---
+
+## Performance Notes
+
+*   **Hot Path:** `Take()`, `Write()`, and `Filter` checks are **Zero Allocation**.
+*   **Warm Path:** `WaitDataAsync` allocates one `Task` per await (amortized).
+*   **Cold Path:** `SenderTracking` setup and `Discovery` events have one-time allocation costs.
+
+*Built for speed. Designed for developers.*
+----
+wait, how comes that the DdsWriter no longer needs topic type support stuff? Is that auto-assigned now based on the sample type? that would be excellent.
+----
+Yes, exactly! That is the intended design for the high-level API.
+
+The goal is to eliminate the boilerplate of manually registering type descriptors. Since the **Source Generator** already knows everything about the type (it generated the bytecode, the name, and the offsets), the runtime can auto-discover this information.
+
+### How it works (The Magic)
+
+1.  **Code Generation:** The generator creates a static method on your struct:
+    ```csharp
+    public partial struct SensorData
+    {
+        // Generated automatically
+        public static uint[] GetDescriptorOps() => _ops; 
+    }
+    ```
+
+2.  **Runtime Registration:**
+    The `DdsWriter<T>` constructor looks like this internally:
+
+    ```csharp
+    public DdsWriter(DdsParticipant participant, string topicName, DdsQos? qos = null)
+    {
+        // 1. AUTO-DISCOVERY
+        // Check if 'T' has already been registered with this participant.
+        // If not, use Reflection (once) to call T.GetDescriptorOps() 
+        // and register it with Cyclone DDS via dds_create_topic.
+        IntPtr topicEntity = DdsTypeSupport.GetOrRegisterTopic<T>(participant, topicName);
+
+        // 2. Create Writer using that handle
+        _nativeHandle = DdsApi.dds_create_writer(participant.Handle, topicEntity, qos, null);
+    }
+    ```
+
+### Why this is better
+1.  **Less Code:** You don't need to hold onto a `topicDesc` variable or pass it around.
+2.  **Safety:** You cannot accidentally create a Writer for `SensorData` using a descriptor for `RobotState`. The generics enforce the type match.
+3.  **Caching:** The `DdsTypeSupport` static cache ensures we don't try to register the same type descriptor multiple times for the same domain, which keeps the native middleware happy.
+
+### Can I still do it manually?
+**Yes.** There will be an overload for advanced scenarios (e.g., if you want to perform dynamic type discovery or use a specific QoS for the Topic entity itself distinct from the Writer).
+
+```csharp
+// Auto (99% of cases)
+new DdsWriter<SensorData>(participant, "TopicName");
+
+// Manual (Advanced / Dynamic)
+new DdsWriter<SensorData>(participant, "TopicName", existingTopicHandle);
+```
+---
+is this elegant type-support-less api part of the design documents I provided recently or is it something new i should add?
+---
+It is **implied** in the usage examples of the design documents (like `SENDER-TRACKING-DESIGN.md`), but the **implementation details are missing**.
+
+Currently, your `DdsWriter` tests (e.g., `IntegrationTests.cs`) still manually create a `DescriptorContainer`. To make the "Elegant API" real, you need a specific mechanism to bridge the `static GetDescriptorOps()` generated method to the Runtime without the user passing it manually.
+
+You should add a **"Topic Lifecycle & Auto-Discovery"** section to the `EXTENDED-DDS-API-DESIGN.md`.
+
+### Why it needs to be explicit
+1.  **Topic Caching:** You cannot call `dds_create_topic` every time you create a Writer for the same topic name. You need a centralized `Dictionary<(DomainId, TopicName), TopicEntity>` cache inside `DdsParticipant`.
+2.  **Reflection Bridge:** Since `DdsWriter<T>` is generic, it needs to call the static `T.GetDescriptorOps()` method. This requires a specific (one-time) Reflection call or a delegate cache.
+3.  **QoS Merging:** If the user doesn't provide QoS, the system needs to pull the default QoS from the `[DdsQos]` attribute on `T`.
+
+### Recommended Update
+
+Add this as **Feature 0 (Foundation)** in `EXTENDED-DDS-API-DESIGN.md` so it is built before the other extended features that rely on it.
+
+#### 4. Feature 0: Type Auto-Discovery & Topic Management
+
+**Conceptual Model:**
+Eliminate the need for users to manually handle `TopicDescriptor` pointers. The Runtime automatically extracts metadata from the generic type `T`.
+
+**Implementation Strategy:**
+
+1.  **DdsTypeSupport (Internal Cache):**
+    ```csharp
+    internal static class DdsTypeSupport
+    {
+        // Cache mechanism to ensure we only register the type once per participant/domain
+        public static IntPtr GetOrRegisterTopic<T>(DdsParticipant participant, string topicName, DdsQos userQos)
+        {
+            // 1. Check Participant's internal topic cache
+            if (participant.TryGetTopic(topicName, out IntPtr handle)) return handle;
+
+            // 2. Reflect on T to get 'GetDescriptorOps' and '[DdsQos]'
+            // ... invoke static method ...
+            
+            // 3. Create Topic via P/Invoke
+            // 4. Cache and return
+        }
+    }
+    ```
+
+2.  **DdsParticipant Update:**
+    *   Add `Dictionary<string, IntPtr> _createdTopics` to track existing topic handles.
+
+3.  **DdsWriter / DdsReader Constructors:**
+    *   Update to call `DdsTypeSupport.GetOrRegisterTopic<T>(...)` internally.
+
+**Validation Test:**
+*   Create `Writer<A>("Topic1")`.
+*   Create `Writer<A>("Topic1")` again.
+*   Assert: `dds_create_topic` was called only once (handles are identical).
+
+---
+
+**Shall I update `EXTENDED-DDS-API-DESIGN.md` to include this "Feature 0"?** This will ensure the "Elegant API" promised in the README is actually built.
+---
+yes pls just write what changes would need to be integrated to the EXTENDED-DDS-API-DESIGN.md
+---
+Here are the specific additions required for `EXTENDED-DDS-API-DESIGN.md`.
+
+**Action:** Insert this section immediately before **"4. Feature 1: Read vs Take"**. This establishes the foundational "Ease of Use" layer that the rest of the API relies on.
+
+---
+
+### 4. Feature 0: Type Auto-Discovery & Topic Management
+
+#### 4.1 Conceptual Model
+
+**Challenge:**
+Raw DDS requires manually creating Topic Descriptors, registering them, and managing Topic entity lifecycles. This boilerplate (getting `_ops` pointers, marshalling) creates friction for C# developers.
+
+**Solution:**
+The Runtime automatically discovers type metadata from the `T` generic argument using the code-generated static methods (`GetDescriptorOps`). It also manages topic lifecycles within the `DdsParticipant`, ensuring a specific Topic name is only created once per domain.
+
+#### 4.2 API Design
+
+**DdsParticipant (Topic Factory):**
+```csharp
+public sealed class DdsParticipant : IDisposable
+{
+    // Internal cache: TopicName -> Native Handle
+    private readonly Dictionary<string, IntPtr> _topicCache = new();
+
+    /// <summary>
+    /// Gets an existing topic or registers a new one automatically based on T.
+    /// Thread-safe.
+    /// </summary>
+    internal IntPtr GetOrRegisterTopic<T>(string topicName, DdsQos? manualQos = null);
+}
+```
+
+**DdsWriter / DdsReader Constructors:**
+```csharp
+// Simplified Constructor (No TopicDescriptor needed)
+public DdsWriter(DdsParticipant participant, string topicName, DdsQos? qos = null)
+{
+    // Internally calls participant.GetOrRegisterTopic<T>(topicName, qos)
+}
+```
+
+#### 4.3 Implementation Strategy
+
+**1. Metadata Extraction (Reflection):**
+Since `GetDescriptorOps()` is a static method on the generated struct, we can't access it via an interface on `T`.
+*   **Mechanism:** Use `typeof(T).GetMethod("GetDescriptorOps", BindingFlags.Static | BindingFlags.Public)` once, then cache the delegate.
+*   **QoS:** Check `typeof(T).GetCustomAttribute<DdsQosAttribute>()` to get default QoS if the user passes `null`.
+
+**2. Topic Caching:**
+Calling `dds_create_topic` twice for the same name/type is valid in DDS, but creates multiple entities that must be deleted.
+*   **Optimization:** `DdsParticipant` maintains a `Dictionary<string, IntPtr>`. If requested topic exists, return existing handle (increments ref count implicitly? No, we just share the handle).
+*   **Lifecycle:** When `DdsParticipant` disposes, it recursively deletes all cached Topics.
+
+**3. DdsTypeSupport Helper:**
+Create an internal static helper to handle the P/Invoke complexity of converting `uint[] ops` into the `dds_topic_descriptor_t` pointer expected by C.
+
+#### 4.4 Usage Examples
+
+**Elegant (Auto-Magic):**
+```csharp
+// 1. Definition includes QoS defaults
+[DdsTopic("SensorData")]
+[DdsQos(Reliability = Reliable)]
+public partial struct SensorData { ... }
+
+// 2. Creation matches C# idiom
+using var writer = new DdsWriter<SensorData>(participant, "SensorData");
+// -> Auto-detects Ops
+// -> Auto-detects QoS
+// -> Registers Topic
+```
+
+**Overridden QoS:**
+```csharp
+// Override default QoS
+var volatileQos = new DdsQos { Reliability = BestEffort };
+using var writer = new DdsWriter<SensorData>(participant, "SensorData", volatileQos);
+```
+
+#### 4.5 Testing Requirements
+
+**Tests:**
+1.  **TopicCache_SameName_ReturnsSameHandle:** Create two writers for "TopicA". Verify `dds_create_topic` only called once (or handles match).
+2.  **AutoDiscovery_ValidType_Succeeds:** Instantiate `DdsWriter<TestMessage>`. Verify it works without passing descriptor manually.
+3.  **AutoDiscovery_InvalidType_Throws:** Instantiate `DdsWriter<int>` (primitive has no descriptor ops). Should throw friendly error.
+4.  **Qos_AttributeApplied:** Verify implicit topic creation uses the `[DdsQos]` values from the struct.
+
+---
+
+**Add this task to `SERDATA-TASK-MASTER.md`:**
+*   **Task FCDC-EXT00:** Implement `DdsTypeSupport` and `TopicCache` in `DdsParticipant`. (Priority: Critical, Dependency for S020/S021 updates).
+---

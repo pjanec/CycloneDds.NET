@@ -72,7 +72,225 @@ Stage 5:
 
 ---
 
-## 4. Feature 1: Read vs Take with Condition Masks
+## 4. Feature 0: Type Auto-Discovery & Topic Management
+
+### 4.1 Conceptual Model
+
+**Challenge:**
+Raw DDS requires manually creating Topic Descriptors, registering them, and managing Topic entity lifecycles. This boilerplate (getting `_ops` pointers, marshalling descriptors) creates friction for C# developers and breaks the "idiomatic C#" goal.
+
+**Current State (Boilerplate):**
+```csharp
+// User must manually create and pass descriptors
+var descriptor = DescriptorContainer.CreateFor<SensorData>();
+var writer = new DdsWriter<SensorData>(participant, topicName, descriptor);
+```
+
+**Desired State (Elegant):**
+```csharp
+// Type information automatically discovered from T
+var writer = new DdsWriter<SensorData>(participant, "Sensors");
+```
+
+**Solution:**
+The Runtime automatically discovers type metadata from the `T` generic argument using the code-generated static methods (`GetDescriptorOps`, `GetTypeName`). It also manages topic lifecycles within the `DdsParticipant`, ensuring a specific Topic name is only created once per domain.
+
+### 4.2 API Design
+
+**DdsParticipant (Topic Factory):**
+```csharp
+public sealed class DdsParticipant : IDisposable
+{
+    // Internal cache: TopicName -> Native Handle
+    private readonly Dictionary<string, IntPtr> _topicCache = new();
+    
+    /// <summary>
+    /// Gets an existing topic or registers a new one automatically based on T.
+    /// Thread-safe. Calls dds_create_topic only once per topic name.
+    /// </summary>
+    internal IntPtr GetOrRegisterTopic<T>(string topicName, DdsQos? manualQos = null);
+}
+```
+
+**DdsWriter / DdsReader Constructors (Simplified):**
+```csharp
+// No TopicDescriptor parameter needed!
+public DdsWriter(DdsParticipant participant, string topicName, DdsQos? qos = null)
+{
+    // Internally calls participant.GetOrRegisterTopic<T>(topicName, qos)
+    var topicHandle = participant.GetOrRegisterTopic<T>(topicName, qos);
+    _writerHandle = DdsApi.dds_create_writer(participant.Handle, topicHandle, qos, null);
+}
+
+public DdsReader(DdsParticipant participant, string topicName, DdsQos? qos = null)
+{
+    var topicHandle = participant.GetOrRegisterTopic<T>(topicName, qos);
+    _readerHandle = DdsApi.dds_create_reader(participant.Handle, topicHandle, qos, null);
+}
+```
+
+### 4.3 Implementation Strategy
+
+**1. Metadata Extraction (Reflection):**
+Since `GetDescriptorOps()` is a static method on the generated struct, we can't access it via an interface on `T`.
+
+**Mechanism:**
+```csharp
+internal static class DdsTypeSupport
+{
+    private static readonly ConcurrentDictionary<Type, Func<uint[]>> _opsCache = new();
+    private static readonly ConcurrentDictionary<Type, DdsQosAttribute?> _qosCache = new();
+
+    public static uint[] GetDescriptorOps<T>()
+    {
+        return _opsCache.GetOrAdd(typeof(T), type =>
+        {
+            // Reflection (one-time cost)
+            var method = type.GetMethod("GetDescriptorOps", 
+                BindingFlags.Static | BindingFlags.Public);
+            
+            if (method == null)
+                throw new InvalidOperationException(
+                    $"Type {typeof(T).Name} does not have GetDescriptorOps. " +
+                    "Did you forget [DdsTopic] attribute?");
+            
+            return (Func<uint[]>)Delegate.CreateDelegate(typeof(Func<uint[]>), method);
+        })();
+    }
+
+    public static DdsQosAttribute? GetDefaultQos<T>()
+    {
+        return _qosCache.GetOrAdd(typeof(T), type =>
+            type.GetCustomAttribute<DdsQosAttribute>());
+    }
+}
+```
+
+**2. Topic Caching:**
+Calling `dds_create_topic` twice for the same name is valid in DDS, but creates multiple entities that must be deleted.
+
+**Optimization:**
+```csharp
+// Inside DdsParticipant
+private readonly Dictionary<string, IntPtr> _topicCache = new();
+private readonly object _topicLock = new();
+
+internal IntPtr GetOrRegisterTopic<T>(string topicName, DdsQos? manualQos)
+{
+    lock (_topicLock)
+    {
+        // Return existing if already created
+        if (_topicCache.TryGetValue(topicName, out var existing))
+            return existing;
+
+        // 1. Get descriptor ops from static method
+        uint[] ops = DdsTypeSupport.GetDescriptorOps<T>();
+
+        // 2. Get default QoS from attribute if not provided
+        DdsQos qos = manualQos ?? DdsTypeSupport.GetDefaultQos<T>()?.ToQos() ?? new DdsQos();
+
+        // 3. Create native topic descriptor
+        IntPtr descriptorPtr = MarshalDescriptor(ops, typeof(T).Name);
+
+        // 4. Create topic entity
+        IntPtr topicHandle = DdsApi.dds_create_topic(
+            _nativeHandle.Handle,
+            topicName,
+            descriptorPtr,
+            qos,
+            null);
+
+        // 5. Cache and return
+        _topicCache[topicName] = topicHandle;
+        return topicHandle;
+    }
+}
+```
+
+**3. Lifecycle Management:**
+When `DdsParticipant` disposes, it must delete all cached topics.
+
+```csharp
+public void Dispose()
+{
+    lock (_topicLock)
+    {
+        foreach (var topicHandle in _topicCache.Values)
+        {
+            DdsApi.dds_delete(topicHandle);
+        }
+        _topicCache.Clear();
+    }
+    
+    // ... rest of disposal
+}
+```
+
+### 4.4 Usage Examples
+
+**Elegant (Auto-Magic):**
+```csharp
+// 1. Definition includes QoS defaults
+[DdsTopic("SensorData")]
+[DdsQos(Reliability = DdsReliability.Reliable)]
+public partial struct SensorData 
+{ 
+    [DdsKey, DdsId(0)] public int SensorId;
+    [DdsId(1)] public double Value;
+}
+
+// 2. Creation matches C# idiom - NO manual descriptor!
+using var participant = new DdsParticipant();
+using var writer = new DdsWriter<SensorData>(participant, "Sensors");
+// -> Auto-detects Ops via GetDescriptorOps()
+// -> Auto-detects QoS via [DdsQos] attribute
+// -> Registers Topic once
+```
+
+**Overridden QoS:**
+```csharp
+// Override default QoS from attribute
+var volatileQos = new DdsQos { Reliability = DdsReliability.BestEffort };
+using var writer = new DdsWriter<SensorData>(participant, "Sensors", volatileQos);
+```
+
+**Multi-Writer Same Topic:**
+```csharp
+// Both writers share the same topic entity (cached)
+using var writer1 = new DdsWriter<SensorData>(participant, "Sensors");
+using var writer2 = new DdsWriter<SensorData>(participant, "Sensors");
+// dds_create_topic called only ONCE internally
+```
+
+### 4.5 Testing Requirements
+
+**Tests (Minimum 4):**
+1. **TopicCache_SameName_ReturnsSameHandle**
+   - Create two writers for "TopicA"
+   - Success: Both use same topic handle (verified via internal cache)
+
+2. **AutoDiscovery_ValidType_Succeeds**
+   - Instantiate `DdsWriter<TestMessage>` without manual descriptor
+   - Success: Writer created successfully, can send/receive data
+
+3. **AutoDiscovery_InvalidType_Throws**
+   - Instantiate `DdsWriter<int>` (primitive has no descriptor ops)
+   - Success: Throws `InvalidOperationException` with helpful message
+
+4. **Qos_AttributeApplied**
+   - Define type with `[DdsQos(Reliability = Reliable)]`
+   - Create writer without explicit QoS parameter
+   - Success: Topic uses Reliable QoS (verify via native query)
+
+**Validation:**
+- ✅ No manual descriptor passing required
+- ✅ Type safety enforced (can't mix types)
+- ✅ Topic created only once per name
+- ✅ QoS from attributes applied automatically
+
+---
+
+## 5. Feature 1: Read vs Take with Condition Masks
 
 ### 4.1 Conceptual Model
 
@@ -182,15 +400,15 @@ using var scope = reader.Read(10, instanceState: DdsInstanceState.Alive);
 
 ---
 
-## 5. Feature 2: Async/Await Support
+## 6. Feature 2: Async/Await Support
 
-### 5.1 Conceptual Model
+### 6.1 Conceptual Model
 
 **Challenge:** Bridge DDS's blocking WaitSets or callbacks to .NET's Task-Based Asynchrony.
 
 **Solution:** Use DDS Listeners (callbacks) to signal a `TaskCompletionSource<bool>`.
 
-### 5.2 API Design
+### 6.2 API Design
 
 ```csharp
 public sealed class DdsReader<T, TView> : IDisposable
@@ -203,7 +421,7 @@ public sealed class DdsReader<T, TView> : IDisposable
 }
 ```
 
-### 5.3 Implementation Strategy
+### 6.3 Implementation Strategy
 
 **Lazy Listener Attachment:**
 - Listener is NOT created until first `WaitDataAsync()` call
@@ -227,7 +445,7 @@ private static void OnDataAvailableNative(IntPtr entity, IntPtr arg)
 - Use `GCHandle.Alloc(this)` to pass reader instance to native callback
 - Free in `Dispose()` to prevent memory leaks
 
-### 5.4 Usage Examples
+### 6.4 Usage Examples
 
 **High-Performance Async Loop:**
 ```csharp
@@ -254,9 +472,9 @@ await foreach (var message in reader.StreamAsync(cancellationToken))
 
 ---
 
-## 6. Feature 3: Content Filtering (Reader-Side Predicates)
+## 7. Feature 3: Content Filtering (Reader-Side Predicates)
 
-### 6.1 Conceptual Model
+### 7.1 Conceptual Model
 
 **Challenge:** Filter high-frequency data streams to process only relevant samples, reducing CPU overhead.
 
@@ -268,7 +486,7 @@ await foreach (var message in reader.StreamAsync(cancellationToken))
 - C# predicates leverage JIT optimization for zero-allocation filtering
 - Simpler API: no topic abstraction needed
 
-### 6.2 API Design
+### 7.2 API Design
 
 **DdsReader Enhancement:**
 ```csharp
@@ -314,7 +532,7 @@ public ref struct ViewScope<TView> where TView : struct
 }
 ```
 
-### 6.3 Implementation Strategy
+### 7.3 Implementation Strategy
 
 **Zero Allocation:**
 - `Predicate<TView>` is stored as a field (one reference assignment)
@@ -326,7 +544,7 @@ public ref struct ViewScope<TView> where TView : struct
 - No locks required on hot path
 - Safe to call `SetFilter()` from any thread
 
-### 6.4 Usage Examples
+### 7.4 Usage Examples
 
 **Simple Filter:**
 ```csharp
@@ -367,7 +585,7 @@ reader.SetFilter(view =>
 });
 ```
 
-### 6.5 Performance Characteristics
+### 7.5 Performance Characteristics
 
 | Scenario | Cost |
 |----------|------|
@@ -383,7 +601,7 @@ reader.SetFilter(view =>
 | **SQL String** | String parsing | Interpreted evaluation | Limited operators |
 | **C# Lambda** | **JIT compile** | **Native code** | **Full C# expressiveness** |
 
-### 6.6 Testing Requirements
+### 7.6 Testing Requirements
 
 **Tests (Minimum 3):**
 1. **Filter_Applied_OnlyMatchingSamples**
@@ -404,15 +622,15 @@ reader.SetFilter(view =>
 
 ---
 
-## 7. Feature 4: Status & Discovery
+## 8. Feature 4: Status & Discovery
 
-### 7.1 Conceptual Model
+### 8.1 Conceptual Model
 
 **Need:** Know when readers/writers connect/disconnect, detect liveliness loss, handle QoS violations.
 
 **Solution:** Map DDS status callbacks to C# `event EventHandler<TStatus>`.
 
-### 7.2 API Design
+### 8.2 API Design
 
 **Status Structs:**
 ```csharp
@@ -462,7 +680,7 @@ public sealed class DdsReader<T, TView> : IDisposable
 }
 ```
 
-### 7.3 Implementation Strategy
+### 8.3 Implementation Strategy
 
 **Event Keyword Benefits:**
 - Prevents accidental overwrite (`= null`)
@@ -473,7 +691,7 @@ public sealed class DdsReader<T, TView> : IDisposable
 **Lazy Listener Pattern:**
 Only attach native listener when event is subscribed to (via `add` accessor).
 
-### 7.4 Usage Examples
+### 8.4 Usage Examples
 
 **Reliable Startup (Avoid "Lost First Message"):**
 ```csharp
@@ -499,15 +717,15 @@ writer.PublicationMatched += (sender, status) =>
 
 ---
 
-## 8. Feature 5: Instance Management (Keyed Topics)
+## 9. Feature 5: Instance Management (Keyed Topics)
 
-### 8.1 Conceptual Model
+### 9.1 Conceptual Model
 
 **Challenge:** For keyed topics (objects with unique IDs), efficiently access specific instance history without iterating all data.
 
 **Solution:** DDS InstanceHandle (64-bit integer representing key hash) enables O(1) lookups.
 
-### 8.2 API Design
+### 9.2 API Design
 
 **DdsInstanceHandle (Strong Type):**
 ```csharp
@@ -545,7 +763,7 @@ public sealed class DdsWriter<T> : IDisposable
 }
 ```
 
-### 8.3 Implementation Strategy
+### 9.3 Implementation Strategy
 
 **Key Hashing:**
 Reuse serialization infrastructure to create temporary serdata from key sample, ensuring hash consistency with writers.
@@ -564,7 +782,7 @@ public static extern int dds_take_instance(
     long handle);
 ```
 
-### 8.4 Usage Examples
+### 9.4 Usage Examples
 
 **Tracked Object Pattern (GUI):**
 ```csharp
@@ -604,16 +822,16 @@ if (scope.Count > 0)
 
 ---
 
-## 9. Testing Strategy
+## 10. Testing Strategy
 
-### 9.1 Testing Philosophy
+### 10.1 Testing Philosophy
 
 **Quality Over Quantity:**
 - Focus on tests that verify correct behavior, edge cases, and integration
 - Each test must have clear success/failure conditions
 - Tests should be fast and deterministic
 
-### 9.2 Test Coverage Requirements
+### 10.2 Test Coverage Requirements
 
 **Feature 1: Read/Take + Masks**
 - Verify `Read()` is non-destructive (call twice, get same data)
@@ -647,9 +865,9 @@ if (scope.Count > 0)
 
 ---
 
-## 10. Migration & Compatibility
+## 11. Migration & Compatibility
 
-### 10.1 Backward Compatibility
+### 11.1 Backward Compatibility
 
 **Preserved:**
 - Existing `DdsReader.Take()` continues to work with same signature
@@ -660,7 +878,7 @@ if (scope.Count > 0)
 - All new APIs are additive (overloads, new methods)
 - No breaking changes to existing code
 
-### 10.2 Migration Path
+### 11.2 Migration Path
 
 **Users can adopt incrementally:**
 1. Start with basic `Take()` (existing)
@@ -671,35 +889,39 @@ if (scope.Count > 0)
 
 ---
 
-## 11. Implementation Roadmap
+## 12. Implementation Roadmap
 
-### 11.1 Sequencing
+### 12.1 Sequencing
 
-**Phase 1 (Parallel):** Foundation
+**Phase 0 (Foundation - Must Come First):**
+- Task FCDC-EXT00: Type Auto-Discovery & Topic Management
+
+**Phase 1 (Parallel - Depends on EXT00):**
 - Task FCDC-EXT01: Read/Take + Masks
 - Task FCDC-EXT02: Async/Await
 
 **Phase 2 (Depends on Phase 1):** Advanced
-- Task FCDC-EXT03: Content Filtering (requires DdsTopic refactor)
+- Task FCDC-EXT03: Content Filtering (simple ViewScope update)
 - Task FCDC-EXT04: Status/Discovery (uses async infrastructure)
 
 **Phase 3 (Independent):** Keyed Topics
 - Task FCDC-EXT05: Instance Management (uses Read/Take infrastructure)
 
-### 11.2 Estimated Effort
+### 12.2 Estimated Effort
 
 | Task | Estimated Days | Risk |
 |------|----------------|------|
+| FCDC-EXT00 | 2-3 days | Medium (reflection, caching, lifecycle) |
 | FCDC-EXT01 | 2-3 days | Low (P/Invoke + refactor) |
 | FCDC-EXT02 | 3-4 days | Medium (GC pinning, callbacks) |
 | FCDC-EXT03 | 1-2 days | Low (ViewScope enumerator update) |
 | FCDC-EXT04 | 2-3 days | Low (reuses async patterns) |
 | FCDC-EXT05 | 2-3 days | Low (reuses serialization) |
-| **Total** | **10-15 days** | **2-3 weeks** |
+| **Total (Core Extended API)** | **12-18 days** | **2.5-3.5 weeks** |
 
 ---
 
-## 12. Success Criteria
+## 13. Success Criteria
 
 **Functional:**
 - ✅ All new APIs work correctly with existing zero-copy core

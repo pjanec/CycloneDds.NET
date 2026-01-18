@@ -18,11 +18,11 @@ This document provides the master task list for the **serdata-based** implementa
 ---
 
 
-## Overview: 6 Stages, 39 Tasks
+## Overview: 6 Stages, 40 Tasks
 
-**Total Estimated Effort:** 107-143 person-days (5-7 months with 1 developer)
+**Total Estimated Effort:** 109-146 person-days (5.5-7 months with 1 developer)
 
-**Critical Path:** Stage 1 → Stage 2 → Stage 3 → **Stage 3.75** → Stage 5 (Core + Extended API + Sender Tracking: ~73-95 days)
+**Critical Path:** Stage 1 → Stage 2 → Stage 3 → **Stage 3.75** → Stage 5 (Core + Extended API + Sender Tracking: ~75-98 days)
 
 ---
 
@@ -1310,9 +1310,9 @@ Implement DDS instance lifecycle operations for keyed topics, enabling proper in
 
 ## STAGE 3.75: Extended DDS API - Modern C# Idioms
 
-**Goal:** Add essential DDS features with modern .NET idioms (async/await, events, filtering, discovery) plus optional sender tracking.
+**Goal:** Add essential DDS features with modern .NET idioms (type auto-discovery, async/await, events, filtering, discovery) plus optional sender tracking.
 
-**Duration:** 13-20 days (7 tasks)  
+**Duration:** 15-23 days (8 tasks: 1 foundation + 5 extended API + 2 sender tracking)  
 **Status:** 🔴 Ready to Start  
 **Design References:**  
 - `docs/EXTENDED-DDS-API-DESIGN.md` - Core extended API features
@@ -1321,6 +1321,56 @@ Implement DDS instance lifecycle operations for keyed topics, enabling proper in
 **Strategic Position:** These features provide core DDS functionality expected by users and must be implemented BEFORE advanced evolution features (Stage 4-Deferred) and production readiness (Stage 5).
 
 **Note:** All tasks reference design documents to avoid repetition. Read design docs for full implementation details.
+
+---
+
+### FCDC-EXT00: Type Auto-Discovery & Topic Management
+**Status:** 🔴 Not Started  
+**Priority:** **CRITICAL** (Foundation for all other EXT tasks)  
+**Estimated Effort:** 2-3 days  
+**Dependencies:** FCDC-S020 (DdsWriter exists), FCDC-S021 (DdsReader exists)
+
+**Description:**  
+Eliminate manual descriptor passing by auto-discovering type metadata from generic type `T`. Manage topic lifecycle within DdsParticipant to ensure topics are created only once per name.
+
+**Design Reference:** `EXTENDED-DDS-API-DESIGN.md` Section 4
+
+**Implementation Steps:**
+1. Create `DdsTypeSupport` static class with reflection-based descriptor extraction
+2. Add `_topicCache` dictionary to `DdsParticipant`
+3. Implement `GetOrRegisterTopic<T>(string topicName, DdsQos?)` in `DdsParticipant`
+4. Update `DdsWriter<T>` constructor to call `GetOrRegisterTopic<T>()` internally
+5. Update `DdsReader<T>` constructor to call `GetOrRegisterTopic<T>()` internally
+6. Add topic cleanup to `DdsParticipant.Dispose()`
+7. Cache `Func<uint[]>` delegates for `GetDescriptorOps()` calls
+
+**Deliverables:**
+- `Src/CycloneDDS.Runtime/DdsTypeSupport.cs` (new internal static class)
+- Updated `Src/CycloneDDS.Runtime/DdsParticipant.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsWriter.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsReader.cs`
+
+**Tests (Minimum 4):**
+- `TopicCache_SameName_ReturnsSameHandle`
+  - Create two writers for "TopicA"
+  - Success: Both use same topic handle (verify via internal cache)
+- `AutoDiscovery_ValidType_Succeeds`
+  - Instantiate `DdsWriter<TestMessage>` without manual descriptor
+  - Success: Writer created successfully, can send/receive data
+- `AutoDiscovery_InvalidType_Throws`
+  - Instantiate `DdsWriter<int>` (primitive has no descriptor ops)
+  - Success: Throws `InvalidOperationException` with helpful message
+- `Qos_AttributeApplied`
+  - Define type with `[DdsQos(Reliability = Reliable)]`
+  - Create writer without explicit QoS parameter
+  - Success: Topic uses Reliable QoS (verify via native query)
+
+**Validation:**
+- ✅ No manual descriptor passing required in user code
+- ✅ Type safety enforced (generics prevent type mixing)
+- ✅ Topic created only once per participant/name combination
+- ✅ QoS from `[DdsQos]` attributes applied automatically
+- ✅ Reflection overhead amortized (one-time delegate cache)
 
 ---
 
@@ -1642,7 +1692,7 @@ Integrate sender tracking into DdsParticipant, DdsWriter, DdsReader, and ViewSco
 ### Stage 3.75 Success Criteria
 
 **Functional:**
-- ✅ All 25 tests pass (17 extended API + 8 sender tracking)
+- ✅ All 29 tests pass (4 auto-discovery + 17 extended API + 8 sender tracking)
 - ✅ No breaking changes to existing APIs
 - ✅ All new APIs work with zero-copy core
 
@@ -1651,11 +1701,13 @@ Integrate sender tracking into DdsParticipant, DdsWriter, DdsReader, and ViewSco
 - ✅ Async overhead only when WaitDataAsync used
 - ✅ Content filtering has minimal overhead (JIT inlining)
 - ✅ Sender tracking O(1) lookups (<10ns)
+- ✅ Type reflection overhead amortized (one-time cache)
 
 **Usability:**
 - ✅ APIs feel natural to C# developers
 - ✅ Common patterns require minimal code
 - ✅ Opt-in features have zero overhead when disabled
+- ✅ **No manual descriptor passing required** (auto-discovery)
 
 ---
 
