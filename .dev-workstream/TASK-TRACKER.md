@@ -43,10 +43,11 @@
 - [x] **FCDC-S016** Generator Testing Suite → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s016-generator-testing-suite) ✅ **🎉 COMPLETE**
 - [ ] **FCDC-S023** Nested Struct Support ([DdsStruct]) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s023-nested-struct-support-ddsstruct-attribute) 🔴 **HIGH**
 - [ ] **FCDC-S024** Type-Level [DdsManaged] → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s024-type-level-ddsmanaged-attribute) 🟢 **MEDIUM**
+- [ ] **FCDC-S025** Advanced IDL Generation Control → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s025-advanced-idl-generation-control) 🔴 **CRITICAL**
 
 **Batches:** BATCH-03 ✅ | BATCH-04 ✅ | BATCH-05 ✅ | BATCH-05.1 ✅ | BATCH-06 ✅ | BATCH-07 ✅ | BATCH-08 ✅ | BATCH-09 ✅ | BATCH-09.1 ✅ | BATCH-09.2 ✅ | BATCH-10 ✅ | BATCH-10.1 ✅ | BATCH-11 ✅ | BATCH-11.1 ✅ | BATCH-12 ✅ | BATCH-12.1 ✅
 
-**Note:** FCDC-S023 and S024 are enhancements added after Stage 2 completion for improved usability.
+**Note:** FCDC-S023, S024, and S025 are enhancements added after Stage 2 completion for production readiness.
 
 ---
 
@@ -258,18 +259,18 @@
 
 ## Progress Statistics
 
-**Total Tasks:** 42 (32 original + 2 enhancements + 6 extended API + 2 sender tracking)  
+**Total Tasks:** 43 (32 original + 3 enhancements + 6 extended API + 2 sender tracking)  
 **Completed:** 27 tasks ✅  
-**Remaining:** 15 tasks (2 in Stage 2 + 8 in Stage 3.75 + 2 in Stage 4-Deferred + 3 in Stage 5)
+**Remaining:** 16 tasks (3 in Stage 2 + 8 in Stage 3.75 + 2 in Stage 4-Deferred + 3 in Stage 5)
 
-**Current Focus:** FCDC-S023/S024 (Stage 2 Enhancements) or Stage 3.75 (🔴 Ready to Start)
+**Current Focus:** Stage 2 Enhancements (S023/S024/S025) or Stage 3.75 (🔴 Ready to Start)
 
 **Test Count:** ~170 passing tests (estimated with BATCH-15.x)  
 **Validation Gates Passed:** 3/3 (Golden Rig ✅, Union Interop ✅, Optional EMHEADER ✅)
 
-**Estimated Progress:** ~64% complete (27/42 tasks)  
+**Estimated Progress:** ~63% complete (27/43 tasks)  
 - Stage 1: 100% ✅ (5/5 tasks)
-- Stage 2: 88% 🟡 (14/16 tasks) - **S023, S024 remaining** ← Optional enhancements
+- Stage 2: 82% 🟡 (14/17 tasks) - **S023, S024, S025 remaining** ← Optional but CRITICAL for production
 - Stage 3: 100% ✅ (7/7 tasks)
 - Stage 3.5: 100% ✅ (1/1 task)
 - Stage 4 (Performance): 100% ✅ (4/4 tasks)

@@ -16,7 +16,7 @@ See [detailed technical overview](DetailedOverview.md).
 
 ### 🧬 Schema & Interoperability
 - **Code-First DSL:** Define your data types entirely in C# using attributes (`[DdsTopic]`, `[DdsKey]`, `[DdsStruct]`, `[DdsQos]`). No need to write IDL files manually.
-- **Automatic IDL Generation:** The build tools automatically generate standard OMG IDL files from your C# classes, ensuring perfect interoperability with other DDS implementations (C++, Python, Java) and tools.
+- **Automatic IDL Generation:** The build tools automatically generate standard OMG IDL files from your C# classes, ensuring perfect interoperability with other DDS implementations (C++, Python, Java) and tools. See [IDL Generation](IDL-GENERATION.md).
 - **Auto-Magic Type Discovery:** Runtime automatically registers type descriptors based on your schema.
 
 

@@ -9359,3 +9359,536 @@ if (field.TypeName == "string")
 
  add this refinement to **Task FCDC-S015 ([DdsManaged] Support)** in the tracker.
 ---
+
+
+
+
+
+
+
+
+I do not want one idl per dds topic! i need to have some control over the idl files generation. Some DdsIdl attribute or something just i do not know exact usage, let's discuss. The generator should honor the csharp file name as the name for the idl. The generator needs to be smart enough to include common data types that are be defined in other csharp files and namespaces. The idl file needs to mimic the csharp namespaces where the DSL types are using 'module' hierarchy. I need to have control over namespace overrides (so the idl type does not always share the csharp-define namespace - necessary for interop with existing IDL types from exsting project where i just mimic them in my csharp DSL) . pls advise
+---
+This is a very mature requirement. In real-world DDS systems, IDL file structure often dictates build dependencies, and legacy interoperability requires strict control over module names (namespaces) regardless of your C# project structure.
+
+Here is the design for **Advanced IDL Generation Control**.
+
+### 1. The Strategy
+
+We will move from a "One Type = One IDL" model to a **"Registry & Mapping"** model.
+
+1.  **File Mapping:** By default, the generator will group types based on the **C# Source Filename** (e.g., `CommonTypes.cs` $\to$ `CommonTypes.idl`). You can override this with an attribute.
+2.  **Module Mapping:** By default, C# `namespace A.B` maps to IDL `module A { module B { ... }`. You can override this with an attribute to match legacy IDLs.
+3.  **Smart Includes:** The generator will build a dependency graph. If `TopicA` (in `A.idl`) uses `StructB` (mapped to `B.idl`), the generator automatically adds `#include "B.idl"` to `A.idl`.
+
+### 2. New Attributes
+
+We need two new attributes in `CycloneDDS.Schema`.
+
+#### `[DdsIdlFile("Name")]`
+Controls physical file grouping.
+*   **Target:** Class/Struct.
+*   **Behavior:** Forces this type to be generated into `Name.idl`.
+*   **Default:** If omitted, defaults to the filename of the source `.cs` file.
+
+#### `[DdsIdlModule("A::B")]`
+Controls logical scoping (IDL modules).
+*   **Target:** Class/Struct.
+*   **Behavior:** Forces the IDL `module` hierarchy. overrides C# namespace.
+*   **Syntax:** Use `::` as separator.
+
+---
+
+### 3. Usage Examples
+
+#### Scenario A: The "Common Types" File
+You have a C# file `SharedDefs.cs` with multiple structs. You want them all in `SharedDefs.idl`.
+
+**`SharedDefs.cs`**
+```csharp
+namespace MyProject.Common
+{
+    // No attributes needed! 
+    // Generator defaults to "SharedDefs.idl" because of the filename.
+    // Module defaults to "MyProject::Common"
+    
+    [DdsStruct]
+    public partial struct Point { double x, y; }
+
+    [DdsStruct]
+    public partial struct Vector { Point start, end; }
+}
+```
+
+#### Scenario B: Legacy Interoperability
+You are writing a C# app that must talk to an existing C++ system using `LegacySys::Core::State`.
+
+**`MyModernApp.cs`**
+```csharp
+namespace MyModernApp.Implementation
+{
+    // 1. Force filename to match legacy build system expectation
+    // 2. Force module to match legacy IDL
+    [DdsTopic("SystemState")]
+    [DdsIdlFile("LegacyCore")] 
+    [DdsIdlModule("LegacySys::Core")] 
+    public partial struct SystemState
+    {
+        public int Id;
+    }
+}
+```
+
+**Generated `LegacyCore.idl`:**
+```idl
+module LegacySys {
+    module Core {
+        struct SystemState {
+            long Id;
+        };
+    };
+};
+```
+
+---
+
+### 4. Generator Implementation Logic
+
+This requires a significant (but cleaner) refactor of the `CodeGenerator` class. It needs to work in **Two Passes**.
+
+#### Phase 1: Discovery & Mapping
+Scan all C# files. Build a `GlobalTypeRegistry`.
+
+```csharp
+public class IdlDefinition
+{
+    public string CSharpTypeName;  // "MyProject.Point"
+    public string TargetIdlFile;   // "SharedDefs" (from attr or filename)
+    public string TargetModule;    // "MyProject::Common" (from attr or namespace)
+    public TypeInfo TypeInfo;
+}
+
+// Map: FullCSharpName -> Definition
+Dictionary<string, IdlDefinition> Registry;
+```
+
+#### Phase 2: Dependency Resolution
+Iterate all types in the Registry. Look at their fields.
+
+*   If `Robot` has field `Point`:
+    *   Look up `Point` in Registry.
+    *   If `Point.TargetIdlFile` != `Robot.TargetIdlFile`:
+        *   Add dependency: `Robot.idl` depends on `Point.idl`.
+
+#### Phase 3: Emission
+Group definitions by `TargetIdlFile`.
+
+```csharp
+foreach (var fileGroup in Registry.GroupBy(x => x.Value.TargetIdlFile))
+{
+    var sb = new StringBuilder();
+    
+    // 1. Emit Includes
+    var distinctDependencies = fileGroup
+        .SelectMany(GetDependencies)
+        .Select(d => d.TargetIdlFile)
+        .Distinct()
+        .Where(f => f != fileGroup.Key); // Don't include self
+        
+    foreach(var dep in distinctDependencies)
+        sb.AppendLine($"#include \"{dep}.idl\"");
+
+    // 2. Emit Modules (Group by Module)
+    foreach (var moduleGroup in fileGroup.GroupBy(x => x.Value.TargetModule))
+    {
+        // Open modules: "A::B" -> "module A { module B {"
+        string indent = OpenModules(sb, moduleGroup.Key); 
+        
+        foreach (var def in moduleGroup)
+        {
+            // Emit IDL for struct/union using existing IdlEmitter logic
+            // But pass 'indent' so it looks nice
+            sb.AppendLine(idlEmitter.Emit(def.TypeInfo, indent));
+        }
+        
+        // Close modules
+        CloseModules(sb, moduleGroup.Key);
+    }
+    
+    File.WriteAllText(Path.Combine(outDir, $"{fileGroup.Key}.idl"), sb.ToString());
+}
+```
+
+---
+
+### 5. Updated Task List
+
+This logic replaces the simplistic "One Topic = One File" logic currently in `FCDC-S009`.
+
+**Update FCDC-S009 (IDL Emitter):**
+1.  **Add Attributes:** Create `DdsIdlFileAttribute` and `DdsIdlModuleAttribute`.
+2.  **Update Discovery:** `SchemaDiscovery` needs to extract the C# filename (available in `SyntaxTree.FilePath`).
+3.  **Implement Registry:** Create the `GlobalTypeRegistry` class to hold the mappings.
+4.  **Implement Smart Emitter:** Rewrite `CodeGenerator.Generate` to use the 3-phase grouping logic described above.
+
+### Does this solution fit your vision?
+It gives you complete control:
+1.  **Defaults:** Work automatically (File = C# File, Module = C# Namespace).
+2.  **Overrides:** Full control for legacy interop (`DdsIdlModule`, `DdsIdlFile`).
+3.  **Dependencies:** Automatically resolved imports.
+---
+what if I am using multiple different csharp assemblies, each defining its own dds types, and with dependencies (B depends on types from A). A needs to be usable in a project which does not need B. if B is used in a project, referencing A, the generator should probably generate separate idl for A and include it to IDL file for B, correct?
+---
+This is the correct architectural approach for modular systems. You are describing a **Distributed IDL Architecture**.
+
+If `AssemblyB` depends on `AssemblyA`, the generator for `B` must **not** regenerate the definitions for `A`. Instead, it must generate an `#include "A.idl"` directive.
+
+To make this work "elegantly" and automatically, we need to solve two problems:
+1.  **Discovery:** How does Generator B know that `TypeA` lives in `A.idl` (without having access to A's source code)?
+2.  **Physical Access:** How does the `idlc` compiler find `A.idl` when compiling `B.idl`?
+
+Here is the design for **Cross-Assembly IDL Generation**.
+
+---
+
+### 1. The "Baked-In" Metadata Strategy
+
+When you build `AssemblyA`, the generator needs to leave a "breadcrumb" in the compiled DLL telling future consumers where its types are defined in IDL.
+
+We will use the Generator to **emit assembly-level attributes** into `AssemblyA`.
+
+#### Step A: New Internal Attribute
+This attribute is not used by the user, but by the Generator.
+
+```csharp
+namespace CycloneDDS.Schema
+{
+    [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
+    public sealed class DdsIdlMappingAttribute : Attribute
+    {
+        public string TypeFullName { get; }
+        public string IdlFileName { get; } // e.g. "CommonTypes.idl"
+
+        public DdsIdlMappingAttribute(string typeName, string idlFile)
+        {
+            TypeFullName = typeName;
+            IdlFileName = idlFile;
+        }
+    }
+}
+```
+
+#### Step B: Generator Behavior for Assembly A
+When generating `AssemblyA`, the CodeGen creates a file `obj/Debug/net8.0/CycloneDDS.IdlMap.g.cs`:
+
+```csharp
+using CycloneDDS.Schema;
+
+[assembly: DdsIdlMapping("MyCorp.Common.Point", "CommonTypes.idl")]
+[assembly: DdsIdlMapping("MyCorp.Common.Vector", "CommonTypes.idl")]
+```
+
+It also outputs the actual `CommonTypes.idl` to the build output folder.
+
+---
+
+### 2. Generator Behavior for Assembly B (The Consumer)
+
+When compiling `AssemblyB`, the generator encounters a field of type `MyCorp.Common.Point`.
+
+1.  **Check Source:** Is `Point` defined in the current C# compilation?
+    *   **No.** It is imported from metadata (Assembly A).
+2.  **Check Metadata:** Inspect `AssemblyA` attributes via Roslyn.
+    *   Find `[DdsIdlMapping]` where `TypeFullName == "MyCorp.Common.Point"`.
+    *   Extract `IdlFileName` -> `"CommonTypes.idl"`.
+3.  **Action:**
+    *   Do **not** generate struct definition for `Point`.
+    *   Add `#include "CommonTypes.idl"` to the top of the IDL file currently being generated for B.
+
+---
+
+### 3. The Build System (MSBuild Targets)
+
+This is the glue that makes it usable. We need to ensure IDL files travel with the DLLs (like `.pdb` or `.xml` documentation files).
+
+**In `CycloneDDS.targets`:**
+
+1.  **Packing (Writer Side):**
+    When building a NuGet package for `AssemblyA`, the target must include all generated `.idl` files in a specific folder (e.g., `contentFiles/any/any/idl/`).
+
+2.  **Restoring (Reader Side):**
+    When `AssemblyB` references `AssemblyA` (via ProjectReference or NuGet), the target must copy `A`'s IDL files into `B`'s output directory so `idlc` can find them during the `#include` resolution.
+
+---
+
+### 4. Implementation Plan
+
+#### 4.1 Update `CodeGenerator` Logic
+
+Refactor the `Generate` method to handle "External" vs "Local" types.
+
+```csharp
+public void Generate(Compilation compilation, string outDir)
+{
+    var registry = new GlobalTypeRegistry();
+
+    // 1. Discover LOCAL types (Source code)
+    foreach (var tree in compilation.SyntaxTrees)
+    {
+        var types = Discovery.FindInSource(tree);
+        foreach(var t in types) 
+        {
+            registry.RegisterLocal(t, GetTargetIdlFile(t));
+        }
+    }
+
+    // 2. Discover EXTERNAL types (Referenced Assemblies)
+    // We only do this lazily when we find a dependency we don't know
+    
+    // 3. Resolve Dependencies
+    foreach (var localType in registry.LocalTypes)
+    {
+        foreach (var field in localType.Fields)
+        {
+            if (registry.IsLocal(field.TypeName)) continue;
+
+            // It's external. Look it up in References.
+            var mapping = ResolveExternalMapping(compilation, field.TypeName);
+            if (mapping != null)
+            {
+                // Record the dependency so we emit #include later
+                localType.AddDependency(mapping.IdlFileName);
+            }
+        }
+    }
+
+    // 4. Emit IDLs (Grouped)
+    // ... same as previous design ...
+
+    // 5. Emit Mapping Attributes (New!)
+    EmitAssemblyAttributes(registry.LocalTypes, outDir);
+}
+
+private IdlMapping? ResolveExternalMapping(Compilation comp, string fullTypeName)
+{
+    // Use Roslyn to find the symbol
+    var symbol = comp.GetTypeByMetadataName(fullTypeName);
+    if (symbol == null) return null;
+
+    // Check the assembly defining that symbol for [DdsIdlMapping] attributes
+    var attributes = symbol.ContainingAssembly.GetAttributes();
+    // Find the one matching 'fullTypeName'
+    // Return the IDL filename
+}
+```
+
+---
+
+### 5. Summary of User Experience
+
+This works exactly as you requested:
+
+1.  **Project A (Common):**
+    *   Defines `[DdsStruct] public struct Point ...`
+    *   Builds. Generates `Point.idl`.
+    *   Result: `AssemblyA.dll` contains metadata mapping `Point` -> `Point.idl`.
+
+2.  **Project B (App):**
+    *   References `Project A`.
+    *   Defines `[DdsTopic] public struct Path { public Point[] waypoints; }`
+    *   Builds.
+    *   Generator sees `Point` is external. Looks at `AssemblyA` metadata. Finds `Point.idl`.
+    *   Generates `Path.idl`:
+        ```idl
+        #include "Point.idl" // <--- Automatically added
+        module App { 
+           struct Path { ... }; 
+        };
+        ```
+    *   `idlc` compiles `Path.idl` (finding `Point.idl` in the output dir).
+
+### 6. Updates to Task List
+
+Update **FCDC-S009 (IDL Emitter)** or create **FCDC-S009b (Multi-Assembly Support)**:
+
+1.  **Attribute:** Create `DdsIdlMappingAttribute`.
+2.  **Generator:** Emit `[assembly: DdsIdlMapping]` for all generated types.
+3.  **Discovery:** Add logic to inspect `compilation.References` for these attributes.
+4.  **MSBuild:** Ensure `.idl` files are copied to Output Directory on build (critical for `idlc` to resolve includes).
+
+This makes the system truly modular and enterprise-ready.
+---
+pls give more concrete examples how the DSL definition will look like for the non trivial case (like two assemblies A and B), what IDL files will be generated, where they will be generated to and what their names will be (maybe nex to the DLLs? can we affect this? or better keep this somehow fixed?) etc. 
+---
+Here is a concrete walkthrough of a multi-assembly scenario.
+
+### The Scenario
+*   **Assembly A (`Corp.Common.dll`):** A shared library containing reusable data types.
+*   **Assembly B (`Robot.Control.dll`):** An application that defines a Topic using types from A.
+
+---
+
+### 1. Assembly A: The Shared Library
+
+**File:** `src/Corp.Common/Geometry.cs`
+Here, we define a struct. We want to override the default IDL naming to ensure it matches a legacy standard or just for cleanliness.
+
+```csharp
+using CycloneDDS.Schema;
+
+namespace Corp.Common.Geometry
+{
+    // [DdsStruct]: Marks this as serializable (but not a Topic itself).
+    // [DdsIdlFile]: Overrides the default "Geometry.idl" filename.
+    // [DdsIdlModule]: Overrides the "Corp::Common::Geometry" module hierarchy.
+    [DdsStruct]
+    [DdsIdlFile("MathDefs")] 
+    [DdsIdlModule("Math::Geo")]
+    public partial struct Point3D
+    {
+        public double X;
+        public double Y;
+        public double Z;
+    }
+}
+```
+
+#### What happens during Build (A):
+1.  **IDL Generation:** The generator creates `MathDefs.idl`.
+2.  **Metadata Injection:** The generator injects a mapping attribute into `Corp.Common.dll`.
+
+**Generated File:** `bin/Debug/net8.0/MathDefs.idl`
+```idl
+// Auto-generated from Geometry.cs
+
+module Math {
+    module Geo {
+        struct Point3D {
+            double X;
+            double Y;
+            double Z;
+        };
+    };
+};
+```
+
+**Injected Metadata (Internal code added to DLL):**
+```csharp
+[assembly: DdsIdlMapping("Corp.Common.Geometry.Point3D", "MathDefs.idl")]
+```
+
+---
+
+### 2. Assembly B: The Application
+
+**File:** `src/Robot.Control/Navigation.cs`
+This project references `Corp.Common`.
+
+```csharp
+using CycloneDDS.Schema;
+using Corp.Common.Geometry; // From Assembly A
+
+namespace Robot.Control
+{
+    // [DdsTopic]: This is a top-level DDS Topic.
+    // No [DdsIdlFile] specified -> Defaults to C# filename "Navigation.idl".
+    // No [DdsIdlModule] specified -> Defaults to C# namespace "Robot::Control".
+    [DdsTopic("Trajectory")]
+    public partial struct Trajectory
+    {
+        [DdsKey]
+        public int RobotId;
+
+        // References type from Assembly A
+        public Point3D StartPoint;
+
+        // Sequence of type from Assembly A
+        public BoundedSeq<Point3D> Waypoints;
+    }
+}
+```
+
+#### What happens during Build (B):
+1.  **Analysis:** The generator sees `Point3D`. It checks the current compilation, doesn't find it.
+2.  **Lookup:** It checks the referenced `Corp.Common.dll`. It finds `[DdsIdlMapping("...Point3D", "MathDefs.idl")]`.
+3.  **Generation:** It generates `Navigation.idl` and adds the `#include`.
+4.  **File Copying:** The build system (MSBuild targets) copies `MathDefs.idl` from Assembly A's output to Assembly B's output so the IDL compiler can find it.
+
+**Generated File:** `bin/Debug/net8.0/Navigation.idl`
+```idl
+// Auto-generated from Navigation.cs
+
+// The generator resolved this filename via the attribute in Assembly A
+#include "MathDefs.idl" 
+
+module Robot {
+    module Control {
+        struct Trajectory {
+            @key int32 RobotId;
+            
+            // Uses the module defined in Assembly A's [DdsIdlModule]
+            Math::Geo::Point3D StartPoint; 
+            
+            sequence<Math::Geo::Point3D> Waypoints;
+        };
+    };
+};
+```
+
+---
+
+### 3. Folder Structure & Output Locations
+
+To make `idlc` (the native IDL compiler) happy, simplicity is key. The easiest approach is to flatten IDL files into the output directory.
+
+**Source Structure:**
+```text
+/Solution
+  /src
+    /Corp.Common
+       Geometry.cs
+       Corp.Common.csproj
+    /Robot.Control
+       Navigation.cs
+       Robot.Control.csproj (References Corp.Common)
+```
+
+**Build Output (`/src/Robot.Control/bin/Debug/net8.0/`):**
+
+When you build Project B, the output folder will contain:
+
+1.  `Corp.Common.dll` (The managed code)
+2.  `MathDefs.idl` (Copied from A because B needs it for compilation)
+3.  `Robot.Control.dll` (The managed code)
+4.  `Navigation.idl` (Generated from B)
+5.  `Navigation.c / .h` (Generated by `idlc` from Navigation.idl)
+
+**Why this location?**
+If we scatter IDL files in source folders (`/src/`), the `idlc` command becomes a nightmare of relative paths (`-I ../../../Corp.Common/idl`). By collecting them in the `bin` folder (or an `idl` subfolder within bin), the include path is simply `-I .`.
+
+---
+
+### 4. Controlling Names and Locations
+
+You asked: *"Can we affect this? or better keep this somehow fixed?"*
+
+#### Recommendation:
+1.  **File Names:** **Allow** control via `[DdsIdlFile]`. This is essential if you are integrating with existing C++ systems that expect specific filenames (e.g., `common_types_v2.idl`).
+2.  **Module Names:** **Allow** control via `[DdsIdlModule]`. Essential for matching C++ namespaces.
+3.  **Physical Output Location:** **Keep Fixed**.
+    *   Let the generator always output to `$(IntermediateOutputPath)/idl` or `$(OutDir)`.
+    *   Do **not** allow users to define arbitrary output paths like `C:/Temp/IDL` via attributes. It breaks build portability (CI/CD).
+    *   If a user needs the IDL files elsewhere (e.g., to check into git), they should use a post-build event or a distinct MSBuild property, not a code attribute.
+
+#### Code Generator Configuration (MSBuild)
+Instead of attributes, you can control the output location via `.csproj` properties if absolutely necessary:
+
+```xml
+<PropertyGroup>
+  <!-- Default is $(OutDir) -->
+  <CycloneDdsIdlOutput>$(ProjectDir)/GeneratedIdl</CycloneDdsIdlOutput> 
+</PropertyGroup>
+```
+
+However, for the specific task of handling dependencies between A and B, **leaving them in the build output folder is the robust "Happy Path".**
+---

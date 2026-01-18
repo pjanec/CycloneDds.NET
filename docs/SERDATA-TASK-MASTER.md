@@ -18,11 +18,11 @@ This document provides the master task list for the **serdata-based** implementa
 ---
 
 
-## Overview: 6 Stages, 42 Tasks
+## Overview: 6 Stages, 43 Tasks
 
-**Total Estimated Effort:** 112-150 person-days (5.5-7.5 months with 1 developer)
+**Total Estimated Effort:** 117-157 person-days (6-8 months with 1 developer)
 
-**Critical Path:** Stage 1 → Stage 2 (+ S023, S024) → Stage 3 → **Stage 3.75** → Stage 5 (Core + Enhancements + Extended API: ~78-102 days)
+**Critical Path:** Stage 1 → Stage 2 (+ S023, S024, **S025**) → Stage 3 → **Stage 3.75** → Stage 5 (Core + Advanced IDL + Extended API: ~83-109 days)
 
 ---
 
@@ -1096,6 +1096,169 @@ if (IsManagedFieldType(field.TypeName))
     }
 }
 ```
+
+---
+
+### FCDC-S025: Advanced IDL Generation Control
+**Status:** 🔴 Not Started  
+**Priority:** **CRITICAL** (Essential for real-world DDS systems)  
+**Estimated Effort:** 5-7 days  
+**Dependencies:** FCDC-S009 (IDL Emitter exists), Stage 2 Complete
+
+**Description:**  
+Enable smart IDL file grouping, module hierarchy overrides, and cross-assembly dependency resolution. Move from "one type = one IDL" to registry-based generation with automatic `#include` handling.
+
+**Design Reference:** `ADVANCED-IDL-GENERATION-DESIGN.md`
+
+**Key Features:**
+1. **File Grouping:** Multiple types in one IDL file via `[DdsIdlFile]`
+2. **Module Override:** Match legacy IDL modules via `[DdsIdlModule]`
+3. **Smart Includes:** Auto-generate `#include` for cross-file dependencies
+4. **Cross-Assembly:** Assembly B using types from A auto-includes A's IDL
+5. **Metadata:** Bake type-to-IDL mappings into DLLs via `[DdsIdlMapping]`
+
+**Implementation Steps:**
+1. Add `DdsIdlFileAttribute` to `CycloneDDS.Schema`  
+2. Add `DdsIdlModuleAttribute` to `CycloneDDS.Schema`
+3. Add `DdsIdlMappingAttribute` (assembly-level, internal) to `CycloneDDS.Schema`
+4. Create `GlobalTypeRegistry` class (three-phase generation)
+5. Update `SchemaDiscovery.cs` to extract C# source filename
+6. Implement attribute extraction with STRICT validation
+7. Implement dependency graph resolution
+8. Refactor `CodeGenerator.cs` for multi-phase generation:
+   - Phase 1: Discovery & Mapping
+   - Phase 2: Dependency Resolution
+   - Phase 3: Grouped Emission
+9. Implement assembly metadata emission (`CycloneDDS.IdlMap.g.cs`)
+10. Implement cross-assembly type resolution via Roslyn metadata
+11. Update `IdlEmitter.cs` to support module hierarchies
+12. Add MSBuild targets for IDL file copying
+
+**Deliverables:**
+- `Src/CycloneDDS.Schema/Attributes/DdsIdlFileAttribute.cs` (NEW)
+- `Src/CycloneDDS.Schema/Attributes/DdsIdlModuleAttribute.cs` (NEW)
+- `Src/CycloneDDS.Schema/Attributes/DdsIdlMappingAttribute.cs` (NEW)
+- `tools/CycloneDDS.CodeGen/GlobalTypeRegistry.cs` (NEW)
+- Refactored `tools/CycloneDDS.CodeGen/CodeGenerator.cs` (major refactor)
+- Updated `tools/CycloneDDS.CodeGen/SchemaDiscovery.cs`
+- Updated `tools/CycloneDDS.CodeGen/IdlEmitter.cs`
+- Updated `build/CycloneDDS.targets` (IDL file handling)
+
+**Validation Logic (CRITICAL):**
+```csharp
+// Clear error messages for all invalid usage
+ValidateIdlFileName(string name):
+  - No extension (.idl)
+  - No path separators
+  - Valid file name characters only
+  
+ValidateIdlModule(string path):
+  - Use :: not . (IDL syntax vs C# syntax)
+  - Each segment must be valid IDL identifier
+  - No leading/trailing separators
+  
+ValidateExternalReference(string type):
+  - External DDS types must have [DdsIdlMapping]
+  - Clear error if type used but not found
+  
+DetectIdlNameCollision(registry):
+  - Check for duplicate IDL file::module::name combinations
+  - Clear error with resolution guidance
+```
+
+**Critical Edge Cases:**
+1. **Transitive IDL Copying:** Assembly A → B → C must copy A's IDL to C
+2. **Stale File Cleanup:** Changing [DdsIdlFile] leaves old files (document limitation)
+3. **IDL Name Collisions:** Detect when two C# types map to same IDL identity
+
+(See ADVANCED-IDL-GENERATION-DESIGN.md Section 7.5 for detailed handling)
+
+**Tests (Minimum 18):**
+- `ValidateIdlFile_WithExtension_ThrowsError`
+  - `[DdsIdlFile("Types.idl")]`
+  - Success: Error "contains extension, use Types without .idl"
+- `ValidateIdlFile_WithPath_ThrowsError`
+  - `[DdsIdlFile("../Types")]`
+  - Success: Error "contains path separators"
+- `ValidateIdlFile_InvalidChars_ThrowsError`
+  - `[DdsIdlFile("My<Type>")]`
+  - Success: Error "invalid characters"
+- `ValidateIdlModule_WithDots_ThrowsError`
+  - `[DdsIdlModule("A.B.C")]`
+  - Success: Error "uses C# syntax, use A::B::C"
+- `ValidateIdlModule_InvalidIdentifier_ThrowsError`
+  - `[DdsIdlModule("123::Name")]`
+  - Success: Error "segment '123' invalid, must start with letter"
+- `Registry_LocalType_StoresMapping`
+  - Register type with custom file/module
+  - Success: Correct mapping stored
+- `Registry_ExternalType_ResolvedViaMetadata`
+  - Reference assembly with [DdsIdlMapping]
+  - Success: External type resolved
+- `Dependencies_SameFile_NoInclude`
+  - Two types in same IDL file, one uses other
+  - Success: No #include generated
+- `Dependencies_DifferentFile_AddsInclude`
+  - Type A in File1 uses Type B in File2
+  - Success: File1.idl has `#include "File2.idl"`
+- `Dependencies_External_AddsInclude`
+  - Type uses external type from Assembly A
+  - Success: `#include "A.idl"` generated
+- `EmitIdl_MultipleModules_NestedCorrectly`
+  - `[DdsIdlModule("A::B::C")]`
+  - Success: `module A { module B { module C { ... }}}`
+- `EmitIdl_Dependencies_IncludesFirst`
+  - IDL with dependencies
+  - Success: `#include` directives at top, before modules
+- `EmitMetadata_AllTypes_Recorded`
+  - Three types generated
+  - Success: Three `[assembly: DdsIdlMapping]` attributes
+- `TwoAssemblies_BReferencesA_IncludeGenerated`
+  - Assembly A defines Point, B uses Point
+  - Success: B's IDL has `#include "A.idl"`
+- `CustomFile_MultipleTypes_SingleIdl`
+  - Three types with `[DdsIdlFile("Common")]`
+  - Success: One Common.idl with all three types
+- `CustomModule_LegacyInterop_CorrectHierarchy`
+  - C# namespace MyApp, `[DdsIdlModule("Legacy::Sys")]`
+  - Success: IDL uses Legacy::Sys hierarchy
+- `CircularDependency_Detected_ClearError`
+  - A uses B, B uses A (different files)
+  - Success: Clear error "Circular dependency: A.idl → B.idl → A.idl"
+- `IdlNameCollision_Detected_ClearError`
+  - Two C# types map to same IDL file::module::name
+  - Success: Clear error with guidance to use [DdsIdlModule]
+
+**Validation:**
+- ✅ Multiple types group into one IDL file correctly
+- ✅ Module hierarchy overrides work
+- ✅ Cross-file dependencies generate `#include`
+- ✅ Cross-assembly dependencies auto-detected
+- ✅ Assembly metadata embedded correctly
+- ✅ MSBuild copies IDL files from referenced assemblies
+- ✅ All validation errors are clear and actionable
+
+**Example Usage:**
+```csharp
+// Default: file-based grouping, namespace-based modules
+[DdsStruct]
+public partial struct Point { ... }  // → Geometry.idl, module MyApp::Math
+
+// Custom file grouping
+[DdsStruct]
+[DdsIdlFile("CommonDefs")]
+public partial struct Header { ... }  // → CommonDefs.idl
+
+// Legacy interop
+[DdsTopic("State")]
+[DdsIdlFile("LegacyCore")]
+[DdsIdlModule("LegacySys::Core")]
+public partial struct SystemState { ... }  // → LegacyCore.idl, module LegacySys::Core
+```
+
+**Cross-Assembly Example:**
+Assembly A generates `Point.idl` + metadata in DLL.
+Assembly B references A, uses Point → auto-generates `#include "Point.idl"`.
 
 ---
 
