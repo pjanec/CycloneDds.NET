@@ -17,11 +17,12 @@ This document provides the master task list for the **serdata-based** implementa
 
 ---
 
-## Overview: 5 Stages, 32 Tasks
 
-**Total Estimated Effort:** 92-120 person-days (4-5 months with 1 developer)
+## Overview: 6 Stages, 39 Tasks
 
-**Critical Path:** Stage 1 → Stage 2 → Stage 3 (Core functionality: ~55-70 days)
+**Total Estimated Effort:** 107-143 person-days (5-7 months with 1 developer)
+
+**Critical Path:** Stage 1 → Stage 2 → Stage 3 → **Stage 3.75** → Stage 5 (Core + Extended API + Sender Tracking: ~73-95 days)
 
 ---
 
@@ -1307,16 +1308,368 @@ Implement DDS instance lifecycle operations for keyed topics, enabling proper in
 
 ---
 
-## STAGE 4: XCDR2 Compliance \u0026 Evolution
+## STAGE 3.75: Extended DDS API - Modern C# Idioms
+
+**Goal:** Add essential DDS features with modern .NET idioms (async/await, events, filtering, discovery) plus optional sender tracking.
+
+**Duration:** 13-20 days (7 tasks)  
+**Status:** 🔴 Ready to Start  
+**Design References:**  
+- `docs/EXTENDED-DDS-API-DESIGN.md` - Core extended API features
+- `docs/SENDER-TRACKING-DESIGN.md` - Sender tracking specification
+
+**Strategic Position:** These features provide core DDS functionality expected by users and must be implemented BEFORE advanced evolution features (Stage 4-Deferred) and production readiness (Stage 5).
+
+**Note:** All tasks reference design documents to avoid repetition. Read design docs for full implementation details.
+
+---
+
+### FCDC-EXT01: Read vs Take with Condition Masks
+**Status:** 🔴 Not Started  
+**Priority:** **CRITICAL**  
+**Estimated Effort:** 2-3 days  
+**Dependencies:** FCDC-S021 (DdsReader exists)
+
+**Description:**  
+Add non-destructive `Read()` and state filtering to `DdsReader`. Enables "observer" patterns and precise data selection (e.g., "only unread samples").
+
+**Design Reference:** `EXTENDED-DDS-API-DESIGN.md` Section 4
+
+**Implementation Steps:**
+1. Define state enums (`DdsSampleState`, `DdsViewState`, `DdsInstanceState`) in `CycloneDDS.Runtime`
+2. Add `dds_readcdr` P/Invoke to `DdsApi.cs`
+3. Refactor `DdsReader.Take()` to use new `ReadOrTake(mask, operation)` helper
+4. Add `Read()` methods with mask parameters
+5. Update XML documentation
+
+**Deliverables:**
+- `Src/CycloneDDS.Runtime/DdsStateEnums.cs`
+- Updated `Src/CycloneDDS.Runtime/Interop/DdsApi.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsReader.cs`
+
+**Tests (Minimum 3):**
+- `Read_IsNonDestructive_CallTwice_GetSameData`
+  - Write sample, Read twice, assert identical results
+  - Success: Both reads return same data, data remains in cache
+- `Take_IsDestructive_CallTwice_SecondEmpty`
+  - Write sample, Take, Take again
+  - Success: Second Take returns 0 samples
+- `TakeWithMask_NotRead_FiltersCorrectly`
+  - Write 3 samples, Read 1st, Take(NotRead)
+  - Success: Only 2nd and 3rd samples returned
+
+**Validation:**
+- ✅ `Read()` leaves data in cache (verified by second read)
+- ✅ `Take()` removes data (verified by empty second take)
+- ✅ Masks correctly filter (verified by sample count and content)
+
+---
+
+### FCDC-EXT02: Async/Await Support (WaitDataAsync)
+**Status:** 🔴 Not Started  
+**Priority:** **CRITICAL**  
+**Estimated Effort:** 3-4 days  
+**Dependencies:** FCDC-S021 (DdsReader exists)
+
+**Description:**  
+Bridge DDS listeners to .NET `async/await` via `TaskCompletionSource`. Enables non-blocking wait for data availability without burning threads.
+
+**Design Reference:** `EXTENDED-DDS-API-DESIGN.md` Section 5
+
+**Implementation Steps:**
+1. Add listener P/Invoke (`dds_create_listener`, `dds_lset_data_available`, etc.) to `DdsApi.cs`
+2. Add `WaitDataAsync(CancellationToken)` to `DdsReader`
+3. Implement lazy listener attachment (only when `WaitDataAsync` called)
+4. Implement native callback bridge with GC pinning
+5. Add `StreamAsync()` convenience method (allocates, but idiomatic)
+6. Update `Dispose()` to cleanup listener and GCHandle
+
+**Deliverables:**
+- Updated `Src/CycloneDDS.Runtime/Interop/DdsApi.cs` (listener APIs)
+- Updated `Src/CycloneDDS.Runtime/DdsReader.cs`
+
+**Tests (Minimum 4):**
+- `WaitDataAsync_CompletesWhenDataArrives`
+  - Start wait, write data from another task
+  - Success: `WaitDataAsync` completes within 1 second
+- `WaitDataAsync_RespectsCancellation`
+  - Call with 100ms timeout, don't write data
+  - Success: Task is canceled within 200ms
+- `Polling_NoListener_NoOverhead`
+  - Only call `Take()`, never `WaitDataAsync()`
+  - Success: Verify listener is NOT created (check internal state)
+- `DisposeWithListener_NoLeaks`
+  - Call `WaitDataAsync()`, dispose reader
+  - Success: No unmanaged handles leaked (can be manual verification)
+
+**Validation:**
+- ✅ Async wait completes on data arrival
+- ✅ Cancellation works correctly
+- ✅ Listener only created when needed (lazy)
+- ✅ Proper cleanup on dispose
+
+---
+
+### FCDC-EXT03: Content Filtering (Reader-Side Predicates)
+**Status:** 🔴 Not Started  
+**Priority:** High  
+**Estimated Effort:** 1-2 days  
+**Dependencies:** FCDC-EXT01 (ViewScope infrastructure)
+
+**Description:**  
+Add client-side filtering using C# lambda expressions on `TView` struct. Filters are evaluated during `ViewScope` iteration with zero allocation overhead.
+
+**Design Reference:** `EXTENDED-DDS-API-DESIGN.md` Section 6
+
+**Implementation Steps:**
+1. Add `SetFilter(Predicate<TView>?)` method to `DdsReader`
+2. Add `_filter` field to `ViewScope` (passed from reader)
+3. Update `ViewScope.Enumerator.MoveNext()` to skip filtered samples
+4. Add XML documentation
+5. No P/Invoke changes required
+
+**Deliverables:**
+- Updated `Src/CycloneDDS.Runtime/DdsReader.cs`
+- Updated `Src/CycloneDDS.Runtime/ViewScope.cs`
+
+**Tests (Minimum 3):**
+- `Filter_Applied_OnlyMatchingSamples`
+  - Write samples with values 1, 5, 10
+  - Set filter `view.Value > 3`
+  - Success: Iteration yields only 5, 10
+- `Filter_UpdatedAtRuntime_NewFilterApplied`
+  - Initial filter: `view.Value > 5`
+  - Take samples, verify filtered
+  - Update filter: `view.Value < 8`
+  - Take again, verify new filter applied
+- `Filter_Null_AllSamplesReturned`
+  - Set filter to `view.Value > 100`
+  - Set filter to `null`
+  - Success: All samples visible in iteration
+
+**Validation:**
+- ✅ Filter predicates execute during iteration
+- ✅ Filter updates are thread-safe (atomic assignment)
+- ✅ Zero allocation overhead (no intermediate collections)
+- ✅ JIT inlining verified for simple predicates
+
+---
+
+### FCDC-EXT04: Status & Discovery (Events)
+**Status:** 🔴 Not Started  
+**Priority:** High  
+**Estimated Effort:** 2-3 days  
+**Dependencies:** FCDC-EXT02 (async infrastructure), FCDC-S020, FCDC-S021
+
+**Description:**  
+Map DDS status callbacks to C# `event EventHandler<TStatus>`. Expose connectivity (PublicationMatched, SubscriptionMatched) and health (LivelinessChanged) monitoring. Add `WaitForReaderAsync()` helper.
+
+**Design Reference:** `EXTENDED-DDS-API-DESIGN.md` Section 7
+
+**Implementation Steps:**
+1. Define status structs (`DdsPublicationMatchedStatus`, `DdsSubscriptionMatchedStatus`, etc.) in `DdsApi.cs`
+2. Add status listener P/Invoke (`dds_lset_publication_matched`, `dds_get_publication_matched_status`, etc.)
+3. Add `PublicationMatched` event and `PublicationMatchedStatus` property to `DdsWriter`
+4. Add `SubscriptionMatched` and `LivelinessChanged` events to `DdsReader`
+5. Implement `WaitForReaderAsync(TimeSpan)` using event + TaskCompletionSource pattern
+6. Add lazy listener attachment logic (reuse pattern from FCDC-EXT02)
+
+**Deliverables:**
+- Updated `Src/CycloneDDS.Runtime/Interop/DdsApi.cs` (status structs and APIs)
+- Updated `Src/CycloneDDS.Runtime/DdsWriter.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsReader.cs`
+
+**Tests (Minimum 4):**
+- `PublicationMatched_EventFires_OnReaderCreation`
+  - Create writer, subscribe to event, create reader
+  - Success: Event fires with `CurrentCount = 1`
+- `WaitForReaderAsync_CompletesOnDiscovery`
+  - Start wait, create reader from another task
+  - Success: Task completes within 2 seconds
+- `PublicationMatched_EventFires_OnReaderDispose`
+  - Writer with reader, dispose reader
+  - Success: Event fires with `CurrentCountChange < 0`
+- `SubscriptionMatched_CurrentCount_Accurate`
+  - Reader, create 2 writers, dispose 1
+  - Success: CurrentCount progresses 0→2→1
+
+**Validation:**
+- ✅ Events fire correctly on discovery/loss
+- ✅ `WaitForReaderAsync` solves "lost first message" problem
+- ✅ `CurrentCount` tracks active connections accurately
+
+---
+
+### FCDC-EXT05: Instance Management (Keyed Topics)
+**Status:** 🔴 Not Started  
+**Priority:** Medium  
+**Estimated Effort:** 2-3 days  
+**Dependencies:** FCDC-EXT01 (Read/Take infrastructure), FCDC-S020, FCDC-S021
+
+**Description:**  
+Enable O(1) lookup and filtering by instance handle for keyed topics. Critical for systems tracking many objects (e.g., fleet management, air traffic control).
+
+**Design Reference:** `EXTENDED-DDS-API-DESIGN.md` Section 8
+
+**Implementation Steps:**
+1. Create `DdsInstanceHandle` struct in `CycloneDDS.Runtime`
+2. Add instance P/Invoke (`dds_lookup_instance`, `dds_take_instance`, `dds_read_instance`) to `DdsApi.cs`
+3. Implement `DdsReader.LookupInstance(in T keySample)` using temporary serdata
+4. Implement `DdsReader.TakeInstance(handle, maxSamples)`
+5. Implement `DdsReader.ReadInstance(handle, maxSamples)`
+6. Add internal `ReadOrTakeInstance` helper
+
+**Deliverables:**
+- `Src/CycloneDDS.Runtime/DdsInstanceHandle.cs`
+- Updated `Src/CycloneDDS.Runtime/Interop/DdsApi.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsReader.cs`
+
+**Tests (Minimum 3):**
+- `LookupInstance_ReturnsValidHandle`
+  - Write sample with `Id=5`
+  - Lookup with key `{Id=5}`
+  - Success: Returns non-Nil handle
+- `TakeInstance_OnlyReturnsMatchingData`
+  - Write `Id=1` and `Id=2`
+  - Lookup handle for `Id=1`, TakeInstance
+  - Success: Only `Id=1` returned, `Id=2` remains in cache
+- `LookupInstance_UnknownKey_ReturnsNil`
+  - Never written `Id=999`
+  - Lookup `{Id=999}`
+  - Success: Returns `DdsInstanceHandle.Nil`
+
+**Validation:**
+- ✅ Lookup returns correct handles
+- ✅ Instance-specific take filters correctly (O(1) access)
+- ✅ Unknown instances return Nil handle
+
+---
+
+### FCDC-EXT06: Sender Tracking Infrastructure
+**Status:** 🔴 Not Started  
+**Priority:** Medium  
+**Estimated Effort:** 2-3 days  
+**Dependencies:** FCDC-S020 (DdsWriter), FCDC-S021 (DdsReader), FCDC-EXT02 (Async/Await)
+
+**Description:**  
+Implement optional sender tracking feature allowing attribution of each received sample to its source application instance (AppDomainId, AppInstanceId, ComputerName, ProcessName, ProcessId).
+
+**Design Reference:** `SENDER-TRACKING-DESIGN.md` (full specification)
+
+**Implementation Steps:**
+1. Define `DdsGuid` struct (16-byte DDS GUID wrapper) in `DdsApi.cs`
+2. Define `SenderIdentity` struct in `CycloneDDS.Runtime.Tracking`
+3. Define `SenderIdentityConfig` record
+4. Create `SenderRegistry` class (background identity cache + correlation)
+5. Add P/Invoke: `dds_get_guid`, `dds_get_matched_publications`, `dds_get_matched_publication_data`, `dds_free`
+6. Implement background async monitoring of identity topic
+
+**Deliverables:**
+- `Src/CycloneDDS.Runtime/Tracking/SenderIdentity.cs`
+- `Src/CycloneDDS.Runtime/Tracking/SenderIdentityConfig.cs`
+- `Src/CycloneDDS.Runtime/Tracking/SenderRegistry.cs`
+- Updated `Src/CycloneDDS.Runtime/Interop/DdsApi.cs`
+
+**Tests (Minimum 5):**
+- `IdentityPublishing_WriterCreated_PublishesSenderInfo`
+  - Enable tracking with config, create writer
+  - Success: SenderIdentity published with correct AppDomainId, ProcessId
+- `IdentityCache_RemoteIdentity_CachedInRegistry`
+  - Two participants, enable tracking on both
+  - Success: Registry caches remote participant's identity
+- `HandleCorrelation_PublicationHandle_MapsToIdentity`
+  - Receive data from remote writer
+  - Success: PublicationHandle maps to correct SenderIdentity
+- `GetSender_O1Lookup_FastPerformance`
+  - Benchmark `GetSender(index)` call
+  - Success: < 10ns per lookup (dictionary access)
+- `DisabledOverhead_TrackingOff_ZeroImpact`
+  - Don't call EnableSenderTracking
+  - Success: No listeners created, no overhead
+
+**Validation:**
+- ✅ Identity topic uses TransientLocal (late joiners work)
+- ✅ O(1) lookup performance verified
+- ✅ Zero overhead when feature disabled
+
+---
+
+### FCDC-EXT07: Sender Tracking Integration
+**Status:** 🔴 Not Started  
+**Priority:** Medium  
+**Estimated Effort:** 1-2 days  
+**Dependencies:** FCDC-EXT06 (Sender tracking infrastructure)
+
+**Description:**  
+Integrate sender tracking into DdsParticipant, DdsWriter, DdsReader, and ViewScope APIs.
+
+**Design Reference:** `SENDER-TRACKING-DESIGN.md` Sections 6, 7, 8
+
+**Implementation Steps:**
+1. Add `EnableSenderTracking(SenderIdentityConfig)` to `DdsParticipant`
+2. Add internal `RegisterWriter()`/`UnregisterWriter()` to `DdsParticipant`
+3. Update `DdsWriter` constructor/dispose to call registration hooks
+4. Add `EnableSenderTracking(SenderRegistry)` to `DdsReader`
+5. Hook `SubscriptionMatched` event in reader to register remote writers
+6. Add `GetSender(int index)` to `ViewScope<TView>`
+7. Add private `_registry` field to `ViewScope`
+
+**Deliverables:**
+- Updated `Src/CycloneDDS.Runtime/DdsParticipant.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsWriter.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsReader.cs`
+- Updated `Src/CycloneDDS.Runtime/ViewScope.cs`
+
+**Tests (Minimum 3):**
+- `SenderTracking_MultiProcess_CorrectIdentity`
+  - Two processes with different AppDomainIds
+  - Process A sends data, Process B receives
+  - Success: B's `GetSender()` returns A's identity
+- `SenderTracking_LateJoiner_TransientLocalWorks`
+  - Start sender, publish identity, then start receiver
+  - Success: Receiver retrieves sender identity from history
+- `SenderTracking_MultiInstance_ProcessIdDisambiguates`
+  - Same AppDomainId, different ProcessId
+  - Success: ProcessId correctly distinguishes instances
+
+**Validation:**
+- ✅ GetSender() returns correct identity for all samples
+- ✅ Thread-safe concurrent access
+- ✅ Late joiner scenario works (TransientLocal)
+
+---
+
+### Stage 3.75 Success Criteria
+
+**Functional:**
+- ✅ All 25 tests pass (17 extended API + 8 sender tracking)
+- ✅ No breaking changes to existing APIs
+- ✅ All new APIs work with zero-copy core
+
+**Performance:**
+- ✅ Zero-Copy path remains allocation-free
+- ✅ Async overhead only when WaitDataAsync used
+- ✅ Content filtering has minimal overhead (JIT inlining)
+- ✅ Sender tracking O(1) lookups (<10ns)
+
+**Usability:**
+- ✅ APIs feel natural to C# developers
+- ✅ Common patterns require minimal code
+- ✅ Opt-in features have zero overhead when disabled
+
+---
+
+##STAGE 4: XCDR2 Compliance & Evolution (DEFERRED)
 
 **Goal:** Full XCDR2 appendable support with schema evolution.
 
 **Duration:** 10-14 days  
-**Status:** 🔵 Blocked (depends on Stage 3)
+**Status:** 🔵 Deferred (Stage 3.75 takes priority)
+**Note:** Stage 3.75 Extended API features are now higher priority than evolution support.
 
 ### FCDC-S023: DHEADER Fast/Robust Path Optimization
 **Status:** 🔴 Not Started  
-**Priority:** High  
+**Priority:** Medium (downgraded from High)  
 **Estimated Effort:** 3-4 days  
 **Dependencies:** FCDC-S012, **FCDC-S022**
 

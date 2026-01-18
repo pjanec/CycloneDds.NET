@@ -87,6 +87,43 @@
 
 ---
 
+## Stage 3.75: Extended DDS API - Modern C# Idioms 🔴
+
+**Goal:** Essential DDS features with async/await, events, filtering, discovery, sender tracking  
+**Status:** 🔴 **READY TO START**  
+**Design:**  
+- [Extended DDS API Design](../docs/EXTENDED-DDS-API-DESIGN.md)  
+- [Sender Tracking Design](../docs/SENDER-TRACKING-DESIGN.md)  
+**Priority:** **HIGH** (comes before Stage 4-Deferred and Stage 5)
+
+**Strategic Note:** These features represent core DDS functionality that users expect in a complete implementation. They provide the foundation for modern, production-ready .NET applications using DDS.
+
+- [ ] **FCDC-EXT01** Read vs Take with Condition Masks → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext01-read-vs-take-with-condition-masks) 🔴 **CRITICAL**
+- [ ] **FCDC-EXT02** Async/Await Support (WaitDataAsync) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext02-asyncawait-support-waitdataasync) 🔴 **CRITICAL**
+- [ ] **FCDC-EXT03** Content Filtering (Reader-Side Predicates) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext03-content-filtering-reader-side-predicates) 🟡 **HIGH**
+- [ ] **FCDC-EXT04** Status & Discovery (Events) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext04-status--discovery-events) 🟡 **HIGH**
+- [ ] **FCDC-EXT05** Instance Management (Keyed Topics) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext05-instance-management-keyed-topics) 🟢 **MEDIUM**
+- [ ] **FCDC-EXT06** Sender Tracking Infrastructure → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext06-sender-tracking-infrastructure) 🟢 **MEDIUM**
+- [ ] **FCDC-EXT07** Sender Tracking Integration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext07-sender-tracking-integration) 🟢 **MEDIUM**
+
+**Key Features:**
+- Non-destructive Read() with state masks (DdsSampleState, DdsViewState, DdsInstanceState)
+- Modern async/await pattern (WaitDataAsync, StreamAsync)
+- Lambda-based content filtering (SetFilter with Predicate<TView>) - JIT optimized
+- Discovery events (PublicationMatched, SubscriptionMatched, LivelinessChanged)
+- O(1) keyed topic lookups (LookupInstance, TakeInstance)
+- Optional sender tracking (AppDomainId, ProcessId, ComputerName per sample) - zero overhead when disabled
+
+**Success Criteria:**
+- ✅ All 25 new tests pass (17 extended API + 8 sender tracking)
+- ✅ Zero-Copy path remains allocation-free
+- ✅ No breaking changes to existing APIs
+- ✅ Opt-in features have zero overhead when disabled
+
+**Total Estimated Effort:** 13-20 days (7 tasks)
+
+---
+
 ## Stage 4-Deferred: XCDR2 Compliance 🔵
 
 **Goal:** Full XCDR2 appendable support with schema evolution  
@@ -214,19 +251,24 @@
 
 ## Progress Statistics
 
-**Total Tasks:** 32  
-**Completed:** 14 tasks (FCDC-S001 through S014) ✅  
-**In Progress:** 1 task (FCDC-S016) ⏳  
-**Deferred:** 1 task (FCDC-S015)  
-**Remaining:** 16 tasks
+**Total Tasks:** 39 (32 original + 5 extended API + 2 sender tracking)  
+**Completed:** 27 tasks ✅  
+**Remaining:** 12 tasks (7 in Stage 3.75 + 2 in Stage 4-Deferred + 3 in Stage 5)
 
-**Test Count:** 118 passing tests (57 Core + 10 Schema + 51 CodeGen)  
-**Validation Gates Passed:** 2/3 (Golden Rig ✅, Union Interop ✅, Optional EMHEADER ✅)
+**Current Focus:** Stage 3.75 - Extended DDS API + Sender Tracking (🔴 Ready to Start)
 
-**Estimated Progress:** ~44% complete  
+**Test Count:** ~170 passing tests (estimated with BATCH-15.x)  
+**Validation Gates Passed:** 3/3 (Golden Rig ✅, Union Interop ✅, Optional EMHEADER ✅)
+
+**Estimated Progress:** ~69% complete (27/39 tasks)  
 - Stage 1: 100% ✅ (5/5 tasks)
-- Stage 2: 78% ⏳ (11/14 tasks, S016 in progress, S015 deferred)
-- Stage 3-5: 0% 🔵
+- Stage 2: 100% ✅ (14/14 tasks)
+- Stage 3: 100% ✅ (7/7 tasks)
+- Stage 3.5: 100% ✅ (1/1 task)
+- Stage 4 (Performance): 100% ✅ (4/4 tasks)
+- **Stage 3.75 (Extended API + Sender Tracking): 0% 🔴 (0/7 tasks) ← NEXT**
+- Stage 4-Deferred: 50% (1/2 already implemented)
+- Stage 5: 0% 🔵 (0/3 tasks)
 
 **Milestones Achieved:**
 - 🎉 Union support VERIFIED with byte-perfect C/C# interop

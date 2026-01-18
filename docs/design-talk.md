@@ -5409,3 +5409,3074 @@ writer.Unregister(new RobotState { RobotID = 5 });
 writer.Dispose();
 ```
 ----
+
+
+
+My api is now very basic. I would like to incorporate more of dds features. For example read in addition to take, with flags/masks. Filtering on dds level (if it makes sense). Events (listening) vs polling. Waiting for subscribers being discovered and similar. I need it in elegant, csharp idiomatic way, with clean api that does not get in the way if not needed. Pls check what orher dds api and features are worth including.
+---
+This is the right time to expand the API. You have the "Fast" core (Zero-Copy/Serdata), now you need the "DDS" features (QoS, State, Discovery) exposed in a way that feels like modern C# (.NET 8+).
+
+Here is a proposal for the **Extended API Design**, categorized by feature.
+
+---
+
+### 1. Read vs. Take & State Masks
+**Concept:** `Take` removes data from the Reader's cache (destructive). `Read` copies it but leaves it there (non-destructive). You also need to filter by state (e.g., "Give me only unread data").
+
+**Design:**
+Use C# `[Flags]` enums for masks, but provide reasonable defaults.
+
+```csharp
+// 1. Define idiomatic Flags
+[Flags]
+public enum DdsSampleState { Read = 1, NotRead = 2, Any = Read | NotRead }
+
+[Flags]
+public enum DdsViewState { New = 1, NotNew = 2, Any = New | NotNew }
+
+[Flags]
+public enum DdsInstanceState { Alive = 1, NotAliveDisposed = 2, NotAliveNoWriters = 4, Any = 7 }
+
+// 2. Add to DdsReader
+public class DdsReader<T, TView> : IDisposable
+{
+    // Existing (defaults to ANY state)
+    public ViewScope<TView> Take(int maxSamples = 32);
+
+    // New: Overload with masks
+    public ViewScope<TView> Take(
+        int maxSamples, 
+        DdsSampleState sampleState, 
+        DdsViewState viewState = DdsViewState.Any, 
+        DdsInstanceState instanceState = DdsInstanceState.Any);
+
+    // New: Read (Non-destructive)
+    // Note: 'Read' cannot support Zero-Copy if the middleware recycles buffers immediately,
+    // but in Cyclone, 'Read' increases refcount on serdata, so Zero-Copy 'Read' IS possible!
+    public ViewScope<TView> Read(
+        int maxSamples = 32,
+        DdsSampleState sampleState = DdsSampleState.Any, 
+        DdsViewState viewState = DdsViewState.Any, 
+        DdsInstanceState instanceState = DdsInstanceState.Any);
+}
+```
+
+**Usage:**
+```csharp
+// Get only new data that hasn't been read before
+using var scope = reader.Take(32, DdsSampleState.NotRead);
+```
+
+---
+
+### 2. Async/Await (The "WaitSet" replacement)
+**Concept:** DDS uses `WaitSets` (blocking). C# uses `async/await`. We should bridge this so you don't block threads efficiently.
+
+**Design:**
+Do **not** use C# Events (`reader.DataAvailable += ...`) for high-frequency data. It causes "Event Storms" and GC pressure. Use **`IAsyncEnumerable`** or `WaitAsync`.
+
+```csharp
+public class DdsReader<T, TView>
+{
+    // 1. Low-level Async Wait
+    // Returns true when data is available, false on timeout/cancel
+    public ValueTask<bool> WaitDataAsync(TimeSpan timeout, CancellationToken ct = default);
+
+    // 2. High-level Async Stream (C# 8.0)
+    // This allows: await foreach (var batch in reader.Stream())
+    public IAsyncEnumerable<ViewScope<TView>> StreamAsync(CancellationToken ct = default);
+}
+```
+
+**Implementation Strategy:**
+Internally, you can use a `dds_waitset` attached to the `dds_reader`. However, mapping `dds_waitset_wait` (blocking C call) to `Task` requires a thread or `ThreadPool.RegisterWaitForSingleObject`.
+*   *Optimization:* For the "Fast" binding, allow the user to polling-wait or provide a `WaitHandle` (ReaderGuard condition).
+
+**Usage:**
+```csharp
+// Efficient, non-blocking consumer loop
+while (await reader.WaitDataAsync(TimeSpan.FromSeconds(1)))
+{
+    using var scope = reader.Take();
+    // Process...
+}
+```
+
+---
+
+### 3. Content Filtering (DDS Level)
+**Concept:** Let the Publisher filter data *before* sending it to the Subscriber (saving bandwidth and CPU).
+
+**Design:**
+DDS uses SQL-like syntax (`x > 5`). C# uses LINQ. Mapping LINQ `Expression` to SQL strings is complex and error-prone. Stick to SQL strings but make it type-safe where possible.
+
+```csharp
+public class DdsTopic<T>
+{
+    // Create a filtered topic derived from this topic
+    public DdsTopic<T> CreateContentFilter(string name, string expression, params string[] parameters);
+}
+```
+
+**Usage:**
+```csharp
+// Standard Topic
+var topic = participant.CreateTopic<SensorData>("Sensors");
+
+// Filtered Topic (DDS does the work)
+// "val" must match field name in IDL
+var criticalTopic = topic.CreateContentFilter("CriticalSensors", "value > %0", "50.0"); 
+
+// Create reader on the FILTERED topic
+var reader = new DdsReader<SensorData>(participant, criticalTopic);
+```
+
+---
+
+### 4. Status & Discovery (Events)
+**Concept:** You need to know when a Writer finds a Reader ("Match"), or when Liveliness is lost. Since these are low-frequency events, C# Events are acceptable here.
+
+**Design:**
+Expose the `dds_status` bits via a typed API.
+
+```csharp
+public class DdsWriter<T>
+{
+    // Property to check current status
+    public PublicationMatchedStatus PublicationMatchedStatus { get; }
+
+    // Event for status changes (Low frequency)
+    public event EventHandler<PublicationMatchedStatus> PublicationMatched;
+    
+    // Async wait for discovery
+    public Task WaitForReaderAsync(TimeSpan timeout);
+}
+
+public class DdsReader<T>
+{
+    public SubscriptionMatchedStatus SubscriptionMatchedStatus { get; }
+    public event EventHandler<LivelinessChangedStatus> LivelinessChanged;
+}
+```
+
+**Usage:**
+```csharp
+var writer = new DdsWriter<T>(...);
+
+// Block (async) until at least one subscriber is found
+await writer.WaitForReaderAsync(TimeSpan.FromSeconds(10));
+```
+
+---
+
+### 5. Instance Management (Keyed Lookups)
+**Concept:** For keyed topics (e.g., specific `Id`), you often want to read the history of *just that instance*.
+
+**Design:**
+Cyclone uses Instance Handles.
+
+```csharp
+public class DdsReader<T, TView>
+{
+    // Lookup handle by key fields
+    public long LookupInstance(in T keySample);
+
+    // Read specific instance
+    public ViewScope<TView> TakeInstance(long instanceHandle, int maxSamples = 32);
+}
+```
+
+---
+
+### Summary of Recommended Priorities
+
+1.  **Read vs Take (High Value, Low Cost):** Easy P/Invoke change. Critical for "Observer" patterns.
+2.  **`WaitDataAsync` (High Value):** Essential for modern .NET apps. Don't rely on `Thread.Sleep` loops in production.
+3.  **Discovery (`WaitForReader`):** Crucial for integration tests and startup logic (avoiding the "lost first message" problem).
+4.  **Content Filtering (Medium):** Great feature, but `dds_create_contentfilteredtopic` is strict about SQL syntax. Implement as a string pass-through first.
+
+### What to Avoid (Anti-Patterns)
+
+*   **`IEnumerable<T>` for Data:** Do not implement `IEnumerable` on the Reader itself. It implies lazy evaluation which doesn't fit DDS "History" semantics well. Use `Take()` which returns a scoped collection.
+*   **Reactive Extensions (`IObservable`) inside the core:** Keep `System.Reactive` out of the core library to keep dependencies light. You can write a wrapper extension method later.
+*   **Magic LINQ Providers:** Don't try to translate `reader.Where(x => x.Id > 5)` into DDS SQL yet. It's a rabbit hole. Stick to string filters.
+
+### Example: The "Elegant" Result
+
+```csharp
+// Setup
+var topic = participant.CreateTopic<MarketData>("Stocks");
+var filteredTopic = topic.CreateContentFilter("HighValue", "price > 100.0");
+using var reader = new DdsReader<MarketData>(participant, filteredTopic);
+
+// Async Loop
+Console.WriteLine("Waiting for market data...");
+while (await reader.WaitDataAsync(TimeSpan.FromSeconds(5)))
+{
+    // Zero-Copy Read, only unread samples
+    using var scope = reader.Take(32, DdsSampleState.NotRead);
+    
+    foreach (var view in scope)
+    {
+        Console.WriteLine($"Stock: {view.Symbol}, Price: {view.Price}");
+    }
+}
+```
+---
+Pls lets go one by one. Provide more details on the solution. Start with read vs take.
+---
+Here is the detailed design and implementation plan for **Part 1: Read vs. Take with Condition Masks**.
+
+This adds non-destructive reading (`Read`) and precise data filtering (e.g., "Only give me data I haven't seen yet"), which is essential for efficient event processing loops.
+
+### 1. Design Rationale
+
+*   **Take (Destructive):** Removes data from the Reader's history cache. Used when you process data once and discard it (most common).
+*   **Read (Non-Destructive):** accessing data but leaving it in history. Used for "State" data (e.g., getting the last known position of a robot without removing it for other consumers in the same process).
+*   **Masks:** DDS allows filtering by 3 independent states. We will map these to C# `[Flags]` enums for idiomatic usage.
+
+---
+
+### 2. Implementation Steps
+
+#### Step A: Define State Enums
+We need to define the standard DDS constants. These should go in `CycloneDDS.Runtime` (or Schema if shared).
+
+**Values derived from standard DDS specification:**
+
+```csharp
+namespace CycloneDDS.Runtime
+{
+    [Flags]
+    public enum DdsSampleState : uint
+    {
+        Read = 0x0001,
+        NotRead = 0x0002,
+        Any = Read | NotRead
+    }
+
+    [Flags]
+    public enum DdsViewState : uint
+    {
+        New = 0x0004,
+        NotNew = 0x0008,
+        Any = New | NotNew
+    }
+
+    [Flags]
+    public enum DdsInstanceState : uint
+    {
+        Alive = 0x0010,
+        NotAliveDisposed = 0x0020,
+        NotAliveNoWriters = 0x0040,
+        NotAlive = NotAliveDisposed | NotAliveNoWriters,
+        Any = Alive | NotAlive
+    }
+}
+```
+
+#### Step B: Update P/Invoke (`DdsApi.cs`)
+We need to expose `dds_readcdr` (if available) or the generic `dds_read` that accepts the serdata mask. In Cyclone, `dds_readcdr` mirrors `dds_takecdr`.
+
+*Check:* `dds_takecdr` uses `ddsi_serdata`. We need the equivalent read function.
+*Cyclone Export:* `dds_readcdr` is the symbol.
+
+```csharp
+// In DdsApi.cs
+[DllImport(DLL_NAME)]
+public static extern int dds_readcdr(
+    int reader, // Entity handle
+    [In, Out] IntPtr[] samples, 
+    uint maxs,
+    [In, Out] DdsSampleInfo[] infos, 
+    uint mask);
+```
+
+#### Step C: Update `DdsReader.cs`
+We will refactor the existing `Take` logic into a private helper `ReadOrTake` to avoid code duplication, as the logic is identical except for the native function call.
+
+```csharp
+public sealed class DdsReader<T, TView> : IDisposable where TView : struct
+{
+    // ... existing fields ...
+
+    // 1. Existing simplified Take
+    public ViewScope<TView> Take(int maxSamples = 32)
+    {
+        return Take(maxSamples, DdsSampleState.Any, DdsViewState.Any, DdsInstanceState.Any);
+    }
+
+    // 2. Full Take with Masks
+    public ViewScope<TView> Take(
+        int maxSamples,
+        DdsSampleState sampleState,
+        DdsViewState viewState = DdsViewState.Any,
+        DdsInstanceState instanceState = DdsInstanceState.Any)
+    {
+        uint mask = (uint)sampleState | (uint)viewState | (uint)instanceState;
+        return ReadOrTake(maxSamples, mask, DdsApi.dds_takecdr);
+    }
+
+    // 3. New Read with Masks
+    public ViewScope<TView> Read(
+        int maxSamples = 32,
+        DdsSampleState sampleState = DdsSampleState.Any,
+        DdsViewState viewState = DdsViewState.Any,
+        DdsInstanceState instanceState = DdsInstanceState.Any)
+    {
+        uint mask = (uint)sampleState | (uint)viewState | (uint)instanceState;
+        return ReadOrTake(maxSamples, mask, DdsApi.dds_readcdr);
+    }
+
+    // 4. Shared Implementation
+    private ViewScope<TView> ReadOrTake(int maxSamples, uint mask, Func<int, IntPtr[], uint, DdsApi.DdsSampleInfo[], uint, int> operation)
+    {
+        if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T, TView>));
+
+        var samples = ArrayPool<IntPtr>.Shared.Rent(maxSamples);
+        var infos = ArrayPool<DdsApi.DdsSampleInfo>.Shared.Rent(maxSamples);
+        
+        // Ensure clean state
+        Array.Clear(samples, 0, maxSamples);
+        
+        // Execute Native Call (Read or Take)
+        int count = operation(
+            _readerHandle.NativeHandle.Handle,
+            samples,
+            (uint)maxSamples,
+            infos,
+            mask);
+
+        if (count < 0)
+        {
+            ArrayPool<IntPtr>.Shared.Return(samples);
+            ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(infos);
+            
+            if (count == (int)DdsApi.DdsReturnCode.NoData)
+            {
+                return new ViewScope<TView>(_readerHandle.NativeHandle, null, null, 0, null);
+            }
+            throw new DdsException((DdsApi.DdsReturnCode)count, "DDS Read/Take operation failed");
+        }
+
+        return new ViewScope<TView>(_readerHandle.NativeHandle, samples, infos, count, _deserializer);
+    }
+}
+```
+
+---
+
+### 3. Usage Examples (Idiomatic C#)
+
+The default parameters make the API clean for simple cases, while `[Flags]` make complex filtering readable.
+
+**Scenario 1: Simple Consumer (Existing behavior)**
+```csharp
+// Just give me everything
+using var scope = reader.Take(); 
+```
+
+**Scenario 2: "New Data Only" (Common optimization)**
+Ignore data we have already processed (even if we didn't remove it).
+```csharp
+// Reads only samples marked as 'NotRead'
+using var scope = reader.Take(32, DdsSampleState.NotRead);
+```
+
+**Scenario 3: Monitoring / Inspector (Non-Destructive)**
+Peek at the current state without disturbing the main consumer.
+```csharp
+// Read what's currently Alive (ignore disposed instances)
+using var scope = reader.Read(10, DdsSampleState.Any, DdsViewState.Any, DdsInstanceState.Alive);
+
+foreach(var item in scope) { ... }
+// Data remains in DDS cache after scope dispose!
+```
+
+**Scenario 4: Detecting Disconnected Publishers**
+```csharp
+// Check specifically for instances where the writer has left
+using var scope = reader.Take(32, DdsSampleState.Any, DdsViewState.Any, DdsInstanceState.NotAliveNoWriters);
+
+foreach(var info in scope.Infos) {
+    Console.WriteLine($"Instance {info.InstanceHandle} lost ownership/writer");
+}
+```
+
+### 4. Implementation Tasks
+
+Add these to your `SERDATA-TASK-MASTER.md` as immediate priorities.
+
+1.  **Define Enums (`DdsSampleState`, etc.)**
+2.  **Add `dds_readcdr` to P/Invoke**.
+3.  **Refactor `DdsReader` to use `ReadOrTake` delegate pattern.**
+4.  **Add Unit Test:** Verify `Read()` does not remove data (call Read twice, get same data).
+5.  **Add Unit Test:** Verify `Take(NotRead)` filters correctly.
+
+---
+Pls next, async await now
+---
+This moves us from "Polling" to "Event-Driven" processing, bridging the gap between DDS's real-time mechanisms and .NET's Task-based Asynchrony Protocol (TAP).
+
+Here is the design and implementation for **Part 2: Async/Await Support (`WaitDataAsync`)**.
+
+### 1. Design Rationale
+
+**The Challenge:**
+DDS uses **WaitSets** (blocking threads) or **Listeners** (callbacks). .NET uses **`Task`** (futures).
+To make `await reader.WaitDataAsync()` work without burning a dedicated thread per reader, we must use the **Listener** mechanism to trigger a `TaskCompletionSource`.
+
+**The constraints:**
+1.  **Zero-Copy limitation:** We cannot return `IAsyncEnumerable<ViewScope>` because `ViewScope` is a `ref struct` and cannot be a generic argument.
+2.  **Efficiency:** We should only hook the listener when someone is actually awaiting, to avoid overhead when polling.
+
+---
+
+### 2. Implementation Steps
+
+#### Step A: P/Invoke for Listeners
+We need the API to attach a callback to the reader.
+
+**Add to `DdsApi.cs`:**
+```csharp
+// Delegate for the native callback
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+public delegate void DdsOnDataAvailable(IntPtr entity, IntPtr arg);
+
+// Listener management
+[DllImport(DLL_NAME)]
+public static extern IntPtr dds_create_listener(IntPtr arg);
+
+[DllImport(DLL_NAME)]
+public static extern void dds_delete_listener(IntPtr listener);
+
+[DllImport(DLL_NAME)]
+public static extern void dds_lset_data_available(IntPtr listener, DdsOnDataAvailable callback);
+
+[DllImport(DLL_NAME)]
+public static extern int dds_set_listener(IntPtr entity, IntPtr listener);
+```
+
+#### Step B: DdsReader Async Implementation
+We add a `TaskCompletionSource` that serves as the "signal".
+
+**Update `DdsReader.cs`:**
+
+```csharp
+public sealed class DdsReader<T, TView> : IDisposable where TView : struct
+{
+    // ... existing fields ...
+    
+    // Async Infrastructure
+    private TaskCompletionSource<bool>? _dataAvailableTcs;
+    private IntPtr _listener;
+    private GCHandle _gcHandle; // Keeps 'this' alive for the callback
+    private readonly DdsApi.DdsOnDataAvailable _onDataAvailableDelegate; // Prevent GC collection of delegate
+
+    // Constructor additions
+    public DdsReader(...) 
+    {
+        // ... existing setup ...
+
+        // Prepare the delegate (but don't attach listener yet)
+        _onDataAvailableDelegate = OnDataAvailableNative;
+    }
+
+    // 1. The Async Wait Method
+    public ValueTask<bool> WaitDataAsync(CancellationToken ct = default)
+    {
+        // Optimization: Fast check if data is ALREADY there
+        // (Uses dds_readcdr with max_samples=0 to peek status)
+        // If Cyclone doesn't support 0-read efficiently, we can skip this or track status.
+        // For now, let's assume we wait.
+
+        if (ct.IsCancellationRequested) return ValueTask.FromCanceled<bool>(ct);
+
+        // Reset TCS
+        if (_dataAvailableTcs == null || _dataAvailableTcs.Task.IsCompleted)
+        {
+            _dataAvailableTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        // Ensure Listener is attached
+        EnsureListenerAttached();
+
+        // Register cancellation
+        var registration = ct.Register(() => _dataAvailableTcs.TrySetCanceled());
+
+        // Return the task
+        return new ValueTask<bool>(_dataAvailableTcs.Task.ContinueWith(t => 
+        {
+            registration.Dispose();
+            return t.Result;
+        }, TaskContinuationOptions.ExecuteSynchronously));
+    }
+
+    // 2. Listener Attachment (Lazy)
+    private void EnsureListenerAttached()
+    {
+        if (_listener != IntPtr.Zero) return;
+
+        // Pin 'this' so we can pass it to native code
+        _gcHandle = GCHandle.Alloc(this);
+        IntPtr context = GCHandle.ToIntPtr(_gcHandle);
+
+        _listener = DdsApi.dds_create_listener(context);
+        DdsApi.dds_lset_data_available(_listener, _onDataAvailableDelegate);
+        
+        DdsApi.DdsReturnCode rc = (DdsApi.DdsReturnCode)DdsApi.dds_set_listener(_readerHandle.NativeHandle.Handle, _listener);
+        if (rc != DdsApi.DdsReturnCode.Ok)
+        {
+            // Cleanup on fail
+            _gcHandle.Free();
+            DdsApi.dds_delete_listener(_listener);
+            _listener = IntPtr.Zero;
+            throw new DdsException(rc, "Failed to set listener");
+        }
+    }
+
+    // 3. The Native Callback
+    // Static to be safe, gets instance via 'arg'
+    [MonoPInvokeCallback(typeof(DdsApi.DdsOnDataAvailable))]
+    private static void OnDataAvailableNative(IntPtr entity, IntPtr arg)
+    {
+        try
+        {
+            // Unwrap instance
+            var handle = GCHandle.FromIntPtr(arg);
+            if (handle.Target is DdsReader<T, TView> reader)
+            {
+                // Signal the TCS
+                reader._dataAvailableTcs?.TrySetResult(true);
+            }
+        }
+        catch 
+        {
+            // Swallow exceptions in native callbacks to prevent app crash
+        }
+    }
+
+    // 4. Cleanup
+    public void Dispose()
+    {
+        // ... existing dispose ...
+        
+        if (_listener != IntPtr.Zero)
+        {
+            // Detach listener first
+            DdsApi.dds_set_listener(_readerHandle.NativeHandle.Handle, IntPtr.Zero);
+            DdsApi.dds_delete_listener(_listener);
+            _listener = IntPtr.Zero;
+        }
+
+        if (_gcHandle.IsAllocated)
+        {
+            _gcHandle.Free();
+        }
+        
+        _dataAvailableTcs?.TrySetCanceled();
+    }
+}
+```
+
+---
+
+### 3. Usage Examples
+
+#### Scenario A: High-Performance Async Loop
+This is the recommended pattern. It is non-blocking but allocations-free in the hot path.
+
+```csharp
+Console.WriteLine("Waiting for data...");
+
+// Wait indefinitely (or pass timeout CancellationToken)
+while (await reader.WaitDataAsync())
+{
+    // We woke up! Take all available data
+    using var scope = reader.Take(); // Uses the new Masked Take from Part 1
+    
+    if (scope.Count == 0) continue; // Spurious wakeup protection
+
+    foreach (var sample in scope)
+    {
+        Process(sample);
+    }
+}
+```
+
+#### Scenario B: Async Stream (IAsyncEnumerable)
+Since we cannot use `ViewScope` (ref struct) in generics, we can offer an `IAsyncEnumerable` that yields **Owned (Copied)** objects. This is great for UI apps or low-throughput scenarios where convenience > zero-alloc.
+
+**Add extension method or member:**
+```csharp
+public async IAsyncEnumerable<T> StreamAsync([EnumeratorCancellation] CancellationToken ct = default)
+{
+    while (!ct.IsCancellationRequested)
+    {
+        await WaitDataAsync(ct);
+        
+        // We must take and COPY immediately because we are yielding
+        using var scope = Take();
+        for(int i = 0; i < scope.Count; i++)
+        {
+            // Only yield valid data
+            if (scope.Infos[i].ValidData)
+            {
+                yield return scope[i].ToOwned(); // Allocation here!
+            }
+        }
+    }
+}
+```
+
+---
+
+### 4. Implementation Tasks
+
+Add to `SERDATA-TASK-MASTER.md`:
+
+1.  **Add Listener P/Invoke:** `dds_create_listener`, `dds_lset_data_available`.
+2.  **Implement `WaitDataAsync`:** TaskCompletionSource logic.
+3.  **Implement `StreamAsync`:** Wrapper for convenience (documented as allocating).
+4.  **Unit Test:** `WaitDataAsync` completes when `Write()` occurs in same process.
+5.  **Stress Test:** Ensure creating/disposing readers with listeners doesn't leak handles.
+
+### 5. Why this is "Elegant"
+*   **Lazy:** We don't enable the native listener (and its overhead) until you actually call `WaitDataAsync`. If you just poll `Take()`, the listener path is never touched.
+*   **Standard:** Uses `ValueTask` for low-allocation awaiting.
+*   **Safe:** Handles GC pinning and native callback context correctly.
+---
+Great! Now pls point #3, content filtering
+---
+Here is the design and implementation for **Part 3: Content Filtering (DDS Level)**.
+
+This feature allows you to filter data **at the source** (Publisher side) or efficiently at the Reader side, saving massive amounts of bandwidth and CPU by discarding irrelevant data before it enters your managed code.
+
+### 1. Design Rationale
+
+**The Challenge:**
+DDS Content Filters use a specific SQL subset (e.g., `x > 5 AND name = 'foo'`).
+While we could write a complex LINQ-to-SQL translator, it is brittle and often fails to map perfectly to DDS semantics.
+
+**The Solution:**
+We will expose a **Type-Safe String API**. We keep the SQL string (because it's the standard), but we ensure the *parameters* are passed safely. We also introduce an explicit `DdsTopic` class, separating the "What" (Topic) from the "How" (Reader/Writer).
+
+---
+
+### 2. Implementation Steps
+
+#### Step A: P/Invoke for Content Filters
+We need to map the content filtering APIs.
+
+**Add to `DdsApi.cs`:**
+```csharp
+[DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+public static extern IntPtr dds_create_contentfilteredtopic(
+    IntPtr participant,
+    IntPtr topic, // The underlying standard topic
+    string name,  // Name of the CFT
+    string filter_expression,
+    IntPtr string_seq_params); // const char ** (array of strings)
+
+[DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+public static extern int dds_set_topic_filter_and_expression(
+    IntPtr topic,
+    string filter_expression,
+    IntPtr string_seq_params);
+```
+
+#### Step B: Introduce `DdsTopic` Class
+Currently, your `DdsReader` creates the topic internally. We need to promote Topic to a first-class citizen so we can wrap it in a Filter.
+
+**Create `DdsTopic.cs`:**
+```csharp
+public class DdsTopic : IDisposable
+{
+    private DdsEntityHandle _handle;
+    public DdsEntityHandle HandleWrapper => _handle;
+    public IntPtr NativeHandle => _handle.NativeHandle.Handle;
+
+    internal DdsTopic(DdsEntityHandle handle)
+    {
+        _handle = handle;
+    }
+
+    // Factory for Filtered Topics
+    public DdsTopic CreateContentFilter(string name, string expression, params string[] parameters)
+    {
+        // Marshalling string array to native char**
+        // (Simplified logic here, actual impl needs pinning/marshalling helper)
+        IntPtr paramsPtr = MarshalStringArray(parameters); 
+        
+        try
+        {
+            var cftEntity = DdsApi.dds_create_contentfilteredtopic(
+                GetParticipantFromEntity(_handle), // Need helper to get participant
+                _handle.NativeHandle.Handle,
+                name,
+                expression,
+                paramsPtr);
+
+            if (cftEntity == IntPtr.Zero) 
+                throw new DdsException(DdsApi.DdsReturnCode.Error, "Failed to create ContentFilteredTopic");
+
+            return new DdsTopic(new DdsEntityHandle(new DdsApi.DdsEntity { Handle = (int)cftEntity }));
+        }
+        finally
+        {
+            FreeStringArray(paramsPtr, parameters.Length);
+        }
+    }
+
+    // Feature: Update parameters at runtime!
+    public void SetFilterParameters(params string[] parameters)
+    {
+        // Call dds_set_topic_filter_and_expression with null expression (keeps existing) 
+        // and new parameters.
+    }
+
+    public void Dispose()
+    {
+        _handle?.Dispose();
+    }
+}
+```
+
+#### Step C: Update `DdsParticipant` to Create Topics
+Move the topic creation logic out of `DdsReader` constructors into `DdsParticipant`.
+
+**Update `DdsParticipant.cs`:**
+```csharp
+public DdsTopic CreateTopic<T>(string topicName, DdsQos qos = null)
+{
+    // 1. Get/Register Type Descriptor (using your existing TypeSupport logic)
+    // 2. Create Topic Entity
+    // 3. Return wrapped DdsTopic
+}
+```
+
+#### Step D: Update `DdsReader` / `DdsWriter`
+Add constructors that accept an existing `DdsTopic`.
+
+```csharp
+public DdsReader(DdsParticipant participant, DdsTopic topic, DdsQos qos = null)
+{
+    // Use topic.NativeHandle instead of creating a new one
+    _topicHandle = topic.HandleWrapper; // Share ownership or duplicate handle?
+    // In Cyclone, creating a Reader on a Topic keeps the Topic alive.
+    
+    // ... rest of creation logic ...
+}
+```
+
+---
+
+### 3. Usage Examples
+
+#### Scenario A: Basic Static Filter
+This is the most common use case. Filter data by ID or status.
+
+```csharp
+// 1. Create Base Topic
+var sensorTopic = participant.CreateTopic<SensorData>("Sensors");
+
+// 2. Create Filtered Topic (SQL Syntax)
+// Syntax: "Field > Value"
+var highTempTopic = sensorTopic.CreateContentFilter(
+    "HighTempFilter", 
+    "temperature > 80.0 AND status = 'ACTIVE'"
+);
+
+// 3. Create Reader using the Filtered Topic
+// The Reader will ONLY receive samples matching the query.
+using var reader = new DdsReader<SensorData>(participant, highTempTopic);
+
+while (await reader.WaitDataAsync())
+{
+    using var scope = reader.Take();
+    // All items here guaranteed to have temp > 80
+}
+```
+
+#### Scenario B: Parameterized Filter (Runtime Updates)
+You can change the filter parameters dynamically without destroying the reader. This is incredibly powerful for UI sliders or dynamic configuration.
+
+```csharp
+// 1. Define filter with parameters (%0, %1)
+var rangeTopic = sensorTopic.CreateContentFilter(
+    "RangeFilter", 
+    "temperature BETWEEN %0 AND %1", 
+    "20.0", "50.0" // Initial values
+);
+
+using var reader = new DdsReader<SensorData>(participant, rangeTopic);
+
+// ... later, user moves a slider ...
+
+// 2. Update parameters instantly
+// This updates the filter on the Publisher side if supported (Writer-side filtering)!
+rangeTopic.SetFilterParameters("60.0", "90.0");
+```
+
+---
+
+### 4. Implementation Tasks
+
+Add to `SERDATA-TASK-MASTER.md`:
+
+1.  **Refactor `DdsTopic`:** Extract `DdsTopic` class from current implicit logic.
+2.  **Add P/Invoke:** `dds_create_contentfilteredtopic` and parameter setters.
+3.  **Implement `CreateContentFilter`:** Add marshalling for `string[]` -> `char**` (this is tricky in C#, needs a small helper).
+4.  **Update `DdsReader`:** Add constructor accepting `DdsTopic`.
+5.  **Integration Test:** Create a writer sending 1, 2, 3. Create a reader with `id > 1`. Verify only 2 and 3 are received.
+
+### 5. Why this is "Elegant"
+*   **Explicit Intent:** You manipulate the *Topic*, not the *Reader*, which matches the DDS mental model.
+*   **Type Safety:** While the SQL is a string, the parameters are passed as arguments, preventing string-concatenation attacks or formatting errors.
+*   **Performance:** By exposing the native CFT APIs, CycloneDDS can perform **Writer-Side Filtering**. The data isn't even sent over the network if it doesn't match! This is the ultimate zero-copy optimization.
+---
+Perfect. Now point #4 status/discovery
+---
+Here is the design and implementation for **Part 4: Status & Discovery (Events)**.
+
+This moves beyond just sending data to understanding the **topology** and **health** of the network. It allows your application to know *when* it is connected, *who* it is connected to, and if real-time QoS contracts (like deadlines) are being violated.
+
+### 1. Design Rationale
+
+**The Challenge:**
+DDS tracks complex states (Matches, Liveliness, Deadlines). Polling these (via `dds_get_status`) is inefficient. Using `WaitSets` for everything is clunky.
+C# developers expect **Events** (`+=`) for state changes and **Properties** for current state.
+
+**The Solution:**
+1.  **Events:** Map DDS Listener callbacks to standard C# `EventHandler<TArgs>`.
+2.  **Properties:** Expose `dds_get_*_status` as properties for synchronous checks.
+3.  **Discovery Helper:** A dedicated `WaitForReaderAsync` task to solve the "Lost First Message" problem (writing before discovery completes).
+
+---
+
+### 2. Implementation Steps
+
+#### Step A: Native Structs & Delegates
+We need to map the status data structures provided by Cyclone.
+
+**In `DdsApi.cs`:**
+
+```csharp
+namespace CycloneDDS.Runtime.Interop
+{
+    // Status Structs (Layout must match C)
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DdsPublicationMatchedStatus
+    {
+        public int TotalCount;
+        public int TotalCountChange;
+        public int CurrentCount;      // <--- Critical: Number of connected readers
+        public int CurrentCountChange;
+        public long LastSubscriptionHandle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DdsSubscriptionMatchedStatus
+    {
+        public int TotalCount;
+        public int TotalCountChange;
+        public int CurrentCount;      // <--- Critical: Number of connected writers
+        public int CurrentCountChange;
+        public long LastPublicationHandle;
+    }
+
+    // New Delegate Signatures for Status Events
+    // Note: Cyclone passes the status as a POINTER
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void DdsOnPubMatched(IntPtr writer, ref DdsPublicationMatchedStatus status, IntPtr arg);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void DdsOnSubMatched(IntPtr reader, ref DdsSubscriptionMatchedStatus status, IntPtr arg);
+
+    // Listener Setters
+    [DllImport(DLL_NAME)]
+    public static extern void dds_lset_publication_matched(IntPtr listener, DdsOnPubMatched callback);
+
+    [DllImport(DLL_NAME)]
+    public static extern void dds_lset_subscription_matched(IntPtr listener, DdsOnSubMatched callback);
+
+    // Synchronous Getters
+    [DllImport(DLL_NAME)]
+    public static extern int dds_get_publication_matched_status(IntPtr writer, out DdsPublicationMatchedStatus status);
+
+    [DllImport(DLL_NAME)]
+    public static extern int dds_get_subscription_matched_status(IntPtr reader, out DdsSubscriptionMatchedStatus status);
+}
+```
+
+#### Step B: Enhance `DdsWriter<T>`
+We add the discovery logic here. The `EnsureListenerAttached` logic (introduced in Async/Await) is reused/expanded.
+
+```csharp
+public sealed class DdsWriter<T> : IDisposable
+{
+    // ... existing fields ...
+    private event EventHandler<DdsPublicationMatchedStatus>? _publicationMatched;
+    
+    // Prevent GC of the delegate
+    private readonly DdsApi.DdsOnPubMatched _pubMatchedNative;
+
+    // Constructor initialization
+    public DdsWriter(...) {
+        _pubMatchedNative = OnPubMatchedNative;
+        // ...
+    }
+
+    // 1. Synchronous Property (Polling)
+    public DdsPublicationMatchedStatus PublicationMatchedStatus
+    {
+        get
+        {
+            DdsApi.dds_get_publication_matched_status(_writerHandle.NativeHandle.Handle, out var status);
+            return status;
+        }
+    }
+
+    // 2. The C# Event
+    public event EventHandler<DdsPublicationMatchedStatus> PublicationMatched
+    {
+        add 
+        { 
+            _publicationMatched += value;
+            EnsureListenerEnabled(DdsStatusKind.PublicationMatched); 
+        }
+        remove 
+        { 
+            _publicationMatched -= value; 
+        }
+    }
+
+    // 3. The "Smart" Wait Task
+    public async Task WaitForReaderAsync(TimeSpan timeout)
+    {
+        // Fast path: Already matched?
+        if (PublicationMatchedStatus.CurrentCount > 0) return;
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        
+        // Local handler to trigger TCS
+        EventHandler<DdsPublicationMatchedStatus> handler = (s, e) => 
+        {
+            if (e.CurrentCount > 0) tcs.TrySetResult(true);
+        };
+
+        try 
+        {
+            this.PublicationMatched += handler;
+            
+            // Re-check after subscribing (race condition fix)
+            if (PublicationMatchedStatus.CurrentCount > 0) return;
+
+            // Wait with timeout
+            using var cts = new CancellationTokenSource(timeout);
+            using var reg = cts.Token.Register(() => tcs.TrySetCanceled());
+            
+            await tcs.Task;
+        }
+        catch (TaskCanceledException)
+        {
+            throw new TimeoutException($"No readers found within {timeout.TotalSeconds}s");
+        }
+        finally
+        {
+            this.PublicationMatched -= handler;
+        }
+    }
+
+    // 4. Native Callback
+    [MonoPInvokeCallback(typeof(DdsApi.DdsOnPubMatched))]
+    private static void OnPubMatchedNative(IntPtr entity, ref DdsApi.DdsPublicationMatchedStatus status, IntPtr arg)
+    {
+        try {
+            var handle = GCHandle.FromIntPtr(arg);
+            if (handle.Target is DdsWriter<T> writer)
+            {
+                // Invoke C# Event
+                // Note: We copy the struct value to safe managed code
+                writer._publicationMatched?.Invoke(writer, status);
+            }
+        } catch { /* Swallow */ }
+    }
+    
+    private void EnsureListenerEnabled(DdsStatusKind kind)
+    {
+        // Logic to create native listener if null, 
+        // and call dds_lset_publication_matched if not already set.
+    }
+}
+```
+
+#### Step C: Enhance `DdsReader<T>`
+Similar pattern for `SubscriptionMatched` and `LivelinessChanged`.
+
+```csharp
+public sealed class DdsReader<T, TView> : IDisposable
+{
+    public event EventHandler<DdsSubscriptionMatchedStatus> SubscriptionMatched;
+    public event EventHandler<DdsLivelinessChangedStatus> LivelinessChanged;
+
+    public DdsSubscriptionMatchedStatus SubscriptionMatchedStatus 
+    { 
+        get { /* call native get */ } 
+    }
+}
+```
+
+---
+
+### 3. Usage Examples
+
+#### Scenario A: Reliable Startup (The "Wait for Reader")
+This solves the classic problem where the first few messages are lost because the Writer started before the Reader was discovered.
+
+```csharp
+var writer = new DdsWriter<Message>(participant, "Chat");
+
+Console.WriteLine("Waiting for a subscriber...");
+// Blocks (async) until CurrentCount > 0
+await writer.WaitForReaderAsync(TimeSpan.FromSeconds(10));
+
+Console.WriteLine("Subscriber found! Sending hello.");
+writer.Write(new Message { Text = "Hello" });
+```
+
+#### Scenario B: Monitoring Connectivity
+Useful for UI indicators (Green/Red light) or logging.
+
+```csharp
+writer.PublicationMatched += (sender, status) => 
+{
+    if (status.CurrentCountChange > 0)
+    {
+        Console.WriteLine($"New reader connected! Total: {status.CurrentCount}");
+    }
+    else // Change < 0
+    {
+        Console.WriteLine($"Reader lost. Remaining: {status.CurrentCount}");
+    }
+};
+```
+
+#### Scenario C: Health Monitoring (Liveliness)
+Detect if a Publisher has crashed (stopped asserting liveliness).
+
+```csharp
+reader.LivelinessChanged += (sender, status) =>
+{
+    if (status.AliveCountChange < 0)
+    {
+        // A writer died or lost connection
+        Console.WriteLine($"ALERT: Source lost! Active writers: {status.AliveCount}");
+    }
+};
+```
+
+---
+
+### 4. Implementation Tasks
+
+Add to `SERDATA-TASK-MASTER.md`:
+
+1.  **Define Native Structs:** `DdsPublicationMatchedStatus`, `DdsSubscriptionMatchedStatus`, `DdsLivelinessChangedStatus`.
+2.  **P/Invoke Update:** Add `dds_lset_*` and `dds_get_*_status`.
+3.  **Enhance `DdsWriter`:** Add `PublicationMatched` event and `WaitForReaderAsync`.
+4.  **Enhance `DdsReader`:** Add `SubscriptionMatched` and `LivelinessChanged` events.
+5.  **Integration Test:**
+    *   Create Reader.
+    *   Create Writer.
+    *   Assert `writer.PublicationMatched` fires.
+    *   Assert `writer.WaitForReaderAsync` completes immediately.
+    *   Dispose Reader.
+    *   Assert `writer.PublicationMatched` fires (count decr).
+
+### 5. Why this is "Elegant"
+*   **Idiomatic:** It uses standard `.NET` Events. No need to implement a complex "Listener" class inheritance hierarchy (which is the Java/C++ DDS way).
+*   **Async-First:** `WaitForReaderAsync` abstracts away the complex `TaskCompletionSource` logic required to bridge Event-based discovery to `await`.
+*   **Safe:** The status structs are marshalled automatically, so the user never deals with `IntPtr`.
+---
+Amazing. Now pls point #5, instance management
+---
+Here is the design and implementation for **Part 5: Instance Management (Keyed Lookups)**.
+
+This feature allows you to surgically access the history of specific objects (Instances) without iterating through the entire data cache. It is essential for systems tracking many objects (e.g., Air Traffic Control tracks, fleet management) where you need to query "Where is Plane X right now?"
+
+### 1. Design Rationale
+
+**The Challenge:**
+In DDS, an "Instance" is defined by the unique combination of Key fields (e.g., `SensorId=5`).
+Internally, DDS maps these Keys to a 64-bit `InstanceHandle`.
+Comparing 64-bit integers is O(1). Comparing serialized blobs or strings is O(N).
+
+**The Solution:**
+1.  **Strongly Typed Handle:** Introduce `DdsInstanceHandle` struct (wraps `long`) to prevent mixing it up with other integers.
+2.  **Lookup API:** `LookupInstance(in T keySample)` to get the handle.
+3.  **Filtered Take:** `TakeInstance(handle)` to get data for just that object.
+
+---
+
+### 2. Implementation Steps
+
+#### Step A: Define the Handle Type
+We wrap `long` to make the API self-documenting.
+
+**In `CycloneDDS.Runtime`:**
+```csharp
+[StructLayout(LayoutKind.Sequential)]
+public readonly struct DdsInstanceHandle : IEquatable<DdsInstanceHandle>
+{
+    public readonly long Value;
+    
+    public DdsInstanceHandle(long value) => Value = value;
+    
+    public static readonly DdsInstanceHandle Nil = new DdsInstanceHandle(0);
+    
+    public bool IsNil => Value == 0;
+
+    public bool Equals(DdsInstanceHandle other) => Value == other.Value;
+    public override string ToString() => $"Handle(0x{Value:X})";
+}
+```
+
+#### Step B: P/Invoke Updates
+We need the instance-specific native functions.
+
+**In `DdsApi.cs`:**
+```csharp
+// Lookup
+[DllImport(DLL_NAME)]
+public static extern long dds_lookup_instance(IntPtr reader, IntPtr serdata);
+
+// Instance-specific Read/Take
+[DllImport(DLL_NAME)]
+public static extern int dds_take_instance(
+    IntPtr reader, 
+    [In, Out] IntPtr[] samples, 
+    [In, Out] DdsSampleInfo[] infos, 
+    uint max_samples, 
+    long handle); // The filter
+
+[DllImport(DLL_NAME)]
+public static extern int dds_read_instance(
+    IntPtr reader, 
+    [In, Out] IntPtr[] samples, 
+    [In, Out] DdsSampleInfo[] infos, 
+    uint max_samples, 
+    long handle);
+```
+
+#### Step C: Update `DdsReader<T>`
+We add the lookup and filtered take methods. Note that we reuse the existing `ViewScope` infrastructure.
+
+```csharp
+public sealed class DdsReader<T, TView> : IDisposable where TView : struct
+{
+    // 1. Lookup (Converts Key Fields -> Handle)
+    public DdsInstanceHandle LookupInstance(in T keySample)
+    {
+        // We reuse the serialization logic to create a temporary serdata
+        // This ensures the Key hashing matches exactly what the Writer sent.
+        
+        // A. Serialize to stack/pooled buffer
+        int size = _sizer(keySample, 0) + 4; // +4 for CDR header
+        byte[] buffer = Arena.Rent(size);
+        
+        try
+        {
+            // Serialize logic (same as Writer)
+            var span = buffer.AsSpan(0, size);
+            var cdr = new CdrWriter(span);
+            // ... write header ...
+            _serializer(keySample, ref cdr);
+            
+            // B. Create temporary Serdata
+            unsafe 
+            {
+                fixed (byte* p = buffer)
+                {
+                    IntPtr serdata = DdsApi.dds_create_serdata_from_cdr(
+                        _topicHandle.NativeHandle, (IntPtr)p, (uint)size);
+                    
+                    try
+                    {
+                        // C. Ask DDS for the handle
+                        long handleVal = DdsApi.dds_lookup_instance(
+                            _readerHandle.NativeHandle.Handle, serdata);
+                            
+                        return new DdsInstanceHandle(handleVal);
+                    }
+                    finally
+                    {
+                        DdsApi.ddsi_serdata_unref(serdata);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            Arena.Return(buffer);
+        }
+    }
+
+    // 2. Take Specific Instance
+    public ViewScope<TView> TakeInstance(DdsInstanceHandle handle, int maxSamples = 32)
+    {
+        if (handle.IsNil) throw new ArgumentException("Invalid instance handle", nameof(handle));
+
+        // Use the common ReadOrTake pattern, but calling dds_take_instance
+        // We need to adapt ReadOrTake to support the 'handle' argument or duplicate small logic
+        return ReadOrTakeInstance(maxSamples, handle.Value, DdsApi.dds_take_instance);
+    }
+
+    // 3. Read Specific Instance
+    public ViewScope<TView> ReadInstance(DdsInstanceHandle handle, int maxSamples = 32)
+    {
+        if (handle.IsNil) throw new ArgumentException("Invalid instance handle", nameof(handle));
+        return ReadOrTakeInstance(maxSamples, handle.Value, DdsApi.dds_read_instance);
+    }
+
+    // Internal helper for instance operations
+    private ViewScope<TView> ReadOrTakeInstance(
+        int maxSamples, 
+        long handle,
+        Func<IntPtr, IntPtr[], DdsApi.DdsSampleInfo[], uint, long, int> operation)
+    {
+        // ... (Similar to ReadOrTake, but calls operation(..., handle)) ...
+    }
+}
+```
+
+#### Step D: Update `DdsWriter<T>` (Optional but Good)
+Publishers can also pre-register instances to hint to the middleware that this key is "active".
+
+```csharp
+public sealed class DdsWriter<T>
+{
+    // Register ownership of a key
+    public DdsInstanceHandle RegisterInstance(in T keySample)
+    {
+        // Similar serialization logic as LookupInstance
+        // Calls dds_register_instance(writer, serdata)
+    }
+}
+```
+
+---
+
+### 3. Usage Examples
+
+#### Scenario A: The "Tracked Object" Pattern
+You have a GUI displaying a list of Robots. User clicks "Robot 5". You want to show its history graph.
+
+```csharp
+// 1. User selects ID=5. We need the handle.
+var key = new RobotStatus { Id = 5 };
+DdsInstanceHandle handle = reader.LookupInstance(key);
+
+if (handle.IsNil)
+{
+    Console.WriteLine("Robot 5 has never been seen!");
+    return;
+}
+
+// 2. Efficiently read history for ONLY Robot 5
+// This ignores data from Robot 1, 2, 3...
+using var history = reader.ReadInstance(handle, maxSamples: 100);
+
+foreach (var status in history)
+{
+    PlotGraph(status.Time, status.BatteryLevel);
+}
+```
+
+#### Scenario B: Instance Lifecycle Monitoring
+You want to detect when a specific critical server goes offline.
+
+```csharp
+var key = new ServerInfo { Hostname = "CriticalDB" };
+var handle = reader.LookupInstance(key);
+
+// Read just the metadata (0 samples) to check state
+// Note: ReadInstance works even if there is no *data*, provided the instance exists
+using var scope = reader.ReadInstance(handle, 1);
+
+if (scope.Count > 0)
+{
+    var state = scope.Infos[0].InstanceState;
+    if (state.HasFlag(DdsInstanceState.NotAliveNoWriters))
+    {
+        Alert("CriticalDB publisher disconnected!");
+    }
+}
+```
+
+---
+
+### 4. Implementation Tasks
+
+Add to `SERDATA-TASK-MASTER.md`:
+
+1.  **Create `DdsInstanceHandle`:** Struct wrapper.
+2.  **P/Invoke Additions:** `dds_lookup_instance`, `dds_take_instance`, `dds_read_instance`.
+3.  **Implement `LookupInstance`:** Reusing serialization logic (crucial for correctness).
+4.  **Implement `TakeInstance`/`ReadInstance`:** Helper logic.
+5.  **Integration Test:**
+    *   Write `Id=1` and `Id=2`.
+    *   Lookup `Id=1`.
+    *   `TakeInstance(handle1)`.
+    *   Verify only `Id=1` data is returned.
+    *   Verify `Id=2` data remains in reader.
+
+### 5. Why this is "Elegant"
+*   **O(1) Access:** Once you have the handle, retrieving data is instant, regardless of how much other data is in the Reader.
+*   **Type Safe:** You can't accidentally pass a generic `int` or `IntPtr` as a handle.
+*   **Reuse:** It leverages your Serdata architecture perfectly—using the generated serializer to compute the key hash for lookup ensures 100% consistency with the Writer.
+---
+Regarding the events, what makes the 'event' declaration better than simple Action<>?
+---
+Using the `event` keyword is superior to a public `Action<>` field (or property) in this context primarily for **safety** and **encapsulation**.
+
+Here is the breakdown of why `event` is the correct choice for the DDS Status/Discovery API.
+
+### 1. Protection Against Overwriting (The "Safety" Argument)
+This is the most critical technical difference.
+
+**With `Action<T>` (Dangerous):**
+If you expose a public `Action` field, any external user can accidentally wipe out all other subscribers.
+
+```csharp
+public class DdsWriter
+{
+    // A simple delegate field
+    public Action<Status> OnPublicationMatched; 
+}
+
+// User Code A (Logger)
+writer.OnPublicationMatched += LogConnection; // OK
+
+// User Code B (UI)
+// ERROR: Using '=' instead of '+=' wipes out the Logger!
+writer.OnPublicationMatched = UpdateGreenLight; 
+
+// User Code C (Malicious or Buggy)
+// ERROR: Can silence everyone
+writer.OnPublicationMatched = null; 
+
+// User Code D
+// ERROR: Can fake an event by invoking it from outside!
+writer.OnPublicationMatched.Invoke(new Status()); 
+```
+
+**With `event` (Safe):**
+The `event` keyword creates a "shield" around the delegate. External code is **compile-time restricted** to only `+=` (subscribe) and `-=` (unsubscribe).
+
+```csharp
+public class DdsWriter
+{
+    public event EventHandler<Status> PublicationMatched;
+}
+
+// User Code
+writer.PublicationMatched = null;      // Compiler Error!
+writer.PublicationMatched.Invoke(...); // Compiler Error!
+writer.PublicationMatched += Handler;  // Allowed
+```
+
+### 2. Interface Support
+You will likely want to mock `DdsWriter` or create an interface `IDdsWriter` for testing purposes later.
+
+*   **Interfaces cannot have fields.** You cannot put `public Action<T> MyAction;` in an interface.
+*   **Interfaces CAN have events.**
+
+```csharp
+public interface IDdsWriter
+{
+    // Valid
+    event EventHandler<DdsPublicationMatchedStatus> PublicationMatched;
+    
+    // Invalid (Compiler Error)
+    // Action<DdsPublicationMatchedStatus> PublicationMatched; 
+}
+```
+
+### 3. Thread-Safe Subscription
+By default, field-like events ( `public event ...` ) generate thread-safe `add` and `remove` accessors using `Interlocked` operations.
+
+If you use a raw `Action` field and two threads try to subscribe (`+=`) at the exact same time, there is a race condition where one subscriber might overwrite the other. While this is rare in startup code, DDS is inherently multi-threaded, making thread safety a priority.
+
+### 4. The "Standard Pattern" (`EventHandler<T>`)
+In .NET, the standard signature for events is `void (object sender, TEventArgs e)`.
+
+*   **Action<T>:** `(T data) => ...`
+*   **EventHandler<T>:** `(object sender, T data) => ...`
+
+Using `event EventHandler<T>` provides the **sender** (the `DdsWriter` instance) to the subscriber. This is crucial if a single event handler is monitoring multiple writers:
+
+```csharp
+void OnMatched(object sender, DdsPublicationMatchedStatus status)
+{
+    var writer = (DdsWriter<Msg>)sender;
+    Console.WriteLine($"Writer for topic '{writer.TopicName}' connected!");
+}
+```
+
+### When IS `Action<>` better?
+You used `Action` (or `Func`) delegates inside your `DdsWriter` internals for the **Serializer** and **Sizer**. That was the correct choice there because:
+1.  **Single Subscriber:** There is exactly one serializer per writer.
+2.  **Performance:** Invoking a raw delegate is slightly faster than an event (though negligible for Discovery events).
+3.  **Internal:** It wasn't exposed to the public API.
+
+### Summary
+For the **Status/Discovery API**:
+*   **Use `event`** because multiple independent components (Logging, UI, Logic) might want to listen to discovery changes without stepping on each other's toes.
+*   **Use `Action`** only for single-target callbacks (like internal configuration).
+---
+You mentioned the interfaces for dds reader and writer etc. Should we introduce them now?
+---
+This is a strategic decision.
+
+**My Recommendation: NO, do not introduce interfaces yet.**
+
+Wait until **Stage 5 (Production Readiness)**.
+
+Here is the reasoning why introducing them right now would slow you down, along with the specific technical challenges regarding your Zero-Copy architecture.
+
+### 1. The "Velocity" Argument (API Churn)
+You are currently in a phase of rapid API expansion (adding `Read`, `WaitDataAsync`, `ContentFilters`, `Discovery`).
+
+If you introduce `IDdsReader<T>` and `IDdsWriter<T>` today:
+1.  Every time you add a method (like `WaitDataAsync`), you must edit the file, the interface, and any mocks you have.
+2.  You will spend time synchronizing signatures rather than implementing logic.
+3.  Refactoring tools handle this well, but it adds friction.
+
+**Better approach:** Solidify the concrete API first. Once the method signatures stop changing, extract the interfaces in one go.
+
+### 2. The "Ref Struct" Mocking Trap (Critical Technical Issue)
+This is the biggest blocker for `IDdsReader`.
+
+Your reader returns `ViewScope<TView>`.
+`ViewScope` is a **`ref struct`**.
+
+**Interfaces support ref struct returns, BUT mocking frameworks do not.**
+Standard .NET mocking libraries (Moq, NSubstitute, FakeItEasy) heavily rely on boxing, Generics, and Expression Trees. **None of these support `ref struct` types.**
+
+If you create this interface:
+```csharp
+public interface IDdsReader<T, TView>
+{
+    // Moq CANNOT implement this method dynamically!
+    ViewScope<TView> Take(); 
+}
+```
+
+Users of your library trying to write unit tests will crash:
+> *System.NotSupportedException: Type 'ViewScope' cannot be used in a generic argument or return value in a proxy.*
+
+**The Consequence:**
+If you provide an interface, users expect to be able to mock it. Since they can't use Moq, they will have to write **Manual Mocks** (hand-coded classes implementing the interface). This is valid, but you need to be aware that you are forcing this pattern on them.
+
+### 3. The "Generic Variance" Complexity
+To make interfaces truly useful, you often want Covariance/Contravariance (e.g., treating `IDdsWriter<string>` as `IDdsWriter<object>`).
+
+*   `IDdsWriter<in T>`: Easy.
+*   `IDdsReader<T, TView>`: Hard. `T` is an output, but `TView` is usually a `struct` (which forbids variance).
+
+You will likely need to keep the interfaces invariant, which reduces their utility slightly.
+
+---
+
+### How to Prepare (Without Doing It Yet)
+
+Even though I suggest waiting to *publish* the interfaces, you should design your concrete classes to be "Interface-Ready".
+
+1.  **Keep Methods Virtual?** No. For high-performance code, `sealed` is better (devirtualization). Interfaces are preferred over virtual methods for mocking in modern .NET.
+2.  **Avoid Static Dependencies:** Ensure `DdsReader` doesn't rely on static state that an interface implementation couldn't replicate.
+3.  **Prepare for a "Managed" Interface:**
+    Because of the `ref struct` mocking issue, you might eventually end up with *two* reader interfaces:
+
+    ```csharp
+    // 1. The Low-Level, Zero-Copy Interface (Hard to Mock)
+    public interface IDdsReader<T, TView> {
+        ViewScope<TView> Take();
+    }
+
+    // 2. The High-Level, Allocating Interface (Easy to Mock)
+    // Useful for business logic tests where performance doesn't matter
+    public interface IDdsManagedReader<T> {
+        IEnumerable<T> TakeCopies(); // Returns List<T> or similar
+    }
+    ```
+
+### Summary
+
+**Don't create `IDdsReader` / `IDdsWriter` interfaces in Stage 3 or 4.**
+
+Focus on implementing the logic for Async, Filtering, and Discovery. Once the API signature is stable (Stage 5), we will perform a **"Refactoring & abstraction pass"** where we extract interfaces and solve the `ref struct` mocking strategy documentation.
+---
+I need one more optional (turnable on request) functionality, tracking of sample sender. My sending app as assigned a unique identifier consiting of two 32bit numbers, AppDomainId and AppInstanceId. For each samepl received I would like to be able to identify what sender has sent it, i.e. the pair [AppDomainId, AppInstanceId] together with what is the computer name, the process name and the process id of the app that has sent the sample. In other project i solved it like the follwoing: Each of my participants having an active dds writer was has published its sender identification (participantGuid, AppDomainId, AppInstanceId, computerName, processName, processId) using a dedicated dds topic, using reliable transient local QoS. On the reader side there was a special global module (sender registry) listening to this sender info topic and building a dictionary of senders. On sample reception, i passed the sample info to the sender registry, which took the participant handle, converted to participantGuid and looked up the sender info in the sender dictionary and returned that sender info  record. Maybe there are more elegant ways, pls advise how to approach this elegantly and in thread safe and csharp friendly way with usual zerro alloc and high performance philosophy on mind.
+---
+This is a classic DDS architectural pattern often called **"Participant User Data"** or **"Side-Channel Discovery"**.
+
+Your previous approach (Dedicated Topic + Registry) was actually quite sound. To make it "Elegant" and "Zero-Alloc" in C#, we will refine it by integrating it directly into the `ViewScope` and leveraging **Cyclone's Native GUIDs** as the join key, rather than inventing our own IDs for the handshake.
+
+### The Architecture: "Identity Registry"
+
+We will build a **SenderRegistry** module that operates mostly in the background.
+
+1.  **The Identity Topic:** A standardized topic (`__FcdcSenderIdentity`) where participants announce themselves.
+    *   **Key:** The Participant GUID (native DDS GUID).
+    *   **Value:** Your metadata (AppId, ProcessName, etc.).
+2.  **The Handshake:**
+    *   When a `DdsReader` discovers a remote writer, it gets a `PublicationHandle` (local integer).
+    *   We query Cyclone for that writer's **GUID**.
+    *   We look up the GUID in our Identity Topic cache.
+    *   We map `PublicationHandle` -> `Identity` in a fast dictionary.
+3.  **The Retrieval:**
+    *   When you take a sample, `DdsSampleInfo` contains the `PublicationHandle`.
+    *   We perform an O(1) dictionary lookup to attach the Identity to the sample view.
+
+---
+
+### 1. The Schema (SenderIdentity)
+
+First, we define the structure. We use the new `[DdsManaged]` support for the strings to keep it clean, but mark the GUID as the key.
+
+```csharp
+using CycloneDDS.Schema;
+
+namespace CycloneDDS.Runtime.Tracking
+{
+    [DdsTopic("__FcdcSenderIdentity")]
+    [DdsQos(Reliability = DdsReliability.Reliable, Durability = DdsDurability.TransientLocal)]
+    public partial struct SenderIdentity
+    {
+        // The Native DDS Participant GUID (16 bytes)
+        // We use this to link the metadata to the actual DDS traffic
+        [DdsKey, DdsId(0)]
+        public Guid ParticipantGuid;
+
+        [DdsId(1)]
+        public int AppDomainId;
+
+        [DdsId(2)]
+        public int AppInstanceId;
+
+        [DdsManaged, DdsId(3)]
+        public string ComputerName;
+
+        [DdsManaged, DdsId(4)]
+        public string ProcessName;
+
+        [DdsId(5)]
+        public int ProcessId;
+    }
+}
+```
+
+### 2. The Sender Registry (Background Service)
+
+This class manages the "Side Channel". It is a singleton per `DdsParticipant`.
+
+```csharp
+public class SenderRegistry : IDisposable
+{
+    private readonly DdsReader<SenderIdentity, SenderIdentityView> _identityReader;
+    private readonly ConcurrentDictionary<Guid, SenderIdentity> _guidToIdentity = new();
+    
+    // Fast lookup: PublicationHandle (long) -> Identity
+    // This assumes PublicationHandles are unique per Reader, but here we store globally for the Participant.
+    // Cyclone handles are unique per participant context.
+    private readonly ConcurrentDictionary<long, SenderIdentity> _handleToIdentity = new();
+
+    internal SenderRegistry(DdsParticipant participant, SenderIdentity myIdentity)
+    {
+        // 1. Publish Own Identity
+        var writer = new DdsWriter<SenderIdentity>(participant);
+        
+        // Get our own GUID from the low-level API
+        myIdentity.ParticipantGuid = participant.GetParticipantGuid(); 
+        writer.Write(myIdentity);
+        // Note: Keep writer alive or dispose? TransientLocal keeps data, but we keep writer to assert liveliness.
+        
+        // 2. Subscribe to Identities
+        _identityReader = new DdsReader<SenderIdentity, SenderIdentityView>(participant);
+        
+        // Start async monitoring
+        _ = MonitorIdentitiesAsync();
+    }
+
+    private async Task MonitorIdentitiesAsync()
+    {
+        while (await _identityReader.WaitDataAsync())
+        {
+            using var scope = _identityReader.Take();
+            foreach (var view in scope)
+            {
+                // Cache the identity by GUID
+                var identity = view.ToOwned();
+                _guidToIdentity[identity.ParticipantGuid] = identity;
+            }
+        }
+    }
+
+    // Called by DataReaders when they discover a new Writer
+    public void RegisterRemoteWriter(long publicationHandle, Guid remoteWriterGuid)
+    {
+        // Extract Participant GUID prefix from Writer GUID (first 12 bytes usually)
+        // Or, Cyclone provides API to get Participant GUID from Publication Info.
+        Guid participantGuid = GetParticipantGuidFromWriterGuid(remoteWriterGuid);
+
+        if (_guidToIdentity.TryGetValue(participantGuid, out var identity))
+        {
+            _handleToIdentity[publicationHandle] = identity;
+        }
+        else
+        {
+            // Identity info might arrive LATER than the data connection.
+            // Store a "Pending" state or check lazily.
+        }
+    }
+
+    public bool TryGetIdentity(long publicationHandle, out SenderIdentity identity)
+    {
+        // FAST PATH: Direct integer lookup
+        return _handleToIdentity.TryGetValue(publicationHandle, out identity);
+    }
+    
+    // ... Disposal logic ...
+}
+```
+
+### 3. Integrating with DdsReader (The "Hook")
+
+We modify `DdsReader` to hook into `SubscriptionMatched`. This is where we link the low-level handle to the high-level identity.
+
+```csharp
+// Inside DdsReader.cs
+
+public sealed class DdsReader<T, TView>
+{
+    private SenderRegistry? _registry;
+
+    // Call this to enable tracking on this specific reader
+    public void EnableSenderTracking(SenderRegistry registry)
+    {
+        _registry = registry;
+        this.SubscriptionMatched += OnSubscriptionMatched;
+    }
+
+    private void OnSubscriptionMatched(object sender, DdsSubscriptionMatchedStatus e)
+    {
+        if (e.CurrentCountChange > 0)
+        {
+            // A new writer connected!
+            // We need to get its GUID and PublicationHandle.
+            // DdsApi.dds_get_matched_publication_data returns the GUID for a specific handle.
+            
+            // Iterate matched publications (P/Invoke needed here to enumerate handles)
+            long[] handles = this.GetMatchedPublicationHandles(); 
+            
+            foreach(var handle in handles)
+            {
+                var guid = this.GetMatchedPublicationGuid(handle);
+                _registry?.RegisterRemoteWriter(handle, guid);
+            }
+        }
+    }
+}
+```
+
+### 4. The User API (Zero Alloc)
+
+Finally, how the user accesses it. We add an extension method or property to `ViewScope`.
+
+```csharp
+public ref struct ViewScope<TView>
+{
+    // ... existing fields ...
+    private SenderRegistry? _registry; // Injected by DdsReader
+
+    public SenderIdentity? GetSender(int index)
+    {
+        if (_registry == null) return null;
+        
+        long pubHandle = _infos[index].PublicationHandle;
+        
+        if (_registry.TryGetIdentity(pubHandle, out var identity))
+        {
+            return identity;
+        }
+        
+        // Lazy fallback: If identity topic arrived AFTER the data connection
+        // Retry resolving via GUID here (slower path)
+        return _registry.ResolveLazy(pubHandle);
+    }
+}
+```
+
+### 5. Step-by-Step Implementation Plan
+
+I will add these tasks to **Phase 5 (Advanced Features)** or a new **Phase 3.5**.
+
+1.  **Define `SenderIdentity`:** Add to Schema.
+2.  **Add P/Invoke `dds_get_matched_publications`:** We need to get the list of handles connected to a reader.
+3.  **Add P/Invoke `dds_get_matched_publication_data`:** To extract the GUID from a handle.
+4.  **Implement `SenderRegistry`:** The dictionary logic.
+5.  **Update `DdsParticipant`:** Add `EnableSenderTracking()` method which initializes the Registry.
+6.  **Update `ViewScope`:** Add `GetSender(int index)`.
+
+### Why this is Elegant & Performant
+
+1.  **Zero Overhead when Off:** If you don't call `EnableSenderTracking`, `_registry` is null, and no extra logic runs.
+2.  **Zero Alloc Lookup:** The `SenderIdentity` is a managed class stored in the registry. `GetSender` returns a reference to this existing object. No new allocations per sample.
+3.  **Fast Path:** The primary lookup is `Dictionary<long, Identity>`. This is an integer hash lookup, extremely fast.
+4.  **Decoupled:** Your business data topics remain pure. You don't pollute your IDL with metadata fields.
+
+### Code Snippet for User
+
+```csharp
+// 1. Configure Identity on Startup
+var myId = new SenderIdentity { 
+    AppDomainId = 1, 
+    ComputerName = Environment.MachineName 
+};
+participant.EnableSenderTracking(myId);
+
+// 2. Enable on Reader
+var reader = new DdsReader<Msg>(participant, "Topic");
+reader.EnableSenderTracking(); 
+
+// 3. Process
+using var scope = reader.Take();
+foreach(var msg in scope)
+{
+    // O(1) Lookup
+    var sender = scope.GetSender(index); 
+    
+    if (sender != null)
+    {
+        Console.WriteLine($"Msg from {sender.ComputerName} (AppId: {sender.AppDomainId})");
+    }
+}
+```
+---
+what does it look like on the sender side? How to start publishing sender info when the first writer gets created for a participant and how to stop publishing if the last writer gets disposed? How to enable/disable this feature? How to configure the participant with AppDomainId and AppInstanceId? Again, looking fo elegant way, maybe optional participant parameter or something.
+---
+Here is the elegant, thread-safe, and C#-idiomatic design for the sender side.
+
+### Design Philosophy
+
+1.  **Configuration via "Options Pattern":** Instead of bloating the `DdsParticipant` constructor with `int appDomainId, int appInstanceId...`, we use a specific configuration object.
+2.  **Lifecycle Hooks:** We make `DdsWriter` notify its parent `DdsParticipant` upon creation and disposal. This keeps the logic encapsulated within the library internals; the user doesn't have to manually manage it.
+3.  **Automatic Metadata:** The library automatically captures the Process ID, Name, and Machine Name, so the user only focuses on their specific domain IDs.
+
+---
+
+### 1. The Configuration Object
+
+This serves as the "Toggle". If you don't create this, the feature is disabled (zero overhead).
+
+```csharp
+namespace CycloneDDS.Runtime.Tracking
+{
+    public record SenderIdentityConfig
+    {
+        public int AppDomainId { get; init; }
+        public int AppInstanceId { get; init; }
+        
+        // Optional overrides (defaults to system values if null)
+        public string? ProcessName { get; init; }
+        public string? ComputerName { get; init; }
+        
+        // Behavior control
+        // If true, identity is kept alive until Participant is disposed.
+        // If false, identity is disposed when the last Writer is disposed.
+        public bool KeepAliveUntilParticipantDispose { get; init; } = true; 
+    }
+}
+```
+
+### 2. Updating `DdsParticipant` (The Coordinator)
+
+The Participant acts as the central manager. It holds the "Identity Writer" and tracks the reference count of active data writers.
+
+**Key Implementation Details:**
+*   **Lazy Initialization:** The identity topic is not created until the first writer actually starts.
+*   **Thread Safety:** A lock protects the transition states (0 -> 1 and 1 -> 0 active writers).
+
+```csharp
+public sealed class DdsParticipant : IDisposable
+{
+    // ... existing fields ...
+
+    // Tracking State
+    private SenderIdentityConfig? _identityConfig;
+    private DdsWriter<SenderIdentity>? _identityWriter;
+    private int _activeWriterCount = 0;
+    private readonly object _trackingLock = new();
+
+    // 1. The Setup API (Elegant & explicit)
+    public void EnableSenderTracking(SenderIdentityConfig config)
+    {
+        lock (_trackingLock)
+        {
+            if (_activeWriterCount > 0)
+                throw new InvalidOperationException("Cannot enable tracking after writers have already been created.");
+            
+            _identityConfig = config;
+        }
+    }
+
+    // 2. Internal hooks called by DdsWriter constructor/dispose
+    internal void RegisterWriter()
+    {
+        // Fast exit if tracking disabled
+        if (_identityConfig == null) return;
+
+        lock (_trackingLock)
+        {
+            _activeWriterCount++;
+            if (_activeWriterCount == 1)
+            {
+                StartPublishingIdentity();
+            }
+        }
+    }
+
+    internal void UnregisterWriter()
+    {
+        if (_identityConfig == null) return;
+
+        lock (_trackingLock)
+        {
+            _activeWriterCount--;
+            if (_activeWriterCount == 0 && !_identityConfig.KeepAliveUntilParticipantDispose)
+            {
+                StopPublishingIdentity();
+            }
+        }
+    }
+
+    private void StartPublishingIdentity()
+    {
+        if (_identityWriter != null) return; // Already running
+
+        // Auto-detect system info
+        var process = System.Diagnostics.Process.GetCurrentProcess();
+        
+        var identity = new SenderIdentity
+        {
+            ParticipantGuid = this.GetParticipantGuid(), // Native call
+            AppDomainId = _identityConfig!.AppDomainId,
+            AppInstanceId = _identityConfig.AppInstanceId,
+            ProcessId = process.Id,
+            ProcessName = _identityConfig.ProcessName ?? process.ProcessName,
+            ComputerName = _identityConfig.ComputerName ?? Environment.MachineName
+        };
+
+        // Create Writer with TransientLocal (Late-joining readers get this info)
+        var qos = new DdsQos 
+        { 
+            Reliability = DdsReliability.Reliable, 
+            Durability = DdsDurability.TransientLocal 
+        };
+
+        // Note: Using the dedicated Identity Topic
+        _identityWriter = new DdsWriter<SenderIdentity>(this, "__FcdcSenderIdentity", qos);
+        
+        // Publish immediately
+        _identityWriter.Write(identity);
+    }
+
+    private void StopPublishingIdentity()
+    {
+        // Disposing the writer unregisters the instance in DDS
+        // Readers will see this instance state change to NOT_ALIVE
+        _identityWriter?.Dispose();
+        _identityWriter = null;
+    }
+}
+```
+
+### 3. Updating `DdsWriter` (The Trigger)
+
+We simply hook into the Constructor and Dispose methods.
+
+```csharp
+public sealed class DdsWriter<T> : IDisposable
+{
+    private readonly DdsParticipant _participant;
+    private bool _disposed;
+
+    public DdsWriter(DdsParticipant participant, string topicName, DdsQos? qos = null)
+    {
+        _participant = participant;
+        // ... creation logic ...
+
+        // Notify participant we are alive
+        // (Only if this ISN'T the internal IdentityWriter itself, to avoid infinite recursion)
+        if (typeof(T) != typeof(SenderIdentity)) 
+        {
+            _participant.RegisterWriter();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            // ... cleanup logic ...
+            
+            if (typeof(T) != typeof(SenderIdentity))
+            {
+                _participant.UnregisterWriter();
+            }
+            _disposed = true;
+        }
+    }
+}
+```
+
+### 4. How the User Uses It
+
+This meets your requirement for an elegant, opt-in API.
+
+**Scenario A: Tracking Enabled**
+```csharp
+var participant = new DdsParticipant();
+
+// 1. Configure (One-time setup)
+participant.EnableSenderTracking(new SenderIdentityConfig 
+{ 
+    AppDomainId = 100, 
+    AppInstanceId = 1 
+});
+
+// 2. Create Writers (Tracking starts automatically)
+// The Identity sample is published NOW.
+using (var writer = new DdsWriter<Msg>(participant, "TopicA"))
+{
+    writer.Write(new Msg());
+} 
+// 3. Dispose Writer (Tracking stops automatically if configured)
+// Identity Writer is disposed here.
+```
+
+**Scenario B: Tracking Disabled (Default)**
+```csharp
+var participant = new DdsParticipant();
+// No config called.
+// Zero overhead. RegisterWriter/UnregisterWriter return immediately.
+var writer = new DdsWriter<Msg>(participant, "TopicA"); 
+```
+
+### 5. Architectural Recommendations
+
+1.  **KeepAlive Recommendation:** I added the `KeepAliveUntilParticipantDispose` flag (defaulting to `true`).
+    *   *Reason:* If you set it to `false` (Stop when last writer dies), you hit a race condition: The data sample might arrive at the subscriber *after* the identity writer has said "Goodbye". The subscriber would fail to look up the sender info for that last sample. Keeping the identity alive until the Participant dies is safer and costs almost nothing (one tiny heartbeat).
+
+2.  **Thread Safety:** The `lock` inside `RegisterWriter` is extremely cheap because writer creation is a rare event (startup phase). It won't impact high-frequency `Write` loops.
+
+3.  **Recursive Safety:** The check `if (typeof(T) != typeof(SenderIdentity))` is critical. Without it, creating the `_identityWriter` inside `DdsParticipant` would call `RegisterWriter` again, causing a stack overflow or deadlock.
+---
+I need the processId as part of the sender info as there can be multiple process instances with same name running on the sender computer. 
+
+what all new p/invkokes will i need to implement for this sender tracking feature?
+---
+You are right to include `ProcessId`. Since multiple instances of the same application (same `AppDomainId`, same `AppInstanceId`) could theoretically run on the same machine, `ProcessId` is the final disambiguator for debugging.
+
+Here is the complete list of **New P/Invokes** required to implement this feature, along with the schema update.
+
+### 1. Schema Update (`SenderIdentity`)
+
+First, ensure `ProcessId` is in your schema definition.
+
+```csharp
+[DdsTopic("__FcdcSenderIdentity")]
+public partial struct SenderIdentity
+{
+    // ... other fields ...
+
+    [DdsId(5)]
+    public int ProcessId; // <--- Added
+}
+```
+
+---
+
+### 2. New Native Structs
+
+We need a struct to represent the 16-byte DDS GUID used by the C core.
+
+**`src/CycloneDDS.Runtime/Interop/DdsApi.cs`**
+
+```csharp
+[StructLayout(LayoutKind.Sequential)]
+public struct DdsGuid : IEquatable<DdsGuid>
+{
+    // DDS GUID is 16 bytes. 
+    // Usually represented as a Prefix (12 bytes) + Entity ID (4 bytes).
+    // We map it as two 64-bit integers for easy copying/equality checking.
+    public long High; 
+    public long Low;
+
+    public bool Equals(DdsGuid other) => High == other.High && Low == other.Low;
+    public override int GetHashCode() => HashCode.Combine(High, Low);
+    
+    // Helper to convert to/from System.Guid if really needed, 
+    // though using DdsGuid as the Dictionary key is faster.
+}
+
+// Native struct returned by dds_get_matched_publication_data
+// We must match the memory layout exactly to avoid corruption.
+[StructLayout(LayoutKind.Sequential)]
+public struct DdsPublicationMatchedData
+{
+    public int topic_handle;
+    public IntPtr topic_name;     // char*
+    public IntPtr type_name;      // char*
+    public IntPtr qos;            // dds_qos_t* 
+    public DdsGuid guid;          // The piece we actually want!
+}
+```
+
+---
+
+### 3. New P/Invokes
+
+You need four specific native functions to bridge the gap between "Connection Handles" and "Identities".
+
+**`src/CycloneDDS.Runtime/Interop/DdsApi.cs`**
+
+#### A. Sender Side: "Who am I?"
+Used by `DdsParticipant` to populate the `SenderIdentity` message with its own native GUID.
+
+```csharp
+[DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+public static extern int dds_get_guid(
+    int entity, // Participant Handle
+    out DdsGuid guid);
+```
+
+#### B. Receiver Side: "Who are they?"
+Used by `SenderRegistry` when a new writer connects.
+
+1.  **Get List of Handles:** If `SubscriptionMatched` says "Count is 5", we need to know *which* 5 handles are connected.
+    ```csharp
+    // Returns the number of handles written to the array
+    [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int dds_get_matched_publications(
+        int reader, 
+        [In, Out] long[] publication_handles, // Array to fill
+        uint max_handles);
+    ```
+
+2.  **Get Data for Handle:** Convert a handle (e.g., `12345`) into a GUID.
+    ```csharp
+    [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int dds_get_matched_publication_data(
+        int reader, 
+        long publication_handle, 
+        out DdsPublicationMatchedData data);
+    ```
+
+3.  **Cleanup:** Since `dds_get_matched_publication_data` allocates memory for strings (topic_name, etc.), we **must** free it to avoid leaks.
+    ```csharp
+    // Used to free the DdsPublicationMatchedData resources
+    // Note: dds_free is generic, works for this struct too
+    [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void dds_free(IntPtr ptr);
+    ```
+
+---
+
+### 4. Implementation Logic (How to use them)
+
+Here is how these P/Invokes fit into your `SenderRegistry`.
+
+#### Sender: Getting Own GUID
+```csharp
+// Inside DdsParticipant.StartPublishingIdentity()
+DdsApi.dds_get_guid(this.NativeEntity.Handle, out var myGuid);
+
+var identity = new SenderIdentity 
+{
+    ParticipantGuid = myGuid, // No conversion needed if schema uses DdsGuid
+    ProcessId = System.Diagnostics.Process.GetCurrentProcess().Id,
+    // ...
+};
+```
+
+#### Receiver: Resolving Handles
+```csharp
+// Inside DdsReader.OnSubscriptionMatched
+if (e.CurrentCountChange > 0)
+{
+    // 1. Get all handles (allocate buffer)
+    long[] handles = new long[e.CurrentCount]; 
+    int matched = DdsApi.dds_get_matched_publications(
+        _reader.Handle, 
+        handles, 
+        (uint)handles.Length);
+
+    for(int i = 0; i < matched; i++)
+    {
+        long pubHandle = handles[i];
+        
+        // 2. Get Data for this specific handle
+        if (DdsApi.dds_get_matched_publication_data(
+                _reader.Handle, 
+                pubHandle, 
+                out var data) == 0) // 0 == Success
+        {
+            try 
+            {
+                // 3. Extract GUID and Register
+                _registry.RegisterRemoteWriter(pubHandle, data.guid);
+            }
+            finally
+            {
+                // 4. CRITICAL: Free native memory allocated by Cyclone for names/qos
+                // We have to perform a trick here because 'data' is a struct, not a pointer.
+                // However, dds_get_matched_publication_data actually allocates internal pointers.
+                // The C API expects us to pass the POINTER to the struct to dds_return_loan? 
+                // NO, dds_get_matched_publication_data makes COPIES. 
+                // We actually need to free the strings inside `data`.
+                
+                // Correction for C# safety: 
+                // Since DdsPublicationMatchedData contains IntPtrs for strings,
+                // we technically only need to free those IntPtrs if we don't want leaks.
+                // Cyclone's dds_free works on the whole struct pointer if it was allocated by dds_alloc.
+                // But here the struct is on stack.
+                // We should manually free the inner pointers:
+                if (data.topic_name != IntPtr.Zero) DdsApi.dds_free(data.topic_name);
+                if (data.type_name != IntPtr.Zero) DdsApi.dds_free(data.type_name);
+                if (data.qos != IntPtr.Zero) DdsApi.dds_free(data.qos);
+            }
+        }
+    }
+}
+```
+
+### Summary of New Work
+1.  Add `ProcessId` to Schema.
+2.  Add `DdsGuid` and `DdsPublicationMatchedData` structs to `DdsApi.cs`.
+3.  Add 3 main functions: `dds_get_guid`, `dds_get_matched_publications`, `dds_get_matched_publication_data`.
+4.  Add `dds_free` (if not already there).
+---
+I need the processId as part of the sender info as there can be multiple process instances with same name running on the sender computer. 
+
+what all new p/invkokes will i need to implement for this sender tracking feature?
+---
+You are right to include `ProcessId`. Since multiple instances of the same application (same `AppDomainId`, same `AppInstanceId`) could theoretically run on the same machine, `ProcessId` is the final disambiguator for debugging.
+
+Here is the complete list of **New P/Invokes** required to implement this feature, along with the schema update.
+
+### 1. Schema Update (`SenderIdentity`)
+
+First, ensure `ProcessId` is in your schema definition.
+
+```csharp
+[DdsTopic("__FcdcSenderIdentity")]
+public partial struct SenderIdentity
+{
+    // ... other fields ...
+
+    [DdsId(5)]
+    public int ProcessId; // <--- Added
+}
+```
+
+---
+
+### 2. New Native Structs
+
+We need a struct to represent the 16-byte DDS GUID used by the C core.
+
+**`src/CycloneDDS.Runtime/Interop/DdsApi.cs`**
+
+```csharp
+[StructLayout(LayoutKind.Sequential)]
+public struct DdsGuid : IEquatable<DdsGuid>
+{
+    // DDS GUID is 16 bytes. 
+    // Usually represented as a Prefix (12 bytes) + Entity ID (4 bytes).
+    // We map it as two 64-bit integers for easy copying/equality checking.
+    public long High; 
+    public long Low;
+
+    public bool Equals(DdsGuid other) => High == other.High && Low == other.Low;
+    public override int GetHashCode() => HashCode.Combine(High, Low);
+    
+    // Helper to convert to/from System.Guid if really needed, 
+    // though using DdsGuid as the Dictionary key is faster.
+}
+
+// Native struct returned by dds_get_matched_publication_data
+// We must match the memory layout exactly to avoid corruption.
+[StructLayout(LayoutKind.Sequential)]
+public struct DdsPublicationMatchedData
+{
+    public int topic_handle;
+    public IntPtr topic_name;     // char*
+    public IntPtr type_name;      // char*
+    public IntPtr qos;            // dds_qos_t* 
+    public DdsGuid guid;          // The piece we actually want!
+}
+```
+
+---
+
+### 3. New P/Invokes
+
+You need four specific native functions to bridge the gap between "Connection Handles" and "Identities".
+
+**`src/CycloneDDS.Runtime/Interop/DdsApi.cs`**
+
+#### A. Sender Side: "Who am I?"
+Used by `DdsParticipant` to populate the `SenderIdentity` message with its own native GUID.
+
+```csharp
+[DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+public static extern int dds_get_guid(
+    int entity, // Participant Handle
+    out DdsGuid guid);
+```
+
+#### B. Receiver Side: "Who are they?"
+Used by `SenderRegistry` when a new writer connects.
+
+1.  **Get List of Handles:** If `SubscriptionMatched` says "Count is 5", we need to know *which* 5 handles are connected.
+    ```csharp
+    // Returns the number of handles written to the array
+    [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int dds_get_matched_publications(
+        int reader, 
+        [In, Out] long[] publication_handles, // Array to fill
+        uint max_handles);
+    ```
+
+2.  **Get Data for Handle:** Convert a handle (e.g., `12345`) into a GUID.
+    ```csharp
+    [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int dds_get_matched_publication_data(
+        int reader, 
+        long publication_handle, 
+        out DdsPublicationMatchedData data);
+    ```
+
+3.  **Cleanup:** Since `dds_get_matched_publication_data` allocates memory for strings (topic_name, etc.), we **must** free it to avoid leaks.
+    ```csharp
+    // Used to free the DdsPublicationMatchedData resources
+    // Note: dds_free is generic, works for this struct too
+    [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void dds_free(IntPtr ptr);
+    ```
+
+---
+
+### 4. Implementation Logic (How to use them)
+
+Here is how these P/Invokes fit into your `SenderRegistry`.
+
+#### Sender: Getting Own GUID
+```csharp
+// Inside DdsParticipant.StartPublishingIdentity()
+DdsApi.dds_get_guid(this.NativeEntity.Handle, out var myGuid);
+
+var identity = new SenderIdentity 
+{
+    ParticipantGuid = myGuid, // No conversion needed if schema uses DdsGuid
+    ProcessId = System.Diagnostics.Process.GetCurrentProcess().Id,
+    // ...
+};
+```
+
+#### Receiver: Resolving Handles
+```csharp
+// Inside DdsReader.OnSubscriptionMatched
+if (e.CurrentCountChange > 0)
+{
+    // 1. Get all handles (allocate buffer)
+    long[] handles = new long[e.CurrentCount]; 
+    int matched = DdsApi.dds_get_matched_publications(
+        _reader.Handle, 
+        handles, 
+        (uint)handles.Length);
+
+    for(int i = 0; i < matched; i++)
+    {
+        long pubHandle = handles[i];
+        
+        // 2. Get Data for this specific handle
+        if (DdsApi.dds_get_matched_publication_data(
+                _reader.Handle, 
+                pubHandle, 
+                out var data) == 0) // 0 == Success
+        {
+            try 
+            {
+                // 3. Extract GUID and Register
+                _registry.RegisterRemoteWriter(pubHandle, data.guid);
+            }
+            finally
+            {
+                // 4. CRITICAL: Free native memory allocated by Cyclone for names/qos
+                // We have to perform a trick here because 'data' is a struct, not a pointer.
+                // However, dds_get_matched_publication_data actually allocates internal pointers.
+                // The C API expects us to pass the POINTER to the struct to dds_return_loan? 
+                // NO, dds_get_matched_publication_data makes COPIES. 
+                // We actually need to free the strings inside `data`.
+                
+                // Correction for C# safety: 
+                // Since DdsPublicationMatchedData contains IntPtrs for strings,
+                // we technically only need to free those IntPtrs if we don't want leaks.
+                // Cyclone's dds_free works on the whole struct pointer if it was allocated by dds_alloc.
+                // But here the struct is on stack.
+                // We should manually free the inner pointers:
+                if (data.topic_name != IntPtr.Zero) DdsApi.dds_free(data.topic_name);
+                if (data.type_name != IntPtr.Zero) DdsApi.dds_free(data.type_name);
+                if (data.qos != IntPtr.Zero) DdsApi.dds_free(data.qos);
+            }
+        }
+    }
+}
+```
+
+### Summary of New Work
+1.  Add `ProcessId` to Schema.
+2.  Add `DdsGuid` and `DdsPublicationMatchedData` structs to `DdsApi.cs`.
+3.  Add 3 main functions: `dds_get_guid`, `dds_get_matched_publications`, `dds_get_matched_publication_data`.
+4.  Add `dds_free` (if not already there).
+---
+pls check what native functions really exists in our cyclone dds code base so that we can call them from csharp
+---
+
+# Native API Analysis for Extended Features
+
+This document analyzes the native Cyclone DDS C API requirements for implementing new features in the C# bindings. It distinguishes between features that are fully supported by the local native library and those that require alternative implementation strategies based on the source code analysis.
+
+## 1. Read vs. Take (Non-Destructive Read)
+
+To support non-destructive reading (peeking at data without removing it from the history cache), we need to expose `dds_readcdr`. This is the counterpart to the already implemented `dds_takecdr`.
+
+### Native API Found
+*   **Function**: `dds_readcdr`
+*   **File**: `src/core/ddsc/include/dds/dds.h`
+*   **Signature**:
+    ```c
+    DDS_EXPORT dds_return_t
+    dds_readcdr(
+      dds_entity_t reader_or_condition,
+      struct ddsi_serdata **buf,
+      uint32_t maxs,
+      dds_sample_info_t *si,
+      uint32_t mask);
+    ```
+
+## 2. Async/Await (Listeners)
+
+To implement `WaitDataAsync`, we need to attach a `dds_listener` to the `DdsReader` that triggers a callback when `DDS_DATA_AVAILABLE_STATUS` is set.
+
+### Native APIs Found
+
+#### Listener Creation & Destruction
+*   **File**: `src/core/ddsc/include/dds/ddsc/dds_public_listener.h`
+*   **Signatures**:
+    ```c
+    // Create a listener with an optional argument (passed to callbacks)
+    DDS_EXPORT dds_listener_t* dds_create_listener(void* arg);
+
+    // Delete a listener
+    DDS_EXPORT void dds_delete_listener (dds_listener_t *listener);
+    ```
+
+#### Setting Callbacks
+*   **File**: `src/core/ddsc/include/dds/ddsc/dds_public_listener.h`
+*   **Signature**:
+    ```c
+    // Set the DATA_AVAILABLE callback
+    DDS_EXPORT void dds_lset_data_available (dds_listener_t *listener, dds_on_data_available_fn callback);
+    ```
+    *Note: `dds_on_data_available_fn` is defined as:*
+    ```c
+    typedef void (*dds_on_data_available_fn) (dds_entity_t reader, void* arg);
+    ```
+
+#### Attaching Listener to Entity
+*   **File**: `src/core/ddsc/include/dds/dds.h`
+*   **Signature**:
+    ```c
+    // Attach the listener to a reader (or other entity)
+    DDS_EXPORT dds_return_t
+    dds_set_listener(dds_entity_t entity, const dds_listener_t * listener);
+    ```
+
+## 3. Content Filtering
+
+The goal is to filter data at the topic level. The standard DDS approach uses `ContentFilteredTopic` with SQL-like expressions.
+
+### Status: Standard SQL API Missing
+The standard function `dds_create_contentfilteredtopic` is **NOT present** in the local source code.
+*   **Evidence**: `src/core/ddsc/tests/filter.c` (lines 17-19) explicitly states:
+    > *"The (not-too-distant) future will bring content filter expressions in the reader QoS that get parsed at run-time and drop these per-topic filter functions."*
+*   **Conclusion**: The local version of Cyclone DDS **does not support SQL-based content filtering**.
+
+### Available API: Callback-Based Filtering
+The local library supports a programmatic filtering mechanism where a user-defined callback function determines whether a sample is accepted.
+
+#### Native APIs Found
+*   **File**: `src/core/ddsc/include/dds/dds.h`
+*   **Functions**:
+    ```c
+    // Simple filter with argument
+    DDS_EXPORT dds_return_t
+    dds_set_topic_filter_and_arg(
+      dds_entity_t topic,
+      dds_topic_filter_arg_fn filter,
+      void *arg);
+
+    // Extended filter (allows filtering on sample info, etc.)
+    DDS_EXPORT dds_return_t
+    dds_set_topic_filter_extended(
+      dds_entity_t topic,
+      const struct dds_topic_filter *filter);
+    ```
+
+#### Data Structures & Callbacks
+To use this in C#, we must define a delegate matching the C function pointer signature and marshal it.
+
+*   **Filter Function Signature**:
+    ```c
+    typedef bool (*dds_topic_filter_sample_arg_fn) (const void * sample, void * arg);
+    ```
+    *   `sample`: Pointer to the deserialized sample (or `ddsi_serdata` depending on implementation, but usually the sample).
+    *   `arg`: The user-provided argument.
+    *   `return`: `true` to keep the sample, `false` to discard it.
+
+*   **Extended Filter Struct**:
+    ```c
+    struct dds_topic_filter {
+      enum dds_topic_filter_mode mode;         // e.g., DDS_TOPIC_FILTER_SAMPLE_ARG
+      union dds_topic_filter_function_union f; // Union containing the function pointer
+      void *arg;                               // User argument
+    };
+    ```
+
+### Implementation Strategy for C#
+Since SQL filtering is unavailable, we must implement **Client-Side Filtering** using the callback API:
+1.  **Define Delegate**: Create a C# delegate `delegate bool TopicFilterDelegate(IntPtr sample, IntPtr arg);`.
+2.  **Interop**: Use `Marshal.GetFunctionPointerForDelegate` (or `UnmanagedCallersOnly` in .NET 5+) to pass this delegate to `dds_set_topic_filter_and_arg`.
+3.  **Managed Filtering**: The C# callback will receive the sample pointer.
+    *   *Challenge*: The sample pointer is likely a raw C structure. To filter effectively, we might need to partially deserialize it or use offsets to check specific fields (like "ID > 5").
+    *   *Performance*: This incurs a managed/unmanaged transition for *every* sample.
+
+### Writer-Side Filtering
+**Not Supported via SQL**. Since the SQL parser is missing, the writer cannot automatically filter based on a reader's subscription string. The filtering happens strictly at the Reader's side (specifically, at the Topic level within the Reader's participant) via the callback.
+
+### conclusion
+This api is not in a good shape for high performance filtering. You should replace using it with your own cshrp-side filtering.
+
+## 4. Status & Discovery (Events)
+
+To implement typed status events (e.g., `PublicationMatched`, `LivelinessChanged`), we need to access the status structures and getter functions.
+
+### Native APIs Found
+*   **File**: `src/core/ddsc/include/dds/ddsc/dds_public_status.h`
+
+#### Status Structures
+We found the definitions for all standard status structures, including:
+*   `dds_publication_matched_status_t`
+*   `dds_subscription_matched_status_t`
+*   `dds_liveliness_changed_status_t`
+*   `dds_offered_deadline_missed_status_t`
+*   `dds_requested_deadline_missed_status_t`
+*   (and others)
+
+#### Status Getters
+We found the corresponding getter functions to retrieve and reset these statuses:
+*   `dds_get_publication_matched_status`
+*   `dds_get_subscription_matched_status`
+*   `dds_get_liveliness_changed_status`
+*   (and others matching the structures)
+
+**Example Signature**:
+```c
+DDS_EXPORT dds_return_t
+dds_get_publication_matched_status (
+  dds_entity_t writer,
+  dds_publication_matched_status_t * status);
+```
+
+## 5. Instance Management (Keyed Lookups)
+
+To implement `LookupInstance` and `TakeInstance`, we need APIs to map keys to instance handles and to read/take specific instances.
+
+### Native APIs Found
+
+#### Lookup Instance
+*   **File**: `src/core/ddsc/include/dds/dds.h`
+*   **Signature**:
+    ```c
+    // Get instance handle from a sample with key fields set
+    DDS_EXPORT dds_instance_handle_t
+    dds_lookup_instance(dds_entity_t entity, const void *data);
+    ```
+
+#### Read/Take Specific Instance
+*   **File**: `src/core/ddsc/include/dds/dds.h`
+*   **Signatures**:
+    ```c
+    // Read specific instance
+    DDS_EXPORT dds_return_t
+    dds_readcdr_instance (
+        dds_entity_t reader_or_condition,
+        struct ddsi_serdata **buf,
+        uint32_t maxs,
+        dds_sample_info_t *si,
+        dds_instance_handle_t handle,
+        uint32_t mask);
+
+    // Take specific instance
+    DDS_EXPORT dds_return_t
+    dds_takecdr_instance (
+        dds_entity_t reader_or_condition,
+        struct ddsi_serdata **buf,
+        uint32_t maxs,
+        dds_sample_info_t *si,
+        dds_instance_handle_t handle,
+        uint32_t mask);
+    ```
+---
+the analysis of the source code of the cyclone dds revealed the following
+---
+## 3. Content Filtering
+
+The goal is to filter data at the topic level. The standard DDS approach uses `ContentFilteredTopic` with SQL-like expressions.
+
+### Status: Standard SQL API Missing
+The standard function `dds_create_contentfilteredtopic` is **NOT present** in the local source code.
+*   **Evidence**: `src/core/ddsc/tests/filter.c` (lines 17-19) explicitly states:
+    > *"The (not-too-distant) future will bring content filter expressions in the reader QoS that get parsed at run-time and drop these per-topic filter functions."*
+*   **Conclusion**: The local version of Cyclone DDS **does not support SQL-based content filtering**.
+
+### Available API: Callback-Based Filtering
+The local library supports a programmatic filtering mechanism where a user-defined callback function determines whether a sample is accepted.
+
+#### Native APIs Found
+*   **File**: `src/core/ddsc/include/dds/dds.h`
+*   **Functions**:
+    ```c
+    // Simple filter with argument
+    DDS_EXPORT dds_return_t
+    dds_set_topic_filter_and_arg(
+      dds_entity_t topic,
+      dds_topic_filter_arg_fn filter,
+      void *arg);
+
+    // Extended filter (allows filtering on sample info, etc.)
+    DDS_EXPORT dds_return_t
+    dds_set_topic_filter_extended(
+      dds_entity_t topic,
+      const struct dds_topic_filter *filter);
+    ```
+
+#### Data Structures & Callbacks
+To use this in C#, we must define a delegate matching the C function pointer signature and marshal it.
+
+*   **Filter Function Signature**:
+    ```c
+    typedef bool (*dds_topic_filter_sample_arg_fn) (const void * sample, void * arg);
+    ```
+    *   `sample`: Pointer to the deserialized sample (or `ddsi_serdata` depending on implementation, but usually the sample).
+    *   `arg`: The user-provided argument.
+    *   `return`: `true` to keep the sample, `false` to discard it.
+
+*   **Extended Filter Struct**:
+    ```c
+    struct dds_topic_filter {
+      enum dds_topic_filter_mode mode;         // e.g., DDS_TOPIC_FILTER_SAMPLE_ARG
+      union dds_topic_filter_function_union f; // Union containing the function pointer
+      void *arg;                               // User argument
+    };
+    ```
+
+### Implementation Strategy for C#
+Since SQL filtering is unavailable, we must implement **Client-Side Filtering** using the callback API:
+1.  **Define Delegate**: Create a C# delegate `delegate bool TopicFilterDelegate(IntPtr sample, IntPtr arg);`.
+2.  **Interop**: Use `Marshal.GetFunctionPointerForDelegate` (or `UnmanagedCallersOnly` in .NET 5+) to pass this delegate to `dds_set_topic_filter_and_arg`.
+3.  **Managed Filtering**: The C# callback will receive the sample pointer.
+    *   *Challenge*: The sample pointer is likely a raw C structure. To filter effectively, we might need to partially deserialize it or use offsets to check specific fields (like "ID > 5").
+    *   *Performance*: This incurs a managed/unmanaged transition for *every* sample.
+
+### Writer-Side Filtering
+**Not Supported via SQL**. Since the SQL parser is missing, the writer cannot automatically filter based on a reader's subscription string. The filtering happens strictly at the Reader's side (specifically, at the Topic level within the Reader's participant) via the callback.
+----
+
+that solution does not seem very performant. If we are left with reader side filtering, maybe there are more elegant way how to implement such a feature in c#, using modern techonology, maybe JIT compiled expressions or something very fast?
+
+-----
+
+You are absolutely correct. Passing a managed delegate to C that performs full marshalling (`PtrToStructure`) for every sample is a performance killer and violates the zero-allocation philosophy.
+
+The elegant, modern, and high-performance solution is to use **Runtime Code Generation (Expression Trees)** combined with **Unsafe Pointer Arithmetic**.
+
+We can allow the user to write a standard C# lambda (e.g., `x => x.Id > 50`), and at runtime, we compile this into a highly optimized delegate that reads directly from the raw native memory using offsets, skipping serialization entirely.
+
+Here is the design for **Part 3: High-Performance Type-Safe Filtering**.
+
+---
+
+### 1. The Concept: "Zero-Marshalling Predicates"
+
+Instead of marshalling the C struct to a C# object to check a property:
+1.  We determine the **Native Offset** of the fields (extracted during CodeGen from `idlc` output).
+2.  We analyze the user's `Expression<Func<T, bool>>`.
+3.  We compile a dynamic method that takes an `IntPtr`, adds the offset, reads the primitive directly, and compares it.
+
+**Performance:**
+*   **Allocations:** 0 (after initial compilation).
+*   **Overhead:** Minimal P/Invoke transition cost. No struct copying.
+*   **Speed:** Comparable to hand-written C code.
+
+---
+
+### 2. CodeGen Updates (Prerequisite)
+
+To read raw memory, we need to know where the fields are in the **C struct layout** (which `idlc` generated), not the C# layout.
+
+**Update `DescriptorParser.cs`** to extract offsets and generate a metadata class.
+
+**Generated Code (`SensorData.Offsets.cs`):**
+```csharp
+partial struct SensorData
+{
+    // These offsets come directly from the .c file generated by idlc
+    // e.g., offsetof(SensorData, id)
+    public static class NativeOffsets
+    {
+        public const int Id = 0;
+        public const int Value = 4;
+        public const int Status = 12;
+    }
+}
+```
+
+---
+
+### 3. The Filter Compiler (The Magic)
+
+We need a utility that transforms `(SensorData s) => s.Id > 10` into `(IntPtr ptr) => *(int*)(ptr + 0) > 10`.
+
+**`src/CycloneDDS.Runtime/Filtering/FilterCompiler.cs`**
+
+```csharp
+using System.Linq.Expressions;
+using System.Reflection.Emit;
+
+public static class FilterCompiler
+{
+    // The delegate signature Cyclone expects
+    public delegate bool TopicFilterDelegate(IntPtr sample, IntPtr arg);
+
+    public static TopicFilterDelegate Compile<T>(Expression<Func<T, bool>> predicate)
+    {
+        // 1. Validate inputs
+        var param = predicate.Parameters[0];
+        
+        // 2. Create DynamicMethod
+        var method = new DynamicMethod(
+            $"Filter_{typeof(T).Name}_{Guid.NewGuid()}",
+            typeof(bool),
+            new[] { typeof(IntPtr), typeof(IntPtr) }, // matches TopicFilterDelegate
+            typeof(T).Module);
+
+        var il = method.GetILGenerator();
+
+        // 3. Visit the Expression Tree
+        var visitor = new NativeMemoryVisitor(il, param, typeof(T));
+        visitor.Visit(predicate.Body);
+
+        // 4. Return result
+        il.Emit(OpCodes.Ret);
+
+        return (TopicFilterDelegate)method.CreateDelegate(typeof(TopicFilterDelegate));
+    }
+
+    private class NativeMemoryVisitor : ExpressionVisitor
+    {
+        private readonly ILGenerator _il;
+        private readonly ParameterExpression _targetParam;
+        private readonly Type _targetType;
+
+        public NativeMemoryVisitor(ILGenerator il, ParameterExpression targetParam, Type targetType)
+        {
+            _il = il;
+            _targetParam = targetParam;
+            _targetType = targetType;
+        }
+
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Expression == _targetParam)
+            {
+                // User accessed "x.Field"
+                // We generate: Read(ptr + offset)
+                
+                // 1. Load Base Pointer (Argument 0)
+                _il.Emit(OpCodes.Ldarg_0);
+
+                // 2. Get Native Offset via Reflection on the generated "NativeOffsets" class
+                int offset = GetNativeOffset(_targetType, node.Member.Name);
+                
+                // 3. Add Offset
+                if (offset > 0)
+                {
+                    _il.Emit(OpCodes.Ldc_I4, offset);
+                    _il.Emit(OpCodes.Add);
+                }
+
+                // 4. Load Indirect (based on type)
+                EmitLoadIndirect(node.Type);
+                
+                return node;
+            }
+            return base.VisitMember(node);
+        }
+
+        private void EmitLoadIndirect(Type type)
+        {
+            if (type == typeof(int)) _il.Emit(OpCodes.Ldind_I4);
+            else if (type == typeof(double)) _il.Emit(OpCodes.Ldind_R8);
+            else if (type == typeof(byte)) _il.Emit(OpCodes.Ldind_U1);
+            // ... handle other primitives ...
+            else throw new NotSupportedException($"Filtering on {type.Name} not supported yet");
+        }
+        
+        private int GetNativeOffset(Type type, string fieldName)
+        {
+            // Reflection lookup on "NativeOffsets" nested class
+            // This happens only once during compilation
+            var offsetsClass = type.GetNestedType("NativeOffsets");
+            var field = offsetsClass?.GetField(fieldName);
+            if (field != null) return (int)field.GetValue(null);
+            return 0; // Or throw
+        }
+    }
+}
+```
+
+---
+
+### 4. The API (Clean & Type-Safe)
+
+We integrate this into the `DdsTopic` class we designed earlier.
+
+```csharp
+public class DdsTopic<T> : DdsTopic
+{
+    private FilterCompiler.TopicFilterDelegate? _nativeFilter;
+    private GCHandle _filterHandle; // Keep delegate alive
+
+    // The Elegant API
+    public void SetFilter(Expression<Func<T, bool>> predicate)
+    {
+        // 1. Compile Expression to Native-Reader Delegate
+        _nativeFilter = FilterCompiler.Compile(predicate);
+
+        // 2. Marshal
+        // We need to keep the delegate alive as long as C uses it
+        if (_filterHandle.IsAllocated) _filterHandle.Free();
+        _filterHandle = GCHandle.Alloc(_nativeFilter);
+        
+        IntPtr funcPtr = Marshal.GetFunctionPointerForDelegate(_nativeFilter);
+
+        // 3. Call Native API
+        int ret = DdsApi.dds_set_topic_filter_and_arg(
+            this.NativeHandle,
+            funcPtr,
+            IntPtr.Zero // We don't need 'arg' because we baked logic into the IL
+        );
+        
+        DdsException.Check(ret, "SetTopicFilter");
+    }
+    
+    public void ClearFilter()
+    {
+        // ... cleanup logic ...
+    }
+}
+```
+
+---
+
+### 5. Usage Example
+
+This provides exactly what you asked for: modern C# syntax, type safety, and raw C performance.
+
+```csharp
+// 1. Create Topic
+var topic = participant.CreateTopic<SensorData>("Sensors");
+
+// 2. Apply Filter (JIT compiled to raw pointer arithmetic)
+// No SQL strings. Checked at compile time.
+topic.SetFilter(s => s.Id > 100 && s.Value < 50.0);
+
+// 3. Create Reader
+using var reader = new DdsReader<SensorData>(participant, topic);
+
+// 4. Process (Only filtered data arrives here)
+while (await reader.WaitDataAsync())
+{
+    // ...
+}
+```
+
+### 6. Implementation Tasks (Updated)
+
+1.  **CodeGen Update:** Extract offsets from `idlc` C output (using your CppAst parser) and emit `NativeOffsets` nested class.
+2.  **P/Invoke:** Add `dds_set_topic_filter_and_arg`.
+3.  **Implement `FilterCompiler`:** The ExpressionVisitor to IL generator.
+    *   *Start simple:* Support `int`, `double`, `bool`, and `&&`, `||`, `>`, `<`.
+    *   *Later:* Support string comparisons (requires calls to `strcmp` in IL, harder but doable).
+4.  **Integration Test:** Verify filtering drops samples before they reach `Take()`.
+
+### Summary
+This approach bypasses the missing SQL support by injecting C# JIT-optimized assembly directly into the DDS receive path. It is **faster** than the SQL parser would have been because it avoids parsing strings for every sample. It represents the "modern technology" approach you requested.
+----
+if the filtering happens on the reader side, does it make sense to use dds_set_topic_filter_and_arg and let DDS call the csharp code for each sample or should we rather implement the filter to our own dds reader directly?
+----
+You have hit on a critical architectural decision point.
+
+**Recommendation: Do NOT use `dds_set_topic_filter_and_arg` with a C# callback.**
+
+Implement the filtering **Client-Side (inside your DdsReader)** instead.
+
+### Why `dds_set_topic_filter_and_arg` is a trap for .NET
+
+1.  **The "Reverse P/Invoke" Tax:**
+    Calling from C# -> C is fast. Calling from C -> C# (a callback) is significantly slower. It requires the CLR to set up a transition frame, ensure GC safety, and marshal arguments. Doing this for *every single sample* (e.g., 10,000 Hz) will burn CPU cycles just on thread transitions.
+
+2.  **The Serdata Conflict:**
+    Your architecture relies on **Serdata** (keeping data as raw bytes).
+    *   The native `dds_topic_filter` callback expects a deserialized C-struct pointer.
+    *   To support this, Cyclone would have to **fully deserialize** the CDR blob into a C-struct just to call your filter.
+    *   Then, you would have to read that C-struct from C#.
+    *   This defeats the entire purpose of your Zero-Copy / Serdata architecture.
+
+3.  **Spurious Wakeups vs. CPU Load:**
+    *   *Callback Method:* Saves Reader History memory (data is rejected before storage), but burns CPU on transitions.
+    *   *Client-Side Method:* Uses Reader History memory, but is CPU-efficient because C# JIT optimizes the filtering loop heavily (inline checks, vectorization).
+
+---
+
+### The Elegant Solution: "Filtered Views"
+
+We can implement the filter purely in C# as a lightweight layer over the `ViewScope`. This feels like LINQ but runs with raw pointer speed.
+
+#### 1. The API
+We allow the user to register a predicate on the Reader.
+
+```csharp
+// User Code
+var reader = new DdsReader<SensorData, SensorDataView>(...);
+
+// "Only give me data where ID > 100"
+// This matches your request for modern C# Expressions
+reader.SetFilter(view => view.Id > 100); 
+```
+
+#### 2. Implementation: The `FilteredIterator`
+We don't modify `Take()` to return a list (allocations!). Instead, we make `ViewScope` enumerable, and the enumerator applies the filter.
+
+**`src/CycloneDDS.Runtime/ViewScope.cs`**
+
+```csharp
+public ref struct ViewScope<TView> where TView : struct
+{
+    // ... existing state ...
+    private readonly Predicate<TView>? _filter;
+
+    internal ViewScope(..., Predicate<TView>? filter) 
+    {
+        // ...
+        _filter = filter;
+    }
+
+    // Standard Iterator
+    public Enumerator GetEnumerator() => new Enumerator(this);
+
+    public ref struct Enumerator
+    {
+        private readonly Span<TView> _samples;
+        private readonly Span<DdsSampleInfo> _infos;
+        private readonly Predicate<TView>? _filter;
+        private int _index;
+        private TView _current;
+
+        internal Enumerator(ViewScope<TView> scope)
+        {
+            _samples = scope._views.AsSpan(0, scope._count);
+            _infos = scope._infos.AsSpan(0, scope._count);
+            _filter = scope._filter;
+            _index = -1;
+            _current = default;
+        }
+
+        public TView Current => _current;
+
+        public bool MoveNext()
+        {
+            while (++_index < _samples.Length)
+            {
+                // 1. Check Validity first
+                if (_infos[_index].ValidData == 0) continue;
+
+                // 2. Check Filter (Fast Delegate Call)
+                // Since TView is a ref struct reading from Spans, this involves 
+                // NO allocation and NO full deserialization.
+                if (_filter != null && !_filter(_samples[_index])) 
+                {
+                    continue; // Skip
+                }
+
+                _current = _samples[_index];
+                return true;
+            }
+            return false;
+        }
+    }
+}
+```
+
+#### 3. Update `DdsReader`
+
+```csharp
+public sealed class DdsReader<T, TView> : IDisposable 
+    where TView : struct
+{
+    private Predicate<TView>? _activeFilter;
+
+    public void SetFilter(Predicate<TView> filter)
+    {
+        _activeFilter = filter;
+    }
+
+    public ViewScope<TView> Take(int maxSamples = 32)
+    {
+        // ... native take ...
+        return new ViewScope<TView>(..., _activeFilter);
+    }
+}
+```
+
+### Why this approach wins
+
+1.  **Lazy Evaluation:** The `TView` struct (your `ref struct`) parses fields on-demand.
+    *   If your filter is `x => x.Header.Id > 5`, the `TView` property accessor reads *only* those 4 bytes from the CDR blob.
+    *   It **does not** deserialize the rest of the message (e.g., the large payload image).
+    *   This mimics the efficiency of a native Content Filter without the interop cost.
+
+2.  **JIT Optimization:** The C# JIT can inline the property accessors inside `TView`. The loop in `MoveNext` becomes tight assembly instructions reading directly from the pinned native memory.
+
+3.  **Modern API:** It feels exactly like `IEnumerable<T>.Where(...)`, but it allocates nothing.
+
+### Summary Strategy
+
+*   **Do NOT** implement the P/Invoke callback filter. It fights against your Serdata design.
+*   **DO** implement the `SetFilter(Predicate<TView>)` API on `DdsReader`.
+*   **DO** rely on your `ref struct` Views to make that filtering instant by reading offsets directly from the CDR span.
+----
+
+
+
+
+
+
+does it still make sense to tie the filter to a topic? do we need to expose the topic (introduce new dds topic class) just because of the filtering which is anyway implemented only in the reader? If we can set the predicate on the reader, what for is the possibility to set it on the topic?
+---
+You are absolutely correct. **Introducing a `DdsTopic` class just for client-side filtering is over-engineering.**
+
+If we are running the filter inside the C# `DdsReader` (client-side) rather than pushing a SQL string to the Publisher (writer-side), then the "Topic" abstraction adds no value. It just adds boilerplate code for the user.
+
+### Decision: Drop `DdsTopic` from the Public API
+
+Since we are prioritizing **Elegance** and **C# Idioms**:
+
+1.  **Keep it Flat:** The user shouldn't have to create a Topic, then a FilteredTopic, then a Reader.
+2.  **Keep it Local:** Since the logic runs locally in C#, it belongs on the object executing the logic: the `DdsReader`.
+
+### The Simplified API Design
+
+We skip the `DdsTopic` class entirely. We add the filtering capability directly to the `DdsReader`.
+
+#### 1. Configuration (SetFilter)
+
+```csharp
+// Scenario: Reading High-Frequency Sensor Data
+var reader = new DdsReader<SensorData, SensorDataView>(participant, "Sensors");
+
+// Elegant: Lambda expression on the View
+// This uses the JIT optimization we discussed (lazy property access)
+reader.SetFilter(view => view.Temperature > 100.0 && view.Status == SensorStatus.Active);
+```
+
+#### 2. Implementation (`DdsReader.cs`)
+
+This is lightweight and fits perfectly into your existing class.
+
+```csharp
+public sealed class DdsReader<T, TView> : IDisposable 
+    where TView : struct
+{
+    private Predicate<TView>? _filter;
+
+    // Hot-swappable filter
+    public void SetFilter(Predicate<TView>? filter)
+    {
+        // Thread-safe atomic assignment of reference
+        _filter = filter; 
+    }
+
+    public ViewScope<TView> Take(int maxSamples = 32)
+    {
+        // ... native take ...
+        
+        // Pass the current filter snapshot to the scope
+        return new ViewScope<TView>(..., _filter);
+    }
+}
+```
+
+### Why this is better for your specific project
+
+| Feature | Standard DDS (Topic-based) | FastCycloneDDS (Reader-based) |
+| :--- | :--- | :--- |
+| **Concept** | "I am subscribing to a specific subset of the global data stream." | "I am reading the stream, but I only care about X." |
+| **Setup** | Verbose: `CreateTopic` -> `CreateCFT` -> `CreateReader`. | Simple: `new Reader` -> `SetFilter`. |
+| **Runtime** | SQL parsing overhead (if local). | **JIT-compiled speed (C#).** |
+| **Flexibility** | Hard to change filter at runtime (requires SQL setter). | **Instant**: Just assign a new lambda. |
+| **Allocations** | High (String manipulation). | **Zero**. |
+
+### When would you ever need `DdsTopic`?
+
+Only one specific scenario would justify bringing back the `DdsTopic` class: **Network Bandwidth Optimization via Writer-Side Filtering.**
+
+If Cyclone DDS eventually enables the SQL parser and you want the **Publisher** to stop sending packets over the wire based on the filter, *then* you must use the standard DDS discovery mechanism (which requires `ContentFilteredTopic`).
+
+**Until then, the Reader-side lambda is superior in every way for your use case.**
+
+### Summary of Tasks Update
+
+**remove** the tasks related to `DdsTopic` class creation and `dds_create_contentfilteredtopic` P/Invokes.
+
+**New Plan for Filtering:**
+1.  **Update `DdsReader`**: Add `SetFilter(Predicate<TView>)`.
+2.  **Update `ViewScope`**: Implement the filtering iterator (the `MoveNext` loop).
+3.  **No new P/Invokes** required.
+4.  **No new Classes** required.
+---
