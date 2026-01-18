@@ -22,13 +22,18 @@ namespace CycloneDDS.CodeGen
             if (File.Exists(localIdlc)) return localIdlc;
 
             // DEV: Check workspace location (for tests/dev)
-            // Iterate up 6 levels looking for cyclonedds/install/bin/idlc.exe
+            // Iterate up 6 levels looking for cyclonedds/install/bin/idlc.exe OR cyclone-compiled/bin/idlc.exe
             var searchDir = new DirectoryInfo(currentDir);
             for (int i = 0; i < 6; i++)
             {
                 if (searchDir == null) break;
+                
                 string checkPath = Path.Combine(searchDir.FullName, "cyclonedds", "install", "bin", "idlc.exe");
                 if (File.Exists(checkPath)) return checkPath;
+                
+                string repoPath = Path.Combine(searchDir.FullName, "cyclone-compiled", "bin", "idlc.exe");
+                if (File.Exists(repoPath)) return repoPath;
+
                 searchDir = searchDir.Parent;
             }
 
