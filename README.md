@@ -2,6 +2,8 @@
 
 High-performance .net implementation with zero-allocation pub/sub.
 
+See a [short feature presentation](docs/CsharpBindings_presentation.pdf).
+
 ## Features
 
 - ✅ Zero-copy writes via serdata APIs
