@@ -10,7 +10,10 @@ namespace CycloneDDS.CodeGen
 {
     public class SchemaDiscovery
     {
-        public List<TypeInfo> DiscoverTopics(string sourceDirectory)
+        public Compilation? Compilation { get; private set; }
+        public HashSet<string> ValidExternalTypes { get; } = new HashSet<string>();
+
+        public List<TypeInfo> DiscoverTopics(string sourceDirectory, IEnumerable<string>? referencePaths = null)
         {
             if (!Directory.Exists(sourceDirectory))
             {
@@ -41,6 +44,17 @@ namespace CycloneDDS.CodeGen
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(CycloneDDS.Schema.DdsTopicAttribute).Assembly.Location)
             };
+
+            if (referencePaths != null)
+            {
+                foreach (var refPath in referencePaths)
+                {
+                    if (File.Exists(refPath)) 
+                    {
+                        try { references.Add(MetadataReference.CreateFromFile(refPath)); } catch {}
+                    }
+                }
+            }
             
             // Add System.Runtime for net8.0 if needed, but object might be enough for basic types
             // If running on .NET Core, we might need more refs.
@@ -54,7 +68,7 @@ namespace CycloneDDS.CodeGen
                 }
             }
 
-            var compilation = CSharpCompilation.Create("Discovery")
+            Compilation = CSharpCompilation.Create("Discovery")
                 .AddReferences(references)
                 .AddSyntaxTrees(syntaxTrees);
             
@@ -62,7 +76,7 @@ namespace CycloneDDS.CodeGen
             
             foreach (var tree in syntaxTrees)
             {
-                var semanticModel = compilation.GetSemanticModel(tree);
+                var semanticModel = Compilation.GetSemanticModel(tree);
                 var root = tree.GetRoot();
                 var typeDecls = root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>();
                 
@@ -81,6 +95,7 @@ namespace CycloneDDS.CodeGen
                         { 
                             Name = typeSymbol.Name,
                             Namespace = typeSymbol.ContainingNamespace?.ToDisplayString() ?? string.Empty,
+                            SourceFile = tree.FilePath,
                             IsTopic = isTopic,
                             IsStruct = isStruct,
                             IsEnum = isEnum,
@@ -148,6 +163,67 @@ namespace CycloneDDS.CodeGen
             return topics;
         }
 
+        public string GetIdlFileName(TypeInfo type, string sourceFileName)
+        {
+            // Check for [DdsIdlFile] attribute
+            var attr = type.GetAttribute("DdsIdlFile");
+            
+            if (attr != null && attr.Arguments.Count > 0)
+            {
+                string fileName = attr.Arguments[0] as string;
+                ValidateIdlFileName(fileName, type.Name);
+                return fileName;
+            }
+            
+            // Default: Use C# source filename without extension
+            return Path.GetFileNameWithoutExtension(sourceFileName);
+        }
+
+        public string GetIdlModule(TypeInfo type)
+        {
+            // Check for [DdsIdlModule] attribute
+            var attr = type.GetAttribute("DdsIdlModule");
+            
+            if (attr != null && attr.Arguments.Count > 0)
+            {
+                string modulePath = attr.Arguments[0] as string;
+                ValidateIdlModule(modulePath, type.Name);
+                return modulePath;
+            }
+            
+            // Default: Convert C# namespace to IDL modules
+            // "Corp.Common.Geo" -> "Corp::Common::Geo"
+            return type.Namespace.Replace(".", "::");
+        }
+
+        private void ValidateIdlFileName(string fileName, string typeName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+                throw new ArgumentException($"[DdsIdlFile] on '{typeName}' cannot be empty.");
+
+            if (fileName.Contains(".") || fileName.Contains("/") || fileName.Contains("\\"))
+                throw new ArgumentException($"[DdsIdlFile(\"{fileName}\")] on '{typeName}' contains extension or path separators. Use the name without extension.");
+            
+            if (fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                 throw new ArgumentException($"[DdsIdlFile(\"{fileName}\")] on '{typeName}' contains invalid characters.");
+        }
+
+        private void ValidateIdlModule(string modulePath, string typeName)
+        {
+            if (string.IsNullOrWhiteSpace(modulePath))
+                 throw new ArgumentException($"[DdsIdlModule] on '{typeName}' cannot be empty.");
+
+            if (modulePath.Contains("."))
+                throw new ArgumentException($"[DdsIdlModule(\"{modulePath}\")] on '{typeName}' contains '.' (C# syntax). Use '::' for IDL modules.");
+            
+            var parts = modulePath.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
+            foreach(var part in parts)
+            {
+                 if (!System.Text.RegularExpressions.Regex.IsMatch(part, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+                     throw new ArgumentException($"[DdsIdlModule(\"{modulePath}\")] on '{typeName}' contains invalid identifier segment '{part}'.");
+            }
+        }
+
         private bool HasAttribute(ISymbol symbol, string attributeFullName)
         {
             return symbol.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == attributeFullName);
@@ -184,10 +260,26 @@ namespace CycloneDDS.CodeGen
                 _ => throw new ArgumentException("Member must be field or property")
             };
 
+            // Capture valid DDS types (even external ones) for validation
+            if (HasAttribute(type, "CycloneDDS.Schema.DdsStructAttribute") || 
+                HasAttribute(type, "CycloneDDS.Schema.DdsTopicAttribute"))
+            {
+                // Unclear if ToDisplayString() matches TypeName format exactly (nullable?)
+                // TypeName handles nullable? 
+                // ToDisplayString with defaults usually includes ?
+                ValidExternalTypes.Add(type.ToDisplayString().TrimEnd('?'));
+            }
+
+            // Use a format that ensures fully qualified names (Namespace.Type)
+            // We want "Namespace.Type", not "global::Namespace.Type"
+            var format = new SymbolDisplayFormat(
+                typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+                genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters);
+
             return new FieldInfo
             {
                 Name = member.Name,
-                TypeName = type.ToDisplayString(),
+                TypeName = type.ToDisplayString(format),
                 Attributes = ExtractAttributes(member)
             };
         }

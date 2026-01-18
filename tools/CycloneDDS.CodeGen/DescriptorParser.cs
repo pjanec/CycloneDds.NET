@@ -54,7 +54,7 @@ namespace CycloneDDS.CodeGen
         private const uint DDS_OP_MASK = 0xff000000;
         private const uint DDS_OP_TYPE_MASK = 0x007f0000;
 
-        public DescriptorMetadata ParseDescriptor(string cFilePath)
+        public DescriptorMetadata ParseDescriptor(string cFilePath, string typeName = null)
         {
             var options = new CppParserOptions
             {
@@ -110,6 +110,8 @@ namespace CycloneDDS.CodeGen
             {
                 if (field.Name.EndsWith("_ops"))
                 {
+                    if (!string.IsNullOrEmpty(typeName) && !field.Name.EndsWith($"{typeName}_ops")) continue;
+
                     metadata.OpsArrayName = field.Name;
                     metadata.TypeName = field.Name.Substring(0, field.Name.Length - 4); // Remove _ops
                     metadata.OpsValues = ParseArrayInitializer(field.InitExpression, isOps: true);

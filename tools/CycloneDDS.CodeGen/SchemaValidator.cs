@@ -8,11 +8,19 @@ namespace CycloneDDS.CodeGen
     {
         private readonly HashSet<string> _knownTypeNames;
    
-        public SchemaValidator(IEnumerable<TypeInfo> discoveredTypes)
+        public SchemaValidator(IEnumerable<TypeInfo> discoveredTypes, IEnumerable<string> externalTypes = null)
         {
             _knownTypeNames = new HashSet<string>(
                 discoveredTypes.Select(t => t.FullName)
             );
+            
+            if (externalTypes != null)
+            {
+                foreach (var t in externalTypes)
+                {
+                    _knownTypeNames.Add(t);
+                }
+            }
         }
 
         public ValidationResult Validate(TypeInfo type)

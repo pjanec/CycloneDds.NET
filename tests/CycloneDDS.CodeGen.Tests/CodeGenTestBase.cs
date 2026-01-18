@@ -25,6 +25,7 @@ namespace CycloneDDS.CodeGen.Tests
                 MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(System.Runtime.AssemblyTargetedPatchBandAttribute).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(CycloneDDS.Core.CdrWriter).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(CycloneDDS.Runtime.DdsParticipant).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(CycloneDDS.Schema.BoundedSeq<>).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(IBufferWriter<>).Assembly.Location), // System.Memory
                 MetadataReference.CreateFromFile(Assembly.Load("System.Runtime").Location),

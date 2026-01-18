@@ -275,6 +275,11 @@ This batch is DONE when:
 All the paths must be relative to the root of the repository. You need to be very precise and explicit to avoid any guessing. If the developer is to use some tools or projects, provide path to them, not just their name.
 Make sure all the paths to tools and binary files and projects (previously used) are explicitly and precisely specified to avoid any kind of guessing and exclusions from developer side
 
+
+#### do not duplicate design docs
+Reference the design doc precisely (use chapter names, line numbers etc.) instead of duplicating its content to the batch. developer can read the design doc himself. 
+
+
 **For Combined Batches - MANDATORY WORKFLOW:**
 
 ```markdown

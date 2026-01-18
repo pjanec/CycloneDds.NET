@@ -41,11 +41,11 @@
 - [x] **FCDC-S014** Optional Members → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s014-optional-members-support) ✅ **🎉 FIXED**
 - [x] **FCDC-S015** [DdsManaged] Support → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s015-ddsmanaged-support-managed-types) ✅ **🎉 COMPLETE**
 - [x] **FCDC-S016** Generator Testing Suite → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s016-generator-testing-suite) ✅ **🎉 COMPLETE**
-- [ ] **FCDC-S023** Nested Struct Support ([DdsStruct]) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s023-nested-struct-support-ddsstruct-attribute) 🔴 **HIGH**
-- [ ] **FCDC-S024** Type-Level [DdsManaged] → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s024-type-level-ddsmanaged-attribute) 🟢 **MEDIUM**
-- [ ] **FCDC-S025** Advanced IDL Generation Control → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s025-advanced-idl-generation-control) 🔴 **CRITICAL**
+- [x] **FCDC-S023** Nested Struct Support ([DdsStruct]) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s023-nested-struct-support-ddsstruct-attribute) ✅ **BATCH-16**
+- [x] **FCDC-S024** Type-Level [DdsManaged] → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s024-type-level-ddsmanaged-attribute) ✅ **BATCH-16**
+- [x] **FCDC-S025** Advanced IDL Generation Control → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-s025-advanced-idl-generation-control) ✅ **COMPLETE**
 
-**Batches:** BATCH-03 ✅ | BATCH-04 ✅ | BATCH-05 ✅ | BATCH-05.1 ✅ | BATCH-06 ✅ | BATCH-07 ✅ | BATCH-08 ✅ | BATCH-09 ✅ | BATCH-09.1 ✅ | BATCH-09.2 ✅ | BATCH-10 ✅ | BATCH-10.1 ✅ | BATCH-11 ✅ | BATCH-11.1 ✅ | BATCH-12 ✅ | BATCH-12.1 ✅
+**Batches:** BATCH-03 ✅ | BATCH-04 ✅ | BATCH-05 ✅ | BATCH-05.1 ✅ | BATCH-06 ✅ | BATCH-07 ✅ | BATCH-08 ✅ | BATCH-09 ✅ | BATCH-09.1 ✅ | BATCH-09.2 ✅ | BATCH-10 ✅ | BATCH-10.1 ✅ | BATCH-11 ✅ | BATCH-11.1 ✅ | BATCH-12 ✅ | BATCH-12.1 ✅ | BATCH-16 ✅ | **BATCH-17 ✅**
 
 **Note:** FCDC-S023, S024, and S025 are enhancements added after Stage 2 completion for production readiness.
 
@@ -99,7 +99,7 @@
 **Design:**  
 - [Extended DDS API Design](../docs/EXTENDED-DDS-API-DESIGN.md)  
 - [Sender Tracking Design](../docs/SENDER-TRACKING-DESIGN.md)  
-**Priority:** **HIGH** (comes before Stage 4-Deferred and Stage 5)
+**Priority:** **HIGH** (essential for production DDS systems)
 
 **Strategic Note:** These features represent core DDS functionality that users expect in a complete implementation. They provide the foundation for modern, production-ready .NET applications using DDS.
 
@@ -260,17 +260,17 @@
 ## Progress Statistics
 
 **Total Tasks:** 43 (32 original + 3 enhancements + 6 extended API + 2 sender tracking)  
-**Completed:** 27 tasks ✅  
-**Remaining:** 16 tasks (3 in Stage 2 + 8 in Stage 3.75 + 2 in Stage 4-Deferred + 3 in Stage 5)
+**Completed:** 28 tasks ✅  
+**Remaining:** 15 tasks (8 in Stage 3.75 + 2 in Stage 4-Deferred + 5 in Stage 5-6)
 
-**Current Focus:** Stage 2 Enhancements (S023/S024/S025) or Stage 3.75 (🔴 Ready to Start)
+**Current Focus:** 🎉 **Stage 2 COMPLETE!** Stage 3.75 (Extended DDS API) 🔴 Ready to Start
 
-**Test Count:** ~170 passing tests (estimated with BATCH-15.x)  
+**Test Count:** 113 passing tests (57 Core + 10 Schema + 46 CodeGen)  
 **Validation Gates Passed:** 3/3 (Golden Rig ✅, Union Interop ✅, Optional EMHEADER ✅)
 
-**Estimated Progress:** ~63% complete (27/43 tasks)  
+**Estimated Progress:** ~65% complete (28/43 tasks)  
 - Stage 1: 100% ✅ (5/5 tasks)
-- Stage 2: 82% 🟡 (14/17 tasks) - **S023, S024, S025 remaining** ← Optional but CRITICAL for production
+- Stage 2: **100% ✅ (17/17 tasks) - COMPLETE!** 🎉
 - Stage 3: 100% ✅ (7/7 tasks)
 - Stage 3.5: 100% ✅ (1/1 task)
 - Stage 4 (Performance): 100% ✅ (4/4 tasks)

@@ -5,6 +5,7 @@ namespace CycloneDDS.CodeGen
         public string Name { get; set; } = string.Empty;
         public string Namespace { get; set; } = string.Empty;
         public string FullName => string.IsNullOrEmpty(Namespace) ? Name : $"{Namespace}.{Name}";
+        public string SourceFile { get; set; } = string.Empty;
         
         public List<FieldInfo> Fields { get; set; } = new List<FieldInfo>();
         public List<AttributeInfo> Attributes { get; set; } = new List<AttributeInfo>();

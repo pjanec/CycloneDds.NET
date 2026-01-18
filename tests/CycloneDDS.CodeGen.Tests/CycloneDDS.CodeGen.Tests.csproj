@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj" />
+    <ProjectReference Include="..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

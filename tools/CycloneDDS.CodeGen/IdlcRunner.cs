@@ -21,6 +21,17 @@ namespace CycloneDDS.CodeGen
             string localIdlc = Path.Combine(currentDir, "idlc.exe");
             if (File.Exists(localIdlc)) return localIdlc;
 
+            // DEV: Check workspace location (for tests/dev)
+            // Iterate up 6 levels looking for cyclonedds/install/bin/idlc.exe
+            var searchDir = new DirectoryInfo(currentDir);
+            for (int i = 0; i < 6; i++)
+            {
+                if (searchDir == null) break;
+                string checkPath = Path.Combine(searchDir.FullName, "cyclonedds", "install", "bin", "idlc.exe");
+                if (File.Exists(checkPath)) return checkPath;
+                searchDir = searchDir.Parent;
+            }
+
             // Check environment variable
             string? cycloneHome = Environment.GetEnvironmentVariable("CYCLONEDDS_HOME");
             if (!string.IsNullOrEmpty(cycloneHome))

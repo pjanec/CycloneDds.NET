@@ -20,10 +20,17 @@ namespace CycloneDDS.CodeGen
             string sourceDir = args[0];
             string outputDir = args[1];
             
+            string[] references = null;
+            if (args.Length > 2)
+            {
+                var allRefs = string.Join(";", args.Skip(2));
+                references = allRefs.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            }
+            
             try
             {
                 var generator = new CodeGenerator();
-                generator.Generate(sourceDir, outputDir);
+                generator.Generate(sourceDir, outputDir, references);
                 return 0;
             }
             catch (Exception ex)

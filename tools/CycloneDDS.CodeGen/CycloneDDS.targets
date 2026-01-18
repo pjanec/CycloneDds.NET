@@ -1,12 +1,48 @@
 <Project>
+
+  <!-- 1. Copy IDL files from referenced assemblies -->
+  <Target Name="CopyReferencedIdlFiles" BeforeTargets="CycloneDDSCodeGen">
+     <ItemGroup>
+         <!-- Find .idl files in the references that are copied locally -->
+         <ReferencedIdlFiles Include="%(ReferenceCopyLocalPaths.Identity)" Condition="'%(Extension)' == '.idl'" />
+     </ItemGroup>
+     
+     <Message Text="Copying referenced IDL files: @(ReferencedIdlFiles)" Importance="normal" />
+     <!-- Copy them to the generation folder so the generator (and idlc) can find them -->
+     <Copy SourceFiles="@(ReferencedIdlFiles)" DestinationFolder="$(MSBuildProjectDirectory)\obj\Generated" SkipUnchangedFiles="true" />
+  </Target>
+
   <Target Name="CycloneDDSCodeGen" BeforeTargets="CoreCompile">
     <PropertyGroup>
       <CodeGenToolPath>$(MSBuildThisFileDirectory)..\tools\net8.0\CycloneDDS.CodeGen.exe</CodeGenToolPath>
+      <!-- Use explicit path to tool if not packed yet. Adjust as needed for dev env vs nuget package. -->
+      <!-- In dev workspace, we might rely on the build output directly. -->
+      
       <SourcePath>$(MSBuildProjectDirectory)</SourcePath>
       <OutputPath>$(MSBuildProjectDirectory)\obj\Generated</OutputPath>
     </PropertyGroup>
     
     <Message Text="Running CycloneDDS Code Generator..." Importance="high" />
-    <Exec Command="&quot;$(CodeGenToolPath)&quot; &quot;$(SourcePath)&quot; &quot;$(OutputPath)&quot;" />
+    <Exec Command="&quot;$(CodeGenToolPath)&quot; &quot;$(SourcePath)&quot; &quot;$(OutputPath)&quot; &quot;@(ReferencePath)&quot;" />
+    
+    <ItemGroup>
+        <Compile Include="$(OutputPath)\**\*.cs" />
+    </ItemGroup>
   </Target>
+
+  <!-- 2. Include generated IDL files in the final build output -->
+  <Target Name="IncludeIdlFilesInOutput" AfterTargets="CycloneDDSCodeGen">
+     <ItemGroup>
+         <GeneratedIdlFiles Include="$(MSBuildProjectDirectory)\obj\Generated\*.idl" />
+     </ItemGroup>
+     
+     <ItemGroup>
+         <None Include="@(GeneratedIdlFiles)">
+             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+             <Visible>false</Visible>
+         </None>
+     </ItemGroup>
+  </Target>
+
 </Project>
+
