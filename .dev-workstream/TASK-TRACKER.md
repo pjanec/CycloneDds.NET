@@ -92,10 +92,10 @@
 
 ---
 
-## Stage 3.75: Extended DDS API - Modern C# Idioms 🔴
+## Stage 3.75: Extended DDS API - Modern C# Idioms ⏳
 
 **Goal:** Type auto-discovery + essential DDS features (async/await, events, filtering, discovery, sender tracking)  
-**Status:** 🔴 **READY TO START**  
+**Status:** ⏳ **ACTIVE** (2/8 tasks complete, BATCH-19 next)  
 **Design:**  
 - [Extended DDS API Design](../docs/EXTENDED-DDS-API-DESIGN.md)  
 - [Sender Tracking Design](../docs/SENDER-TRACKING-DESIGN.md)  
@@ -103,14 +103,16 @@
 
 **Strategic Note:** These features represent core DDS functionality that users expect in a complete implementation. They provide the foundation for modern, production-ready .NET applications using DDS.
 
-- [ ] **FCDC-EXT00** Type Auto-Discovery & Topic Management → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext00-type-auto-discovery--topic-management) 🔴 **CRITICAL** (Foundation)
-- [ ] **FCDC-EXT01** Read vs Take with Condition Masks → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext01-read-vs-take-with-condition-masks) 🔴 **CRITICAL**
+- [x] **FCDC-EXT00** Type Auto-Discovery & Topic Management → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext00-type-auto-discovery--topic-management) 🔴 **CRITICAL** (Foundation) ✅ **BATCH-18**
+- [x] **FCDC-EXT01** Read vs Take with Condition Masks → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext01-read-vs-take-with-condition-masks) 🔴 **CRITICAL** ✅ **BATCH-18**
 - [ ] **FCDC-EXT02** Async/Await Support (WaitDataAsync) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext02-asyncawait-support-waitdataasync) 🔴 **CRITICAL**
 - [ ] **FCDC-EXT03** Content Filtering (Reader-Side Predicates) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext03-content-filtering-reader-side-predicates) 🟡 **HIGH**
 - [ ] **FCDC-EXT04** Status & Discovery (Events) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext04-status--discovery-events) 🟡 **HIGH**
 - [ ] **FCDC-EXT05** Instance Management (Keyed Topics) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext05-instance-management-keyed-topics) 🟢 **MEDIUM**
 - [ ] **FCDC-EXT06** Sender Tracking Infrastructure → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext06-sender-tracking-infrastructure) 🟢 **MEDIUM**
 - [ ] **FCDC-EXT07** Sender Tracking Integration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext07-sender-tracking-integration) 🟢 **MEDIUM**
+
+**Batches:** **BATCH-18 ✅** (FCDC-EXT00, EXT01), BATCH-19 🔜 (FCDC-EXT02)
 
 **Key Features:**
 - **Type auto-discovery:** No manual descriptor passing (auto-detect via reflection, cache topics)
@@ -441,11 +443,38 @@
 
 ## Current Batch Status
 
-**Latest:** BATCH-15.3 (Stage 4 - Portability Fix)  
-**Completed:** 2026-01-18  
-**Status:** ✅ **READY TO MERGE** (15.1 + 15.2 + 15.3 together)
+**Latest:** BATCH-18 (Stage 3.75 - Type Auto-Discovery + Read vs Take API)  
+**Completed:** 2026-01-19  
+**Status:** ✅ **APPROVED** (Exceptional quality)  
+**Review:** `.dev-workstream/reviews/BATCH-18-REVIEW.md`
 
-**Next Planned:** Performance benchmarks or Stage 5
+**Achievements:**
+- Type auto-discovery eliminates manual descriptor passing
+- Read/Take APIs with state filtering (non-destructive reads)
+- Topic lifecycle management with caching
+- 44 tests passing (6 auto-discovery + 3 read/take + 35 integration)
+- Proactive fix for DescriptorHelper AccessViolationException
+
+**Next Planned:** BATCH-19 - Async/Await Support (FCDC-EXT02)
+
+---
+
+### ✅ BATCH-18 (Stage 3.75 - Type Auto-Discovery + Read/Take API)
+**Completed:** 2026-01-19  
+**Tasks:** FCDC-EXT00, FCDC-EXT01  
+**Review:** `.dev-workstream/reviews/BATCH-18-REVIEW.md`  
+**Results:**  
+- ✅ **Type Auto-Discovery**: DdsTypeSupport with reflection-based metadata extraction
+- ✅ **Topic Lifecycle Management**: GetOrRegisterTopic with thread-safe caching
+- ✅ **Read/Take APIs**: Non-destructive Read() and state filtering
+- ✅ **State Enums**: DdsSampleState, DdsViewState, DdsInstanceState
+- ✅ **Resource Management**: TopicResource wrapper pattern (exceptional)
+- ✅ **Tests**: 44 passing (6 auto-discovery + 3 read/take + 35 integration)
+- ✅ **Proactive Fix**: DescriptorHelper AccessViolationException resolved
+- ✅ **Zero-Alloc Hot Path**: Maintained (<50 bytes/write overhead)
+
+**Quality:** Exceptional - 10/10  
+**Breaking Changes:** Removed descriptor parameter from DdsWriter/DdsReader constructors
 
 ---
 

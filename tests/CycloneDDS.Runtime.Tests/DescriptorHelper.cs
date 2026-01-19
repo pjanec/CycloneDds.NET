@@ -3,6 +3,13 @@ using System.Runtime.InteropServices;
 
 namespace CycloneDDS.Runtime.Tests
 {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DdsTypeMetaSer
+    {
+        public IntPtr data;
+        public uint sz;
+    }
+
     // Corresponds to dds_topic_descriptor_t in dds/dds_public_impl.h
     [StructLayout(LayoutKind.Sequential)]
     public struct DdsTopicDescriptor
@@ -11,11 +18,15 @@ namespace CycloneDDS.Runtime.Tests
         public uint Align;      // m_align
         public uint Flagset;    // m_flagset
         public uint NKeys;      // m_nkeys
-        public IntPtr TypeName; // m_typename (char*) - Missing in previous version
-        public IntPtr Keys;     // m_keys (uint32_t*)
-        public uint NOps;       // m_nops (uint32_t)  - Missing in previous version
+        public IntPtr TypeName; // m_typename (char*) 
+        public IntPtr Keys;     // m_keys (dds_key_descriptor_t*)
+        public uint NOps;       // m_nops (uint32_t)
+        // C# auto-padding for IntPtr alignment should match C compiler (usually)
         public IntPtr Ops;      // m_ops (uint32_t*)
         public IntPtr Meta;     // m_meta (char*)
+        public DdsTypeMetaSer type_information;
+        public DdsTypeMetaSer type_mapping;
+        public uint restrict_data_representation;
     }
 
     public class DescriptorContainer : IDisposable
@@ -41,7 +52,10 @@ namespace CycloneDDS.Runtime.Tests
                 Keys = IntPtr.Zero,
                 NOps = (uint)ops.Length,
                 Ops = _opsHandle.AddrOfPinnedObject(),
-                Meta = IntPtr.Zero
+                Meta = IntPtr.Zero,
+                type_information = new DdsTypeMetaSer { data = IntPtr.Zero, sz = 0 },
+                type_mapping = new DdsTypeMetaSer { data = IntPtr.Zero, sz = 0 },
+                restrict_data_representation = 0
             };
 
             _descPtr = Marshal.AllocHGlobal(Marshal.SizeOf<DdsTopicDescriptor>());

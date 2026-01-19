@@ -10,8 +10,7 @@ namespace CycloneDDS.Runtime.Tests
         public void CreateReader_Success()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(TestMessage.GetDescriptorOps(), 8, 4, 16);
-            using var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique1", desc.Ptr);
+            using var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique1");
             
             Assert.NotNull(reader);
         }
@@ -20,8 +19,7 @@ namespace CycloneDDS.Runtime.Tests
         public void Take_NoData_ReturnsEmptyScope()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(TestMessage.GetDescriptorOps(), 8, 4, 16);
-            using var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique2", desc.Ptr);
+            using var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique2");
             
             using var scope = reader.Take();
             
@@ -32,8 +30,7 @@ namespace CycloneDDS.Runtime.Tests
         public void Dispose_Idempotent()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(TestMessage.GetDescriptorOps(), 8, 4, 16);
-            var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique3", desc.Ptr);
+            var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique3");
             
             reader.Dispose();
             reader.Dispose();
@@ -43,8 +40,7 @@ namespace CycloneDDS.Runtime.Tests
         public void Take_AfterDispose_Throws()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(TestMessage.GetDescriptorOps(), 8, 4, 16);
-            var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique4", desc.Ptr);
+            var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique4");
             
             reader.Dispose();
             

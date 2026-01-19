@@ -15,9 +15,8 @@ namespace CycloneDDS.Runtime
         where TView : struct
     {
         private DdsEntityHandle? _readerHandle;
-        private DdsEntityHandle? _topicHandle;
+        private DdsApi.DdsEntity _topicHandle;
         private DdsParticipant? _participant;
-        private readonly IntPtr _topicDescriptor;
         
         private static readonly DeserializeDelegate<TView>? _deserializer;
         
@@ -38,26 +37,19 @@ namespace CycloneDDS.Runtime
             catch (Exception ex) { Console.WriteLine($"[DdsReader] Initialization failed: {ex}"); throw; }
         }
 
-        public DdsReader(DdsParticipant participant, string topicName, IntPtr topicDescriptor)
+        public DdsReader(DdsParticipant participant, string topicName, IntPtr qos = default)
         {
             if (_deserializer == null) 
                  throw new InvalidOperationException($"Type {typeof(T).Name} missing Deserialize method.");
 
             _participant = participant;
-            _topicDescriptor = topicDescriptor;
 
-            // Create Topic
-            var topic = DdsApi.dds_create_topic(participant.NativeEntity, topicDescriptor, topicName, IntPtr.Zero, IntPtr.Zero);
-            if (!topic.IsValid)
-            {
-                 int err = topic.Handle;
-                 DdsApi.DdsReturnCode rc = (DdsApi.DdsReturnCode)err;
-                 throw new DdsException(rc, $"Failed to create topic '{topicName}'");
-            }
-            _topicHandle = new DdsEntityHandle(topic);
+            // 1. Get or register topic (auto-discovery)
+            DdsApi.DdsEntity topic = participant.GetOrRegisterTopic<T>(topicName, qos);
+            _topicHandle = topic;
 
-            // Create Reader (Default QoS)
-             var reader = DdsApi.dds_create_reader(participant.NativeEntity, topic, IntPtr.Zero, IntPtr.Zero);
+            // 2. Create Reader
+             var reader = DdsApi.dds_create_reader(participant.NativeEntity, topic, qos, IntPtr.Zero);
              if (!reader.IsValid)
              {
                   int err = reader.Handle;
@@ -69,6 +61,26 @@ namespace CycloneDDS.Runtime
 
         public ViewScope<TView> Take(int maxSamples = 32)
         {
+            return ReadOrTake(maxSamples, 0xFFFFFFFF, true);
+        }
+
+        public ViewScope<TView> Read(int maxSamples = 32)
+        {
+            return ReadOrTake(maxSamples, 0xFFFFFFFF, false);
+        }
+
+        public ViewScope<TView> Take(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
+        {
+             return ReadOrTake(maxSamples, (uint)sampleState | (uint)viewState | (uint)instanceState, true);
+        }
+
+        public ViewScope<TView> Read(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
+        {
+             return ReadOrTake(maxSamples, (uint)sampleState | (uint)viewState | (uint)instanceState, false);
+        }
+
+        private ViewScope<TView> ReadOrTake(int maxSamples, uint mask, bool isTake)
+        {
              if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T, TView>));
              
              var samples = ArrayPool<IntPtr>.Shared.Rent(maxSamples);
@@ -77,12 +89,25 @@ namespace CycloneDDS.Runtime
              Array.Clear(samples, 0, maxSamples);
              Array.Clear(infos, 0, maxSamples); 
              
-             int count = DdsApi.dds_takecdr(
-                 _readerHandle.NativeHandle.Handle,
-                 samples,
-                 (uint)maxSamples,
-                 infos,
-                 0xFFFFFFFF); // DDS_ANY_STATE
+             int count;
+             if (isTake)
+             {
+                 count = DdsApi.dds_takecdr(
+                     _readerHandle.NativeHandle.Handle,
+                     samples,
+                     (uint)maxSamples,
+                     infos,
+                     mask);
+             }
+             else
+             {
+                 count = DdsApi.dds_readcdr(
+                     _readerHandle.NativeHandle.Handle,
+                     samples,
+                     (uint)maxSamples,
+                     infos,
+                     mask);
+             }
 
              if (count < 0)
              {
@@ -93,7 +118,7 @@ namespace CycloneDDS.Runtime
                  {
                      return new ViewScope<TView>(_readerHandle.NativeHandle, null, null, 0, null);
                  }
-                 throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_takecdr failed: {count}");
+                 throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_{(isTake ? "take" : "read")}cdr failed: {count}");
              }
              
              return new ViewScope<TView>(_readerHandle.NativeHandle, samples, infos, count, _deserializer);
@@ -103,8 +128,7 @@ namespace CycloneDDS.Runtime
         {
             _readerHandle?.Dispose();
             _readerHandle = null;
-            _topicHandle?.Dispose();
-            _topicHandle = null;
+            _topicHandle = DdsApi.DdsEntity.Null;
             _participant = null;
         }
         

@@ -11,17 +11,15 @@ namespace CycloneDDS.Runtime.Tests
         public void CreateWriter_Success()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(TestMessage.GetDescriptorOps(), 8, 4, 16);
             
-            using var writer = new DdsWriter<TestMessage>(participant, "TestTopic_Unique1", desc.Ptr);
+            using var writer = new DdsWriter<TestMessage>(participant, "TestTopic_Unique1");
         }
 
         [Fact]
         public void Write_SingleSample_Success()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(TestMessage.GetDescriptorOps(), 8, 4, 16);
-            using var writer = new DdsWriter<TestMessage>(participant, "TestTopic_Unique2", desc.Ptr);
+            using var writer = new DdsWriter<TestMessage>(participant, "TestTopic_Unique2");
             
             var data = new TestMessage { Id = 1, Value = 123 };
             writer.Write(data);
@@ -31,8 +29,7 @@ namespace CycloneDDS.Runtime.Tests
         public void Dispose_Idempotent()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(TestMessage.GetDescriptorOps(), 8, 4, 16);
-            var writer = new DdsWriter<TestMessage>(participant, "TestTopic_Unique3", desc.Ptr);
+            var writer = new DdsWriter<TestMessage>(participant, "TestTopic_Unique3");
             
             writer.Dispose();
             writer.Dispose();
@@ -42,8 +39,7 @@ namespace CycloneDDS.Runtime.Tests
         public void Write_AfterDispose_Throws()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(TestMessage.GetDescriptorOps(), 8, 4, 16);
-            var writer = new DdsWriter<TestMessage>(participant, "TestTopic_Unique4", desc.Ptr);
+            var writer = new DdsWriter<TestMessage>(participant, "TestTopic_Unique4");
             
             writer.Dispose();
             

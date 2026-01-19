@@ -12,10 +12,9 @@ namespace CycloneDDS.Runtime
     public sealed class DdsWriter<T> : IDisposable
     {
         private DdsEntityHandle? _writerHandle;
-        private DdsEntityHandle? _topicHandle;
+        private DdsApi.DdsEntity _topicHandle;
         private DdsParticipant? _participant;
         private readonly string _topicName;
-        private readonly IntPtr _topicDescriptor;
 
         // Delegates for high-performance invocation
         private delegate void SerializeDelegate(in T sample, ref CdrWriter writer);
@@ -37,7 +36,7 @@ namespace CycloneDDS.Runtime
             }
         }
 
-        public DdsWriter(DdsParticipant participant, string topicName, IntPtr topicDescriptor)
+        public DdsWriter(DdsParticipant participant, string topicName, IntPtr qos = default)
         {
             if (_sizer == null || _serializer == null)
             {
@@ -46,27 +45,16 @@ namespace CycloneDDS.Runtime
 
             _topicName = topicName;
             _participant = participant;
-            _topicDescriptor = topicDescriptor;
 
-            // 1. Create Topic
-            var topic = DdsApi.dds_create_topic(
-                participant.NativeEntity,
-                topicDescriptor,
-                topicName,
-                IntPtr.Zero,
-                IntPtr.Zero);
-
-            if (!topic.IsValid)
-            {
-                 throw new DdsException(DdsApi.DdsReturnCode.Error, "Failed to create topic");
-            }
-            _topicHandle = new DdsEntityHandle(topic);
+            // 1. Get or register topic (auto-discovery)
+            DdsApi.DdsEntity topic = participant.GetOrRegisterTopic<T>(topicName, qos);
+            _topicHandle = topic;
 
             // 2. Create Writer
             var writer = DdsApi.dds_create_writer(
                 participant.NativeEntity,
                 topic,
-                IntPtr.Zero,
+                qos,
                 IntPtr.Zero);
 
             if (!writer.IsValid)
@@ -94,7 +82,7 @@ namespace CycloneDDS.Runtime
         private void PerformOperation(in T sample, Func<DdsApi.DdsEntity, IntPtr, int> operation)
         {
             if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
-            if (_topicHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+            if (!_topicHandle.IsValid) throw new ObjectDisposedException(nameof(DdsWriter<T>));
 
             // 1. Get Size (no alloc)
             // Start at offset 4 because we will prepend 4-byte CDR header
@@ -142,7 +130,7 @@ namespace CycloneDDS.Runtime
                         IntPtr dataPtr = (IntPtr)p;
                         
                         IntPtr serdata = DdsApi.dds_create_serdata_from_cdr(
-                            _topicHandle.NativeHandle,
+                            _topicHandle,
                             dataPtr,
                             (uint)totalSize);
 
@@ -207,8 +195,7 @@ namespace CycloneDDS.Runtime
         {
             _writerHandle?.Dispose();
             _writerHandle = null;
-            _topicHandle?.Dispose();
-            _topicHandle = null;
+            _topicHandle = DdsApi.DdsEntity.Null;
             _participant = null;
         }
 

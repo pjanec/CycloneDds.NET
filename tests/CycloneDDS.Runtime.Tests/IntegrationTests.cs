@@ -13,13 +13,11 @@ namespace CycloneDDS.Runtime.Tests
         public void FullRoundtrip_SimpleMessage_DataMatches()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "TestMessage");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant, "RoundtripTopic", desc.Ptr);
+                participant, "RoundtripTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "RoundtripTopic", desc.Ptr);
+                participant, "RoundtripTopic");
             
             // Write sample
             var sent = new TestMessage { Id = 42, Value = 123456 }; // Value is int in existing TestMessage
@@ -51,10 +49,8 @@ namespace CycloneDDS.Runtime.Tests
         public void Write1000Samples_ZeroGCAllocations()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "PerfTopic");
             using var writer = new DdsWriter<TestMessage>(
-                participant, "PerfTopic", desc.Ptr);
+                participant, "PerfTopic");
             
             var msg = new TestMessage { Id = 1, Value = 123 };
             
@@ -92,13 +88,11 @@ namespace CycloneDDS.Runtime.Tests
         {
             // Verify we don't deserialize if we don't access
              using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "LazyTopic");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant, "LazyTopic", desc.Ptr);
+                participant, "LazyTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "LazyTopic", desc.Ptr);
+                participant, "LazyTopic");
 
             // Default QoS has History=1, so we might only get the last one if we burst write.
             // We just need ONE message to test lazyness.
@@ -122,13 +116,11 @@ namespace CycloneDDS.Runtime.Tests
         public void LargeMessage_RoundTrip()
         {
             using var participant = new DdsParticipant(0);
-             using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "LargeTopic");
             
              using var writer = new DdsWriter<TestMessage>(
-                participant, "LargeTopic", desc.Ptr);
+                participant, "LargeTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "LargeTopic", desc.Ptr);
+                participant, "LargeTopic");
             
             var msg = new TestMessage { Id = 999, Value = 987654 };
             // Add some heavy string if we had it, but TestMessage is simple structs from generated code.
@@ -175,11 +167,9 @@ namespace CycloneDDS.Runtime.Tests
         public void Write_UsingDdsWrite_Success()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "WriteTopic");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant, "WriteTopic", desc.Ptr);
+                participant, "WriteTopic");
             
             var msg = new TestMessage { Id = 1, Value = 123 };
             writer.WriteViaDdsWrite(msg);
@@ -189,10 +179,8 @@ namespace CycloneDDS.Runtime.Tests
         public void Write_AfterDispose_ThrowsObjectDisposedException()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "DisposeTopic");
             
-            var writer = new DdsWriter<TestMessage>(participant, "DisposeTopic", desc.Ptr);
+            var writer = new DdsWriter<TestMessage>(participant, "DisposeTopic");
             writer.Dispose();
             
             Assert.Throws<ObjectDisposedException>(() => 
@@ -203,11 +191,9 @@ namespace CycloneDDS.Runtime.Tests
         public void Read_AfterDispose_ThrowsObjectDisposedException()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "DisposeTopic2");
             
             var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "DisposeTopic2", desc.Ptr);
+                participant, "DisposeTopic2");
             reader.Dispose();
             
             Assert.Throws<ObjectDisposedException>(() => reader.Take());
@@ -217,13 +203,11 @@ namespace CycloneDDS.Runtime.Tests
         public void TwoWriters_SameTopic_BothWork()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "MultiWriterTopic");
             
             using var writer1 = new DdsWriter<TestMessage>(
-                participant, "MultiWriterTopic", desc.Ptr);
+                participant, "MultiWriterTopic");
             using var writer2 = new DdsWriter<TestMessage>(
-                participant, "MultiWriterTopic", desc.Ptr);
+                participant, "MultiWriterTopic");
             
             writer1.Write(new TestMessage { Id = 1, Value = 100 });
             writer2.Write(new TestMessage { Id = 2, Value = 200 });
@@ -235,11 +219,9 @@ namespace CycloneDDS.Runtime.Tests
         public void EmptyTake_ReturnsEmptyScope()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "EmptyTopic");
             
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "EmptyTopic", desc.Ptr);
+                participant, "EmptyTopic");
             
             using var scope = reader.Take();
             
@@ -250,13 +232,11 @@ namespace CycloneDDS.Runtime.Tests
         public void ViewScope_Dispose_IsIdempotent()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "IdempotentTopic");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant, "IdempotentTopic", desc.Ptr);
+                participant, "IdempotentTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "IdempotentTopic", desc.Ptr);
+                participant, "IdempotentTopic");
             
             writer.Write(new TestMessage { Id = 1 });
             Thread.Sleep(100);
@@ -270,13 +250,11 @@ namespace CycloneDDS.Runtime.Tests
         public void PingPong_MultipleMessages()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "MultiMsgTopic");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant, "MultiMsgTopic", desc.Ptr);
+                participant, "MultiMsgTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "MultiMsgTopic", desc.Ptr);
+                participant, "MultiMsgTopic");
             
             // Write multiple messages in a ping-pong fashion to ensure we receive them all
             // (Default QoS is History=1, so burst writes would be dropped)
@@ -307,18 +285,16 @@ namespace CycloneDDS.Runtime.Tests
         public void DifferentTopics_IndependentStreams()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "TestMessage");
             
             using var writer1 = new DdsWriter<TestMessage>(
-                participant, "Topic1", desc.Ptr);
+                participant, "Topic1");
             using var writer2 = new DdsWriter<TestMessage>(
-                participant, "Topic2", desc.Ptr);
+                participant, "Topic2");
             
             using var reader1 = new DdsReader<TestMessage, TestMessage>(
-                participant, "Topic1", desc.Ptr);
+                participant, "Topic1");
             using var reader2 = new DdsReader<TestMessage, TestMessage>(
-                participant, "Topic2", desc.Ptr);
+                participant, "Topic2");
             
             writer1.Write(new TestMessage { Id = 1, Value = 111 });
             writer2.Write(new TestMessage { Id = 2, Value = 222 });
@@ -343,13 +319,11 @@ namespace CycloneDDS.Runtime.Tests
         public void ViewScope_IndexerBounds_ThrowsForInvalidIndex()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "BoundsTopic");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant, "BoundsTopic", desc.Ptr);
+                participant, "BoundsTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "BoundsTopic", desc.Ptr);
+                participant, "BoundsTopic");
             
             writer.Write(new TestMessage { Id = 1 });
             Thread.Sleep(100);
@@ -371,13 +345,11 @@ namespace CycloneDDS.Runtime.Tests
         {
             using var participant1 = new DdsParticipant(0);
             using var participant2 = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "TestMessage");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant1, "SharedTopic", desc.Ptr);
+                participant1, "SharedTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant2, "SharedTopic", desc.Ptr);
+                participant2, "SharedTopic");
             
             writer.Write(new TestMessage { Id = 99, Value = 999 });
             Thread.Sleep(500);  // Allow discovery
@@ -394,13 +366,11 @@ namespace CycloneDDS.Runtime.Tests
         public void DisposeInstance_RemovesInstance()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "DisposeTopic");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant, "DisposeTopic", desc.Ptr);
+                participant, "DisposeTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "DisposeTopic", desc.Ptr);
+                participant, "DisposeTopic");
             
             var msg = new TestMessage { Id = 100, Value = 100 };
             
@@ -416,7 +386,7 @@ namespace CycloneDDS.Runtime.Tests
             for(int i=0; i<scope.Count; i++)
             {
                 if (scope.Infos[i].ValidData == 0 && 
-                    (scope.Infos[i].InstanceState == 2)) // NOT_ALIVE_DISPOSED
+                    (scope.Infos[i].InstanceState == DdsInstanceState.NotAliveDisposed)) // NOT_ALIVE_DISPOSED
                 {
                     foundDispose = true;
                     Assert.NotEqual(0, scope.Infos[i].InstanceHandle);
@@ -429,13 +399,11 @@ namespace CycloneDDS.Runtime.Tests
         public void UnregisterInstance_RemovesWriterOwnership()
         {
             using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "UnregisterTopic");
             
             using var writer = new DdsWriter<TestMessage>(
-                participant, "UnregisterTopic", desc.Ptr);
+                participant, "UnregisterTopic");
             using var reader = new DdsReader<TestMessage, TestMessage>(
-                participant, "UnregisterTopic", desc.Ptr);
+                participant, "UnregisterTopic");
             
             var msg = new TestMessage { Id = 200, Value = 200 };
             
@@ -451,7 +419,7 @@ namespace CycloneDDS.Runtime.Tests
             for(int i=0; i<scope.Count; i++)
             {
                 if (scope.Infos[i].ValidData == 0 && 
-                    (scope.Infos[i].InstanceState == 4)) // NOT_ALIVE_NO_WRITERS
+                    (scope.Infos[i].InstanceState == DdsInstanceState.NotAliveNoWriters)) // NOT_ALIVE_NO_WRITERS
                 {
                     foundUnregister = true;
                 }

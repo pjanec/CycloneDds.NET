@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using CycloneDDS.Runtime;
 
 namespace CycloneDDS.Runtime.Interop
 {
@@ -37,9 +38,9 @@ namespace CycloneDDS.Runtime.Interop
         [StructLayout(LayoutKind.Sequential)]
         public struct DdsSampleInfo
         {
-            public uint SampleState;
-            public uint ViewState;
-            public uint InstanceState;
+            public DdsSampleState SampleState;
+            public DdsViewState ViewState;
+            public DdsInstanceState InstanceState;
             public byte ValidData; 
             private byte _pad1;
             private byte _pad2;
@@ -120,6 +121,14 @@ namespace CycloneDDS.Runtime.Interop
         public static extern int dds_unregister_serdata(
             DdsEntity writer,
             IntPtr serdata);
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_readcdr(
+            int reader, // Changed from DdsEntity to int
+            [In, Out] IntPtr[] samples, 
+            uint maxs,
+            [In, Out] DdsSampleInfo[] infos, 
+            uint mask);
 
         [DllImport(DLL_NAME)]
         public static extern int dds_takecdr(
