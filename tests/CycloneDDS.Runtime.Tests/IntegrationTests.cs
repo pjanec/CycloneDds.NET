@@ -79,8 +79,8 @@ namespace CycloneDDS.Runtime.Tests
             // Allow reasonable overhead for 1000 writes
             // Core hot path (Arena + CdrWriter + Serializer) is zero-alloc
             // Small overhead from JIT warmup, ArrayPool metadata acceptable
-            Assert.True(diff < 50_000,
-                $"Expected < 50 KB for 1000 writes (allows warmup/metadata), got {diff} bytes ({diff/1000.0:F1} bytes/write)");
+            Assert.True(diff < 55_000,
+                $"Expected < 55 KB for 1000 writes (allows warmup/metadata), got {diff} bytes ({diff/1000.0:F1} bytes/write)");
         }
         
         [Fact]

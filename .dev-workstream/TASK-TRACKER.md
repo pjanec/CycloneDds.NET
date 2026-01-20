@@ -95,7 +95,7 @@
 ## Stage 3.75: Extended DDS API - Modern C# Idioms ⏳
 
 **Goal:** Type auto-discovery + essential DDS features (async/await, events, filtering, discovery, sender tracking)  
-**Status:** ⏳ **ACTIVE** (5/8 tasks complete, 62.5% done)  
+**Status:** ⏳ **ACTIVE** (5/8 tasks complete, 62.5% done, BATCH-21 keyed testing in progress)  
 **Design:**  
 - [Extended DDS API Design](../docs/EXTENDED-DDS-API-DESIGN.md)  
 - [Sender Tracking Design](../docs/SENDER-TRACKING-DESIGN.md)  
@@ -451,20 +451,22 @@
 
 ## Current Batch Status
 
-**Latest:** BATCH-19 (Stage 3.75 - Async/Await + Content Filtering + Status Events)  
-**Completed:** 2026-01-19  
-**Status:** ✅ **APPROVED** (Exceptional quality)  
-**Review:** `.dev-workstream/reviews/BATCH-19-REVIEW.md`
+**Active:** BATCH-21 (Keyed Message Serialization - Comprehensive Test Suite)  
+**Assigned:** 2026-01-20  
+**Tasks:** Testing-only batch (no new features - validation of XCDR2 keyed topic support)  
+**Instructions:** `.dev-workstream/batches/BATCH-21-INSTRUCTIONS.md`  
+**Status:** ⏳ In Progress
 
-**Achievements:**
-- Async/await support with lazy listeners, GC pinning, race condition handling
-- Content filtering with zero-allocation predicates
-- Status & discovery events (PublicationMatched, SubscriptionMatched)
-- WaitForReaderAsync helper solves "lost first message" problem
-- 57 tests passing (13 new: 5 async + 3 filtering + 5 discovery)
-- Production-ready async patterns with proper cleanup
+**Objectives:**
+- Validate XCDR2 keyed topic serialization after recent implementation
+- Create 5 diverse keyed message types (single, composite, nested, final ext, string keys)
+- Write 15+ comprehensive round-trip tests
+- Test both appendable and final extensibility modes
+- Cover edge cases (zero, negative, max values, empty strings)
 
-**Next Planned:** BATCH-20 - Instance Management (FCDC-EXT05) or Sender Tracking (FCDC-EXT06+EXT07)
+**Target:** 74+ tests passing (57 current + 17+ new keyed topic tests)
+
+**Next Planned:** BATCH-22 - Instance Management (FCDC-EXT05) after keyed serialization validated
 
 ---
 

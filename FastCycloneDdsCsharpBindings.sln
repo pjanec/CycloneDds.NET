@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36623.8 d17.14
+VisualStudioVersion = 17.14.36623.8
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CycloneDDS.Schema", "src\CycloneDDS.Schema\CycloneDDS.Schema.csproj", "{8CF523F9-63F3-4108-ABBF-51941E305486}"
 EndProject
@@ -16,6 +16,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CycloneDDS.CodeGen", "tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj", "{77D93DCE-5394-C6CB-16C8-02AA7D57D559}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CycloneDDS.Runtime.Tests", "tests\CycloneDDS.Runtime.Tests\CycloneDDS.Runtime.Tests.csproj", "{186E393F-5D65-FA62-27D1-BB57848C7ED9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CycloneDDS.Runtime", "src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj", "{CA362FD8-117F-D3DA-FF33-4A44F80521DF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -111,6 +113,18 @@ Global
 		{186E393F-5D65-FA62-27D1-BB57848C7ED9}.Release|x64.Build.0 = Release|Any CPU
 		{186E393F-5D65-FA62-27D1-BB57848C7ED9}.Release|x86.ActiveCfg = Release|Any CPU
 		{186E393F-5D65-FA62-27D1-BB57848C7ED9}.Release|x86.Build.0 = Release|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Debug|x64.Build.0 = Debug|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Debug|x86.Build.0 = Debug|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Release|x64.ActiveCfg = Release|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Release|x64.Build.0 = Release|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Release|x86.ActiveCfg = Release|Any CPU
+		{CA362FD8-117F-D3DA-FF33-4A44F80521DF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -271,6 +271,25 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine();
             sb.AppendLine("        public static uint[] GetDescriptorOps() => _ops;");
             
+            if (metadata.KeyDescriptors != null && metadata.KeyDescriptors.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("        private static readonly DdsKeyDescriptor[] _keys = new DdsKeyDescriptor[]");
+                sb.AppendLine("        {");
+                foreach(var key in metadata.KeyDescriptors)
+                {
+                    var field = topic.Fields.FirstOrDefault(f => string.Equals(f.Name, key.Name, StringComparison.OrdinalIgnoreCase));
+                    string fieldName = field != null ? field.Name : key.Name;
+                    sb.AppendLine($"            new DdsKeyDescriptor {{ Name = \"{fieldName}\", Offset = {key.Offset}, Index = {key.Index} }},");
+                }
+                sb.AppendLine("        };");
+                sb.AppendLine("        public static DdsKeyDescriptor[] GetKeyDescriptors() => _keys;");
+            }
+            else
+            {
+                sb.AppendLine("        public static DdsKeyDescriptor[] GetKeyDescriptors() => null;");
+            }
+
             sb.AppendLine("    }");
             
             if (!string.IsNullOrEmpty(topic.Namespace))

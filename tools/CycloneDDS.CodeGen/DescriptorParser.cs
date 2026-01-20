@@ -64,11 +64,33 @@ namespace CycloneDDS.CodeGen
                 ParseSystemIncludes = false
             };
             
-            string[] lines = System.IO.File.ReadAllLines(cFilePath);
+            // Infer Header Path
+            string dir = System.IO.Path.GetDirectoryName(cFilePath)!;
+            string fn = System.IO.Path.GetFileNameWithoutExtension(cFilePath);
+            string hFilePath = System.IO.Path.Combine(dir, fn + ".h");
+            
+            string cContent = System.IO.File.ReadAllText(cFilePath);
+            string hContent = "";
+            if (System.IO.File.Exists(hFilePath))
+            {
+                hContent = System.IO.File.ReadAllText(hFilePath);
+            }
+            
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("typedef unsigned int uint32_t;");
+            sb.AppendLine("typedef int int32_t;");
             sb.AppendLine("typedef unsigned int uint;");
+            sb.AppendLine("typedef long long int64_t;");
+            sb.AppendLine("typedef unsigned long long uint64_t;");
+            sb.AppendLine("typedef short int16_t;");
+            sb.AppendLine("typedef unsigned short uint16_t;");
+            sb.AppendLine("typedef unsigned char uint8_t;");
+            sb.AppendLine("typedef char int8_t;");
+            // sb.AppendLine("typedef _Bool bool;");
+            sb.AppendLine("typedef struct dds_topic_descriptor { void* m; } dds_topic_descriptor_t;");
+            
             sb.AppendLine("#define offsetof(t,d) 195948557");
+            sb.AppendLine("typedef struct dds_key_descriptor { const char * m_name; uint32_t m_offset; uint32_t m_idx; } dds_key_descriptor_t;");
             
             sb.AppendLine("enum DdsOpCodes {");
             foreach(var kvp in MacroValues)
@@ -77,22 +99,48 @@ namespace CycloneDDS.CodeGen
             }
             sb.AppendLine("};");
             sb.AppendLine("#define NULL 0");
+            sb.AppendLine("#define DDS_EXPORT"); // Handle DLL exports in headers
 
-            bool skipping = false;
-            foreach (var line in lines)
+            // Helper to strip includes and append
+            void AppendStripped(string content, bool skipDescriptorTypedefs = false)
             {
-                string trimmed = line.Trim();
-                if (trimmed.StartsWith("#include")) continue;
-
-                if (trimmed.Contains("dds_topic_descriptor_t")) skipping = true;
-                
-                if (!skipping)
+                bool skipping = false;
+                foreach (var lineIter in content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None))
                 {
-                    sb.AppendLine(line);
-                }
+                    string line = lineIter;
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith("#include")) continue;
+                    
+                    if (skipDescriptorTypedefs)
+                    {
+                        if (trimmed.Contains("dds_topic_descriptor_t")) skipping = true;
+                        
+                        if (!skipping) sb.AppendLine(line);
 
-                if (skipping && trimmed.EndsWith(";")) skipping = false;
+                        if (skipping && trimmed.EndsWith(";")) skipping = false;
+                    }
+                    else
+                    {
+                        sb.AppendLine(line);
+                    }
+                }
             }
+            
+            // Extract structs from header content via Regex to bypass CppAst parsing issues with extern "C" etc
+            if (!string.IsNullOrEmpty(hContent))
+            {
+                 var structRegex = new System.Text.RegularExpressions.Regex(
+                     @"typedef\s+struct\s+(\w+)\s*\{(.*?)\}\s*\1\s*;", 
+                     System.Text.RegularExpressions.RegexOptions.Singleline);
+                 foreach(System.Text.RegularExpressions.Match m in structRegex.Matches(hContent))
+                 {
+                     string sName = m.Groups[1].Value;
+                     string sBody = m.Groups[2].Value;
+                     sb.AppendLine($"struct {sName} {{ {sBody} }};");
+                 }
+            }
+
+            AppendStripped(cContent, skipDescriptorTypedefs: true);
 
             var compilation = CppParser.Parse(sb.ToString(), options);
             
@@ -105,9 +153,6 @@ namespace CycloneDDS.CodeGen
             }
             var metadata = new DescriptorMetadata();
             
-            // ... (rest of the code)
-
-
             foreach (var field in compilation.Fields)
             {
                 if (field.Name.EndsWith("_ops"))
@@ -121,11 +166,129 @@ namespace CycloneDDS.CodeGen
                 else if (field.Name.EndsWith("_keys"))
                 {
                     metadata.KeysArrayName = field.Name;
-                    metadata.KeysValues = ParseArrayInitializer(field.InitExpression, isOps: false);
+                    // First try regex because CppAst often fails on struct initializers with our mocked headers
+                    // Pass compilation to resolve offsets
+                    metadata.KeyDescriptors = ParseKeysUsingRegex(cContent, field.Name, compilation, typeName);
+                    if (metadata.KeyDescriptors.Length == 0)
+                    {
+                        metadata.KeyDescriptors = ParseKeyDescriptors(field.InitExpression);
+                    }
                 }
             }
 
             return metadata;
+        }
+
+
+        private KeyDescriptorInfo[] ParseKeysUsingRegex(string cContent, string keysArrayName, CppCompilation compilation, string? typeName)
+        {
+            // Find: static const dds_key_descriptor_t KeysArrayName[N] = { content };
+            var regex = new System.Text.RegularExpressions.Regex(
+                $@"static\s+const\s+dds_key_descriptor_t\s+{System.Text.RegularExpressions.Regex.Escape(keysArrayName)}\[\d+\]\s*=\s*\{{([^;]+)\}};",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+            
+            var match = regex.Match(cContent);
+            if (!match.Success) 
+            {
+                 // Try without length?
+                 regex = new System.Text.RegularExpressions.Regex(
+                    $@"static\s+const\s+dds_key_descriptor_t\s+{System.Text.RegularExpressions.Regex.Escape(keysArrayName)}\s*\[.*\]\s*=\s*\{{([^;]+)\}};",
+                    System.Text.RegularExpressions.RegexOptions.Singleline);
+                 match = regex.Match(cContent);
+            }
+            
+            if (!match.Success) return Array.Empty<KeyDescriptorInfo>();
+            
+            var content = match.Groups[1].Value;
+            
+            var list = new List<KeyDescriptorInfo>();
+            // Split by }, { or just look for { ... } patterns
+            // Initializer format: { "name", offset, idx }
+            // Offset can be number or offsetof(...)
+            var itemRegex = new System.Text.RegularExpressions.Regex(@"\{\s*""([^""]+)""\s*,\s*([^,]+),\s*(\d+)\s*\}");
+            
+            foreach(System.Text.RegularExpressions.Match itemMatch in itemRegex.Matches(content))
+            {
+                 var info = new KeyDescriptorInfo();
+                 info.Name = itemMatch.Groups[1].Value;
+                 
+                 string offsetStr = itemMatch.Groups[2].Value.Trim();
+                 bool offsetParsed = false;
+                 if (uint.TryParse(offsetStr, out uint pOffset))
+                 {
+                     info.Offset = pOffset;
+                     offsetParsed = true;
+                 }
+                 else
+                 {
+                     info.Offset = 0;
+                 }
+
+                 if (uint.TryParse(itemMatch.Groups[3].Value, out uint idx))
+                    info.Index = idx;
+                 else 
+                    info.Index = 0;
+                
+                 // Try resolve offset from compilation if not parsed or if we suspect we need struct layout
+                 // But trusting IDL generated offset seems safer if it is a literal.
+                 if (!offsetParsed && compilation != null)
+                 {
+                     string targetStruct = typeName;
+                     if (string.IsNullOrEmpty(targetStruct))
+                        targetStruct = keysArrayName.Replace("_keys", ""); 
+                     
+                     var cppClass = compilation.Classes.FirstOrDefault(c => c.Name == targetStruct);
+                     // If mangled/namespaced: Module_Struct vs Struct.
+                     if (cppClass == null) cppClass = compilation.Classes.FirstOrDefault(c => c.Name.EndsWith("_" + targetStruct));
+                     if (cppClass == null) cppClass = compilation.Classes.FirstOrDefault(c => c.Name == targetStruct || c.Name.EndsWith(targetStruct)); // Fuzzy
+
+                     if (cppClass != null)
+                     {
+                         var field = cppClass.Fields.FirstOrDefault(f => f.Name == info.Name);
+                         if (field != null)
+                         {
+                             // CppAst Offset is in Bytes for basic types?
+                             // Observed: 4 aligned int32 -> 0, 4, 8.
+                             info.Offset = (uint)field.Offset;
+                         }
+                     }
+                 }
+
+                 list.Add(info);
+            }
+            return list.ToArray();
+        }
+
+        private KeyDescriptorInfo[] ParseKeyDescriptors(CppExpression? initExpression)
+        {
+            if (initExpression is not CppInitListExpression initList)
+            {
+                // Console.WriteLine($"DEBUG: Not CppInitListExpression: {initExpression?.GetType().Name} - Value: {initExpression}");
+                return Array.Empty<KeyDescriptorInfo>();
+            }
+            
+            var list = new List<KeyDescriptorInfo>();
+            foreach (var item in initList.Arguments)
+            {
+                // Console.WriteLine($"DEBUG: Item Type: {item.GetType().Name}, ToString: {item}");
+                // Each item is a struct initializer { "name", offset, idx }
+                if (item is CppInitListExpression structInit && structInit.Arguments.Count >= 3)
+                {
+                     var info = new KeyDescriptorInfo();
+                     // Name is first argument (string literal)
+                     info.Name = structInit.Arguments[0].ToString().Trim('"');
+                     
+                     // Offset is second - we ignore it because we'll resolve it in C# runtime via Marshal.OffsetOf
+                     info.Offset = 0;
+                     
+                     // Index is third
+                     var idx = EvaluateExpression(structInit.Arguments[2]);
+                     info.Index = idx ?? 0;
+                     
+                     list.Add(info);
+                }
+            }
+            return list.ToArray();
         }
 
         private uint[] ParseArrayInitializer(CppExpression? initExpression, bool isOps)

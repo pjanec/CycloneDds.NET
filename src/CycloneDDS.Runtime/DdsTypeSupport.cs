@@ -42,6 +42,30 @@ namespace CycloneDDS.Runtime
             return func();
         }
         
+        private static readonly ConcurrentDictionary<Type, Func<DdsKeyDescriptor[]>> _keysCache = new();
+
+        public static DdsKeyDescriptor[] GetKeyDescriptors<T>()
+        {
+            var func = _keysCache.GetOrAdd(typeof(T), type =>
+            {
+                var method = type.GetMethod("GetKeyDescriptors",
+                    BindingFlags.Static | BindingFlags.Public,
+                    null,
+                    Type.EmptyTypes,
+                    null);
+                
+                if (method == null)
+                {
+                    // For backward compatibility or partially generated types, return null func
+                    return () => null;
+                }
+                
+                return (Func<DdsKeyDescriptor[]>)Delegate.CreateDelegate(typeof(Func<DdsKeyDescriptor[]>), method);
+            });
+            
+            return func();
+        }
+        
         /// <summary>
         /// Get type name for DDS topic registration.
         /// </summary>

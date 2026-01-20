@@ -110,9 +110,10 @@ namespace CycloneDDS.Runtime
                 
                 // 1. Get descriptor ops from static method (via reflection)
                 uint[] ops = DdsTypeSupport.GetDescriptorOps<T>();
+                DdsKeyDescriptor[] keys = DdsTypeSupport.GetKeyDescriptors<T>();
                 
                 // 2. Marshal descriptor to native
-                IntPtr descriptorPtr = MarshalDescriptor<T>(ops, DdsTypeSupport.GetTypeName<T>());
+                IntPtr descriptorPtr = MarshalDescriptor<T>(ops, keys, DdsTypeSupport.GetTypeName<T>());
                 
                 // 3. Create native topic
                 DdsApi.DdsEntity topic = DdsApi.dds_create_topic(
@@ -163,12 +164,16 @@ namespace CycloneDDS.Runtime
             private IntPtr _descPtr;
             private IntPtr _typeNamePtr;
             private GCHandle _opsHandle;
+            private IntPtr _keysPtr;
+            private IntPtr[] _keyNamePtrs;
 
-            public TopicResource(IntPtr descPtr, IntPtr typeNamePtr, GCHandle opsHandle)
+            public TopicResource(IntPtr descPtr, IntPtr typeNamePtr, GCHandle opsHandle, IntPtr keysPtr, IntPtr[] keyNamePtrs)
             {
                 _descPtr = descPtr;
                 _typeNamePtr = typeNamePtr;
                 _opsHandle = opsHandle;
+                _keysPtr = keysPtr;
+                _keyNamePtrs = keyNamePtrs;
             }
 
             public void Dispose()
@@ -187,10 +192,30 @@ namespace CycloneDDS.Runtime
                 {
                     _opsHandle.Free();
                 }
+                if (_keysPtr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(_keysPtr);
+                    _keysPtr = IntPtr.Zero;
+                }
+                if (_keyNamePtrs != null)
+                {
+                    foreach (var ptr in _keyNamePtrs)
+                    {
+                        if (ptr != IntPtr.Zero) Marshal.FreeHGlobal(ptr);
+                    }
+                }
             }
         }
 
-        private IntPtr MarshalDescriptor<T>(uint[] ops, string typeName)
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DdsKeyDescriptorNative
+        {
+            public IntPtr Name;
+            public uint Offset;
+            public uint Index;
+        }
+
+        private IntPtr MarshalDescriptor<T>(uint[] ops, DdsKeyDescriptor[] keys, string typeName)
         {
             // Marshal type name
             IntPtr typeNamePtr = Marshal.StringToHGlobalAnsi(typeName);
@@ -198,15 +223,52 @@ namespace CycloneDDS.Runtime
             // Pin ops array
             GCHandle opsHandle = GCHandle.Alloc(ops, GCHandleType.Pinned);
             
+            // Handle keys
+            IntPtr keysPtr = IntPtr.Zero;
+            uint nkeys = 0;
+            IntPtr[] keyNamePtrs = null;
+
+            // if (false) // Diagnostic: Disable keys to check for crash
+            if (keys != null && keys.Length > 0)
+            {
+                 int nativeKeySize = Marshal.SizeOf<DdsKeyDescriptorNative>();
+                 keysPtr = Marshal.AllocHGlobal(nativeKeySize * keys.Length);
+                 
+                 keyNamePtrs = new IntPtr[keys.Length];
+
+                 for(int i=0; i<keys.Length; i++)
+                 {
+                     var nativeKey = new DdsKeyDescriptorNative();
+                     nativeKey.Name = Marshal.StringToHGlobalAnsi(keys[i].Name);
+                     keyNamePtrs[i] = nativeKey.Name;
+                     nativeKey.Index = keys[i].Index;
+
+                     if (keys[i].Offset == 0)
+                     {
+                         var offset = Marshal.OffsetOf<T>(keys[i].Name).ToInt32();
+                         nativeKey.Offset = (uint)offset;
+                     }
+                     else
+                     {
+                         nativeKey.Offset = keys[i].Offset;
+                     }
+                     
+                     IntPtr itemPtr = IntPtr.Add(keysPtr, i * nativeKeySize);
+                     Marshal.StructureToPtr(nativeKey, itemPtr, false);
+                 }
+                 
+                 nkeys = (uint)keys.Length;
+            }
+            
             // Create descriptor struct
             var desc = new DdsTopicDescriptor
             {
                 m_size = (uint)Marshal.SizeOf<T>(), 
                 m_align = 4, 
                 m_flagset = 0, 
-                m_nkeys = 0,
+                m_nkeys = nkeys,
                 m_typename = typeNamePtr,
-                m_keys = IntPtr.Zero,
+                m_keys = keysPtr,
                 m_nops = (uint)ops.Length,
                 m_ops = opsHandle.AddrOfPinnedObject(),
                 m_meta = IntPtr.Zero,
@@ -220,7 +282,7 @@ namespace CycloneDDS.Runtime
             Marshal.StructureToPtr(desc, descPtr, false);
 
             // Track resources for cleanup
-            _topicResources.Add(new TopicResource(descPtr, typeNamePtr, opsHandle));
+            _topicResources.Add(new TopicResource(descPtr, typeNamePtr, opsHandle, keysPtr, keyNamePtrs));
 
             return descPtr;
         }
