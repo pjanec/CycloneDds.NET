@@ -1,0 +1,21 @@
+// Auto-generated IDL for StringKeyMessage by CycloneDDS C# Bindings
+// Generated on: 2026-01-21 07:45:23 UTC
+#ifndef _CYCLONEDDS_GENERATED_STRINGKEYMESSAGE_IDL_
+#define _CYCLONEDDS_GENERATED_STRINGKEYMESSAGE_IDL_
+
+module CycloneDDS {
+    module Runtime {
+        module Tests {
+            module KeyedMessages {
+                @appendable
+                struct StringKeyMessage {
+                    @key string keyId;
+                    string message;
+                };
+
+            };
+        };
+    };
+};
+
+#endif // _CYCLONEDDS_GENERATED_STRINGKEYMESSAGE_IDL_

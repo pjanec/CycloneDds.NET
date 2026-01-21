@@ -4,3 +4,9 @@ using System.Reflection;
 
 [assembly: DdsIdlMapping("CycloneDDS.Runtime.Tests.StringMessage", "StringMessage", "CycloneDDS::Runtime::Tests")]
 [assembly: DdsIdlMapping("CycloneDDS.Runtime.Tests.TestMessage", "TestMessage", "CycloneDDS::Runtime::Tests")]
+[assembly: DdsIdlMapping("CycloneDDS.Runtime.Tests.KeyedMessages.CompositeKeyMessage", "CompositeKeyMessage", "CycloneDDS::Runtime::Tests::KeyedMessages")]
+[assembly: DdsIdlMapping("CycloneDDS.Runtime.Tests.KeyedMessages.KeyLastMessage", "KeyLastMessage", "CycloneDDS::Runtime::Tests::KeyedMessages")]
+[assembly: DdsIdlMapping("CycloneDDS.Runtime.Tests.KeyedMessages.MixedKeyMessage", "MixedKeyMessage", "CycloneDDS::Runtime::Tests::KeyedMessages")]
+[assembly: DdsIdlMapping("CycloneDDS.Runtime.Tests.KeyedMessages.NestedKeyMessage", "NestedKeyMessage", "CycloneDDS::Runtime::Tests::KeyedMessages")]
+[assembly: DdsIdlMapping("CycloneDDS.Runtime.Tests.KeyedMessages.SingleKeyMessage", "SingleKeyMessage", "CycloneDDS::Runtime::Tests::KeyedMessages")]
+[assembly: DdsIdlMapping("CycloneDDS.Runtime.Tests.KeyedMessages.StringKeyMessage", "StringKeyMessage", "CycloneDDS::Runtime::Tests::KeyedMessages")]

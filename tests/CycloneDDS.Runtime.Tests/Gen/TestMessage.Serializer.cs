@@ -6,6 +6,11 @@ namespace CycloneDDS.Runtime.Tests
 {
     public partial struct TestMessage
     {
+        public int GetSerializedSize(int currentOffset)
+        {
+            return GetSerializedSize(currentOffset, false);
+        }
+
         public int GetSerializedSize(int currentOffset, bool isXcdr2 = false)
         {
             var sizer = new CdrSizer(currentOffset);

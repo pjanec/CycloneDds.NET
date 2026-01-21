@@ -8,5 +8,6 @@ namespace CycloneDDS.Runtime.Tests
         private static readonly uint[] _ops = new uint[] {67108864, 16973828, 0, 17104896, 8, 0};
 
         public static uint[] GetDescriptorOps() => _ops;
+        public static DdsKeyDescriptor[] GetKeyDescriptors() => null;
     }
 }

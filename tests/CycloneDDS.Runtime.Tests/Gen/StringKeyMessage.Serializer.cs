@@ -2,9 +2,9 @@ using CycloneDDS.Core;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace CycloneDDS.Runtime.Tests
+namespace CycloneDDS.Runtime.Tests.KeyedMessages
 {
-    public partial struct StringMessage
+    public partial struct StringKeyMessage
     {
         public int GetSerializedSize(int currentOffset)
         {
@@ -20,8 +20,8 @@ namespace CycloneDDS.Runtime.Tests
             sizer.WriteUInt32(0);
 
             // Struct body
-            sizer.Align(1); sizer.WriteInt32(0); // Id
-            sizer.Align(4); sizer.WriteString(this.Msg, isXcdr2); // Msg
+            sizer.Align(4); sizer.WriteString(this.KeyId, isXcdr2); // KeyId
+            sizer.Align(4); sizer.WriteString(this.Message, isXcdr2); // Message
 
             return sizer.GetSizeDelta(currentOffset);
         }
@@ -34,8 +34,8 @@ namespace CycloneDDS.Runtime.Tests
             writer.WriteUInt32(0);
             int bodyStart = writer.Position;
             // Struct body
-            writer.Align(1); writer.WriteInt32(this.Id); // Id
-            writer.Align(4); writer.WriteString(this.Msg, writer.IsXcdr2); // Msg
+            writer.Align(4); writer.WriteString(this.KeyId, writer.IsXcdr2); // KeyId
+            writer.Align(4); writer.WriteString(this.Message, writer.IsXcdr2); // Message
             int bodyLen = writer.Position - bodyStart;
             writer.WriteUInt32At(dheaderPos, (uint)bodyLen);
         }

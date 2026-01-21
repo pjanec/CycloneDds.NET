@@ -1,6 +1,0 @@
-module RuntimeTests {
-  struct TestMessage {
-    long id;
-    double value;
-  };
-};
