@@ -16,4 +16,6 @@
     <ProjectReference Include="..\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
   </ItemGroup>
 
+  <Import Project="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
+
 </Project>

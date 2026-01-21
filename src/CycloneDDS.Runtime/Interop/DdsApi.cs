@@ -6,7 +6,7 @@ namespace CycloneDDS.Runtime.Interop
 {
     public static class DdsApi
     {
-        private const string DLL_NAME = "ddsc";
+        public const string DLL_NAME = "ddsc";
 
         // Basic types
         [StructLayout(LayoutKind.Sequential)]
@@ -290,6 +290,18 @@ namespace CycloneDDS.Runtime.Interop
         [DllImport(DLL_NAME)]
         public static extern void dds_qset_history(IntPtr qos, int kind, int depth);
 
+        [DllImport(DLL_NAME)]
+        public static extern void dds_qset_durability(IntPtr qos, int kind);
+
+        public const int DDS_DURABILITY_VOLATILE = 0;
+        public const int DDS_DURABILITY_TRANSIENT_LOCAL = 1;
+
+        [DllImport(DLL_NAME)]
+        public static extern void dds_qset_reliability(IntPtr qos, int kind, long max_blocking_time);
+        
+        public const int DDS_RELIABILITY_BEST_EFFORT = 0;
+        public const int DDS_RELIABILITY_RELIABLE = 1;
+
         public const int DDS_HISTORY_KEEP_LAST = 0;
         public const int DDS_HISTORY_KEEP_ALL = 1;
 
@@ -338,6 +350,57 @@ namespace CycloneDDS.Runtime.Interop
         [DllImport(DLL_NAME)]
         public extern static int dds_get_status_changes(int entity, out uint status);
 
+        /// <summary>
+        /// Get the GUID of a DDS entity (participant, reader, writer).
+        /// </summary>
+        /// <param name="entity">Entity handle</param>
+        /// <param name="guid">Output GUID</param>
+        /// <returns>0 on success, negative error code on failure</returns>
+        [DllImport(DLL_NAME)]
+        public static extern int dds_get_guid(int entity, out DdsGuid guid);
+
+        /// <summary>
+        /// Get list of publication handles currently matched to a reader.
+        /// </summary>
+        /// <param name="reader">Reader entity</param>
+        /// <param name="publication_handles">Output array of handles</param>
+        /// <param name="max_handles">Size of array</param>
+        /// <returns>Number of handles returned, or negative error code</returns>
+        [DllImport(DLL_NAME)]
+        public static extern int dds_get_matched_publications(
+            int reader,
+            [In, Out] long[] publication_handles,
+            uint max_handles);
+
+        /// <summary>
+        /// Native struct for dds_get_matched_publication_data.
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct DdsBuiltinTopicEndpoint
+        {
+            public DdsGuid Key;
+            public DdsGuid ParticipantKey;
+            public long ParticipantInstanceHandle;
+            public IntPtr TopicName;
+            public IntPtr TypeName;
+            public IntPtr Qos;
+        }
+
+        /// <summary>
+        /// Get detailed information about a matched publication.
+        /// Caller must free returned pointer using dds_builtintopic_free_endpoint.
+        /// </summary>
+        /// <param name="reader">Reader entity</param>
+        /// <param name="publication_handle">Handle of matched publication</param>
+        /// <returns>Pointer to DdsBuiltinTopicEndpoint, or IntPtr.Zero on failure</returns>
+        [DllImport(DLL_NAME)]
+        public static extern IntPtr dds_get_matched_publication_data(
+            int reader,
+            long publication_handle); // Takes 2 args only!
+
+        [DllImport(DLL_NAME)]
+        public static extern void dds_builtintopic_free_endpoint(IntPtr endpoint);
+
         public const uint DDS_DATA_AVAILABLE_STATUS = (1u << 8);
         public const uint DDS_PUBLICATION_MATCHED_STATUS = (1u << 11);
         public const uint DDS_SUBSCRIPTION_MATCHED_STATUS = (1u << 12);
@@ -345,5 +408,33 @@ namespace CycloneDDS.Runtime.Interop
         // Cleanup
         [DllImport(DLL_NAME)]
         public static extern int dds_delete(DdsEntity entity);
+    }
+
+    /// <summary>
+    /// Represents a 16-byte DDS GUID (Globally Unique Identifier).
+    /// Maps to native dds_guid_t (uint8_t v[16]).
+    /// Used for O(1) participant/writer correlation.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    [CycloneDDS.Schema.DdsStruct]
+    public partial struct DdsGuid : IEquatable<DdsGuid>
+    {
+        /// <summary>
+        /// High 64 bits (first 8 bytes of v[16]).
+        /// </summary>
+        public long High;
+
+        /// <summary>
+        /// Low 64 bits (last 8 bytes of v[16]).
+        /// </summary>
+        public long Low;
+
+        public bool Equals(DdsGuid other) => High == other.High && Low == other.Low;
+        public override bool Equals(object? obj) => obj is DdsGuid other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(High, Low);
+        public override string ToString() => $"{High:X16}{Low:X16}";
+
+        public static bool operator ==(DdsGuid left, DdsGuid right) => left.Equals(right);
+        public static bool operator !=(DdsGuid left, DdsGuid right) => !left.Equals(right);
     }
 }

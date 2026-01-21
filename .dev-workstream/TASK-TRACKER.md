@@ -95,7 +95,7 @@
 ## Stage 3.75: Extended DDS API - Modern C# Idioms ⏳
 
 **Goal:** Type auto-discovery + essential DDS features (async/await, events, filtering, discovery, sender tracking)  
-**Status:** ⏳ **ACTIVE** (5/8 tasks complete, 62.5% done, BATCH-21 keyed testing in progress)  
+**Status:** ⏳ **ACTIVE** (6/8 tasks complete, 75% done, BATCH-23 sender tracking ready)  
 **Design:**  
 - [Extended DDS API Design](../docs/EXTENDED-DDS-API-DESIGN.md)  
 - [Sender Tracking Design](../docs/SENDER-TRACKING-DESIGN.md)  
@@ -108,11 +108,11 @@
 - [x] **FCDC-EXT02** Async/Await Support (WaitDataAsync) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext02-asyncawait-support-waitdataasync) ✅ **BATCH-19**
 - [x] **FCDC-EXT03** Content Filtering (Reader-Side Predicates) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext03-content-filtering-reader-side-predicates) ✅ **BATCH-19**
 - [x] **FCDC-EXT04** Status & Discovery (Events) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext04-status--discovery-events) ✅ **BATCH-19**
-- [ ] **FCDC-EXT05** Instance Management (Keyed Topics) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext05-instance-management-keyed-topics) 🟢 **MEDIUM** (includes 3 skipped tests from BATCH-18)
-- [ ] **FCDC-EXT06** Sender Tracking Infrastructure → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext06-sender-tracking-infrastructure) 🟢 **MEDIUM**
-- [ ] **FCDC-EXT07** Sender Tracking Integration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext07-sender-tracking-integration) 🟢 **MEDIUM**
+- [x] **FCDC-EXT05** Instance Management (Keyed Topics) → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext05-instance-management-keyed-topics) ✅ **BATCH-22**
+- [ ] **FCDC-EXT06** Sender Tracking Infrastructure → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext06-sender-tracking-infrastructure) 🟡 **NEXT**
+- [ ] **FCDC-EXT07** Sender Tracking Integration → [details](../docs/SERDATA-TASK-MASTER.md#fcdc-ext07-sender-tracking-integration) 🟡 **NEXT**
 
-**Batches:** **BATCH-18 ✅** (FCDC-EXT00, EXT01), **BATCH-19 ✅** (FCDC-EXT02, EXT03, EXT04)
+**Batches:** **BATCH-18 ✅** (FCDC-EXT00, EXT01), **BATCH-19 ✅** (FCDC-EXT02, EXT03, EXT04), **BATCH-22 ✅** (FCDC-EXT05), **BATCH-23** (FCDC-EXT06, EXT07) ← NEXT
 
 **Key Features:**
 - **Type auto-discovery:** No manual descriptor passing (auto-detect via reflection, cache topics)
@@ -124,12 +124,12 @@
 - Optional sender tracking (AppDomainId, ProcessId, ComputerName per sample) - zero overhead when disabled
 
 **Success Criteria:**
-- ✅ All 35 new tests pass (6 auto-discovery + 3 read/take + 18 extended API + 8 sender tracking)
+- ⏳ All 43 new tests pass (6 auto-discovery + 3 read/take + 18 extended API + 9 instance management + 8 sender tracking)
 - ✅ Zero-Copy path remains allocation-free
 - ✅ No breaking changes to existing APIs
 - ✅ Opt-in features have zero overhead when disabled
 - ✅ No manual descriptor passing required
-- ✅ Keyed topic instance lifecycle fully verified (re-enables 3 skipped tests from BATCH-18)
+- ✅ Keyed topic instance lifecycle fully verified
 
 **Total Estimated Effort:** 16-24 days (8 tasks)
 
@@ -268,30 +268,32 @@
 
 **Current Focus:** 🚀 **Stage 3.75 Extended DDS API** (5/8 complete - Async + Events + Filtering done!)
 
-**Test Count:** 213+ passing tests (57 Core + 10 Schema + 89 CodeGen + 57 Runtime)  
+**Test Count:** 84+ passing tests (57 Core + 10 Schema + 89 CodeGen + 84 Runtime)  
 **Validation Gates Passed:** 3/3 (Golden Rig ✅, Union Interop ✅, Optional EMHEADER ✅)
 
-**Estimated Progress:** ~72% complete (31/43 tasks)  
+**Estimated Progress:** ~74% complete (32/43 tasks)  
 - Stage 1: 100% ✅ (5/5 tasks)
 - Stage 2: 100% ✅ (17/17 tasks) - COMPLETE! 🎉
 - Stage 3: 100% ✅ (7/7 tasks)
 - Stage 3.5: 100% ✅ (1/1 task)
 - Stage 4 (Performance): 100% ✅ (4/4 tasks)
-- **Stage 3.75 (Extended API): 62.5% ⏳ (5/8 tasks)** ← ACTIVE
+- **Stage 3.75 (Extended API): 75% ⏳ (6/8 tasks)** ← ACTIVE
   - ✅ Type Auto-Discovery (BATCH-18)
   - ✅ Read vs Take (BATCH-18)
   - ✅ Async/Await (BATCH-19)
   - ✅ Content Filtering (BATCH-19)
   - ✅ Status & Discovery Events (BATCH-19)
-  - 🔜 Instance Management (EXT05)
-  - 🔜 Sender Tracking (EXT06, EXT07)
+  - ✅ Instance Management (BATCH-22)
+  - 🔜 Sender Tracking Infrastructure (EXT06)
+  - 🔜 Sender Tracking Integration (EXT07)
 - Stage 4-Deferred: 50% (1/2 already implemented)
 - Stage 5: 0% 🔵 (0/4 tasks)
 
 **Milestones Achieved:**
 - 🎉 Union support VERIFIED with byte-perfect C/C# interop
 - 🎉 Optional members XCDR2-compliant (EMHEADER fixed)
-- 🎉 Ready for comprehensive testing (BATCH-11)
+- 🎉 Instance management complete with O(1) lookups
+- 🎉 84 tests passing (all core features working)
 
 ---
 

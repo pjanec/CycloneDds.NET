@@ -81,11 +81,11 @@ namespace CycloneDDS.Runtime.Tests
             Assert.True(view1.Count > 0);
             
             // 2. Read with mask NOT_READ (should be empty because it is now READ)
-            using var view2 = _reader.Read(32, DdsSampleState.NotRead, DdsViewState.Any, DdsInstanceState.Any);
+            using var view2 = _reader.Read(32, DdsSampleState.NotRead, DdsViewState.AnyViewState, DdsInstanceState.AnyInstanceState);
             Assert.Equal(0, view2.Count);
             
              // 3. Read with mask READ (should see it)
-            using var view3 = _reader.Read(32, DdsSampleState.Read, DdsViewState.Any, DdsInstanceState.Any);
+            using var view3 = _reader.Read(32, DdsSampleState.Read, DdsViewState.AnyViewState, DdsInstanceState.AnyInstanceState);
             Assert.True(view3.Count > 0);
         }
     }

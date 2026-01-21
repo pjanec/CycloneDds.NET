@@ -103,6 +103,9 @@ namespace CycloneDDS.CodeGen
             EmitAssemblyMetadata(registry, outputDir);
             
             // Generate Descriptors (Runtime Support)
+            Console.WriteLine($"[DEBUG] LocalTypes count: {registry.LocalTypes.Count()}");
+            foreach(var t in registry.LocalTypes) Console.WriteLine($"[DEBUG] LocalType: {t.CSharpFullName} -> {t.TargetIdlFile}");
+
             GenerateDescriptors(registry, outputDir);
 
             Console.WriteLine($"Output will go to: {outputDir}");
@@ -196,51 +199,62 @@ namespace CycloneDDS.CodeGen
         private void GenerateDescriptors(GlobalTypeRegistry registry, string outputDir)
         {
             var fileGroups = registry.LocalTypes
-                .Where(t => t.TypeInfo != null && t.TypeInfo.IsTopic)
+                .Where(t => t.TypeInfo != null)
                 .GroupBy(t => t.TargetIdlFile);
 
             var idlcRunner = new IdlcRunner();
             var processedIdlFiles = new HashSet<string>();
+            var localFileGroups = fileGroups.ToList();
+            Console.WriteLine($"[DEBUG] Found {localFileGroups.Count} file groups");
+            foreach(var g in localFileGroups) Console.WriteLine($"[DEBUG] Group: {g.Key}");
 
-            foreach (var group in fileGroups)
+            // Phase 4a: Compile C Stubs (ALL)
+            string tempCGroup = Path.Combine(outputDir, "temp_c");
+            if (!Directory.Exists(tempCGroup)) Directory.CreateDirectory(tempCGroup);
+
+            foreach (var group in localFileGroups)
             {
                 string idlFileName = group.Key;
                 string idlPath = Path.Combine(outputDir, $"{idlFileName}.idl");
                 
                 if (!processedIdlFiles.Contains(idlFileName))
                 {
-                    string tempCGroup = Path.Combine(outputDir, "temp_c");
-                    if (!Directory.Exists(tempCGroup)) Directory.CreateDirectory(tempCGroup);
-
+                    Console.WriteLine($"[DEBUG] Running IDLC for {idlFileName} at {idlPath}");
                     var result = idlcRunner.RunIdlc(idlPath, tempCGroup);
                     if (result.ExitCode != 0)
                     {
                          Console.Error.WriteLine($"    idlc failed for {idlFileName}: {result.StandardError}");
                          continue; 
                     }
-                    
                     processedIdlFiles.Add(idlFileName);
-                    
-                    string cFile = Path.Combine(tempCGroup, $"{idlFileName}.c");
-                    if (File.Exists(cFile))
+                }
+            }
+            
+            // Phase 4b: Parse Descriptors
+            var parser = new DescriptorParser();
+            foreach (var group in localFileGroups)
+            {
+                string idlFileName = group.Key;
+                string cFile = Path.Combine(tempCGroup, $"{idlFileName}.c");
+                
+                if (File.Exists(cFile))
+                {
+                    foreach(var topic in group)
                     {
-                        var parser = new DescriptorParser(); 
-                        
-                        foreach(var topic in group)
-                        {
-                             if (topic.TypeInfo == null) continue;
-                             try 
-                             {
-                                 var metadata = parser.ParseDescriptor(cFile, topic.TypeInfo.Name);
-                                 var descCode = GenerateDescriptorCode(topic.TypeInfo, metadata);
-                                 File.WriteAllText(Path.Combine(outputDir, $"{topic.TypeInfo.Name}.Descriptor.cs"), descCode);
-                                 Console.WriteLine($"    Generated {topic.TypeInfo.Name}.Descriptor.cs");
-                             }
-                             catch (Exception ex)
-                             {
-                                 Console.Error.WriteLine($"    Descriptor parsing failed for {topic.TypeInfo.Name}: {ex.Message}");
-                             }
-                        }
+                         if (topic.TypeInfo == null) continue;
+                         if (topic.TypeInfo.IsEnum) continue;
+
+                         try 
+                         {
+                             var metadata = parser.ParseDescriptor(cFile, topic.TypeInfo.Name);
+                             var descCode = GenerateDescriptorCode(topic.TypeInfo, metadata);
+                             File.WriteAllText(Path.Combine(outputDir, $"{topic.TypeInfo.Name}.Descriptor.cs"), descCode);
+                             Console.WriteLine($"    Generated {topic.TypeInfo.Name}.Descriptor.cs");
+                         }
+                         catch (Exception ex)
+                         {
+                             Console.Error.WriteLine($"    Descriptor parsing failed for {topic.TypeInfo.Name}: {ex.Message}");
+                         }
                     }
                 }
             }

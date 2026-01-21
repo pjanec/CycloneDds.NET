@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using CycloneDDS.Runtime.Interop;
+using CycloneDDS.Runtime.Tracking;
 
 namespace CycloneDDS.Runtime
 {
@@ -15,6 +16,12 @@ namespace CycloneDDS.Runtime
         private readonly object _topicLock = new();
         // Track unmanaged resources for topics so we can free them on Dispose
         private readonly List<IDisposable> _topicResources = new();
+
+        private SenderIdentityConfig? _identityConfig;
+        private DdsWriter<SenderIdentity>? _identityWriter;
+        private int _activeWriterCount = 0;
+        private readonly object _trackingLock = new();
+        internal SenderRegistry? _senderRegistry;
 
         public DdsParticipant(uint domainId = 0)
         {
@@ -85,6 +92,9 @@ namespace CycloneDDS.Runtime
                     }
                     _topicResources.Clear();
                 }
+
+                _senderRegistry?.Dispose();
+                _identityWriter?.Dispose();
 
                 _handle?.Dispose();
                 _handle = null;
@@ -333,6 +343,87 @@ namespace CycloneDDS.Runtime
             _topicResources.Add(new TopicResource(descPtr, typeNamePtr, opsHandle, keysPtr, keyNamePtrs));
 
             return descPtr;
+        }
+
+        /// <summary>
+        /// Enable sender tracking for this participant.
+        /// MUST be called before creating any DdsWriter or DdsReader.
+        /// </summary>
+        /// <param name="config">Configuration with AppDomainId, AppInstanceId</param>
+        /// <exception cref="InvalidOperationException">If writers already created</exception>
+        public void EnableSenderTracking(SenderIdentityConfig config)
+        {
+            lock (_trackingLock)
+            {
+                if (_activeWriterCount > 0)
+                    throw new InvalidOperationException("EnableSenderTracking must be called before creating writers");
+
+                _identityConfig = config;
+                _senderRegistry = new SenderRegistry(this);
+            }
+        }
+
+        /// <summary>
+        /// Provides access to the sender registry (if tracking enabled).
+        /// </summary>
+        public SenderRegistry? SenderRegistry => _senderRegistry;
+
+        internal void RegisterWriter()
+        {
+            lock (_trackingLock)
+            {
+                _activeWriterCount++;
+                if (_identityConfig != null && _activeWriterCount == 1)
+                {
+                    PublishIdentity();
+                }
+            }
+        }
+
+        internal void UnregisterWriter()
+        {
+            lock (_trackingLock)
+            {
+                _activeWriterCount--;
+                if (_identityConfig != null && _activeWriterCount == 0 && !_identityConfig.KeepAliveUntilParticipantDispose)
+                {
+                    DisposeIdentityWriter();
+                }
+            }
+        }
+
+        private void PublishIdentity()
+        {
+            var process = System.Diagnostics.Process.GetCurrentProcess();
+
+            // Get native participant GUID
+            DdsApi.dds_get_guid(NativeEntity.Handle, out var myGuid);
+
+            var identity = new SenderIdentity
+            {
+                ParticipantGuid = myGuid,
+                AppDomainId = _identityConfig!.AppDomainId,
+                AppInstanceId = _identityConfig.AppInstanceId,
+                ProcessId = process.Id,
+                ProcessName = _identityConfig.ProcessName ?? process.ProcessName,
+                ComputerName = _identityConfig.ComputerName ?? Environment.MachineName
+            };
+
+            // QoS: Reliable + TransientLocal
+            IntPtr qos = DdsApi.dds_create_qos();
+            DdsApi.dds_qset_durability(qos, DdsApi.DDS_DURABILITY_TRANSIENT_LOCAL);
+            DdsApi.dds_qset_reliability(qos, DdsApi.DDS_RELIABILITY_RELIABLE, 100_000_000);
+
+            _identityWriter = new DdsWriter<SenderIdentity>(this, "__FcdcSenderIdentity", qos);
+            DdsApi.dds_delete_qos(qos);
+
+            _identityWriter.Write(identity);
+        }
+
+        private void DisposeIdentityWriter()
+        {
+            _identityWriter?.Dispose();
+            _identityWriter = null;
         }
     }
 }

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CycloneDDS.Core;
 using CycloneDDS.Runtime.Interop;
 using CycloneDDS.Runtime.Memory;
+using CycloneDDS.Runtime.Tracking;
 using CycloneDDS.Schema;
 
 namespace CycloneDDS.Runtime
@@ -106,6 +107,13 @@ namespace CycloneDDS.Runtime
                  throw new DdsException(DdsApi.DdsReturnCode.Error, "Failed to create writer");
             }
             _writerHandle = new DdsEntityHandle(writer);
+
+            // Notify participant (triggers identity publishing if enabled)
+            // Skip for the identity writer itself to avoid recursion
+            if (typeof(T) != typeof(SenderIdentity))
+            {
+                _participant.RegisterWriter();
+            }
         }
 
         public void WriteViaDdsWrite(in T sample)
@@ -386,6 +394,11 @@ namespace CycloneDDS.Runtime
         {
             if (_writerHandle == null) return;
             
+            if (typeof(T) != typeof(SenderIdentity))
+            {
+                _participant?.UnregisterWriter();
+            }
+
             if (_listener != IntPtr.Zero)
             {
                 DdsApi.dds_delete_listener(_listener);

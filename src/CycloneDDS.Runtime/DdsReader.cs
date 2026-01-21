@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using CycloneDDS.Core;
 using CycloneDDS.Runtime.Interop;
 using CycloneDDS.Runtime.Memory;
+using CycloneDDS.Runtime.Tracking;
 using CycloneDDS.Schema;
 
 namespace CycloneDDS.Runtime
@@ -19,6 +20,9 @@ namespace CycloneDDS.Runtime
     public sealed class DdsReader<T, TView> : IDisposable 
         where TView : struct
     {
+        // Add field for tracking
+        private SenderRegistry? _registry;
+
         private static readonly byte _encodingKindLE;
         private static readonly byte _encodingKindBE;
 
@@ -198,12 +202,12 @@ namespace CycloneDDS.Runtime
                  
                  if (count == (int)DdsApi.DdsReturnCode.NoData)
                  {
-                     return new ViewScope<TView>(_readerHandle.NativeHandle, null, null, 0, null, _filter);
+                     return new ViewScope<TView>(_readerHandle.NativeHandle, null, null, 0, null, _filter, _registry);
                  }
                  throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_{(isTake ? "take" : "read")}cdr failed: {count}");
              }
              
-             return new ViewScope<TView>(_readerHandle.NativeHandle, samples, infos, count, _deserializer, _filter);
+             return new ViewScope<TView>(_readerHandle.NativeHandle, samples, infos, count, _deserializer, _filter, _registry);
         }
 
         private bool HasData()
@@ -448,13 +452,106 @@ namespace CycloneDDS.Runtime
                  // Handle NoData or other errors by returning empty view
                  // If it's pure error we might want to throw, but standard Read returns empty on NoData
                  if (count == (int)DdsApi.DdsReturnCode.NoData)
-                     return new ViewScope<TView>(_readerHandle.NativeHandle, null, null, 0, null, _filter);
+                     return new ViewScope<TView>(_readerHandle.NativeHandle, null, null, 0, null, _filter, _registry);
 
                  throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_{(isTake ? "take" : "read")}cdr_instance failed: {count}");
              }
              
-             return new ViewScope<TView>(_readerHandle.NativeHandle, samples, infos, count, _deserializer, _filter);
+             return new ViewScope<TView>(_readerHandle.NativeHandle, samples, infos, count, _deserializer, _filter, _registry);
         }
+
+        /// <summary>
+        /// Enable sender tracking for this reader.
+        /// After this, ViewScope.GetSender(index) will return sender information.
+        /// </summary>
+        public void EnableSenderTracking(SenderRegistry registry)
+        {
+            _registry = registry;
+            this.SubscriptionMatched += OnSenderTrackingSubscriptionMatched;
+        }
+
+        private void OnSenderTrackingSubscriptionMatched(object? sender, DdsApi.DdsSubscriptionMatchedStatus e)
+        {
+            if (e.CurrentCountChange > 0 && _registry != null)
+            {
+                // New writer(s) connected - register them
+                try
+                {
+                    var handles = GetMatchedPublicationHandles();
+                    foreach (var handle in handles)
+                    {
+                        var writerGuid = GetMatchedPublicationGuid(handle);
+                        _registry.RegisterRemoteWriter(handle, writerGuid);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DdsReader] Failed to register matched publications: {ex}");
+                }
+            }
+        }
+
+        private long[] GetMatchedPublicationHandles()
+        {
+            if (_readerHandle == null) return Array.Empty<long>();
+
+            // Query Cyclone DDS for matched publication count
+            var handles = new long[64]; // Reasonable max
+            int count = DdsApi.dds_get_matched_publications(
+                _readerHandle.NativeHandle.Handle,
+                handles,
+                (uint)handles.Length);
+
+            if (count < 0) return Array.Empty<long>();
+            
+            if (count > handles.Length)
+            {
+                 handles = new long[count];
+                 count = DdsApi.dds_get_matched_publications(
+                    _readerHandle.NativeHandle.Handle,
+                    handles,
+                    (uint)handles.Length);
+            }
+            
+            if (count > 0)
+            {
+                if (count > handles.Length) count = handles.Length;
+                var result = new long[count];
+                Array.Copy(handles, result, count);
+                return result;
+            }
+
+            return Array.Empty<long>();
+        }
+
+        private DdsGuid GetMatchedPublicationGuid(long publicationHandle)
+        {
+            if (_readerHandle == null) return default;
+            
+            IntPtr ptr = DdsApi.dds_get_matched_publication_data(
+                _readerHandle.NativeHandle.Handle,
+                publicationHandle);
+                
+            if (ptr != IntPtr.Zero)
+            {
+                try
+                {
+                    var data = Marshal.PtrToStructure<DdsApi.DdsBuiltinTopicEndpoint>(ptr);
+                    return data.Key;
+                }
+                finally
+                {
+                    DdsApi.dds_builtintopic_free_endpoint(ptr);
+                }
+            }
+            else
+            {
+                 // Console.WriteLine($"[DdsReader] dds_get_matched_publication_data returned NULL.");
+            }
+            
+            return default;
+        }
+
 
         private static GetSerializedSizeDelegate CreateSizerDelegate()
         {
@@ -532,10 +629,11 @@ namespace CycloneDDS.Runtime
         private int _count;
         private DeserializeDelegate<TView>? _deserializer;
         private Predicate<TView>? _filter;
+        private SenderRegistry? _registry;
         
         public ReadOnlySpan<DdsApi.DdsSampleInfo> Infos => _infos != null ? _infos.AsSpan(0, _count) : ReadOnlySpan<DdsApi.DdsSampleInfo>.Empty;
 
-        internal ViewScope(DdsApi.DdsEntity reader, IntPtr[]? samples, DdsApi.DdsSampleInfo[]? infos, int count, DeserializeDelegate<TView>? deserializer, Predicate<TView>? filter)
+        internal ViewScope(DdsApi.DdsEntity reader, IntPtr[]? samples, DdsApi.DdsSampleInfo[]? infos, int count, DeserializeDelegate<TView>? deserializer, Predicate<TView>? filter, SenderRegistry? registry)
         {
             _reader = reader;
             _samples = samples;
@@ -543,6 +641,25 @@ namespace CycloneDDS.Runtime
             _count = count;
             _deserializer = deserializer;
             _filter = filter;
+            _registry = registry;
+        }
+
+        /// <summary>
+        /// Get sender identity for the sample at given index.
+        /// Returns null if tracking disabled or identity unknown.
+        /// </summary>
+        public SenderIdentity? GetSender(int index)
+        {
+            if (_registry == null) return null;
+            if (index < 0 || index >= _count) throw new IndexOutOfRangeException();
+            if (_infos == null) return null;
+            
+            long handle = _infos[index].PublicationHandle;
+            if (_registry.TryGetIdentity(handle, out var identity))
+            {
+                return identity;
+            }
+            return null;
         }
         
         public int Count => _count;

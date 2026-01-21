@@ -73,7 +73,7 @@ namespace CycloneDDS.CodeGen
             string hContent = "";
             if (System.IO.File.Exists(hFilePath))
             {
-                hContent = System.IO.File.ReadAllText(hFilePath);
+                hContent = ResolveRecursiveIncludes(hFilePath, new HashSet<string>());
             }
             
             var sb = new System.Text.StringBuilder();
@@ -177,6 +177,35 @@ namespace CycloneDDS.CodeGen
             }
 
             return metadata;
+        }
+
+        private string ResolveRecursiveIncludes(string filePath, HashSet<string> visited)
+        {
+            if (!visited.Add(filePath)) return "";
+            if (!System.IO.File.Exists(filePath)) return "";
+
+            var content = System.IO.File.ReadAllText(filePath);
+            var dir = System.IO.Path.GetDirectoryName(filePath);
+            var sb = new System.Text.StringBuilder();
+
+            foreach (var lineIter in content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None))
+            {
+                string line = lineIter;
+                string trimmed = line.Trim();
+                // Match #include "foo.h"
+                if (trimmed.StartsWith("#include \"") && trimmed.EndsWith("\""))
+                {
+                    string incFile = trimmed.Substring(10, trimmed.Length - 11); // Set after #include "
+                    string incPath = System.IO.Path.Combine(dir, incFile);
+                    if (System.IO.File.Exists(incPath))
+                    {
+                        sb.AppendLine(ResolveRecursiveIncludes(incPath, visited));
+                        continue;
+                    }
+                }
+                sb.AppendLine(line);
+            }
+            return sb.ToString();
         }
 
 

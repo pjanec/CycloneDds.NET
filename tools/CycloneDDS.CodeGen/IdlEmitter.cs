@@ -458,7 +458,8 @@ namespace CycloneDDS.CodeGen
             // Nested types
             if (field.Type != null)
             {
-                return (field.Type.Name, "");
+                // Use scoped name for cross-module reference
+                return (field.Type.FullName.Replace(".", "::"), "");
             }
 
             // Generic inner
@@ -473,9 +474,8 @@ namespace CycloneDDS.CodeGen
                 // It falls through to Fallback.
             }
             
-            // Fallback to simple name (e.g. Enums)
-            var parts = typeName.Split('.');
-            return (parts.Last(), "");
+            // Fallback to scoped name (e.g. Enums, Structs)
+            return (typeName.Replace(".", "::"), "");
         }
 
 

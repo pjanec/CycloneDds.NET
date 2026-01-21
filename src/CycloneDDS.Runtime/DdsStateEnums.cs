@@ -7,7 +7,7 @@ namespace CycloneDDS.Runtime
     {
         Read = 1,
         NotRead = 2,
-        Any = Read | NotRead
+        AnySampleState = Read | NotRead
     }
 
     [Flags]
@@ -15,7 +15,7 @@ namespace CycloneDDS.Runtime
     {
         New = 4,
         NotNew = 8,
-        Any = New | NotNew
+        AnyViewState = New | NotNew
     }
 
     [Flags]
@@ -24,6 +24,6 @@ namespace CycloneDDS.Runtime
         Alive = 16,
         NotAliveDisposed = 32,
         NotAliveNoWriters = 64,
-        Any = Alive | NotAliveDisposed | NotAliveNoWriters
+        AnyInstanceState = Alive | NotAliveDisposed | NotAliveNoWriters
     }
 }
