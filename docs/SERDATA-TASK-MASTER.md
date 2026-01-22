@@ -2056,11 +2056,10 @@ Integrate sender tracking into DdsParticipant, DdsWriter, DdsReader, and ViewSco
 ### Stage 3.75 Success Criteria
 
 **Functional:**
-- ✅ All 35 tests pass (6 auto-discovery + 3 read/take + 18 extended API + 8 sender tracking)
-  - Note: FCDC-EXT05 includes 9 tests (3 original + 3 from BATCH-18 + 3 additional)
+- ✅ All 43 tests pass (6 auto-discovery + 3 read/take + 18 extended API + 9 instance management + 8 sender tracking)
 - ✅ No breaking changes to existing APIs
 - ✅ All new APIs work with zero-copy core
-- ✅ Keyed topic instance lifecycle fully verified (re-enables 3 skipped tests from BATCH-18)
+- ✅ Keyed topic instance lifecycle fully verified
 
 **Performance:**
 - ✅ Zero-Copy path remains allocation-free
@@ -2077,7 +2076,138 @@ Integrate sender tracking into DdsParticipant, DdsWriter, DdsReader, and ViewSco
 
 ---
 
-##STAGE 4: XCDR2 Compliance & Evolution (DEFERRED)
+## STAGE 4-DEFERRED: XCDR1/XCDR2 Compatibility
+
+**Goal:** Full backward compatibility with legacy XCDR1 systems while maintaining XCDR2 as default  
+**Duration:** 2-3 days  
+**Priority:** MEDIUM (Important for legacy system interop)
+
+**Design Reference:** `XCDR1-XCDR2-COMPATIBILITY-DESIGN.md`
+
+**Context:**
+The C# bindings currently use strict XCDR2 encoding (Appendable CDR2). This prevents interoperability with legacy DDS systems that only support XCDR1 (Classic CDR). The solution implements a stateful encoding context that allows runtime selection between formats while maintaining clean architecture.
+
+---
+
+### FCDC-COMPAT-01: XCDR1/XCDR2 Dual Encoding Support
+
+**Priority:** Medium  
+**Estimated Effort:** 2-3 days  
+**Dependencies:** FCDC-S020 (DdsWriter), FCDC-S021 (DdsReader), All Stage 2 tasks
+
+**Description:**  
+Implement dual encoding support for XCDR1 (legacy) and XCDR2 (modern) CDR formats with automatic format selection based on type extensibility and auto-detection on the read path.
+
+**Design Reference:** `XCDR1-XCDR2-COMPATIBILITY-DESIGN.md` (full specification)
+
+**Key Architectural Decision:**  
+Use **stateful encoding context** rather than parameter passing. The `CdrWriter`, `CdrReader`, and `CdrSizer` structs carry an immutable `Encoding` field that propagates through the entire serialization chain.
+
+**Implementation Steps:**
+
+1. **Create CdrEncoding Enum** (`Src/CycloneDDS.Core/CdrEncoding.cs`):
+   - Define `Xcdr1 = 0` and `Xcdr2 = 2` enum values
+   - Document wire format differences (NUL terminators, DHEADER)
+
+2. **Update Core Primitives with Stateful Context**:
+   - **CdrWriter**: Add `readonly CdrEncoding Encoding` field, update `WriteString()` to check encoding
+   - **CdrReader**: Add auto-detection in constructor (inspect header[1]), update `ReadString()` to check encoding
+   - **CdrSizer**: Add `readonly CdrEncoding Encoding` field, update `WriteString()` sizing logic
+
+3. **Update Code Generation (Conditional DHEADER)**:
+   - **SerializerEmitter**: Add runtime check `if (writer.Encoding == CdrEncoding.Xcdr2)` before DHEADER logic
+   - **DeserializerEmitter**: Add runtime check `if (reader.Encoding == CdrEncoding.Xcdr2)` before DHEADER skip
+   - **SizerEmitter**: Add runtime check `if (sizer.Encoding == CdrEncoding.Xcdr2)` before DHEADER sizing
+
+4. **Integrate Runtime Encoding Selection**:
+   - **DdsWriter**: Determine encoding from `DdsTypeSupport.GetExtensibility<T>()`
+     - `Final` → `Xcdr1`, write header `0x0001` (LE) or `0x0000` (BE)
+     - `Appendable/Mutable` → `Xcdr2`, write header `0x0009` (LE) or `0x0008` (BE)
+   - **DdsWriter**: Configure QoS with `dds_qset_data_representation(qos, 1, {encoding})`
+   - **DdsReader**: Configure QoS to accept both formats: `dds_qset_data_representation(qos, 2, {0, 2})`
+
+5. **Add P/Invoke for QoS Configuration**:
+   - Add `dds_qset_data_representation(IntPtr qos, uint n, short[] values)` to `DdsApi.cs`
+
+6. **Regenerate All Test Types** to use updated emitters
+
+**Deliverables:**
+- `Src/CycloneDDS.Core/CdrEncoding.cs` (new file)
+- Updated `Src/CycloneDDS.Core/CdrWriter.cs`
+- Updated `Src/CycloneDDS.Core/CdrReader.cs`
+- Updated `Src/CycloneDDS.Core/CdrSizer.cs`
+- Updated `tools/CycloneDDS.CodeGen/SerializerEmitter.cs`
+- Updated `tools/CycloneDDS.CodeGen/DeserializerEmitter.cs`
+- Updated `tools/CycloneDDS.CodeGen/SizerEmitter.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsWriter.cs`
+- Updated `Src/CycloneDDS.Runtime/DdsReader.cs`
+- Updated `Src/CycloneDDS.Runtime/Interop/DdsApi.cs`
+
+**Tests (Minimum 8):**
+
+**Unit Tests (6):**
+1. **Xcdr1String_Roundtrip**
+   - Create `@final` struct with string field
+   - Serialize, verify NUL terminator in buffer (check byte at offset)
+   - Deserialize, verify string matches original
+   
+2. **Xcdr2String_Roundtrip**
+   - Create `@appendable` struct with string field
+   - Serialize, verify NO NUL at end of string bytes
+   - Deserialize, verify string matches original
+
+3. **Xcdr1Appendable_DegradeToFinal**
+   - Force `@appendable` struct to serialize in XCDR1 mode
+   - Verify NO DHEADER in buffer (check expected offsets)
+   - Verify strings have NUL terminators
+   - Deserialize successfully
+
+4. **MixedNesting_OuterFinal_InnerAppendable**
+   - Define `OuterStruct(@final)` containing `InnerStruct(@appendable)` field
+   - Serialize `OuterStruct`
+   - Verify entire blob is XCDR1 (header `0x0001`, no DHEADER, strings with NUL)
+   - Deserialize, verify nested data correct
+
+5. **AutoDetection_Xcdr1Message_CorrectRead**
+   - Manually construct XCDR1 blob with header `0x0001`
+   - Pass to `CdrReader`
+   - Verify `reader.Encoding == CdrEncoding.Xcdr1`
+   - Deserialize string, verify NUL handling correct
+
+6. **AutoDetection_Xcdr2Message_CorrectRead**
+   - Manually construct XCDR2 blob with header `0x0009`
+   - Pass to `CdrReader`
+   - Verify `reader.Encoding == CdrEncoding.Xcdr2`
+   - Deserialize string, verify no NUL expected
+
+**Integration Tests (2):**
+7. **QosHandshake_FinalType_AdvertisesXcdr1**
+   - Create `DdsWriter<FinalStruct>`
+   - Query published QoS (if possible) or verify via discovery
+   - Success: QoS advertises `DDS_DATA_REPRESENTATION_XCDR1`
+
+8. **QosHandshake_AppendableType_AdvertisesXcdr2**
+   - Create `DdsWriter<AppendableStruct>`
+   - Query published QoS or verify via discovery
+   - Success: QoS advertises `DDS_DATA_REPRESENTATION_XCDR2`
+
+**Validation:**
+- ✅ `@final` types produce XCDR1-compliant blobs (verified byte-by-byte)
+- ✅ `@appendable` types produce XCDR2-compliant blobs (verified byte-by-byte)
+- ✅ Reader auto-detects both formats correctly
+- ✅ Mixed nesting handled correctly (context propagates)
+- ✅ QoS handshake configured properly
+- ✅ Zero performance overhead for XCDR2 default path
+- ✅ All existing tests still pass
+
+**Migration Guide for Users:**
+- Default behavior unchanged (`@appendable` → XCDR2)
+- For legacy interop: Use `[DdsExtensibility(DdsExtensibilityKind.Final)]`
+- Reader automatically accepts both formats (no config needed)
+
+---
+
+## STAGE 4: XCDR2 Compliance & Evolution (DEFERRED)
 
 **Goal:** Full XCDR2 appendable support with schema evolution.
 
