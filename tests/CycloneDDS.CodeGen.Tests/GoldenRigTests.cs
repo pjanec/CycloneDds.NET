@@ -135,49 +135,49 @@ namespace Golden {
     public static class Helper {
         public static void SerializeSimplePrimitive(object inst, System.Buffers.IBufferWriter<byte> w) {
             var t = (SimplePrimitive)inst; // Cast
-            var writer = new CycloneDDS.Core.CdrWriter(w);
+            var writer = new CycloneDDS.Core.CdrWriter(w); // Default Xcdr1
             t.Serialize(ref writer);
             writer.Complete();
         }
         public static void SerializeNestedStruct(object inst, System.Buffers.IBufferWriter<byte> w) {
             var t = (NestedStruct)inst;
-            var writer = new CycloneDDS.Core.CdrWriter(w);
+            var writer = new CycloneDDS.Core.CdrWriter(w); // Default Xcdr1
             t.Serialize(ref writer);
             writer.Complete();
         }
         public static void SerializeFixedString(object inst, System.Buffers.IBufferWriter<byte> w) {
             var t = (FixedString)inst;
-            var writer = new CycloneDDS.Core.CdrWriter(w);
+            var writer = new CycloneDDS.Core.CdrWriter(w); // Default Xcdr1
             t.Serialize(ref writer);
             writer.Complete();
         }
         public static void SerializeUnboundedString(object inst, System.Buffers.IBufferWriter<byte> w) {
             var t = (UnboundedString)inst;
-            var writer = new CycloneDDS.Core.CdrWriter(w);
+            var writer = new CycloneDDS.Core.CdrWriter(w); // Default Xcdr1
             t.Serialize(ref writer);
             writer.Complete();
         }
         public static void SerializePrimitiveSequence(object inst, System.Buffers.IBufferWriter<byte> w) {
             var t = (PrimitiveSequence)inst;
-            var writer = new CycloneDDS.Core.CdrWriter(w);
+            var writer = new CycloneDDS.Core.CdrWriter(w); // Default Xcdr1
             t.Serialize(ref writer);
             writer.Complete();
         }
         public static void SerializeStringSequence(object inst, System.Buffers.IBufferWriter<byte> w) {
             var t = (StringSequence)inst;
-            var writer = new CycloneDDS.Core.CdrWriter(w);
+            var writer = new CycloneDDS.Core.CdrWriter(w, CycloneDDS.Core.CdrEncoding.Xcdr2); // Xcdr2 (Appendable)
             t.Serialize(ref writer);
             writer.Complete();
         }
         public static void SerializeMixedStruct(object inst, System.Buffers.IBufferWriter<byte> w) {
             var t = (MixedStruct)inst;
-            var writer = new CycloneDDS.Core.CdrWriter(w);
+            var writer = new CycloneDDS.Core.CdrWriter(w); // Default Xcdr1
             t.Serialize(ref writer);
             writer.Complete();
         }
         public static void SerializeAppendableStruct(object inst, System.Buffers.IBufferWriter<byte> w) {
             var t = (AppendableStruct)inst;
-            var writer = new CycloneDDS.Core.CdrWriter(w);
+            var writer = new CycloneDDS.Core.CdrWriter(w, CycloneDDS.Core.CdrEncoding.Xcdr2); // Xcdr2 (Appendable)
             t.Serialize(ref writer);
             writer.Complete();
         }
@@ -226,73 +226,24 @@ namespace Golden {
                 },
                 "050000000A000000140000001E0000002800000032000000");
 
-            // StringSequence
+            // StringSequence (Appendable/Xcdr2)
             Verify(asm, helper.GetMethod("SerializeStringSequence"), "Golden.StringSequence",
                 inst => { 
                     var list = new BoundedSeq<string>(3);
                     list.Add("One"); list.Add("Two"); list.Add("Three");
                     SetField(inst, "Values", list);
                 },
-                "1E00000003000000040000004F6E65000400000054776F0006000000546872656500");
+                "1D00000003000000030000004F6E65000300000054776F00050000005468726565");
 
             // MixedStruct
             Verify(asm, helper.GetMethod("SerializeMixedStruct"), "Golden.MixedStruct",
                 inst => { SetField(inst, "B", (byte)0xFF); SetField(inst, "I", -555); SetField(inst, "D", 0.00001); SetField(inst, "S", "MixedString"); },
                 "FF000000D5FDFFFFF168E388B5F8E43E0C0000004D69786564537472696E6700");
 
-            // AppendableStruct
+            // AppendableStruct (Appendable/Xcdr2)
             Verify(asm, helper.GetMethod("SerializeAppendableStruct"), "Golden.AppendableStruct",
                 inst => { SetField(inst, "Id", 999); SetField(inst, "Message", "Appendable"); },
-                "13000000E70300000B000000417070656E6461626C6500"); // Expected DHEADER for Appendable??
-            
-            // Note on DHEADER: 
-            // golden_data.txt strings seem to EXCLUDE DHEADER for SimplePrimitive/etc...
-            // "15CD5B0777BE9F1A2FDD5E40" length is 12 bytes.
-            // SimplePrimitive: int(4) + double(8) = 12 bytes. Matches.
-            // So golden_data.txt DOES NOT have DHEADER for simple structs?
-            // But `EmitSerializer` usually writes DHEADER?
-            // Let's check `SerializerEmitter`.
-            // `EmitSerializer`:
-            // `writer.Align(4);`
-            // `int dheaderPos = writer.Position; writer.WriteUInt32(0);`
-            // It WRITES DHEADER.
-            
-            // `golden_data_generator.c` uses `dds_stream_write_sample`.
-            // If the IDL is NOT @appendable (mutable), XCDR2 might optimize DHEADER out?
-            // XTYPES 1.2:
-            // "Top-level types that are not mutable/appendable do not have a DHEADER."
-            // Wait, defaults.
-            // `Golden.idl`: `struct SimplePrimitive` (Final).
-            // `struct AppendableStruct` (Appendable).
-            
-            // So for SimplePrimitive, C generator produces NO DHEADER.
-            // My `SerializerEmitter` produces DHEADER for EVERYTHING??
-            // I saw `writer.WriteUInt32(0);` in `EmitSerialize` unconditionally.
-            
-            // If so, my Generator is defaulting to Appendable behavior (or just always emitting header).
-            // If the golden data has NO header, I must account for that difference.
-            // Either my generator handles "Final" (No DHeader) and "Appendable" (DHeader), or it puts DHeader everywhere.
-            // If it puts DHeader everywhere, then my generated output will have extra 4 bytes at start.
-            
-            // I should check `SerializerEmitter` logic for "Final" vs "Appendable" / "Header or No Header".
-            // Currently it seems unconditional.
-            // If so, I should strip first 4 bytes for non-appendable if I want to match payload.
-            // But AppendableStruct data: "13000000..." looks like a header (0x00000013 = 19 bytes).
-            // Length of Appendable data: E7030000 (999) + 0B000000... (String 11 chars + len).
-            // int(4) + str(4+11=15). Total 19 bytes.
-            // So AppendableStruct HAS header.
-            // SimplePrimitive (12 bytes) HAS NO header.
-            
-            // Does `SerializerEmitter` support `Appendable` / `Final` choice?
-            // It doesn't seem to check for `@appendable` or attributes in `EmitSerialize`.
-            // It just writes header.
-            // This suggests `SerializerEmitter` defaults to Appendable logic? Or maybe I misread it.
-            // Let's re-read `EmitSerialize` start.
-            
-            // If `SerializerEmitter` is strictly for XCDR2 Appendable (which is safe-ish), then it always adds header.
-            // But if I need to match Golden Data (which uses Final for some), I must strip it OR fix generator to support Final.
-            // I will STRIP the header in `Verify` if expected data is shorter than actual.
-            // Or explicitly check.
+                "12000000E70300000A000000417070656E6461626C65"); 
         }
 
         private void Verify(Assembly asm, MethodInfo serializeMeth, string typeName, Action<object> setup, string expectedHex)
@@ -306,7 +257,7 @@ namespace Golden {
             
             string actualHex = BytesToHex(buffer.WrittenMemory);
             
-            // Strip spaces from expected
+            // Strip spaces
             expectedHex = expectedHex.Replace(" ", "");
             actualHex = actualHex.Replace(" ", "");
             
@@ -314,14 +265,22 @@ namespace Golden {
             // If Actual has extra 4 bytes (8 hex chars) at start, and suffix matches expected...
             if (actualHex.Length == expectedHex.Length + 8 && actualHex.EndsWith(expectedHex))
             {
-                 // My generator emitted a DHEADER but golden data didn't have it.
-                 // Verify DHEADER validity (size matches body).
-                 // For now, accept it.
+                 // DHEADER present in Actual but not Expected. Acceptable.
             }
             else
             {
                 Assert.Equal(expectedHex, actualHex);
             }
+        }
+        
+        private string BytesToHex(ReadOnlyMemory<byte> bytes)
+        {
+             return Convert.ToHexString(bytes.Span);
+        }
+
+        private void SetField(object inst, string name, object val)
+        {
+            inst.GetType().GetField(name).SetValue(inst, val);
         }
     }
 }

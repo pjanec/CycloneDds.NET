@@ -83,7 +83,7 @@ public class Harness
         data.OptString = optString;
 
         var writer = new ArrayBufferWriter<byte>();
-        var cdr = new CdrWriter(writer);
+        var cdr = new CdrWriter(writer, CdrEncoding.Xcdr2);
         data.Serialize(ref cdr);
         cdr.Complete();
         return writer.WrittenSpan.ToArray();
@@ -131,7 +131,7 @@ public class Harness
         data.OptString = optString;
 
         var writer = new ArrayBufferWriter<byte>();
-        var cdr = new CdrWriter(writer);
+        var cdr = new CdrWriter(writer, CdrEncoding.Xcdr2);
         data.Serialize(ref cdr);
         cdr.Complete();
         return writer.WrittenSpan.ToArray();
@@ -169,7 +169,7 @@ public class Harness
         data.OptString = optString;
 
         var writer = new ArrayBufferWriter<byte>();
-        var cdr = new CdrWriter(writer);
+        var cdr = new CdrWriter(writer, CdrEncoding.Xcdr2);
         data.Serialize(ref cdr);
         cdr.Complete();
         return writer.WrittenSpan.ToArray();
@@ -180,10 +180,11 @@ public class Harness
             
             byte[] bytes = (byte[])harness.GetMethod("Serialize").Invoke(null, new object[] { 200, (int?)null, (double?)null, "Hello" });
             
-            Assert.Equal(22, bytes.Length); 
-            // EMHEADER for 10-byte string with ID=3: (10 << 3) | 3 = 0x53
-            Assert.Equal(0x00000053, (int)BitConverter.ToUInt32(bytes, 8)); 
-            Assert.Equal(6, BitConverter.ToInt32(bytes, 12)); 
+            Assert.Equal(21, bytes.Length); 
+            // EMHEADER for 9-byte string with ID=3: (9 << 3) | 3 = 0x4B
+            // XCDR2 string "Hello": 4 bytes length + 5 bytes chars = 9 bytes. (No null terminator)
+            Assert.Equal(0x0000004B, (int)BitConverter.ToUInt32(bytes, 8)); 
+            Assert.Equal(5, BitConverter.ToInt32(bytes, 12)); 
         }
 
         [Fact]
@@ -217,13 +218,13 @@ public class Harness
 
         // Serialize
         var writer = new ArrayBufferWriter<byte>();
-        var cdr = new CdrWriter(writer);
+        var cdr = new CdrWriter(writer, CdrEncoding.Xcdr2);
         data.Serialize(ref cdr);
         cdr.Complete();
         byte[] bytes = writer.WrittenSpan.ToArray();
 
         // Deserialize
-        var reader = new CdrReader(bytes);
+        var reader = new CdrReader(bytes, CdrEncoding.Xcdr2);
         var view = OptionalData.Deserialize(ref reader);
         var owned = view.ToOwned();
         
@@ -270,7 +271,7 @@ public class Harness
         data.OptString = optString;
 
         var writer = new ArrayBufferWriter<byte>();
-        var cdr = new CdrWriter(writer);
+        var cdr = new CdrWriter(writer, CdrEncoding.Xcdr2);
         data.Serialize(ref cdr);
         cdr.Complete();
         return writer.WrittenSpan.ToArray();

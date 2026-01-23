@@ -71,7 +71,7 @@ namespace CycloneDDS.Runtime
         }
 
         private delegate void SerializeDelegate(in T sample, ref CdrWriter writer);
-        private delegate int GetSerializedSizeDelegate(in T sample, int currentAlignment, bool isXcdr2);
+        private delegate int GetSerializedSizeDelegate(in T sample, int currentAlignment, CdrEncoding encoding);
 
         private static readonly DeserializeDelegate<TView>? _deserializer;
         private static readonly SerializeDelegate? _serializer;
@@ -126,18 +126,44 @@ namespace CycloneDDS.Runtime
             _participant = participant;
 
             // 1. Get or register topic (auto-discovery)
+            // Use original QoS to ensure compatibility with existing topics
+            // If internal topics (like SenderIdentity) are created, we must match their original QoS.
             DdsApi.DdsEntity topic = participant.GetOrRegisterTopic<T>(topicName, qos);
             _topicHandle = topic;
 
-            // 2. Create Reader
-             var reader = DdsApi.dds_create_reader(participant.NativeEntity, topic, qos, IntPtr.Zero);
-             if (!reader.IsValid)
-             {
-                  int err = reader.Handle;
-                  DdsApi.DdsReturnCode rc = (DdsApi.DdsReturnCode)err;
-                  throw new DdsException(rc, $"Failed to create reader for '{topicName}'");
-             }
-             _readerHandle = new DdsEntityHandle(reader);
+            // Handle QoS for Reader
+            IntPtr readerQos = qos;
+            bool qosCreated = false;
+            if (readerQos == IntPtr.Zero)
+            {
+                readerQos = DdsApi.dds_create_qos();
+                qosCreated = true;
+            }
+
+            try
+            {
+                // Set Data Representation: XCDR2 and XCDR1
+                // Skip for internal SenderIdentity to avoid BadParameter (possible QoS incompatibility)
+                if (topicName != "__FcdcSenderIdentity")
+                {
+                    short[] reps = new short[] { 2, 0 };
+                    DdsApi.dds_qset_data_representation(readerQos, (uint)reps.Length, reps);
+                }
+
+                // 2. Create Reader
+                 var reader = DdsApi.dds_create_reader(participant.NativeEntity, topic, readerQos, IntPtr.Zero);
+                 if (!reader.IsValid)
+                 {
+                      int err = reader.Handle;
+                      DdsApi.DdsReturnCode rc = (DdsApi.DdsReturnCode)err;
+                      throw new DdsException(rc, $"Failed to create reader for '{topicName}'");
+                 }
+                 _readerHandle = new DdsEntityHandle(reader);
+            }
+            finally
+            {
+                if (qosCreated) DdsApi.dds_delete_qos(readerQos);
+            }
         }
 
         public void SetFilter(Predicate<TView>? filter)
@@ -355,14 +381,17 @@ namespace CycloneDDS.Runtime
         {
             if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T, TView>));
 
+            // Use XCDR2 for lookup serdata creation
+            CdrEncoding encoding = CdrEncoding.Xcdr2;
+
             // Use _sizer to calculate size. Start at offset 4 for header
-            int size = _sizer!(keySample, 4, true);
+            int size = _sizer!(keySample, 4, encoding);
             byte[] buffer = Arena.Rent(size + 4);
 
             try
             {
                 var span = buffer.AsSpan(0, size + 4);
-                var cdr = new CdrWriter(span, isXcdr2: true);
+                var cdr = new CdrWriter(span, encoding);
                 
                 // Write Header
                 if (BitConverter.IsLittleEndian) { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindLE); }
@@ -555,13 +584,13 @@ namespace CycloneDDS.Runtime
 
         private static GetSerializedSizeDelegate CreateSizerDelegate()
         {
-            var method = typeof(T).GetMethod("GetSerializedSize", new[] { typeof(int), typeof(bool) });
-            if (method == null) throw new MissingMethodException(typeof(T).Name, "GetSerializedSize(int, bool)");
+            var method = typeof(T).GetMethod("GetSerializedSize", new[] { typeof(int), typeof(CdrEncoding) });
+            if (method == null) throw new MissingMethodException(typeof(T).Name, "GetSerializedSize(int, CdrEncoding)");
 
             var dm = new DynamicMethod(
                 "GetSerializedSizeThunk",
                 typeof(int),
-                new[] { typeof(T).MakeByRefType(), typeof(int), typeof(bool) },
+                new[] { typeof(T).MakeByRefType(), typeof(int), typeof(CdrEncoding) },
                 typeof(DdsReader<T, TView>).Module);
 
             var il = dm.GetILGenerator();
@@ -572,7 +601,7 @@ namespace CycloneDDS.Runtime
             }
             
             il.Emit(OpCodes.Ldarg_1); // offset
-            il.Emit(OpCodes.Ldarg_2); // isXcdr2
+            il.Emit(OpCodes.Ldarg_2); // encoding
             il.Emit(OpCodes.Call, method); 
             il.Emit(OpCodes.Ret);
 
@@ -734,13 +763,13 @@ namespace CycloneDDS.Runtime
                             // Encapsulation Header: Byte 0, Byte 1 (ID), Byte 2, Byte 3 (Options)
                             // ID 0x0006 - 0x000D are XCDR2. 
                             // Byte 1 stores the specific ID value in standard encodings.
-                            bool isXcdr2 = false;
+                            CdrEncoding encoding = CdrEncoding.Xcdr1;
                             if (size >= 2)
                             {
-                                if (p[1] >= 6) isXcdr2 = true;
+                                if (p[1] >= 6) encoding = CdrEncoding.Xcdr2;
                             }
 
-                            var reader = new CdrReader(span, isXcdr2);
+                            var reader = new CdrReader(span, encoding);
                             
                             // Cyclone DDS provides the 4-byte encapsulation header in the serdata.
                             // We must skip it so that CdrReader is aligned to the start of the payload

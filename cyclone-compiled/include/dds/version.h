@@ -17,7 +17,7 @@
 #define DDS_VERSION_PATCH 0
 #define DDS_VERSION_TWEAK 
 #define DDS_PROJECT_NAME "CycloneDDS"
-#define DDS_GIT_HASH  "c49206be"
+#define DDS_GIT_HASH  "831432d"
 
 #define DDS_HOST_NAME "Windows"
 #define DDS_TARGET_NAME "Windows"

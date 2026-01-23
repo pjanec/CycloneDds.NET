@@ -87,7 +87,7 @@ namespace TestNamespace
             data.Serialize(ref writer);
             writer.Complete();
             
-            var reader = new CdrReader(writerBuffer.WrittenSpan);
+            var reader = new CdrReader(writerBuffer.WrittenSpan, CdrEncoding.Xcdr1);
             var view = PrimitiveData.Deserialize(ref reader);
             
             return view.ToOwned();

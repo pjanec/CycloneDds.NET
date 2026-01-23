@@ -11,28 +11,29 @@ namespace CycloneDDS.Core
         private Span<byte> _span;
         private int _buffered;
         private int _totalWritten;
-        private readonly bool _isXcdr2;
+        private readonly CdrEncoding _encoding;
 
-        public bool IsXcdr2 => _isXcdr2;
+        public CdrEncoding Encoding => _encoding;
+        public bool IsXcdr2 => _encoding == CdrEncoding.Xcdr2;
 
         // NEW: Zero-Alloc Constructor for Fixed Buffers
-        public CdrWriter(Span<byte> buffer, bool isXcdr2 = false)
+        public CdrWriter(Span<byte> buffer, CdrEncoding encoding = CdrEncoding.Xcdr1)
         {
             _output = null;  // Fixed buffer mode - no IBufferWriter
             _span = buffer;
             _buffered = 0;
             _totalWritten = 0;
-            _isXcdr2 = isXcdr2;
+            _encoding = encoding;
         }
 
         // EXISTING: Keep this for dynamic buffers
-        public CdrWriter(IBufferWriter<byte> output, bool isXcdr2 = false)
+        public CdrWriter(IBufferWriter<byte> output, CdrEncoding encoding = CdrEncoding.Xcdr1)
         {
             _output = output;
             _span = output.GetSpan();
             _buffered = 0;
             _totalWritten = 0;
-            _isXcdr2 = isXcdr2;
+            _encoding = encoding;
         }
 
         public int Position => _totalWritten + _buffered;
@@ -166,19 +167,30 @@ namespace CycloneDDS.Core
 
         public void WriteString(ReadOnlySpan<char> value, bool? isXcdr2 = null)
         {
-            int utf8Length = Encoding.UTF8.GetByteCount(value);
-            // Always include NUL terminator for now to match CycloneDDS expectation
-            bool useXcdr2 = isXcdr2 ?? _isXcdr2;
-            int lengthToWrite = utf8Length + 1;
+            int utf8Length = System.Text.Encoding.UTF8.GetByteCount(value);
+            bool useXcdr2 = isXcdr2 ?? (_encoding == CdrEncoding.Xcdr2);
             
-            WriteInt32(lengthToWrite);
-            
-            EnsureSize(utf8Length + 1);
-            int written = Encoding.UTF8.GetBytes(value, _span.Slice(_buffered));
-            _buffered += written;
-            
-            _span[_buffered] = 0; // NUL terminator
-            _buffered += 1;
+            if (useXcdr2)
+            {
+                // XCDR2: Length is byte count. NO NUL terminator.
+                WriteInt32(utf8Length);
+                EnsureSize(utf8Length);
+                int written = System.Text.Encoding.UTF8.GetBytes(value, _span.Slice(_buffered));
+                _buffered += written;
+            }
+            else
+            {
+                // XCDR1 (Legacy): Length is byte count + 1 (NUL). Includes NUL byte.
+                int lengthToWrite = utf8Length + 1;
+                WriteInt32(lengthToWrite);
+                
+                EnsureSize(utf8Length + 1);
+                int written = System.Text.Encoding.UTF8.GetBytes(value, _span.Slice(_buffered));
+                _buffered += written;
+                
+                _span[_buffered] = 0; // NUL terminator
+                _buffered += 1;
+            }
         }
 
         public void WriteFixedString(ReadOnlySpan<byte> utf8Bytes, int fixedSize)
@@ -209,11 +221,11 @@ namespace CycloneDDS.Core
             else
             {
                 var chars = value.AsSpan();
-                int byteCount = Encoding.UTF8.GetByteCount(chars);
+                int byteCount = System.Text.Encoding.UTF8.GetByteCount(chars);
                 
                 if (byteCount <= fixedSize)
                 {
-                    int written = Encoding.UTF8.GetBytes(chars, dest);
+                    int written = System.Text.Encoding.UTF8.GetBytes(chars, dest);
                     if (written < fixedSize)
                     {
                         dest.Slice(written).Clear();
@@ -222,7 +234,7 @@ namespace CycloneDDS.Core
                 else
                 {
                     // Truncation required
-                    var encoder = Encoding.UTF8.GetEncoder();
+                    var encoder = System.Text.Encoding.UTF8.GetEncoder();
                     encoder.Convert(chars, dest, true, out int charsUsed, out int bytesUsed, out bool completed);
                     
                     if (bytesUsed < fixedSize)

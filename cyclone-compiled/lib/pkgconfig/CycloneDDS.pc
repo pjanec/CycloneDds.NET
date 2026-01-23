@@ -1,4 +1,4 @@
-prefix=D:/Work/FastCycloneDdsCsharpBindings/cyclonedds/install
+prefix=D:/Work/FastCycloneDdsCsharpBindings/cyclone-compiled
 includedir=${prefix}/include
 libdir=${prefix}/lib
 

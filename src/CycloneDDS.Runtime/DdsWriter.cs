@@ -39,7 +39,7 @@ namespace CycloneDDS.Runtime
 
         // Delegates for high-performance invocation
         private delegate void SerializeDelegate(in T sample, ref CdrWriter writer);
-        private delegate int GetSerializedSizeDelegate(in T sample, int currentAlignment, bool isXcdr2);
+        private delegate int GetSerializedSizeDelegate(in T sample, int currentAlignment, CdrEncoding encoding);
 
         private static readonly SerializeDelegate? _serializer;
         private static readonly SerializeDelegate? _keySerializer;
@@ -78,9 +78,16 @@ namespace CycloneDDS.Runtime
                 Console.WriteLine($"[DdsWriter<{typeof(T).Name}>] Failed to create delegates: {ex.Message}");
             }
         }
+        private readonly CdrEncoding _encoding;
 
         public DdsWriter(DdsParticipant participant, string topicName, IntPtr qos = default)
+            : this(participant, topicName, qos, CdrEncoding.Xcdr2)
         {
+        }
+
+        public DdsWriter(DdsParticipant participant, string topicName, IntPtr qos, CdrEncoding encoding)
+        {
+            _encoding = encoding;
             _publicationMatchedHandler = OnPublicationMatched;
 
             if (_sizer == null || _serializer == null)
@@ -92,21 +99,47 @@ namespace CycloneDDS.Runtime
             _participant = participant;
 
             // 1. Get or register topic (auto-discovery)
+            // Use original QoS (compatible with existing topics)
             DdsApi.DdsEntity topic = participant.GetOrRegisterTopic<T>(topicName, qos);
             _topicHandle = topic;
 
-            // 2. Create Writer
-            var writer = DdsApi.dds_create_writer(
-                participant.NativeEntity,
-                topic,
-                qos,
-                IntPtr.Zero);
-
-            if (!writer.IsValid)
+            // Handle QoS
+            IntPtr writerQos = qos;
+            bool qosCreated = false;
+            if (writerQos == IntPtr.Zero)
             {
-                 throw new DdsException(DdsApi.DdsReturnCode.Error, "Failed to create writer");
+                writerQos = DdsApi.dds_create_qos();
+                qosCreated = true;
             }
-            _writerHandle = new DdsEntityHandle(writer);
+
+            try
+            {
+                // Set Data Representation
+                short[] reps;
+                if (encoding == CdrEncoding.Xcdr2)
+                    reps = new short[] { 2 }; // XCDR2
+                else
+                    reps = new short[] { 0 }; // XCDR1
+                
+                DdsApi.dds_qset_data_representation(writerQos, 1, reps);
+
+                // 2. Create Writer
+                var writer = DdsApi.dds_create_writer(
+                    participant.NativeEntity,
+                    topic,
+                    writerQos,
+                    IntPtr.Zero);
+
+                if (!writer.IsValid)
+                {
+                     throw new DdsException(DdsApi.DdsReturnCode.Error, "Failed to create writer");
+                }
+                _writerHandle = new DdsEntityHandle(writer);
+            }
+            finally
+            {
+                if (qosCreated) DdsApi.dds_delete_qos(writerQos);
+            }
 
             // Notify participant (triggers identity publishing if enabled)
             // Skip for the identity writer itself to avoid recursion
@@ -138,8 +171,7 @@ namespace CycloneDDS.Runtime
 
             // 1. Get Size (no alloc)
             // Start at offset 4 because we will prepend 4-byte CDR header
-            // 4 bytes header offset, isXcdr2=true
-            int payloadSize = _sizer!(sample, 4, true); 
+            int payloadSize = _sizer!(sample, 4, _encoding); 
             int totalSize = payloadSize + 4;
 
             // 2. Rent Buffer (no alloc - pooled)
@@ -149,21 +181,38 @@ namespace CycloneDDS.Runtime
             {
                 // 3. Serialize (ZERO ALLOC via new Span overload)
                 var span = buffer.AsSpan(0, totalSize);
-                // Enable XCDR2 mode in CdrWriter explicitly
-                var cdr = new CdrWriter(span, isXcdr2: true); 
+                // Enable correct encoding
+                var cdr = new CdrWriter(span, _encoding); 
                 
-                // Write CDR Header (XCDR2 format)
-                if (BitConverter.IsLittleEndian)
+                // Write CDR Header
+                if (_encoding == CdrEncoding.Xcdr2)
                 {
-                    // Little Endian
-                    cdr.WriteByte(0x00);
-                    cdr.WriteByte(_encodingKindLE);
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        // Little Endian
+                        cdr.WriteByte(0x00);
+                        cdr.WriteByte(_encodingKindLE);
+                    }
+                    else
+                    {
+                        // Big Endian
+                        cdr.WriteByte(0x00);
+                        cdr.WriteByte(_encodingKindBE);
+                    }
                 }
                 else
                 {
-                    // Big Endian
-                    cdr.WriteByte(0x00);
-                    cdr.WriteByte(_encodingKindBE);
+                    // XCDR1
+                     if (BitConverter.IsLittleEndian)
+                    {
+                        cdr.WriteByte(0x00);
+                        cdr.WriteByte(0x01); // CDR_LE
+                    }
+                    else
+                    {
+                        cdr.WriteByte(0x00);
+                        cdr.WriteByte(0x00); // CDR_BE
+                    }
                 }
                 
                 // Options (2 bytes)
@@ -347,17 +396,26 @@ namespace CycloneDDS.Runtime
             if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
 
             // Use _sizer to calculate size. Start at offset 4 for header
-            int size = _sizer!(keySample, 4, true);
+            int size = _sizer!(keySample, 4, _encoding);
             byte[] buffer = Arena.Rent(size + 4);
 
             try
             {
                 var span = buffer.AsSpan(0, size + 4);
-                var cdr = new CdrWriter(span, isXcdr2: true);
+                var cdr = new CdrWriter(span, _encoding);
                 
                 // Write Header
-                if (BitConverter.IsLittleEndian) { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindLE); }
-                else { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindBE); }
+                if (_encoding == CdrEncoding.Xcdr2)
+                {
+                    if (BitConverter.IsLittleEndian) { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindLE); }
+                    else { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindBE); }
+                }
+                else
+                {
+                    if (BitConverter.IsLittleEndian) { cdr.WriteByte(0x00); cdr.WriteByte(0x01); }
+                    else { cdr.WriteByte(0x00); cdr.WriteByte(0x00); }
+                }
+
                 cdr.WriteByte(0x00); cdr.WriteByte(0x00);
 
                 _serializer!(keySample, ref cdr);
@@ -415,13 +473,13 @@ namespace CycloneDDS.Runtime
         // --- Delegate Generators ---
         private static GetSerializedSizeDelegate CreateSizerDelegate()
         {
-            var method = typeof(T).GetMethod("GetSerializedSize", new[] { typeof(int), typeof(bool) });
-            if (method == null) throw new MissingMethodException(typeof(T).Name, "GetSerializedSize(int, bool)");
+            var method = typeof(T).GetMethod("GetSerializedSize", new[] { typeof(int), typeof(CdrEncoding) });
+            if (method == null) throw new MissingMethodException(typeof(T).Name, "GetSerializedSize(int, CdrEncoding)");
 
             var dm = new DynamicMethod(
                 "GetSerializedSizeThunk",
                 typeof(int),
-                new[] { typeof(T).MakeByRefType(), typeof(int), typeof(bool) },
+                new[] { typeof(T).MakeByRefType(), typeof(int), typeof(CdrEncoding) },
                 typeof(DdsWriter<T>).Module);
 
             var il = dm.GetILGenerator();
@@ -432,7 +490,7 @@ namespace CycloneDDS.Runtime
             }
             
             il.Emit(OpCodes.Ldarg_1); // offset
-            il.Emit(OpCodes.Ldarg_2); // isXcdr2
+            il.Emit(OpCodes.Ldarg_2); // encoding
             il.Emit(OpCodes.Call, method); 
             il.Emit(OpCodes.Ret);
 

@@ -10,10 +10,12 @@ namespace CycloneDDS.Core
     public ref struct CdrSizer
     {
         private int _cursor;
+        private readonly CdrEncoding _encoding;
         
-        public CdrSizer(int initialOffset)
+        public CdrSizer(int initialOffset, CdrEncoding encoding = CdrEncoding.Xcdr1)
         {
             _cursor = initialOffset;
+            _encoding = encoding;
         }
         
         public int Position => _cursor;
@@ -59,14 +61,18 @@ namespace CycloneDDS.Core
             _cursor += 8;
         }
         
-        public void WriteString(ReadOnlySpan<char> value, bool isXcdr2 = false)
+        public void WriteString(ReadOnlySpan<char> value, bool? isXcdr2 = null)
         {
             // Note: CdrWriter.WriteInt32 does NOT align internally.
             // SerializerEmitter generates explicit Align(4) calls before writing strings.
             _cursor += 4; // Length (Int32)
             _cursor += Encoding.UTF8.GetByteCount(value);
-            // Always include NUL terminator to match CdrWriter
-            _cursor += 1; 
+            
+            bool useXcdr2 = isXcdr2 ?? (_encoding == CdrEncoding.Xcdr2);
+            if (!useXcdr2)
+            {
+                _cursor += 1; // NUL terminator
+            }
         }
         
         public void Skip(int bytes)

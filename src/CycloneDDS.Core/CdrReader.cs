@@ -9,15 +9,34 @@ namespace CycloneDDS.Core
     {
         private ReadOnlySpan<byte> _data;
         private int _position;
-        private readonly bool _isXcdr2;
+        private readonly CdrEncoding _encoding;
 
-        public bool IsXcdr2 => _isXcdr2;
+        public CdrEncoding Encoding => _encoding;
+        public bool IsXcdr2 => _encoding == CdrEncoding.Xcdr2;
 
-        public CdrReader(ReadOnlySpan<byte> data, bool isXcdr2 = false)
+        public CdrReader(ReadOnlySpan<byte> data, CdrEncoding? encoding = null)
         {
             _data = data;
             _position = 0;
-            _isXcdr2 = isXcdr2;
+            
+            if (encoding.HasValue)
+            {
+                _encoding = encoding.Value;
+            }
+            else
+            {
+                // Auto-detect
+                _encoding = CdrEncoding.Xcdr1;
+                if (data.Length >= 2)
+                {
+                    // Check byte 1. If >= 6, it's XCDR2. 
+                    // This assumes standard CDR/XCDR header is present at start of buffer.
+                    if (data[1] >= 6)
+                    {
+                        _encoding = CdrEncoding.Xcdr2;
+                    }
+                }
+            }
         }
 
         public int Position => _position;
@@ -132,21 +151,16 @@ namespace CycloneDDS.Core
             if (_position + length > _data.Length)
                 throw new IndexOutOfRangeException("Not enough data for string");
             
-            bool useXcdr2 = isXcdr2 ?? _isXcdr2;
+            bool useXcdr2 = isXcdr2 ?? (_encoding == CdrEncoding.Xcdr2);
             int bytesToReturn;
             if (useXcdr2)
             {
+                // XCDR2: Length is exactly the number of bytes
                 bytesToReturn = length;
-                if (length > 0 && _data[_position + length - 1] == 0)
-                {
-                    bytesToReturn = length - 1;
-                }
             }
             else
             {
-                // The bytes are at _position.
-                // We want bytes excluding NUL terminator.
-                // length includes NUL.
+                // XCDR1: Length includes NUL terminator
                 bytesToReturn = length > 0 ? length - 1 : 0;
             }
             
@@ -158,7 +172,7 @@ namespace CycloneDDS.Core
         public string ReadString(bool? isXcdr2 = null)
         {
             var span = ReadStringBytes(isXcdr2);
-            return Encoding.UTF8.GetString(span);
+            return System.Text.Encoding.UTF8.GetString(span);
         }
 
         public ReadOnlySpan<byte> ReadFixedBytes(int count)

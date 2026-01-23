@@ -57,9 +57,13 @@ namespace CycloneDDS.CodeGen
             if (IsAppendable(type))
             {
                 sb.AppendLine("            // DHEADER");
-                sb.AppendLine("            reader.Align(4);");
-                sb.AppendLine("            uint dheader = reader.ReadUInt32();");
-                sb.AppendLine("            int endPos = reader.Position + (int)dheader;");
+                sb.AppendLine("            int endPos = int.MaxValue;");
+                sb.AppendLine("            if (reader.Encoding == CdrEncoding.Xcdr2)");
+                sb.AppendLine("            {");
+                sb.AppendLine("                reader.Align(4);");
+                sb.AppendLine("                uint dheader = reader.ReadUInt32();");
+                sb.AppendLine("                endPos = reader.Position + (int)dheader;");
+                sb.AppendLine("            }");
             }
             else
             {
@@ -106,7 +110,7 @@ namespace CycloneDDS.CodeGen
             if (IsAppendable(type))
             {
                 sb.AppendLine();
-                sb.AppendLine("            if (reader.Position < endPos)");
+                sb.AppendLine("            if (endPos != int.MaxValue && reader.Position < endPos)");
                 sb.AppendLine("            {");
                 sb.AppendLine("                reader.Seek(endPos);");
                 sb.AppendLine("            }");
@@ -132,7 +136,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("            {");
             sb.AppendLine("                int emHeaderPos = reader.Position;");
             sb.AppendLine("                bool isPresent = false;");
-            sb.AppendLine("                if (reader.Position + 4 <= endPos)");
+            sb.AppendLine("                if (reader.Remaining >= 4 && reader.Position + 4 <= endPos)");
             sb.AppendLine("                {");
             sb.AppendLine("                    uint emHeader = reader.ReadUInt32();");
             // EMHEADER: (Length << 3) | ID

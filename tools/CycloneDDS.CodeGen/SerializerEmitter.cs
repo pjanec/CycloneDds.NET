@@ -59,24 +59,27 @@ namespace CycloneDDS.CodeGen
         {
             sb.AppendLine("        public int GetSerializedSize(int currentOffset)");
             sb.AppendLine("        {");
-            sb.AppendLine("            return GetSerializedSize(currentOffset, false);");
+            sb.AppendLine("            return GetSerializedSize(currentOffset, CdrEncoding.Xcdr1);");
             sb.AppendLine("        }");
             sb.AppendLine();
             
-            sb.AppendLine("        public int GetSerializedSize(int currentOffset, bool isXcdr2 = false)");
+            sb.AppendLine("        public int GetSerializedSize(int currentOffset, CdrEncoding encoding)");
             sb.AppendLine("        {");
-            sb.AppendLine("            var sizer = new CdrSizer(currentOffset);");
+            sb.AppendLine("            var sizer = new CdrSizer(currentOffset, encoding);");
+            sb.AppendLine("            bool isXcdr2 = encoding == CdrEncoding.Xcdr2;");
             sb.AppendLine();
             
             bool isAppendable = IsAppendable(type);
-            bool isXcdr2 = isAppendable; // Dummy for generator calls
-            // bool isXcdr2 parameter is used in generated code string
-
+            bool isXcdr2 = isAppendable; // Used as dummy for helper calls
+            
             if (isAppendable)
             {
                 sb.AppendLine("            // DHEADER");
-                sb.AppendLine("            sizer.Align(4);");
-                sb.AppendLine("            sizer.WriteUInt32(0);");
+                sb.AppendLine("            if (encoding == CdrEncoding.Xcdr2)");
+                sb.AppendLine("            {");
+                sb.AppendLine("                sizer.Align(4);");
+                sb.AppendLine("                sizer.WriteUInt32(0);");
+                sb.AppendLine("            }");
                 sb.AppendLine();
             }
 
@@ -174,10 +177,15 @@ namespace CycloneDDS.CodeGen
             if (isAppendable)
             {
                 sb.AppendLine("            // DHEADER");
-                sb.AppendLine("            writer.Align(4);");
-                sb.AppendLine("            int dheaderPos = writer.Position;");
-                sb.AppendLine("            writer.WriteUInt32(0);");
-                sb.AppendLine("            int bodyStart = writer.Position;");
+                sb.AppendLine("            int dheaderPos = 0;");
+                sb.AppendLine("            int bodyStart = 0;");
+                sb.AppendLine("            if (writer.Encoding == CdrEncoding.Xcdr2)");
+                sb.AppendLine("            {");
+                sb.AppendLine("                writer.Align(4);");
+                sb.AppendLine("                dheaderPos = writer.Position;");
+                sb.AppendLine("                writer.WriteUInt32(0);");
+                sb.AppendLine("                bodyStart = writer.Position;");
+                sb.AppendLine("            }");
             }
 
             if (type.HasAttribute("DdsUnion"))
@@ -209,19 +217,11 @@ namespace CycloneDDS.CodeGen
  
             if (isAppendable)
             {
-                sb.AppendLine("            int bodyLen = writer.Position - bodyStart;");
-                // TODO: PatchUInt32 is not yet implemented in CdrWriter?
-                // The plan says "sb.AppendLine("            writer.PatchUInt32(dheaderPos, (uint)bodyLen);");"
-                // But previously CdrWriter didn't have PatchUInt32. 
-                // Wait, I didn't see PatchUInt32 in CdrWriter source I read earlier!
-                // I need to add PatchUInt32 to CdrWriter as well, or implement it using slice.
-                // BinaryPrimitives.WriteUInt32LittleEndian(_span.Slice(dheaderPos), (uint)bodyLen);
-                // But CdrWriter _span is private. I need a public method.
-                // Assuming I will add it or inline the logic if possible.
-                // Since CdrWriter is a ref struct, I can't easily inline logic accessing private fields without Unsafe or Ref.
-                // However, CdrWriter seems to expose `_span` indirectly via methods.
-                // I'll add `WriteUInt32At(int offset, uint value)` to CdrWriter.
-                sb.AppendLine("            writer.WriteUInt32At(dheaderPos, (uint)bodyLen);");
+                sb.AppendLine("            if (writer.Encoding == CdrEncoding.Xcdr2)");
+                sb.AppendLine("            {");
+                sb.AppendLine("                int bodyLen = writer.Position - bodyStart;");
+                sb.AppendLine("                writer.WriteUInt32At(dheaderPos, (uint)bodyLen);");
+                sb.AppendLine("            }");
             }
 
             sb.AppendLine("        }");
@@ -443,7 +443,7 @@ namespace CycloneDDS.CodeGen
             {
                 // Nested struct
                 // Use actual instance for variable sizing logic
-                return $"sizer.Skip(this.{ToPascalCase(field.Name)}.GetSerializedSize(sizer.Position, isXcdr2))";
+                return $"sizer.Skip(this.{ToPascalCase(field.Name)}.GetSerializedSize(sizer.Position, encoding))"; // Pass encoding
             }
         }
         
@@ -538,7 +538,7 @@ namespace CycloneDDS.CodeGen
             return $@"sizer.Align(4); sizer.WriteUInt32(0);
             for (int i = 0; i < {fieldAccess}.Length; i++)
             {{
-                sizer.Skip({fieldAccess}[i].GetSerializedSize(sizer.Position, isXcdr2));
+                sizer.Skip({fieldAccess}[i].GetSerializedSize(sizer.Position, encoding));
             }}";
         }
         
@@ -618,7 +618,7 @@ namespace CycloneDDS.CodeGen
             return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
             for (int i = 0; i < {fieldAccess}.Count; i++)
             {{
-                sizer.Skip({fieldAccess}[i].GetSerializedSize(sizer.Position, isXcdr2));
+                sizer.Skip({fieldAccess}[i].GetSerializedSize(sizer.Position, encoding));
             }}";
         }
 
@@ -852,7 +852,7 @@ namespace CycloneDDS.CodeGen
             return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
             foreach (var item in {fieldAccess})
             {{
-                sizer.Skip(item.GetSerializedSize(sizer.Position, isXcdr2));
+                sizer.Skip(item.GetSerializedSize(sizer.Position, encoding));
             }}";
         }
 
