@@ -7,7 +7,7 @@
 #  define LIBIDLC_NO_EXPORT
 #else
 #  ifndef LIBIDLC_EXPORT
-#    ifdef libidlc_EXPORTS
+#    ifdef libidljson_EXPORTS
         /* We are building this library */
 #      define LIBIDLC_EXPORT __declspec(dllexport)
 #    else
@@ -40,7 +40,7 @@
 #endif
 
 #ifndef LIBIDLC_INLINE_EXPORT
-#  if __MINGW32__ && (!defined(__clang__) || !defined(libidlc_EXPORTS))
+#  if __MINGW32__ && (!defined(__clang__) || !defined(libidljson_EXPORTS))
 #    define LIBIDLC_INLINE_EXPORT
 #  else
 #    define LIBIDLC_INLINE_EXPORT LIBIDLC_EXPORT

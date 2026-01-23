@@ -153,4 +153,16 @@ module Verification {
         Value generic_val;
         IntUnion int_val;
     };
+
+    // ========== TYPEDEFS & ALIASES ==========
+    typedef long MyLong;
+    typedef MyLong Age;
+    typedef Age AgeArray[10];
+
+    @topic
+    struct TypedefStruct {
+        @key MyLong id;
+        Age age;
+        AgeArray recent_ages;
+    };
 };

@@ -152,6 +152,7 @@ int main(int argc, char** argv) {
     VERIFY_TOPIC("OptionalFields", OptionalFields);
     VERIFY_TOPIC("MixedContent", MixedContent);
     VERIFY_TOPIC("UnionTopic", UnionTopic);
+    VERIFY_TOPIC("TypedefStruct", TypedefStruct);
 
     printf("\n==================================================\n");
     if (errors == 0) printf("RESULT: PASSED (All %d topics verified)\n", 10);

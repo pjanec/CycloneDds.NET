@@ -1,0 +1,60 @@
+
+module ComplexTests {
+
+    enum Color { RED, GREEN, BLUE };
+
+    // 1. Enum-based Union
+    union EnumUnion switch(Color) {
+        case RED: long r;
+        case GREEN: float g;
+        case BLUE: string<10> b;
+    };
+
+    // 2. Typedef chains and arrays
+    typedef long MyLong;
+    typedef MyLong Age;
+    typedef Age Ages[10];
+
+    @topic
+    struct Person {
+        @key MyLong id;
+        Age age;
+        Ages past_ages; // Array of typedefs
+    };
+
+    // 3. Multi-dimensional Arrays of Complex Types
+    struct Point {
+        long x;
+        long y;
+    };
+
+    @topic 
+    struct Grid {
+        @key long grid_id;
+        Point points[3][3];
+    };
+
+    // 4. Nested Modules
+    module Financial {
+        typedef double Currency;
+        
+        @topic
+        struct Transaction {
+            @key string<32> tx_id;
+            Currency amount;
+        };
+    };
+    
+    // 5. Extensibility (if supported by XTypes parser in Cyclone)
+    @extensibility(MUTABLE)
+    struct MutableStruct {
+        long id;
+        @optional string comment; // Optional requires XTypes
+    };
+
+    @topic
+    struct VersionedData {
+        @key long id;
+        MutableStruct data;
+    };
+};
