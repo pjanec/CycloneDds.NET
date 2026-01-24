@@ -24,7 +24,7 @@ internal class TestScenarios
                 TopicName = "AllPrimitives",
                 Description = "All primitive types (bool, char, int8/16/32/64, float, double)",
                 Seeds = new[] { 42, 99, 0, -1, 12345 },
-                Enabled = false
+                Enabled = true
             },
 
             new TestScenario

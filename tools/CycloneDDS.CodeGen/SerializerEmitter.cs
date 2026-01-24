@@ -396,7 +396,8 @@ namespace CycloneDDS.CodeGen
                 "byte" or "uint8" or "sbyte" or "int8" or "bool" or "boolean" => 1,
                 "short" or "int16" or "ushort" or "uint16" => 2,
                 "int" or "int32" or "uint" or "uint32" or "float" => 4,
-                "long" or "int64" or "ulong" or "uint64" or "double" => 4,
+                "long" or "int64" or "ulong" or "uint64" or "double" => 8,
+                "system.int64" or "system.uint64" or "system.double" => 8,
                 _ => 1
             };
         }
@@ -439,7 +440,7 @@ namespace CycloneDDS.CodeGen
             {
                 string dummy = "0";
                 if (method == "WriteBool") dummy = "false";
-                int align = GetAlignment(field.TypeName, isXcdr2);
+                int align = GetAlignment(field.TypeName, isXcdr2); string alignA = align.ToString();
                 return $"sizer.Align({align}); sizer.{method}({dummy})";
             }
 
@@ -494,7 +495,8 @@ namespace CycloneDDS.CodeGen
             if (method != null)
             {
                 int align = GetAlignment(field.TypeName, isXcdr2);
-                return $"writer.Align({align}); writer.{method}({fieldAccess})";
+                string alignA = align == 8 ? "writer.IsXcdr2 ? 4 : 8" : align.ToString();
+                return $"writer.Align({alignA}); writer.{method}({fieldAccess})";
             }
             
             if (_registry != null && _registry.TryGetDefinition(field.TypeName, out var def) && def.TypeInfo != null && def.TypeInfo.IsEnum)
@@ -515,7 +517,7 @@ namespace CycloneDDS.CodeGen
 
             if (TypeMapper.IsBlittable(elementType))
             {
-                int align = GetAlignment(elementType, isXcdr2);
+                int align = GetAlignment(elementType, isXcdr2); string alignA = align.ToString();
                 int size = TypeMapper.GetSize(elementType);
                 
                 return $@"sizer.Align(4); sizer.WriteUInt32(0); // Length
@@ -532,7 +534,7 @@ namespace CycloneDDS.CodeGen
             {
                 string dummy = "0";
                 if (sizerMethod == "WriteBool") dummy = "false";
-                int align = GetAlignment(elementType, isXcdr2);
+                int align = GetAlignment(elementType, isXcdr2); string alignA = align.ToString();
                 return $@"sizer.Align(4); sizer.WriteUInt32(0); // Length
                 for (int i = 0; i < {fieldAccess}.Length; i++)
                 {{
@@ -565,11 +567,12 @@ namespace CycloneDDS.CodeGen
             if (TypeMapper.IsBlittable(elementType))
             {
                 int align = GetAlignment(elementType, isXcdr2);
+                string alignA = align == 8 ? "writer.IsXcdr2 ? 4 : 8" : align.ToString();
                 return $@"writer.Align(4);
             writer.WriteUInt32((uint){fieldAccess}.Length);
             if ({fieldAccess}.Length > 0)
             {{
-                writer.Align({align});
+                writer.Align({alignA});
                 var span = {fieldAccess}.AsSpan();
                 var byteSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(span);
                 writer.WriteBytes(byteSpan);
@@ -578,11 +581,11 @@ namespace CycloneDDS.CodeGen
             
             // Loop fallback
             string? writerMethod = TypeMapper.GetWriterMethod(elementType);
-            int alignEl = GetAlignment(elementType, isXcdr2);
+            int alignEl = GetAlignment(elementType, isXcdr2); string alignElA = alignEl == 8 ? "writer.IsXcdr2 ? 4 : 8" : alignEl.ToString();
             string loopBody;
 
             if (writerMethod != null)
-                loopBody = $"writer.Align({alignEl}); writer.{writerMethod}({fieldAccess}[i]);";
+                loopBody = $"writer.Align({alignElA}); writer.{writerMethod}({fieldAccess}[i]);";
             else if (elementType == "string")
                 loopBody = $"writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);";
             else
@@ -609,7 +612,7 @@ namespace CycloneDDS.CodeGen
             {
                 string dummy = "0";
                 if (sizerMethod == "WriteBool") dummy = "false";
-                int align = GetAlignment(elementType, isXcdr2);
+                int align = GetAlignment(elementType, isXcdr2); string alignA = align.ToString();
                 
                 return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
             for (int i = 0; i < {fieldAccess}.Count; i++)
@@ -645,12 +648,14 @@ namespace CycloneDDS.CodeGen
             // OPTIMIZATION for BoundedSeq primitives
             if (IsPrimitive(elementType))
             {
+                 int alignP = GetAlignment(elementType, isXcdr2);
+                 string alignAP = alignP == 8 ? "writer.IsXcdr2 ? 4 : 8" : alignP.ToString();
                  // BoundedSeq exposes AsSpan() which internally uses CollectionsMarshal
                  return $@"writer.Align(4); 
             writer.WriteUInt32((uint){fieldAccess}.Count);
             if ({fieldAccess}.Count > 0)
             {{
-                writer.Align({GetAlignment(elementType, isXcdr2)});
+                writer.Align({alignAP});
                 var span = {fieldAccess}.AsSpan();
                 var byteSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(span);
                 writer.WriteBytes(byteSpan);
@@ -659,12 +664,13 @@ namespace CycloneDDS.CodeGen
             
             string? writerMethod = TypeMapper.GetWriterMethod(elementType);
             int align = GetAlignment(elementType, isXcdr2);
+            string alignA = align == 8 ? "writer.IsXcdr2 ? 4 : 8" : align.ToString();
             
             string loopBody;
 
             if (writerMethod != null)
             {
-                loopBody = $"writer.Align({align}); writer.{writerMethod}({fieldAccess}[i]);";
+                loopBody = $"writer.Align({alignA}); writer.{writerMethod}({fieldAccess}[i]);";
             }
             else if (elementType == "string")
             {
@@ -800,11 +806,13 @@ namespace CycloneDDS.CodeGen
              // OPTIMIZATION: Block copy for primitives
              if (IsPrimitive(elementType))
              {
+                 int alignP = GetAlignment(elementType, isXcdr2);
+                 string alignAP = alignP == 8 ? "writer.IsXcdr2 ? 4 : 8" : alignP.ToString();
                  return $@"writer.Align(4); 
             writer.WriteUInt32((uint){fieldAccess}.Count);
             if ({fieldAccess}.Count > 0)
             {{
-                writer.Align({GetAlignment(elementType, isXcdr2)});
+                writer.Align({alignAP});
                 var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan({fieldAccess});
                 var byteSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(span);
                 writer.WriteBytes(byteSpan);
@@ -813,6 +821,7 @@ namespace CycloneDDS.CodeGen
              
              string? writerMethod = TypeMapper.GetWriterMethod(elementType);
              int align = GetAlignment(elementType, isXcdr2);
+             string alignA = align == 8 ? "writer.IsXcdr2 ? 4 : 8" : align.ToString();
              
              bool isEnum = false;
              if (_registry != null && _registry.TryGetDefinition(elementType, out var def))
@@ -823,7 +832,7 @@ namespace CycloneDDS.CodeGen
              string loopBody;
              if (writerMethod != null)
              {
-                 loopBody = $"writer.Align({align}); writer.{writerMethod}(item);";
+                 loopBody = $"writer.Align({alignA}); writer.{writerMethod}(item);";
              }
              else if (elementType == "string" || elementType == "System.String")
              {
@@ -862,7 +871,7 @@ namespace CycloneDDS.CodeGen
             {
                 string dummy = "0";
                 if (sizerMethod == "WriteBool") dummy = "false";
-                int align = GetAlignment(elementType, isXcdr2);
+                int align = GetAlignment(elementType, isXcdr2); string alignA = align.ToString();
                 
                 return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
             foreach (var item in {fieldAccess})

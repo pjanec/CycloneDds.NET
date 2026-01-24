@@ -364,7 +364,8 @@ namespace CycloneDDS.CodeGen
         private string GetReadCall(TypeInfo type, FieldInfo field)
         {
             int align = GetAlignment(field.TypeName);
-            string alignCall = align > 1 ? $"reader.Align({align}); " : "";
+            string alignA = align == 8 ? "reader.IsXcdr2 ? 4 : 8" : align.ToString();
+            string alignCall = align > 1 ? $"reader.Align({alignA}); " : "";
             
             if (field.TypeName == "string")
             {
@@ -413,11 +414,12 @@ namespace CycloneDDS.CodeGen
             if (TypeMapper.IsBlittable(elementType))
             {
                  int align = GetAlignment(elementType);
+                 string alignA = align == 8 ? "reader.IsXcdr2 ? 4 : 8" : align.ToString();
                  return $@"reader.Align(4);
             int length{field.Name} = (int)reader.ReadUInt32();
             if (length{field.Name} > 0)
             {{
-                reader.Align({align});
+                reader.Align({alignA});
                 var bytes = reader.ReadFixedBytes(length{field.Name} * {TypeMapper.GetSize(elementType)});
                 {fieldAccess} = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, {elementType}>(bytes).ToArray();
             }}
@@ -439,7 +441,7 @@ namespace CycloneDDS.CodeGen
             {fieldAccess} = new {elementType}[length{field.Name}];
             for (int i = 0; i < length{field.Name}; i++)
             {{
-                reader.Align({GetAlignment(elementType)});
+                reader.Align({(GetAlignment(elementType) == 8 ? "reader.IsXcdr2 ? 4 : 8" : GetAlignment(elementType).ToString())});
                 {fieldAccess}[i] = reader.{readMethod}();
             }}";
              }
@@ -483,7 +485,7 @@ namespace CycloneDDS.CodeGen
                 return $@"reader.Align(4);
             uint {field.Name}_len = reader.ReadUInt32();
             {boundsCheck}
-            reader.Align({GetAlignment(elem)});
+            reader.Align({(GetAlignment(elem) == 8 ? "reader.IsXcdr2 ? 4 : 8" : GetAlignment(elem).ToString())});
             {{
                 var span = MemoryMarshal.Cast<byte, {elem}>(reader.ReadFixedBytes((int){field.Name}_len * {elemSize}));
                 view.{field.Name} = new BoundedSeq<{elem}>(new System.Collections.Generic.List<{elem}>(span.ToArray()));
@@ -606,7 +608,7 @@ namespace CycloneDDS.CodeGen
                 "quaternion" or "numerics.quaternion" or
                 "matrix4x4" or "numerics.matrix4x4" => 4,
                 "long" or "int64" or "ulong" or "uint64" or "double" or
-                "datetime" or "timespan" or "datetimeoffset" => 4, // Forced 4-byte alignment for XCDR2
+                "datetime" or "timespan" or "datetimeoffset" => 8, // Forced 4-byte alignment for XCDR2
                 "guid" => 1,
                 _ => 1
             };
@@ -647,13 +649,14 @@ namespace CycloneDDS.CodeGen
             {
                 int elemSize = GetSize(elementType);
                 int align = GetAlignment(elementType);
+                string alignA = align == 8 ? "reader.IsXcdr2 ? 4 : 8" : align.ToString();
                 
                 return $@"reader.Align(4);
             uint {field.Name}_len = reader.ReadUInt32();
             view.{field.Name} = new List<{elementType}>((int){field.Name}_len);
             System.Runtime.InteropServices.CollectionsMarshal.SetCount(view.{field.Name}, (int){field.Name}_len);
             var targetSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(view.{field.Name});
-            reader.Align({align});
+            reader.Align({alignA});
             var sourceBytes = reader.ReadFixedBytes((int){field.Name}_len * {elemSize});
             System.Runtime.InteropServices.MemoryMarshal.Cast<byte, {elementType}>(sourceBytes).CopyTo(targetSpan);";
             }
@@ -675,7 +678,8 @@ namespace CycloneDDS.CodeGen
             if (readMethod != null)
             {
                  int align = GetAlignment(elementType);
-                 addStatement = $"reader.Align({align}); view.{field.Name}.Add(reader.{readMethod}());";
+                 string alignA = align == 8 ? "reader.IsXcdr2 ? 4 : 8" : align.ToString();
+                 addStatement = $"reader.Align({alignA}); view.{field.Name}.Add(reader.{readMethod}());";
             }
             else if (elementType == "string" || elementType == "System.String")
             {
