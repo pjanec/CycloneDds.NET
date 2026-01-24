@@ -71,7 +71,10 @@ namespace CycloneDDS.Runtime
         /// </summary>
         public static string GetTypeName<T>()
         {
-            return typeof(T).Name;
+            var name = typeof(T).FullName;
+            if (string.IsNullOrEmpty(name))
+                return typeof(T).Name;
+            return name.Replace(".", "::");
         }
     }
 }

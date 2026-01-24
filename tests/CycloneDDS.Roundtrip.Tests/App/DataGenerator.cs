@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using RoundtripTests;
 
 namespace CycloneDDS.Roundtrip.App;
 
@@ -18,8 +20,31 @@ internal static class DataGenerator
     /// </summary>
     public static void Fill<T>(ref T obj, int seed)
     {
+        Console.WriteLine($"[DataGenerator] Fill<{typeof(T).Name}> seed={seed}");
+        if (typeof(T) == typeof(AllPrimitives))
+        {
+            Console.WriteLine("[DataGenerator] Dispatching to FillAllPrimitives");
+            var filled = FillAllPrimitives(seed);
+            obj = (T)(object)filled;
+            return;
+        }
+        if (typeof(T) == typeof(CompositeKey))
+        {
+            Console.WriteLine("[DataGenerator] Dispatching to FillCompositeKey");
+            obj = (T)(object)FillCompositeKey(seed);
+            return;
+        }
+        if (typeof(T) == typeof(NestedKeyTopic))
+        {
+            Console.WriteLine("[DataGenerator] Dispatching to FillNestedKeyTopic");
+            obj = (T)(object)FillNestedKeyTopic(seed);
+            return;
+        }
+
         if (obj == null) 
             throw new ArgumentNullException(nameof(obj));
+
+        Console.WriteLine("[DataGenerator] Fallback to Reflection Fill");
 
         object boxed = obj;
         FillObject(boxed, seed, depth: 0);
@@ -351,4 +376,58 @@ internal static class DataGenerator
     }
 
     #endregion
+
+    private static AllPrimitives FillAllPrimitives(int seed)
+    {
+        var val = new AllPrimitives
+        {
+            Id = seed,
+            Bool_field = (seed % 2) == 0,
+            Char_field = (byte)(seed % 256),
+            Octet_field = (byte)(seed % 256),
+            Short_field = (short)(seed % 10000),
+            Ushort_field = (ushort)(seed % 10000),
+            Long_field = (int)seed,
+            Ulong_field = (uint)seed,
+            Llong_field = (long)seed * 1000L,
+            Ullong_field = (ulong)seed * 1000UL,
+            Float_field = (float)seed + 0.5f,
+            Double_field = (double)seed + 0.25
+        };
+        Console.WriteLine($"[DataGenerator] Generated AllPrimitives: Id={val.Id}, Bool={val.Bool_field}, Char={val.Char_field:X2}");
+        return val;
+    }
+
+    private static CompositeKey FillCompositeKey(int seed)
+    {
+        return new CompositeKey
+        {
+            Region = $"Region_{seed}",
+            Zone = (int)((seed + 1) * 31),
+            Sector = (short)((seed + 2) * 7),
+            Name = $"Name_{seed + 10}",
+            Value = (double)((seed + 20) * 3.14159),
+            Priority = (Priority)((seed + 3) % 4)
+        };
+    }
+
+    private static NestedKeyTopic FillNestedKeyTopic(int seed)
+    {
+        return new NestedKeyTopic
+        {
+            Location = new Location
+            {
+                Building = (int)seed,
+                Floor = (short)((seed % 10) + 1),
+                Room = (int)((seed + 100) * 31)
+            },
+            Description = $"Room_Desc_{seed}",
+            Temperature = (double)((seed + 50) * 0.5),
+            Last_updated = new Timestamp
+            {
+                Seconds = (long)(seed + 1000000),
+                Nanoseconds = (uint)((seed * 1000) % 1000000000)
+            }
+        };
+    }
 }

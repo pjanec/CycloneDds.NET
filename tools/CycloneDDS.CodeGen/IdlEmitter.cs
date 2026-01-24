@@ -419,6 +419,19 @@ namespace CycloneDDS.CodeGen
             if (typeName == "Quaternion" || typeName == "System.Numerics.Quaternion") return ("float", "[4]");
             if (typeName == "Matrix4x4" || typeName == "System.Numerics.Matrix4x4") return ("float", "[16]");
 
+            // List<T>
+            if (typeName.StartsWith("List<") || typeName.StartsWith("System.Collections.Generic.List<"))
+            {
+                var start = typeName.IndexOf('<') + 1;
+                var end = typeName.LastIndexOf('>');
+                var innerType = typeName.Substring(start, end - start);
+                
+                var innerField = new FieldInfo { TypeName = innerType };
+                var (innerIdl, innerSuffix) = MapType(innerField);
+                
+                return ($"sequence<{innerIdl}>", "");
+            }
+
             // Arrays
             if (typeName.EndsWith("[]"))
             {

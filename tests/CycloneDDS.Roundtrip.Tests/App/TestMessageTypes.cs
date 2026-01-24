@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using CycloneDDS.Core;
 using CycloneDDS.Schema;
 
@@ -54,6 +55,7 @@ namespace RoundtripTests
     }
 
     [DdsTopic("AllPrimitives")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct AllPrimitives
     {
         [DdsKey]

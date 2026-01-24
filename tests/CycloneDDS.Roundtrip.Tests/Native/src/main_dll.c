@@ -334,41 +334,47 @@ EXPORT int Native_ExpectWithSeed(const char* topic_name, int expected_seed, int 
         return -2;
     }
     
-    // Wait for data
+    // Wait for data loop
     dds_entity_t waitset = dds_create_waitset(g_participant);
     dds_waitset_attach(waitset, entry->reader, entry->reader);
     
     dds_attach_t triggered[1];
-    dds_time_t timeout_ns = DDS_MSECS(timeout_ms);
+    dds_time_t deadline = dds_time() + DDS_MSECS(timeout_ms);
     
-    int wait_rc = dds_waitset_wait(waitset, triggered, 1, timeout_ns);
-    dds_delete(waitset);
-    
-    if (wait_rc <= 0) {
-        set_error("Timeout waiting for data");
-        printf("[Native] TIMEOUT\n");
-        return -1;
-    }
-    
-    // Take sample
+    // Prepare sample buffer
     void* samples[1];
     dds_sample_info_t infos[1];
     samples[0] = handler->alloc_fn();
     
-    int take_rc = dds_take(entry->reader, samples, infos, 1, 1);
+    int match_found = 0;
     
-    if (take_rc < 0) {
-        handler->free_fn(samples[0]);
-        set_error("dds_take failed");
-        printf("[Native] ERROR: %s\n", g_last_error);
-        return -2;
+    while (dds_time() < deadline) {
+        dds_duration_t rem = deadline - dds_time();
+        if (rem < 0) rem = 0;
+        
+        int wait_rc = dds_waitset_wait(waitset, triggered, 1, rem);
+        
+        if (wait_rc > 0) {
+            int take_rc = dds_take(entry->reader, samples, infos, 1, 1);
+            if (take_rc > 0) {
+                if (infos[0].valid_data) {
+                    match_found = 1;
+                    break;
+                } else {
+                    // Skip metadata (dispose, unregister)
+                    printf("[Native DEBUG] Ignored sample with valid_data=0\n");
+                }
+            }
+        }
     }
     
-    if (take_rc == 0 || infos[0].valid_data == 0) {
+    dds_delete(waitset);
+    
+    if (!match_found) {
         handler->free_fn(samples[0]);
-        set_error("No valid data received");
-        printf("[Native] ERROR: %s\n", g_last_error);
-        return -2;
+        set_error("Timeout waiting for data");
+        printf("[Native] TIMEOUT\n");
+        return -1;
     }
     
     // Generate reference sample

@@ -122,6 +122,7 @@ module RoundtripTests {
     // ========================================
     
     @topic
+    @appendable
     struct CompositeKey {
         @key string<32> region;
         @key long zone;
@@ -143,6 +144,7 @@ module RoundtripTests {
     };
 
     @topic
+    @appendable
     struct NestedKeyTopic {
         @key Location location;
         
@@ -160,6 +162,7 @@ module RoundtripTests {
     typedef sequence<double, 5> BoundedDoubleSeq;
     
     @topic
+    @appendable
     struct SequenceTopic {
         @key long id;
         

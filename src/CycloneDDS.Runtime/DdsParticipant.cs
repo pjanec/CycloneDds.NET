@@ -273,6 +273,14 @@ namespace CycloneDDS.Runtime
             }
         }
 
+        private static uint GetAlignment(Type type)
+        {
+            if (type.StructLayoutAttribute != null && type.StructLayoutAttribute.Pack != 0)
+                return (uint)type.StructLayoutAttribute.Pack;
+            
+            return (uint)IntPtr.Size; // Default to machine word size (8 on x64)
+        }
+
         private IntPtr MarshalDescriptor<T>(uint[] ops, DdsKeyDescriptor[] keys, string typeName)
         {
             // Marshal type name
@@ -322,7 +330,7 @@ namespace CycloneDDS.Runtime
             var desc = new DdsTopicDescriptor
             {
                 m_size = (uint)Marshal.SizeOf<T>(), 
-                m_align = 4, 
+                m_align = GetAlignment(typeof(T)), 
                 m_flagset = 0, 
                 m_nkeys = nkeys,
                 m_typename = typeNamePtr,

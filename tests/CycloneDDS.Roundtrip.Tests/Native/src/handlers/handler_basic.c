@@ -32,27 +32,53 @@ const dds_topic_descriptor_t* descriptor_AllPrimitives() {
 void fill_AllPrimitives(void* sample, int seed) {
     RoundtripTests_AllPrimitives* data = (RoundtripTests_AllPrimitives*)sample;
     
-    // Key
+    // Logic matches C# DataGenerator.cs
+    
+    // Key (int) -> seed
     data->id = seed;
     
-    // Boolean
-    data->bool_field = ((seed + 1) % 2) != 0;
+    // Boolean -> seed % 2 == 0
+    // C# 'true' if even.
+    data->bool_field = (seed % 2) == 0;
     
-    // Character
-    data->char_field = 'A' + ((seed + 2) % 26);
+    // Character -> 'A' + (seed % 26) -- Note: C# uses byte for char if not specified? 
+    // DataGenerator says: if (type == typeof(char)) return (char)('A' + (seed % 26));
+    // AllPrimitives.Char_field is 'byte' in C#? 
+    // TestMessageTypes.cs: public byte Char_field { get; set; }
+    // Wait. In IDL it is `char`. In C# IDL mapping `char` maps to `byte`? or `char`?
+    // In Standard C# mapping: char (8-bit) maps to byte.
+    // DataGenerator handles 'byte' as seed % 256.
+    // If Char_field is byte in C#, DataGenerator uses 'byte' logic!
+    data->char_field = (char)(seed % 256);
     
-    // Integers
-    data->octet_field = (uint8_t)((seed + 3) & 0xFF);
-    data->short_field = (int16_t)((seed + 4) * 31);
-    data->ushort_field = (uint16_t)((seed + 5) * 31);
-    data->long_field = (int32_t)((seed + 6) * 997);
-    data->ulong_field = (uint32_t)((seed + 7) * 997);
-    data->llong_field = (int64_t)((seed + 8) * 999983LL);
-    data->ullong_field = (uint64_t)((seed + 9) * 999983ULL);
+    // Octet -> byte -> seed % 256
+    data->octet_field = (uint8_t)(seed % 256);
+    
+    // Short -> seed % 10000
+    data->short_field = (int16_t)(seed % 10000);
+    
+    // Ushort -> seed % 10000
+    data->ushort_field = (uint16_t)(seed % 10000);
+    
+    // Long (int) -> seed
+    data->long_field = (int32_t)seed;
+    
+    // Ulong (uint) -> seed
+    data->ulong_field = (uint32_t)seed;
+    
+    // Llong (long) -> seed * 1000
+    data->llong_field = (int64_t)seed * 1000L;
+    
+    // Ullong (ulong) -> seed * 1000
+    data->ullong_field = (uint64_t)seed * 1000ULL;
     
     // Floating-point
-    data->float_field = (float)((seed + 10) * 3.14159f);
-    data->double_field = (double)((seed + 11) * 2.71828);
+    // C#: seed + 0.5f
+    data->float_field = (float)seed + 0.5f;
+    
+    // Double
+    // C#: seed + 0.25
+    data->double_field = (double)seed + 0.25;
 }
 
 bool compare_AllPrimitives(const void* a, const void* b) {

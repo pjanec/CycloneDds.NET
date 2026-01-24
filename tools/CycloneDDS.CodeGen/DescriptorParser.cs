@@ -35,6 +35,22 @@ namespace CycloneDDS.CodeGen
             { "DDS_OP_TYPE_BLN", 0x0Eu << 16 },
             { "DDS_OP_TYPE_BMK", 0x0Fu << 16 },
 
+            // Subtypes (shifted by 8)
+            { "DDS_OP_SUBTYPE_1BY", 0x01u << 8 },
+            { "DDS_OP_SUBTYPE_2BY", 0x02u << 8 },
+            { "DDS_OP_SUBTYPE_4BY", 0x03u << 8 },
+            { "DDS_OP_SUBTYPE_8BY", 0x04u << 8 },
+            { "DDS_OP_SUBTYPE_STR", 0x05u << 8 },
+            { "DDS_OP_SUBTYPE_BST", 0x06u << 8 },
+            { "DDS_OP_SUBTYPE_SEQ", 0x07u << 8 },
+            { "DDS_OP_SUBTYPE_ARR", 0x08u << 8 },
+            { "DDS_OP_SUBTYPE_UNI", 0x09u << 8 },
+            { "DDS_OP_SUBTYPE_STU", 0x0Au << 8 },
+            { "DDS_OP_SUBTYPE_BSQ", 0x0Bu << 8 },
+            { "DDS_OP_SUBTYPE_ENU", 0x0Cu << 8 },
+            { "DDS_OP_SUBTYPE_BLN", 0x0Eu << 8 },
+            { "DDS_OP_SUBTYPE_BMK", 0x0Fu << 8 },
+
              // Flags
             { "DDS_OP_FLAG_KEY", 0x01u },
             { "DDS_OP_FLAG_DEF", 0x02u },
@@ -43,6 +59,7 @@ namespace CycloneDDS.CodeGen
             { "DDS_OP_FLAG_EXT", 0x10u },
             { "DDS_OP_FLAG_OPT", 0x20u },
             { "DDS_OP_FLAG_MU",  0x40u },
+            { "DDS_OP_FLAG_SZ_SHIFT", 0x00u },
             
             // Type Codes (unshifted) for manual composition if needed
             { "DDS_OP_VAL_1BY", 0x01u },
@@ -139,14 +156,18 @@ namespace CycloneDDS.CodeGen
                      sb.AppendLine($"enum {sName} {{ {sBody} }};");
                  }
 
+                 var definedStructs = new HashSet<string>();
                  var structRegex = new System.Text.RegularExpressions.Regex(
                      @"typedef\s+struct\s+(\w+)\s*\{(.*?)\}\s*\1\s*;", 
                      System.Text.RegularExpressions.RegexOptions.Singleline);
                  foreach(System.Text.RegularExpressions.Match m in structRegex.Matches(hContent))
                  {
                      string sName = m.Groups[1].Value;
-                     string sBody = m.Groups[2].Value;
-                     sb.AppendLine($"struct {sName} {{ {sBody} }};");
+                     if (definedStructs.Add(sName))
+                     {
+                         string sBody = m.Groups[2].Value;
+                         sb.AppendLine($"struct {sName} {{ {sBody} }};");
+                     }
                  }
             }
 
@@ -175,6 +196,8 @@ namespace CycloneDDS.CodeGen
                 }
                 else if (field.Name.EndsWith("_keys"))
                 {
+                    if (!string.IsNullOrEmpty(typeName) && !field.Name.EndsWith($"{typeName}_keys")) continue;
+
                     metadata.KeysArrayName = field.Name;
                     // First try regex because CppAst often fails on struct initializers with our mocked headers
                     // Pass compilation to resolve offsets
@@ -249,6 +272,7 @@ namespace CycloneDDS.CodeGen
             if (!match.Success) return Array.Empty<KeyDescriptorInfo>();
             
             var content = match.Groups[1].Value;
+            Console.WriteLine($"DEBUG: Keys Content for {keysArrayName}: {content}");
             
             var list = new List<KeyDescriptorInfo>();
             // Split by }, { or just look for { ... } patterns
@@ -258,6 +282,7 @@ namespace CycloneDDS.CodeGen
             
             foreach(System.Text.RegularExpressions.Match itemMatch in itemRegex.Matches(content))
             {
+                 Console.WriteLine($"DEBUG: Matched Key - Name: {itemMatch.Groups[1].Value}, Offset: {itemMatch.Groups[2].Value}");
                  var info = new KeyDescriptorInfo();
                  info.Name = itemMatch.Groups[1].Value;
                  

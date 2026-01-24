@@ -54,7 +54,9 @@
     <Copy SourceFiles="@(LocalIdlFiles)" DestinationFolder="$(MSBuildProjectDirectory)" SkipUnchangedFiles="true" />
   </Target>
 
-  <!-- Import the code generation target -->
   <Import Project="..\..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
+  
+  <ItemGroup>
+  </ItemGroup>
 
 </Project>
