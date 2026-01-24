@@ -119,15 +119,15 @@ namespace Golden {
     public partial struct AppendableStruct { [DdsId(0)] public int Id; [DdsId(1)] public string Message; }
 }
 ";
-            code += emitter.EmitSerializer(tSimple, false);
-            code += emitter.EmitSerializer(tNested, false);
-            code += emitter.EmitSerializer(tNestedStruct, false);
-            code += emitter.EmitSerializer(tFixedString, false);
-            code += emitter.EmitSerializer(tUnbounded, false);
-            code += emitter.EmitSerializer(tPrimSeq, false);
-            code += emitter.EmitSerializer(tStrSeq, false);
-            code += emitter.EmitSerializer(tMixed, false);
-            code += emitter.EmitSerializer(tAppendable, false);
+            code += emitter.EmitSerializer(tSimple, new GlobalTypeRegistry(), false);
+            code += emitter.EmitSerializer(tNested, new GlobalTypeRegistry(), false);
+            code += emitter.EmitSerializer(tNestedStruct, new GlobalTypeRegistry(), false);
+            code += emitter.EmitSerializer(tFixedString, new GlobalTypeRegistry(), false);
+            code += emitter.EmitSerializer(tUnbounded, new GlobalTypeRegistry(), false);
+            code += emitter.EmitSerializer(tPrimSeq, new GlobalTypeRegistry(), false);
+            code += emitter.EmitSerializer(tStrSeq, new GlobalTypeRegistry(), false);
+            code += emitter.EmitSerializer(tMixed, new GlobalTypeRegistry(), false);
+            code += emitter.EmitSerializer(tAppendable, new GlobalTypeRegistry(), false);
 
             // Helper to Invoke Serialize
             code += @"
@@ -233,7 +233,7 @@ namespace Golden {
                     list.Add("One"); list.Add("Two"); list.Add("Three");
                     SetField(inst, "Values", list);
                 },
-                "1D00000003000000030000004F6E65000300000054776F00050000005468726565");
+                "1E00000003000000040000004F6E65000400000054776F0006000000546872656500");
 
             // MixedStruct
             Verify(asm, helper.GetMethod("SerializeMixedStruct"), "Golden.MixedStruct",
@@ -243,7 +243,7 @@ namespace Golden {
             // AppendableStruct (Appendable/Xcdr2)
             Verify(asm, helper.GetMethod("SerializeAppendableStruct"), "Golden.AppendableStruct",
                 inst => { SetField(inst, "Id", 999); SetField(inst, "Message", "Appendable"); },
-                "12000000E70300000A000000417070656E6461626C65"); 
+                "13000000E70300000B000000417070656E6461626C6500"); 
         }
 
         private void Verify(Assembly asm, MethodInfo serializeMeth, string typeName, Action<object> setup, string expectedHex)
@@ -284,3 +284,4 @@ namespace Golden {
         }
     }
 }
+

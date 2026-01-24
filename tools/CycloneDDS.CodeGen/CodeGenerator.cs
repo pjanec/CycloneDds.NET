@@ -87,10 +87,10 @@ namespace CycloneDDS.CodeGen
             {
                 if (topic.IsTopic || topic.IsStruct)
                 {
-                    var serializerCode = _serializerEmitter.EmitSerializer(topic);
+                    var serializerCode = _serializerEmitter.EmitSerializer(topic, registry);
                     File.WriteAllText(Path.Combine(outputDir, $"{topic.Name}.Serializer.cs"), serializerCode);
 
-                    var deserializerCode = _deserializerEmitter.EmitDeserializer(topic);
+                    var deserializerCode = _deserializerEmitter.EmitDeserializer(topic, registry);
                     File.WriteAllText(Path.Combine(outputDir, $"{topic.Name}.Deserializer.cs"), deserializerCode);
                     Console.WriteLine($"    Generated Serializers for {topic.Name}");
                 }

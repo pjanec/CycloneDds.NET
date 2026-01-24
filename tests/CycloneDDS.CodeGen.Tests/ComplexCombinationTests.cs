@@ -68,10 +68,10 @@ namespace TestNamespace
     }
 }
 ";
-            code += emitter.EmitSerializer(unionType, false) + "\n" +
-                    demitter.EmitDeserializer(unionType, false) + "\n" +
-                    emitter.EmitSerializer(type, false) + "\n" +
-                    demitter.EmitDeserializer(type, false) + "\n" +
+            code += emitter.EmitSerializer(unionType, new GlobalTypeRegistry(), false) + "\n" +
+                    demitter.EmitDeserializer(unionType, new GlobalTypeRegistry(), false) + "\n" +
+                    emitter.EmitSerializer(type, new GlobalTypeRegistry(), false) + "\n" +
+                    demitter.EmitDeserializer(type, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "AllFeatures");
                           
             var assembly = CompileToAssembly("ComplexTest1", code);
@@ -136,9 +136,9 @@ namespace TestNamespace
     public partial struct Level1 { public Level2 Mid; public int Id; }
 }
 ";
-             code += emitter.EmitSerializer(lvl3, false) + "\n" + demitter.EmitDeserializer(lvl3, false) + "\n" +
-                     emitter.EmitSerializer(lvl2, false) + "\n" + demitter.EmitDeserializer(lvl2, false) + "\n" +
-                     emitter.EmitSerializer(lvl1, false) + "\n" + demitter.EmitDeserializer(lvl1, false) + "\n" +
+             code += emitter.EmitSerializer(lvl3, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(lvl3, new GlobalTypeRegistry(), false) + "\n" +
+                     emitter.EmitSerializer(lvl2, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(lvl2, new GlobalTypeRegistry(), false) + "\n" +
+                     emitter.EmitSerializer(lvl1, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(lvl1, new GlobalTypeRegistry(), false) + "\n" +
                      GenerateTestHelper("TestNamespace", "Level1");
 
              var assembly = CompileToAssembly("ComplexTest2", code);
@@ -211,8 +211,8 @@ namespace TestNamespace
     }
 }
 ";
-            code += emitter.EmitSerializer(unionType, false) + "\n" + demitter.EmitDeserializer(unionType, false) + "\n" +
-                    emitter.EmitSerializer(dataType, false) + "\n" + demitter.EmitDeserializer(dataType, false) + "\n" +
+            code += emitter.EmitSerializer(unionType, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(unionType, new GlobalTypeRegistry(), false) + "\n" +
+                    emitter.EmitSerializer(dataType, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(dataType, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "Data");
 
             var assembly = CompileToAssembly("ComplexTest3", code);
@@ -268,8 +268,8 @@ namespace TestNamespace {
   public partial struct InnerStruct { public int X; }
   public partial struct Outer { public InnerStruct? OptInner; }
 }";
-            code += emitter.EmitSerializer(inner, false) + "\n" + demitter.EmitDeserializer(inner, false) + "\n" +
-                    emitter.EmitSerializer(outer, false) + "\n" + demitter.EmitDeserializer(outer, false) + "\n" +
+            code += emitter.EmitSerializer(inner, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(inner, new GlobalTypeRegistry(), false) + "\n" +
+                    emitter.EmitSerializer(outer, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(outer, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "Outer");
 
             var assembly = CompileToAssembly("ComplexTest4", code);
@@ -310,7 +310,7 @@ namespace TestNamespace {
 namespace TestNamespace {
   public partial struct Empty { }
 }";
-            code += emitter.EmitSerializer(empty, false) + "\n" + demitter.EmitDeserializer(empty, false) + "\n" +
+            code += emitter.EmitSerializer(empty, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(empty, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "Empty");
             
             var assembly = CompileToAssembly("ComplexTestEmpty", code);
@@ -350,7 +350,7 @@ namespace TestNamespace {
        public int? Opt4;
   }
 }";
-            code += emitter.EmitSerializer(multi, false) + "\n" + demitter.EmitDeserializer(multi, false) + "\n" +
+            code += emitter.EmitSerializer(multi, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(multi, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "MultiOpt");
 
             var assembly = CompileToAssembly("ComplexTestMultiOpt", code);
@@ -401,7 +401,7 @@ namespace TestNamespace {
       [DdsCase(1)] public BoundedSeq<string> Strings;
   }
 }";
-            code += emitter.EmitSerializer(unionType, false) + "\n" + demitter.EmitDeserializer(unionType, false) + "\n" +
+            code += emitter.EmitSerializer(unionType, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(unionType, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "DataUnion");
 
             var assembly = CompileToAssembly("ComplexTestStrUnion", code);
@@ -452,8 +452,8 @@ namespace TestNamespace {
       [DdsCase(1)] public OptionalStruct ValueA;
   }
 }";
-            code += emitter.EmitSerializer(optStruct, false) + "\n" + demitter.EmitDeserializer(optStruct, false) + "\n" +
-                    emitter.EmitSerializer(unionType, false) + "\n" + demitter.EmitDeserializer(unionType, false) + "\n" +
+            code += emitter.EmitSerializer(optStruct, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(optStruct, new GlobalTypeRegistry(), false) + "\n" +
+                    emitter.EmitSerializer(unionType, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(unionType, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "DataUnionOpt");
 
             var assembly = CompileToAssembly("ComplexTestUnionOpt", code);
@@ -496,7 +496,7 @@ namespace TestNamespace {
 namespace TestNamespace {
 " + sb.ToString() + @"
 }";
-            code += emitter.EmitSerializer(type, false) + "\n" + demitter.EmitDeserializer(type, false) + "\n" +
+            code += emitter.EmitSerializer(type, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(type, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "LargeStruct");
 
             var assembly = CompileToAssembly("ComplexTestLarge", code);
@@ -544,8 +544,8 @@ namespace TestNamespace {
   public partial struct InnerRow { public BoundedSeq<int> Cols; }
   public partial struct Matrix { public BoundedSeq<InnerRow> Rows; }
 }";
-            code += emitter.EmitSerializer(inner, false) + "\n" + demitter.EmitDeserializer(inner, false) + "\n" +
-                    emitter.EmitSerializer(matrix, false) + "\n" + demitter.EmitDeserializer(matrix, false) + "\n" +
+            code += emitter.EmitSerializer(inner, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(inner, new GlobalTypeRegistry(), false) + "\n" +
+                    emitter.EmitSerializer(matrix, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(matrix, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("TestNamespace", "Matrix");
 
             var assembly = CompileToAssembly("ComplexTestMatrix", code);
@@ -589,3 +589,4 @@ namespace TestNamespace {
         }
     }
 }
+

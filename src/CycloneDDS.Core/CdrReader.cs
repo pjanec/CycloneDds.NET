@@ -124,6 +124,7 @@ namespace CycloneDDS.Core
         public sbyte ReadInt8() => (sbyte)ReadByte();
         
         public bool ReadBoolean() => ReadByte() != 0;
+        public bool ReadBool() => ReadBoolean();
 
         public short ReadInt16()
         {
@@ -153,7 +154,9 @@ namespace CycloneDDS.Core
             
             bool useXcdr2 = isXcdr2 ?? (_encoding == CdrEncoding.Xcdr2);
             int bytesToReturn;
-            if (useXcdr2)
+            // EXPERIMENTAL FIX: Match CdrWriter.cs patch where we force XCDR1 style (Null Terminated) even for XCDR2
+            // because native code expects it.
+            if (false) // useXcdr2
             {
                 // XCDR2: Length is exactly the number of bytes
                 bytesToReturn = length;

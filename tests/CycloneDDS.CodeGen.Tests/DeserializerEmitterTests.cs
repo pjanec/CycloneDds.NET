@@ -31,8 +31,8 @@ namespace CycloneDDS.CodeGen.Tests
             var serializerEmitter = new SerializerEmitter();
             var deserializerEmitter = new DeserializerEmitter();
             
-            string serializedCode = serializerEmitter.EmitSerializer(type);
-            string deserializedCode = deserializerEmitter.EmitDeserializer(type);
+            string serializedCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry());
+            string deserializedCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry());
             
             string combinedCode = @"
 using System;
@@ -123,8 +123,8 @@ namespace TestNamespace
             
             var serializerEmitter = new SerializerEmitter();
             var deserializerEmitter = new DeserializerEmitter();
-            string serializedCode = serializerEmitter.EmitSerializer(type);
-            string deserializedCode = deserializerEmitter.EmitDeserializer(type);
+            string serializedCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry());
+            string deserializedCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry());
             
             string combinedCode = 
 @"using System;
@@ -220,3 +220,4 @@ namespace TestNamespace
         }
     }
 }
+

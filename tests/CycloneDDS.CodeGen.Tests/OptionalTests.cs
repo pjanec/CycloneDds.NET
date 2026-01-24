@@ -52,9 +52,9 @@ namespace OptionalTests
         {
             var type = CreateOptionalType();
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry());
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry());
 
             var assembly = CompileToAssembly(serializerCode, deserializerCode, GetStructDef());
             Assert.NotNull(assembly);
@@ -64,8 +64,8 @@ namespace OptionalTests
         public void Optional_Present_SerializesWithEMHEADER()
         {
             var type = CreateOptionalType();
-            var serializerCode = new SerializerEmitter().EmitSerializer(type);
-            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type);
+            var serializerCode = new SerializerEmitter().EmitSerializer(type, new GlobalTypeRegistry());
+            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type, new GlobalTypeRegistry());
             var harnessCode = @"
 using System;
 using System.Buffers;
@@ -112,8 +112,8 @@ public class Harness
         public void Optional_Absent_SerializesAsZeroBytes()
         {
             var type = CreateOptionalType();
-            var serializerCode = new SerializerEmitter().EmitSerializer(type);
-            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type);
+            var serializerCode = new SerializerEmitter().EmitSerializer(type, new GlobalTypeRegistry());
+            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type, new GlobalTypeRegistry());
             var harnessCode = @"
 using System;
 using System.Buffers;
@@ -150,8 +150,8 @@ public class Harness
         public void Optional_String_Present_SerializesCorrectly()
         {
              var type = CreateOptionalType();
-            var serializerCode = new SerializerEmitter().EmitSerializer(type);
-            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type);
+            var serializerCode = new SerializerEmitter().EmitSerializer(type, new GlobalTypeRegistry());
+            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type, new GlobalTypeRegistry());
             var harnessCode = @"
 using System;
 using System.Buffers;
@@ -180,19 +180,19 @@ public class Harness
             
             byte[] bytes = (byte[])harness.GetMethod("Serialize").Invoke(null, new object[] { 200, (int?)null, (double?)null, "Hello" });
             
-            Assert.Equal(21, bytes.Length); 
-            // EMHEADER for 9-byte string with ID=3: (9 << 3) | 3 = 0x4B
-            // XCDR2 string "Hello": 4 bytes length + 5 bytes chars = 9 bytes. (No null terminator)
-            Assert.Equal(0x0000004B, (int)BitConverter.ToUInt32(bytes, 8)); 
-            Assert.Equal(5, BitConverter.ToInt32(bytes, 12)); 
+            Assert.Equal(22, bytes.Length); 
+            // EMHEADER for 10-byte string with ID=3: (10 << 3) | 3 = 83 = 0x53
+            // XCDR2 string "Hello": 4 bytes length + 6 bytes chars = 10 bytes. (With null terminator)
+            Assert.Equal(0x00000053, (int)BitConverter.ToUInt32(bytes, 8)); 
+            Assert.Equal(6, BitConverter.ToInt32(bytes, 12)); 
         }
 
         [Fact]
         public void RoundTrip_MixedOptionals()
         {
             var type = CreateOptionalType();
-            var serializerCode = new SerializerEmitter().EmitSerializer(type);
-            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type);
+            var serializerCode = new SerializerEmitter().EmitSerializer(type, new GlobalTypeRegistry());
+            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type, new GlobalTypeRegistry());
             var harnessCode = @"
 using System;
 using System.Buffers;
@@ -252,8 +252,8 @@ public class Harness
         public void EMHEADER_BitLayout_FollowsXCDR2Spec()
         {
             var type = CreateOptionalType();
-            var serializerCode = new SerializerEmitter().EmitSerializer(type);
-            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type);
+            var serializerCode = new SerializerEmitter().EmitSerializer(type, new GlobalTypeRegistry());
+            var deserializerCode = new DeserializerEmitter().EmitDeserializer(type, new GlobalTypeRegistry());
             var harnessCode = @"
 using System;
 using System.Buffers;
@@ -345,3 +345,4 @@ public class Harness
         }
     }
 }
+

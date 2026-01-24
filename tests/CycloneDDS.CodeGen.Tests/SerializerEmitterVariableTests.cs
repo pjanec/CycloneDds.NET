@@ -37,7 +37,7 @@ namespace CycloneDDS.CodeGen.Tests
             };
             
             var emitter = new SerializerEmitter();
-            string generatedCode = emitter.EmitSerializer(type);
+            string generatedCode = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
             string structDef = @"
 namespace TestNamespace
@@ -110,7 +110,7 @@ namespace TestNamespace
             };
             
             var emitter = new SerializerEmitter();
-            string generatedCode = emitter.EmitSerializer(type);
+            string generatedCode = emitter.EmitSerializer(type, new GlobalTypeRegistry());
              
             string structDef = @"
 namespace TestNamespace
@@ -198,9 +198,9 @@ namespace TestNamespace
             };
             
             var emitter = new SerializerEmitter();
-            string generatedNested = emitter.EmitSerializer(nestedType);
+            string generatedNested = emitter.EmitSerializer(nestedType, new GlobalTypeRegistry());
             generatedNested = generatedNested.Substring(generatedNested.IndexOf("namespace"));
-            string generatedOuter = emitter.EmitSerializer(outerType);
+            string generatedOuter = emitter.EmitSerializer(outerType, new GlobalTypeRegistry());
             generatedOuter = generatedOuter.Substring(generatedOuter.IndexOf("namespace"));
             
             string structDef = @"
@@ -309,3 +309,4 @@ namespace TestNamespace
         }
     }
 }
+

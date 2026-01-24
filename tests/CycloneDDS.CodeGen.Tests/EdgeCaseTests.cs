@@ -22,7 +22,7 @@ namespace CycloneDDS.CodeGen.Tests
 namespace EdgeCase {
   public partial struct StrStruct { public string S; }
 }";
-            code += emitter.EmitSerializer(type, false) + "\n" + demitter.EmitDeserializer(type, false) + "\n" +
+            code += emitter.EmitSerializer(type, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(type, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("EdgeCase", "StrStruct");
 
             var assembly = CompileToAssembly("EdgeCaseString", code);
@@ -54,7 +54,7 @@ namespace EdgeCase {
 namespace EdgeCase {
   public partial struct AllNull { public int? Opt1; public string Opt2; }
 }";
-            code += emitter.EmitSerializer(type, false) + "\n" + demitter.EmitDeserializer(type, false) + "\n" +
+            code += emitter.EmitSerializer(type, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(type, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("EdgeCase", "AllNull");
 
             var assembly = CompileToAssembly("EdgeCaseNull", code);
@@ -85,7 +85,7 @@ namespace EdgeCase {
 namespace EdgeCase {
   public partial struct MaxSeq { public BoundedSeq<int> S; }
 }";
-            code += emitter.EmitSerializer(type, false) + "\n" + demitter.EmitDeserializer(type, false) + "\n" +
+            code += emitter.EmitSerializer(type, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(type, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("EdgeCase", "MaxSeq");
 
             var assembly = CompileToAssembly("EdgeCaseMaxSeq", code);
@@ -133,7 +133,7 @@ namespace EdgeCase {
                  structs += "} \n";
                  
                  var t = new TypeInfo { Name = name, Namespace = "EdgeCase", Fields = fields };
-                 typesEmit += emitter.EmitSerializer(t, false) + "\n" + demitter.EmitDeserializer(t, false) + "\n";
+                 typesEmit += emitter.EmitSerializer(t, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(t, new GlobalTypeRegistry(), false) + "\n";
             }
             
             string code = $@"using CycloneDDS.Schema; using System; using System.Text; using System.Linq; using System.Runtime.InteropServices; using CycloneDDS.Core;
@@ -196,7 +196,7 @@ namespace EdgeCase {
     [DdsDefaultCase] public int Def;
   }
 }";
-            code += emitter.EmitSerializer(unionType, false) + "\n" + demitter.EmitDeserializer(unionType, false) + "\n" +
+            code += emitter.EmitSerializer(unionType, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(unionType, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("EdgeCase", "UDefault");
 
             var assembly = CompileToAssembly("EdgeCaseUDef", code);
@@ -248,8 +248,8 @@ namespace EdgeCase {
   [DdsUnion] public partial struct USimple { [DdsDiscriminator] public int D; [DdsCase(1)] public int X; }
   public partial struct SOptU { public USimple? OptU; }
 }";
-            code += emitter.EmitSerializer(unionType, false) + "\n" + demitter.EmitDeserializer(unionType, false) + "\n" +
-                    emitter.EmitSerializer(structType, false) + "\n" + demitter.EmitDeserializer(structType, false) + "\n" +
+            code += emitter.EmitSerializer(unionType, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(unionType, new GlobalTypeRegistry(), false) + "\n" +
+                    emitter.EmitSerializer(structType, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(structType, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("EdgeCase", "SOptU");
 
             var assembly = CompileToAssembly("EdgeCaseOptU", code);
@@ -297,7 +297,7 @@ namespace EdgeCase {
 namespace EdgeCase {
    public partial struct Zeros { public int I; public double D; public byte B; public short S; public long L; }
 }";
-            code += emitter.EmitSerializer(type, false) + "\n" + demitter.EmitDeserializer(type, false) + "\n" +
+            code += emitter.EmitSerializer(type, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(type, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("EdgeCase", "Zeros");
 
             var assembly = CompileToAssembly("EdgeCaseZeros", code);
@@ -329,7 +329,7 @@ namespace EdgeCase {
 namespace EdgeCase {
    public partial struct Unicode { public string S; }
 }";
-            code += emitter.EmitSerializer(type, false) + "\n" + demitter.EmitDeserializer(type, false) + "\n" +
+            code += emitter.EmitSerializer(type, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(type, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("EdgeCase", "Unicode");
 
             var assembly = CompileToAssembly("EdgeCaseUnicode", code);
@@ -347,3 +347,4 @@ namespace EdgeCase {
         }
     }
 }
+

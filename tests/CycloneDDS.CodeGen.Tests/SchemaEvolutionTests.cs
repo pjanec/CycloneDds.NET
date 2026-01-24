@@ -25,10 +25,10 @@ namespace CycloneDDS.CodeGen.Tests
             var demitter = new DeserializerEmitter();
 
             // V1 Code (Deserializer)
-            string codeV1 = demitter.EmitDeserializer(v1Type, false);
+            string codeV1 = demitter.EmitDeserializer(v1Type, new GlobalTypeRegistry(), false);
             
             // V2 Code (Serializer)
-            string codeV2 = emitter.EmitSerializer(v2Type, false);
+            string codeV2 = emitter.EmitSerializer(v2Type, new GlobalTypeRegistry(), false);
 
             string code = $@"
 using CycloneDDS.Schema; using System; using System.Text; using System.Linq; using System.Runtime.InteropServices;
@@ -305,8 +305,8 @@ namespace Version2 {
     public partial struct Inner { public int X; public int Y; }
     public partial struct Outer { public Inner In; }
 }";
-             code += ExtractBody(demitter.EmitDeserializer(v1Inner, false)) + "\n" + ExtractBody(demitter.EmitDeserializer(v1Outer, false)) + "\n";
-             code += ExtractBody(emitter.EmitSerializer(v2Inner, false)) + "\n" + ExtractBody(emitter.EmitSerializer(v2Outer, false)) + "\n";
+             code += ExtractBody(demitter.EmitDeserializer(v1Inner, new GlobalTypeRegistry(), false)) + "\n" + ExtractBody(demitter.EmitDeserializer(v1Outer, new GlobalTypeRegistry(), false)) + "\n";
+             code += ExtractBody(emitter.EmitSerializer(v2Inner, new GlobalTypeRegistry(), false)) + "\n" + ExtractBody(emitter.EmitSerializer(v2Outer, new GlobalTypeRegistry(), false)) + "\n";
              // Note: extracting bodies works because namespaces in emitted code match (Version1/Version2) or I need to handle them?
              // v1Inner namespace is 'Version1'. EmitDeserializer includes "namespace Version1 { ... }".
              // My ExtractBody removes namespace.
@@ -324,14 +324,14 @@ namespace Version2 {
 namespace Version1 {
     public partial struct Inner { public int X; }
     public partial struct Outer { public Inner In; }
-    " + ExtractBody(demitter.EmitDeserializer(v1Inner, false)) + @"
-    " + ExtractBody(demitter.EmitDeserializer(v1Outer, false)) + @"
+    " + ExtractBody(demitter.EmitDeserializer(v1Inner, new GlobalTypeRegistry(), false)) + @"
+    " + ExtractBody(demitter.EmitDeserializer(v1Outer, new GlobalTypeRegistry(), false)) + @"
 }
 namespace Version2 {
     public partial struct Inner { public int X; public int Y; }
     public partial struct Outer { public Inner In; }
-    " + ExtractBody(emitter.EmitSerializer(v2Inner, false)) + @"
-    " + ExtractBody(emitter.EmitSerializer(v2Outer, false)) + @"
+    " + ExtractBody(emitter.EmitSerializer(v2Inner, new GlobalTypeRegistry(), false)) + @"
+    " + ExtractBody(emitter.EmitSerializer(v2Outer, new GlobalTypeRegistry(), false)) + @"
 }
 
 namespace SchemaTest {
@@ -626,3 +626,4 @@ namespace SchemaTest {
         }
     }
 }
+

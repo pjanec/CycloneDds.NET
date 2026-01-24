@@ -69,7 +69,8 @@ namespace CycloneDDS.Core
             _cursor += Encoding.UTF8.GetByteCount(value);
             
             bool useXcdr2 = isXcdr2 ?? (_encoding == CdrEncoding.Xcdr2);
-            if (!useXcdr2)
+            // EXPERIMENTAL FIX: Always add NUL terminator space (matching CdrWriter patch)
+            if (true) // (!useXcdr2)
             {
                 _cursor += 1; // NUL terminator
             }

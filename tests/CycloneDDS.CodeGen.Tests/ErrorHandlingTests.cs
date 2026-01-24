@@ -23,7 +23,7 @@ namespace CycloneDDS.CodeGen.Tests
              // Note: If SomeRandomType exists but has no serializer, compilation fails at Serialize call.
              // If I define SomeRandomType but no Serialize method.
              
-             code += emitter.EmitSerializer(type, false);
+             code += emitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
              
              // Compilation should fail because SomeRandomType has no Serialize method.
              Assert.ThrowsAny<Exception>(() => CompileToAssembly(code, "ErrUnsupported"));
@@ -46,7 +46,7 @@ namespace CycloneDDS.CodeGen.Tests
              
              // Let's see if EmitSerializer throws or emitted code is bad.
              try {
-                 string res = emitter.EmitSerializer(type, false);
+                 string res = emitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
                  // If doesn't throw, try compile
                  string code = @"using CycloneDDS.Schema; using System; using System.Text; using System.Linq; using System.Runtime.InteropServices; namespace Err { [DdsUnion] public partial struct BadUnion { public int D; } }";
                  code += res;
@@ -99,7 +99,7 @@ namespace CycloneDDS.CodeGen.Tests
              
              var emitter = new SerializerEmitter();
              string code = @"using CycloneDDS.Schema; using System; using System.Text; using System.Linq; using System.Runtime.InteropServices; namespace Err { [DdsUnion] public partial struct BadDiscType { [DdsDiscriminator] public string D; [DdsCase(1)] public int X; } }";
-             code += emitter.EmitSerializer(type2, false);
+             code += emitter.EmitSerializer(type2, new GlobalTypeRegistry(), false);
              
              Assert.ThrowsAny<Exception>(() => CompileToAssembly(code, "ErrBadDiscType"));
         }
@@ -135,3 +135,4 @@ module Test {
         }
     }
 }
+

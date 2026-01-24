@@ -63,11 +63,11 @@ namespace CycloneDDS.CodeGen
             if (typeName.Contains("Vector") || typeName == "Quaternion") return;
             
             // Collections - recurse
-            if (typeName.StartsWith("BoundedSeq<") || typeName.StartsWith("List<"))
+            if (typeName.StartsWith("BoundedSeq<") || typeName.StartsWith("List<") || typeName.StartsWith("System.Collections.Generic.List<"))
             {
                 string innerType = ExtractGenericArgument(typeName);
                 // Recursively validate inner type
-                if (!IsValidUserType(innerType) && !TypeMapper.IsPrimitive(innerType) && innerType != "string")
+                if (!IsValidUserType(innerType) && !TypeMapper.IsPrimitive(innerType) && innerType != "string" && innerType != "System.String")
                 {
                     errors.Add($"Field '{containerName}.{field.Name}' uses collection of type '{innerType}', " +
                                $"which is not a valid DDS type. Mark '{innerType}' with [DdsStruct] or [DdsTopic].");

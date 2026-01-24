@@ -33,7 +33,7 @@ namespace CycloneDDS.CodeGen.Tests
             
             // Generate code
             var emitter = new SerializerEmitter();
-            string generatedCode = emitter.EmitSerializer(type);
+            string generatedCode = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
             // Define the other part of the partial struct (the fields)
             string structDef = @"
@@ -161,3 +161,4 @@ namespace TestNamespace
         }
     }
 }
+

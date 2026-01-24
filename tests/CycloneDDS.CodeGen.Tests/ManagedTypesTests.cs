@@ -43,10 +43,10 @@ namespace CycloneDDS.CodeGen.Tests
             };
             
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
             
             string structDef = @"
 namespace TestManaged
@@ -127,10 +127,10 @@ using CycloneDDS.Schema;
             };
             
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
 
             string structDef = @"
 namespace TestManaged
@@ -202,9 +202,9 @@ using CycloneDDS.Schema;
             };
             
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
 
             string structDef = @"
 namespace TestManaged
@@ -275,9 +275,9 @@ using CycloneDDS.Schema;
             };
             
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
 
             string structDef = @"
 namespace TestManaged
@@ -350,9 +350,9 @@ using CycloneDDS.Schema;
             };
             
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
 
             string structDef = @"
 namespace TestManaged
@@ -442,9 +442,9 @@ using CycloneDDS.Schema;
             };
             
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
 
             string structDef = @"
 namespace TestManaged
@@ -530,9 +530,9 @@ using CycloneDDS.Schema;
             };
 
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
 
             string structDef = @"
 namespace TestManaged
@@ -664,9 +664,9 @@ using CycloneDDS.Schema;
             };
             
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
             
             string structDef = @"
 namespace TestManaged
@@ -708,10 +708,10 @@ using CycloneDDS.Schema;
             };
             
             var serializerEmitter = new SerializerEmitter();
-            var serializerCode = serializerEmitter.EmitSerializer(type, false);
+            var serializerCode = serializerEmitter.EmitSerializer(type, new GlobalTypeRegistry(), false);
             
             var deserializerEmitter = new DeserializerEmitter();
-            var deserializerCode = deserializerEmitter.EmitDeserializer(type, false);
+            var deserializerCode = deserializerEmitter.EmitDeserializer(type, new GlobalTypeRegistry(), false);
             
             string structDef = @"
 namespace TestManaged
@@ -772,3 +772,4 @@ using CycloneDDS.Schema;
         }
     }
 }
+

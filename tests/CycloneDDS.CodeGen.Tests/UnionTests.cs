@@ -48,11 +48,11 @@ namespace CycloneDDS.CodeGen.Tests
             
             // Generate Serializer code
             var emitter = new SerializerEmitter();
-            string generatedCode = emitter.EmitSerializer(type);
+            string generatedCode = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
             // Generate Deserializer code
             var demitter = new DeserializerEmitter();
-            string generatedDCode = demitter.EmitDeserializer(type);
+            string generatedDCode = demitter.EmitDeserializer(type, new GlobalTypeRegistry());
 
             // Define the struct
             string structDef = @"
@@ -246,3 +246,4 @@ using CycloneDDS.Schema;
         }
     }
 }
+

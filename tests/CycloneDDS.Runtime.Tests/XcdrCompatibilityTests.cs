@@ -46,9 +46,10 @@ namespace CycloneDDS.Runtime.Tests
             writer.WriteString(testVal);
             
             // Verify: Length (4) + "World" (5) = 9 bytes
-            // Length should be 5
+            // WITH PATCH: Length (4) + "World" (5) + NUL (1) = 10 bytes
+            // Length should be 6
             var length = MemoryMarshal.Read<int>(buffer);
-            Assert.Equal(5, length);
+            Assert.Equal(6, length);
             
             // Deserialize
             var reader = new CdrReader(buffer, CdrEncoding.Xcdr2);
@@ -87,11 +88,11 @@ namespace CycloneDDS.Runtime.Tests
             
             writer.WriteString("");
             
-            // XCDR2 Empty: Length 0
+            // XCDR2 Empty WITH PATCH: Length 1 (NUL), 1 byte NUL
             var length = MemoryMarshal.Read<int>(buffer);
-            Assert.Equal(0, length);
+            Assert.Equal(1, length);
             
-            Assert.Equal(4, writer.Position); // 4 + 0
+            Assert.Equal(5, writer.Position); // 4 + 1
             
             // Deserialize
             var reader = new CdrReader(buffer, CdrEncoding.Xcdr2);
@@ -135,8 +136,8 @@ namespace CycloneDDS.Runtime.Tests
         {
             var sizer = new CdrSizer(0, CdrEncoding.Xcdr2);
             sizer.WriteString("123"); 
-            // 4 len + 3 bytes = 7
-            Assert.Equal(7, sizer.Position);
+            // 4 len + 3 bytes + 1 NUL = 8
+            Assert.Equal(8, sizer.Position);
         }
     }
 }

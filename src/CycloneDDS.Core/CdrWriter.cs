@@ -170,7 +170,10 @@ namespace CycloneDDS.Core
             int utf8Length = System.Text.Encoding.UTF8.GetByteCount(value);
             bool useXcdr2 = isXcdr2 ?? (_encoding == CdrEncoding.Xcdr2);
             
-            if (useXcdr2)
+            // EXPERIMENTAL FIX: CycloneDDS native seems to expect NUL-terminated strings even in XCDR2
+            // causing "normalize_string: NUL check failed"
+            // So we use XCDR1 style encoding (Len+1, NUL) for everything.
+            if (false) // Disabled XCDR2 optimization (useXcdr2)
             {
                 // XCDR2: Length is byte count. NO NUL terminator.
                 WriteInt32(utf8Length);
@@ -180,7 +183,7 @@ namespace CycloneDDS.Core
             }
             else
             {
-                // XCDR1 (Legacy): Length is byte count + 1 (NUL). Includes NUL byte.
+                // XCDR1 (Legacy) OR Patched XCDR2: Length is byte count + 1 (NUL). Includes NUL byte.
                 int lengthToWrite = utf8Length + 1;
                 WriteInt32(lengthToWrite);
                 

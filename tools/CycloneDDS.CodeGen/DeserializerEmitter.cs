@@ -9,9 +9,11 @@ namespace CycloneDDS.CodeGen
     public class DeserializerEmitter
     {
         private HashSet<string> _generatedRefStructs = new HashSet<string>();
+        private GlobalTypeRegistry? _registry;
 
-        public string EmitDeserializer(TypeInfo type, bool generateUsings = true)
+        public string EmitDeserializer(TypeInfo type, GlobalTypeRegistry registry, bool generateUsings = true)
         {
+            _registry = registry;
             var sb = new StringBuilder();
             
             if (generateUsings)
@@ -394,6 +396,11 @@ namespace CycloneDDS.CodeGen
                  return $"{alignCall}view.{field.Name} = reader.{method}()";
             }
             
+            if (_registry != null && _registry.TryGetDefinition(field.TypeName, out var def) && def.TypeInfo != null && def.TypeInfo.IsEnum)
+            {
+                 return $"{alignCall}view.{field.Name} = ({field.TypeName})reader.ReadInt32()";
+            }
+            
             // Nested
             return $"{alignCall}view.{field.Name} = {field.TypeName}.Deserialize(ref reader)";
         }
@@ -656,14 +663,28 @@ namespace CycloneDDS.CodeGen
             string? readMethod = sizerMethod?.Replace("Write", "Read");
             
             string addStatement;
+            
+            bool isEnum = false;
+            if (_registry != null && _registry.TryGetDefinition(elementType, out var def))
+            {
+                if (def.TypeInfo != null && def.TypeInfo.IsEnum)
+                {
+                    isEnum = true;
+                }
+            }
+
             if (readMethod != null)
             {
                  int align = GetAlignment(elementType);
                  addStatement = $"reader.Align({align}); view.{field.Name}.Add(reader.{readMethod}());";
             }
-            else if (elementType == "string")
+            else if (elementType == "string" || elementType == "System.String")
             {
                  addStatement = $"reader.Align(4); view.{field.Name}.Add(reader.ReadString());";
+            }
+            else if (isEnum)
+            {
+                 addStatement = $"reader.Align(4); view.{field.Name}.Add(({elementType})reader.ReadInt32());";
             }
             else
             {
@@ -681,7 +702,7 @@ namespace CycloneDDS.CodeGen
 
         private bool IsPrimitive(string typeName)
         {
-            return TypeMapper.IsBlittable(typeName);
+            return TypeMapper.IsPrimitive(typeName);
         }
 
         private int GetFieldId(FieldInfo field, int defaultId)

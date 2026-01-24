@@ -26,7 +26,7 @@ namespace CycloneDDS.CodeGen.Tests
 namespace Perf {
   public partial struct BigSeq { public BoundedSeq<int> Items; }
 }";
-            code += emitter.EmitSerializer(type, false) + "\n" + demitter.EmitDeserializer(type, false) + "\n" +
+            code += emitter.EmitSerializer(type, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(type, new GlobalTypeRegistry(), false) + "\n" +
                     GenerateTestHelper("Perf", "BigSeq");
 
             var assembly = CompileToAssembly("PerfSeq", code);
@@ -38,6 +38,10 @@ namespace Perf {
             for(int i=0; i<count; i++) seq.Add(i);
             SetField(inst, "Items", seq);
             
+            // Debug check
+            var fieldVal = (BoundedSeq<int>)GetField(inst, "Items");
+            if (fieldVal.Count != count) throw new Exception($"Setup failed: count is {fieldVal.Count}");
+
             var helper = assembly.GetType("Perf.TestHelper");
             var methodName = "SerializeWithBuffer"; // cache method info
             var method = helper.GetMethod(methodName);
@@ -55,6 +59,11 @@ namespace Perf {
             method.Invoke(null, new object[] { inst, buffer });
             sw.Stop();
             
+            if (buffer.WrittenCount < 40000) 
+            {
+               throw new Exception($"Serialized size is too small: {buffer.WrittenCount}");
+            }
+
             // Correctness
             var result = helper.GetMethod("DeserializeFrombufferToOwned").Invoke(null, new object[] { (ReadOnlyMemory<byte>)buffer.WrittenMemory });
             var resSeq = (BoundedSeq<int>)GetField(result, "Items");
@@ -82,8 +91,8 @@ namespace Perf {
   public partial struct Inner { public int X; }
   public partial struct Outer { public Inner In; }
 }";
-             code += emitter.EmitSerializer(inner, false) + "\n" + demitter.EmitDeserializer(inner, false) + "\n" +
-                     emitter.EmitSerializer(outer, false) + "\n" + demitter.EmitDeserializer(outer, false) + "\n" +
+             code += emitter.EmitSerializer(inner, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(inner, new GlobalTypeRegistry(), false) + "\n" +
+                     emitter.EmitSerializer(outer, new GlobalTypeRegistry(), false) + "\n" + demitter.EmitDeserializer(outer, new GlobalTypeRegistry(), false) + "\n" +
                      GenerateTestHelper("Perf", "Outer");
 
              var assembly = CompileToAssembly("PerfStress", code);
@@ -116,3 +125,4 @@ namespace Perf {
         }
     }
 }
+

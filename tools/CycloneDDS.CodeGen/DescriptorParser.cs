@@ -86,7 +86,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("typedef unsigned short uint16_t;");
             sb.AppendLine("typedef unsigned char uint8_t;");
             sb.AppendLine("typedef char int8_t;");
-            // sb.AppendLine("typedef _Bool bool;");
+            // sb.AppendLine("typedef unsigned char bool;"); // Causes redeclaration error in CppAst
             sb.AppendLine("typedef struct dds_topic_descriptor { void* m; } dds_topic_descriptor_t;");
             
             sb.AppendLine("#define offsetof(t,d) 195948557");
@@ -129,6 +129,16 @@ namespace CycloneDDS.CodeGen
             // Extract structs from header content via Regex to bypass CppAst parsing issues with extern "C" etc
             if (!string.IsNullOrEmpty(hContent))
             {
+                 var enumRegex = new System.Text.RegularExpressions.Regex(
+                     @"typedef\s+enum\s+(\w+)\s*\{(.*?)\}\s*\1\s*;", 
+                     System.Text.RegularExpressions.RegexOptions.Singleline);
+                 foreach(System.Text.RegularExpressions.Match m in enumRegex.Matches(hContent))
+                 {
+                     string sName = m.Groups[1].Value;
+                     string sBody = m.Groups[2].Value;
+                     sb.AppendLine($"enum {sName} {{ {sBody} }};");
+                 }
+
                  var structRegex = new System.Text.RegularExpressions.Regex(
                      @"typedef\s+struct\s+(\w+)\s*\{(.*?)\}\s*\1\s*;", 
                      System.Text.RegularExpressions.RegexOptions.Singleline);
@@ -148,7 +158,7 @@ namespace CycloneDDS.CodeGen
             {
                 foreach (var message in compilation.Diagnostics.Messages)
                 {
-                    Console.WriteLine($"Diag: {message}");
+                    Console.Error.WriteLine($"Diag: {message}");
                 }
             }
             var metadata = new DescriptorMetadata();
@@ -172,6 +182,16 @@ namespace CycloneDDS.CodeGen
                     if (metadata.KeyDescriptors.Length == 0)
                     {
                         metadata.KeyDescriptors = ParseKeyDescriptors(field.InitExpression);
+                        
+                        // Fallback: If not struct descriptors, try parsing as simple uint array (Legacy/Test support)
+                        if (metadata.KeyDescriptors.Length == 0)
+                        {
+                            var simpleKeys = ParseArrayInitializer(field.InitExpression, isOps: false);
+                            if (simpleKeys.Length > 0)
+                            {
+                                metadata.KeysValues = simpleKeys;
+                            }
+                        }
                     }
                 }
             }

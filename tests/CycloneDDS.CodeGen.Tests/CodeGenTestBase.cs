@@ -122,7 +122,8 @@ namespace {namespaceName}
         
         public static object DeserializeFrombufferToOwned(System.ReadOnlyMemory<byte> buffer)
         {{
-             var reader = new CycloneDDS.Core.CdrReader(buffer.Span);
+             // Force Xcdr1 because CdrReader auto-detect might misinterpret raw payload as Xcdr2 if it starts with bytes that look like XCDR2 header
+             var reader = new CycloneDDS.Core.CdrReader(buffer.Span, CycloneDDS.Core.CdrEncoding.Xcdr1);
              var val = {typeName}.Deserialize(ref reader);
              return val.ToOwned();
         }}
@@ -132,3 +133,4 @@ namespace {namespaceName}
         }
     }
 }
+

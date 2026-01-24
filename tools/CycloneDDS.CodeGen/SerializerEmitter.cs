@@ -8,8 +8,11 @@ namespace CycloneDDS.CodeGen
 {
     public class SerializerEmitter
     {
-        public string EmitSerializer(TypeInfo type, bool generateUsings = true)
+        private GlobalTypeRegistry? _registry;
+
+        public string EmitSerializer(TypeInfo type, GlobalTypeRegistry registry, bool generateUsings = true)
         {
+            _registry = registry;
             var sb = new StringBuilder();
             
             // Using directives
@@ -439,6 +442,12 @@ namespace CycloneDDS.CodeGen
                 int align = GetAlignment(field.TypeName);
                 return $"sizer.Align({align}); sizer.{method}({dummy})";
             }
+
+            if (_registry != null && _registry.TryGetDefinition(field.TypeName, out var def) && def.TypeInfo != null && def.TypeInfo.IsEnum)
+            {
+                 return $"sizer.Align(4); sizer.WriteInt32(0)";
+            }
+
             else
             {
                 // Nested struct
@@ -487,6 +496,12 @@ namespace CycloneDDS.CodeGen
                 int align = GetAlignment(field.TypeName);
                 return $"writer.Align({align}); writer.{method}({fieldAccess})";
             }
+            
+            if (_registry != null && _registry.TryGetDefinition(field.TypeName, out var def) && def.TypeInfo != null && def.TypeInfo.IsEnum)
+            {
+                 return $"writer.Align(4); writer.WriteInt32((int){fieldAccess})";
+            }
+            
             else
             {
                 return $"{fieldAccess}.Serialize(ref writer)";
@@ -799,14 +814,24 @@ namespace CycloneDDS.CodeGen
              string? writerMethod = TypeMapper.GetWriterMethod(elementType);
              int align = GetAlignment(elementType);
              
+             bool isEnum = false;
+             if (_registry != null && _registry.TryGetDefinition(elementType, out var def))
+             {
+                if (def.TypeInfo != null && def.TypeInfo.IsEnum) isEnum = true;
+             }
+
              string loopBody;
              if (writerMethod != null)
              {
                  loopBody = $"writer.Align({align}); writer.{writerMethod}(item);";
              }
-             else if (elementType == "string")
+             else if (elementType == "string" || elementType == "System.String")
              {
                  loopBody = $"writer.Align(4); writer.WriteString(item, writer.IsXcdr2);";
+             }
+             else if (isEnum)
+             {
+                 loopBody = $"writer.Align(4); writer.WriteInt32((int)item);";
              }
              else
              {
@@ -826,6 +851,12 @@ namespace CycloneDDS.CodeGen
             string elementType = ExtractGenericType(field.TypeName);
             
             string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
+
+            bool isEnum = false;
+            if (_registry != null && _registry.TryGetDefinition(elementType, out var def))
+            {
+                if (def.TypeInfo != null && def.TypeInfo.IsEnum) isEnum = true;
+            }
             
             if (sizerMethod != null)
             {
@@ -840,12 +871,21 @@ namespace CycloneDDS.CodeGen
             }}";
             }
             
-            if (elementType == "string")
+            if (elementType == "string" || elementType == "System.String")
             {
                 return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
             foreach (var item in {fieldAccess})
             {{
                 sizer.Align(4); sizer.WriteString(item, isXcdr2);
+            }}";
+            }
+
+            if (isEnum)
+            {
+                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
+            foreach (var item in {fieldAccess})
+            {{
+                sizer.Align(4); sizer.WriteInt32(0);
             }}";
             }
             
