@@ -51,6 +51,29 @@ internal class TestScenarios
                 Enabled = false
             },
 
+            // New Array Tests
+            new TestScenario
+            {
+                TopicName = "ArrayInt32Topic",
+                Description = "Fixed-size int32 array",
+                Seeds = new[] { 1, 2, 3 },
+                Enabled = true
+            },
+            new TestScenario
+            {
+                TopicName = "ArrayFloat64Topic",
+                Description = "Fixed-size float64 array",
+                Seeds = new[] { 1, 2, 3 },
+                Enabled = true
+            },
+            new TestScenario
+            {
+                TopicName = "ArrayStringTopic",
+                Description = "Fixed-size string array",
+                Seeds = new[] { 1, 2, 3 },
+                Enabled = true
+            },
+
             // Advanced types - handlers TODO
             new TestScenario
             {

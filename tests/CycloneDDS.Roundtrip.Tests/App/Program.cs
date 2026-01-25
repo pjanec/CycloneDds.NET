@@ -7,6 +7,7 @@ using System.Diagnostics;
 using CycloneDDS.Core;
 using CycloneDDS.Runtime;
 using RoundtripTests;
+using AtomicTests;
 
 namespace CycloneDDS.Roundtrip.App;
 
@@ -117,6 +118,9 @@ internal class Program
             "CompositeKey" => RunTypedScenario<CompositeKey>(scenario),
             "NestedKeyTopic" => RunTypedScenario<NestedKeyTopic>(scenario),
             "SequenceTopic" => RunTypedScenario<SequenceTopic>(scenario),
+            "ArrayInt32Topic" => RunTypedScenario<ArrayInt32Topic>(scenario),
+            "ArrayFloat64Topic" => RunTypedScenario<ArrayFloat64Topic>(scenario),
+            "ArrayStringTopic" => RunTypedScenario<ArrayStringTopic>(scenario),
             _ => RunUnimplementedScenario(scenario)
         };
     }

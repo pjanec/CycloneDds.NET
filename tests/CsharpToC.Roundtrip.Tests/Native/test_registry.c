@@ -52,6 +52,17 @@ extern const topic_handler_t string_bounded_256_topic_handler;
 extern const topic_handler_t string_unbounded_topic_appendable_handler;
 extern const topic_handler_t string_bounded_256_topic_appendable_handler;
 
+extern const topic_handler_t enum_topic_handler;
+extern const topic_handler_t color_enum_topic_handler;
+extern const topic_handler_t enum_topic_appendable_handler;
+extern const topic_handler_t color_enum_topic_appendable_handler;
+
+extern const topic_handler_t array_float64_topic_handler;
+extern const topic_handler_t array_string_topic_handler;
+extern const topic_handler_t array_int32_topic_appendable_handler;
+extern const topic_handler_t array_float64_topic_appendable_handler;
+extern const topic_handler_t array_string_topic_appendable_handler;
+
 static const topic_handler_t* handlers[] = {
     &boolean_topic_handler,
     &int32_topic_handler,
@@ -86,6 +97,15 @@ static const topic_handler_t* handlers[] = {
     &string_bounded_256_topic_handler,
     &string_unbounded_topic_appendable_handler,
     &string_bounded_256_topic_appendable_handler,
+    &enum_topic_handler,
+    &color_enum_topic_handler,
+    &enum_topic_appendable_handler,
+    &color_enum_topic_appendable_handler,
+    &array_float64_topic_handler,
+    &array_string_topic_handler,
+    &array_int32_topic_appendable_handler,
+    &array_float64_topic_appendable_handler,
+    &array_string_topic_appendable_handler,
     NULL
 };
 

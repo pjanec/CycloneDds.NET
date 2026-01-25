@@ -71,7 +71,9 @@ namespace CsharpToC.Roundtrip.Tests
                 await TestStringBounded256();
 
                 await TestStringBounded32();
-                // await TestArrayInt32(); // Skipped for now
+                await TestArrayInt32();
+                await TestArrayFloat64();
+                await TestArrayString();
                 await TestSequenceInt32();
                 await TestUnionLongDisc();
 
@@ -91,7 +93,15 @@ namespace CsharpToC.Roundtrip.Tests
                 await TestStringUnboundedAppendable();
                 await TestStringBounded256Appendable();
                 
+                await TestEnum();
+                await TestColorEnum();
+                await TestEnumAppendable();
+                await TestColorEnumAppendable();
+
                 await TestStringBounded32Appendable();
+                await TestArrayInt32Appendable();
+                await TestArrayFloat64Appendable();
+                await TestArrayStringAppendable();
                 await TestSequenceInt32Appendable();
                 await TestUnionLongDiscAppendable();
 
@@ -337,22 +347,72 @@ namespace CsharpToC.Roundtrip.Tests
 
         static async Task TestArrayInt32()
         {
-            /*
             await RunRoundtrip<ArrayInt32Topic>(
                 "AtomicTests::ArrayInt32Topic", 
                 400,
                 (s) => { 
                     var msg = new ArrayInt32Topic();
                     msg.Id = s; 
-                    // msg.Values = ???
+                    msg.Values = new int[5]; // Native uses 5
+                    for(int i=0; i<5; i++) msg.Values[i] = s + i;
                     return msg;
                 },
                 (msg, s) => {
-                    return (msg.Id == s);
+                    if (msg.Id != s) return false;
+                    if (msg.Values.Length != 5) return false;
+                    for(int i=0; i<5; i++) {
+                        if (msg.Values[i] != s + i) return false;
+                    }
+                    return true;
                 }
             );
-            */
-            Console.WriteLine("SKIPPED: TestArrayInt32");
+        }
+
+        static async Task TestArrayFloat64()
+        {
+            await RunRoundtrip<ArrayFloat64Topic>(
+                "AtomicTests::ArrayFloat64Topic", 
+                410,
+                (s) => { 
+                    var msg = new ArrayFloat64Topic();
+                    msg.Id = s; 
+                    msg.Values = new double[5];
+                    for(int i=0; i<5; i++) msg.Values[i] = (double)(s + i) * 1.1;
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Values.Length != 5) return false;
+                    for(int i=0; i<5; i++) {
+                         double expected = (double)(s + i) * 1.1;
+                         if (Math.Abs(msg.Values[i] - expected) > 0.0001) return false;
+                    }
+                    return true;
+                }
+            );
+        }
+
+        static async Task TestArrayString()
+        {
+             await RunRoundtrip<ArrayStringTopic>(
+                "AtomicTests::ArrayStringTopic", 
+                420,
+                (s) => { 
+                    var msg = new ArrayStringTopic();
+                    msg.Id = s; 
+                    msg.Names = new string[3];
+                    for(int i=0; i<3; i++) msg.Names[i] = $"S_{s}_{i}";
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Names.Length != 3) return false;
+                    for(int i=0; i<3; i++) {
+                         if (msg.Names[i] != $"S_{s}_{i}") return false;
+                    }
+                    return true;
+                }
+            );
         }
 
         static async Task TestSequenceInt32()
@@ -507,6 +567,76 @@ namespace CsharpToC.Roundtrip.Tests
             );
         }
 
+        static async Task TestArrayInt32Appendable()
+        {
+            await RunRoundtrip<ArrayInt32TopicAppendable>(
+                "AtomicTests::ArrayInt32TopicAppendable", 
+                1400,
+                (s) => { 
+                    var msg = new ArrayInt32TopicAppendable();
+                    msg.Id = s; 
+                    msg.Values = new int[5]; // Native uses 5
+                    for(int i=0; i<5; i++) msg.Values[i] = s + i;
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Values.Length != 5) return false;
+                    for(int i=0; i<5; i++) {
+                        if (msg.Values[i] != s + i) return false;
+                    }
+                    return true;
+                }
+            );
+        }
+
+        static async Task TestArrayFloat64Appendable()
+        {
+            await RunRoundtrip<ArrayFloat64TopicAppendable>(
+                "AtomicTests::ArrayFloat64TopicAppendable", 
+                1410,
+                (s) => { 
+                    var msg = new ArrayFloat64TopicAppendable();
+                    msg.Id = s; 
+                    msg.Values = new double[5];
+                    for(int i=0; i<5; i++) msg.Values[i] = (double)(s + i) * 1.1;
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Values.Length != 5) return false;
+                    for(int i=0; i<5; i++) {
+                         double expected = (double)(s + i) * 1.1;
+                         if (Math.Abs(msg.Values[i] - expected) > 0.0001) return false;
+                    }
+                    return true;
+                }
+            );
+        }
+
+        static async Task TestArrayStringAppendable()
+        {
+             await RunRoundtrip<ArrayStringTopicAppendable>(
+                "AtomicTests::ArrayStringTopicAppendable", 
+                1420,
+                (s) => { 
+                    var msg = new ArrayStringTopicAppendable();
+                    msg.Id = s; 
+                    msg.Names = new string[3];
+                    for(int i=0; i<3; i++) msg.Names[i] = $"S_{s}_{i}";
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Names.Length != 3) return false;
+                    for(int i=0; i<3; i++) {
+                         if (msg.Names[i] != $"S_{s}_{i}") return false;
+                    }
+                    return true;
+                }
+            );
+        }
+
         static async Task TestSequenceInt32Appendable()
         {
             await RunRoundtrip<SequenceInt32TopicAppendable>(
@@ -626,6 +756,66 @@ namespace CsharpToC.Roundtrip.Tests
                     return msg; 
                 },
                 (msg, s) => msg.Id == s && msg.Value == $"StrBound256_{s}"
+            );
+        }
+
+        static async Task TestEnum()
+        {
+            await RunRoundtrip<EnumTopic>(
+                "AtomicTests::EnumTopic", 
+                2300,
+                (s) => { 
+                    var msg = new EnumTopic(); 
+                    msg.Id = s; 
+                    msg.Value = (SimpleEnum)(s % 3); 
+                    return msg; 
+                },
+                (msg, s) => msg.Id == s && msg.Value == (SimpleEnum)(s % 3)
+            );
+        }
+
+        static async Task TestColorEnum()
+        {
+            await RunRoundtrip<ColorEnumTopic>(
+                "AtomicTests::ColorEnumTopic", 
+                2400,
+                (s) => { 
+                    var msg = new ColorEnumTopic(); 
+                    msg.Id = s; 
+                    msg.Color = (ColorEnum)(s % 6); 
+                    return msg; 
+                },
+                (msg, s) => msg.Id == s && msg.Color == (ColorEnum)(s % 6)
+            );
+        }
+
+        static async Task TestEnumAppendable()
+        {
+            await RunRoundtrip<EnumTopicAppendable>(
+                "AtomicTests::EnumTopicAppendable", 
+                2500,
+                (s) => { 
+                    var msg = new EnumTopicAppendable(); 
+                    msg.Id = s; 
+                    msg.Value = (SimpleEnum)(s % 3); 
+                    return msg; 
+                },
+                (msg, s) => msg.Id == s && msg.Value == (SimpleEnum)(s % 3)
+            );
+        }
+
+        static async Task TestColorEnumAppendable()
+        {
+            await RunRoundtrip<ColorEnumTopicAppendable>(
+                "AtomicTests::ColorEnumTopicAppendable", 
+                2600,
+                (s) => { 
+                    var msg = new ColorEnumTopicAppendable(); 
+                    msg.Id = s; 
+                    msg.Color = (ColorEnum)(s % 6); 
+                    return msg; 
+                },
+                (msg, s) => msg.Id == s && msg.Color == (ColorEnum)(s % 6)
             );
         }
     }

@@ -4,6 +4,8 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using RoundtripTests;
+using AtomicTests;
+using CycloneDDS.Schema;
 
 namespace CycloneDDS.Roundtrip.App;
 
@@ -34,10 +36,28 @@ internal static class DataGenerator
             obj = (T)(object)FillCompositeKey(seed);
             return;
         }
-        if (typeof(T) == typeof(NestedKeyTopic))
+        if (typeof(T) == typeof(RoundtripTests.NestedKeyTopic))
         {
             Console.WriteLine("[DataGenerator] Dispatching to FillNestedKeyTopic");
             obj = (T)(object)FillNestedKeyTopic(seed);
+            return;
+        }
+        if (typeof(T) == typeof(AtomicTests.ArrayInt32Topic))
+        {
+            Console.WriteLine("[DataGenerator] Dispatching to FillArrayInt32Topic");
+            obj = (T)(object)FillArrayInt32Topic(seed);
+            return;
+        }
+        if (typeof(T) == typeof(AtomicTests.ArrayFloat64Topic))
+        {
+            Console.WriteLine("[DataGenerator] Dispatching to FillArrayFloat64Topic");
+            obj = (T)(object)FillArrayFloat64Topic(seed);
+            return;
+        }
+        if (typeof(T) == typeof(AtomicTests.ArrayStringTopic))
+        {
+            Console.WriteLine("[DataGenerator] Dispatching to FillArrayStringTopic");
+            obj = (T)(object)FillArrayStringTopic(seed);
             return;
         }
 
@@ -77,7 +97,7 @@ internal static class DataGenerator
 
         Type type = obj.GetType();
 
-        // Get all public instance properties
+        // 1. Properties
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanWrite && p.CanRead)
             .ToArray();
@@ -87,16 +107,38 @@ internal static class DataGenerator
             // Calculate offset for this property (makes fields unique)
             int offset = CalculateOffset(prop.Name, seed);
             
-            object? value = GenerateValue(prop.PropertyType, offset, depth);
+            int len = -1;
+            var attr = prop.GetCustomAttribute<ArrayLengthAttribute>();
+            if (attr != null) len = (int)attr.Length;
+
+            object? value = GenerateValue(prop.PropertyType, offset, depth, len);
             
             if (value != null)
             {
                 prop.SetValue(obj, value);
             }
         }
+
+        // 2. Fields (for structs/classes with public fields)
+        var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+        foreach (var field in fields)
+        {
+            int offset = CalculateOffset(field.Name, seed);
+            
+            int len = -1;
+            var attr = field.GetCustomAttribute<ArrayLengthAttribute>();
+            if (attr != null) len = (int)attr.Length;
+
+            object? value = GenerateValue(field.FieldType, offset, depth, len);
+            
+            if (value != null)
+            {
+                field.SetValue(obj, value);
+            }
+        }
     }
 
-    private static object? GenerateValue(Type type, int seed, int depth)
+    private static object? GenerateValue(Type type, int seed, int depth, int fixedLength = -1)
     {
         // Primitives
         if (type == typeof(bool))
@@ -145,7 +187,7 @@ internal static class DataGenerator
             if (rank == 1)
             {
                 // 1D array
-                int length = 5 + (seed % 10); // Variable length based on seed
+                int length = (fixedLength != -1) ? fixedLength : (5 + (seed % 10)); // Use fixed length if provided
                 Array array = Array.CreateInstance(elementType, length);
                 
                 for (int i = 0; i < length; i++)
@@ -411,11 +453,11 @@ internal static class DataGenerator
         };
     }
 
-    private static NestedKeyTopic FillNestedKeyTopic(int seed)
+    private static RoundtripTests.NestedKeyTopic FillNestedKeyTopic(int seed)
     {
-        return new NestedKeyTopic
+        return new RoundtripTests.NestedKeyTopic
         {
-            Location = new Location
+            Location = new RoundtripTests.Location
             {
                 Building = (int)seed,
                 Floor = (short)((seed % 10) + 1),
@@ -423,11 +465,38 @@ internal static class DataGenerator
             },
             Description = $"Room_Desc_{seed}",
             Temperature = (double)((seed + 50) * 0.5),
-            Last_updated = new Timestamp
+            Last_updated = new RoundtripTests.Timestamp
             {
                 Seconds = (long)(seed + 1000000),
                 Nanoseconds = (uint)((seed * 1000) % 1000000000)
             }
         };
+    }
+
+    private static AtomicTests.ArrayInt32Topic FillArrayInt32Topic(int seed)
+    {
+        var msg = new AtomicTests.ArrayInt32Topic();
+        msg.Id = seed;
+        msg.Values = new int[5];
+        for(int i=0; i<5; i++) msg.Values[i] = seed + i;
+        return msg;
+    }
+
+    private static AtomicTests.ArrayFloat64Topic FillArrayFloat64Topic(int seed)
+    {
+        var msg = new AtomicTests.ArrayFloat64Topic();
+        msg.Id = seed;
+        msg.Values = new double[5];
+        for(int i=0; i<5; i++) msg.Values[i] = (double)(seed + i) * 1.1;
+        return msg;
+    }
+
+    private static AtomicTests.ArrayStringTopic FillArrayStringTopic(int seed)
+    {
+        var msg = new AtomicTests.ArrayStringTopic();
+        msg.Id = seed;
+        msg.Names = new string[3];
+        for(int i=0; i<3; i++) msg.Names[i] = $"S_{seed}_{i}";
+        return msg;
     }
 }

@@ -137,18 +137,77 @@ namespace AtomicTests
         public string Value { get; set; }
     }
 
-    /*
+    public enum SimpleEnum
+    {
+        FIRST, 
+        SECOND, 
+        THIRD 
+    }
+
+    [DdsTopic("EnumTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
+    public partial struct EnumTopic
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        public SimpleEnum Value { get; set; }
+    }
+
+    public enum ColorEnum
+    {
+        RED, 
+        GREEN, 
+        BLUE, 
+        YELLOW, 
+        MAGENTA, 
+        CYAN 
+    }
+
+    [DdsTopic("ColorEnumTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
+    public partial struct ColorEnumTopic
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        public ColorEnum Color { get; set; }
+    }
+
     [DdsTopic("ArrayInt32Topic")]
     [DdsManaged]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ArrayInt32Topic
     {
         [DdsKey]
         public int Id { get; set; }
         
         [ArrayLength(5)]
-        public int[] Values { get; set; }
+        public int[] Values;
     }
-    */
+    
+    [DdsTopic("ArrayFloat64Topic")]
+    [DdsManaged]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
+    public partial struct ArrayFloat64Topic
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        
+        [ArrayLength(5)]
+        public double[] Values;
+    }
+
+    [DdsTopic("ArrayStringTopic")]
+    [DdsManaged]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
+    public partial struct ArrayStringTopic
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        
+        [ArrayLength(3)]
+        [MaxLength(16)]
+        public string[] Names;
+    }
 
     [DdsTopic("SequenceInt32Topic")]
     [DdsManaged]
@@ -328,6 +387,61 @@ namespace AtomicTests
         
         [MaxLength(256)]
         public string Value { get; set; }
+    }
+
+    [DdsTopic("EnumTopicAppendable")]
+    [DdsExtensibility(DdsExtensibilityKind.Appendable)]
+    public partial struct EnumTopicAppendable
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        public SimpleEnum Value { get; set; }
+    }
+
+    [DdsTopic("ColorEnumTopicAppendable")]
+    [DdsExtensibility(DdsExtensibilityKind.Appendable)]
+    public partial struct ColorEnumTopicAppendable
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        public ColorEnum Color { get; set; }
+    }
+
+    [DdsTopic("ArrayInt32TopicAppendable")]
+    [DdsManaged]
+    [DdsExtensibility(DdsExtensibilityKind.Appendable)]
+    public partial struct ArrayInt32TopicAppendable
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        
+        [ArrayLength(5)]
+        public int[] Values;
+    }
+
+    [DdsTopic("ArrayFloat64TopicAppendable")]
+    [DdsManaged]
+    [DdsExtensibility(DdsExtensibilityKind.Appendable)]
+    public partial struct ArrayFloat64TopicAppendable
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        
+        [ArrayLength(5)]
+        public double[] Values;
+    }
+
+    [DdsTopic("ArrayStringTopicAppendable")]
+    [DdsManaged]
+    [DdsExtensibility(DdsExtensibilityKind.Appendable)]
+    public partial struct ArrayStringTopicAppendable
+    {
+        [DdsKey]
+        public int Id { get; set; }
+        
+        [ArrayLength(3)]
+        [MaxLength(16)]
+        public string[] Names;
     }
 
     [DdsTopic("SequenceInt32TopicAppendable")]

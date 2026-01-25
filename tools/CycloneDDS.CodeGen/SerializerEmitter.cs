@@ -531,13 +531,15 @@ namespace CycloneDDS.CodeGen
         {
             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
             string elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
+            bool isFixed = field.HasAttribute("ArrayLength");
+            string lengthWrite = isFixed ? "" : "sizer.Align(4); sizer.WriteUInt32(0); // Length";
 
             if (TypeMapper.IsBlittable(elementType))
             {
                 int align = GetAlignment(elementType); string alignA = align.ToString();
                 int size = TypeMapper.GetSize(elementType);
                 
-                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Length
+                return $@"{lengthWrite}
             if ({fieldAccess}.Length > 0)
             {{
                 sizer.Align({align});
@@ -546,30 +548,30 @@ namespace CycloneDDS.CodeGen
             }
             
             // Loop code similar to sequence
+            if (elementType == "string" || elementType == "String" || elementType == "System.String") 
+            {
+                return $@"{lengthWrite}
+            for (int i = 0; i < {fieldAccess}.Length; i++)
+            {{
+                sizer.Align(4); sizer.WriteString({fieldAccess}[i], isXcdr2);
+            }}";
+            }
+
             string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
             if (sizerMethod != null)
             {
                 string dummy = "0";
                 if (sizerMethod == "WriteBool") dummy = "false";
                 int align = GetAlignment(elementType); string alignA = align.ToString();
-                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Length
+                return $@"{lengthWrite}
                 for (int i = 0; i < {fieldAccess}.Length; i++)
                 {{
                     sizer.Align({align}); sizer.{sizerMethod}({dummy});
                 }}";
             }
-            
-            if (elementType == "string") 
-            {
-                return $@"sizer.Align(4); sizer.WriteUInt32(0);
-            for (int i = 0; i < {fieldAccess}.Length; i++)
-            {{
-                sizer.Align(4); sizer.WriteString({fieldAccess}[i], isXcdr2);
-            }}";
-            }
              
             // Nested structs
-            return $@"sizer.Align(4); sizer.WriteUInt32(0);
+            return $@"{lengthWrite}
             for (int i = 0; i < {fieldAccess}.Length; i++)
             {{
                 sizer.Skip({fieldAccess}[i].GetSerializedSize(sizer.Position, encoding));
@@ -580,17 +582,19 @@ namespace CycloneDDS.CodeGen
         {
             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
             string elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
+            bool isFixed = field.HasAttribute("ArrayLength");
+            string lengthWrite = isFixed ? "" : $@"writer.Align(4);
+            writer.WriteUInt32((uint){fieldAccess}.Length);";
 
             if (TypeMapper.IsBlittable(elementType))
             {
                 int align = GetAlignment(elementType);
                 string alignA = align == 8 ? "writer.IsXcdr2 ? 4 : 8" : align.ToString();
-                return $@"writer.Align(4);
-            writer.WriteUInt32((uint){fieldAccess}.Length);
+                return $@"{lengthWrite}
             if ({fieldAccess}.Length > 0)
             {{
                 writer.Align({alignA});
-                var span = {fieldAccess}.AsSpan();
+                var span = new System.ReadOnlySpan<{elementType}>({fieldAccess});
                 var byteSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(span);
                 writer.WriteBytes(byteSpan);
             }}";
@@ -601,15 +605,14 @@ namespace CycloneDDS.CodeGen
             int alignEl = GetAlignment(elementType); string alignElA = alignEl == 8 ? "writer.IsXcdr2 ? 4 : 8" : alignEl.ToString();
             string loopBody;
 
-            if (writerMethod != null)
-                loopBody = $"writer.Align({alignElA}); writer.{writerMethod}({fieldAccess}[i]);";
-            else if (elementType == "string")
+            if (elementType == "string" || elementType == "String" || elementType == "System.String")
                 loopBody = $"writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);";
+            else if (writerMethod != null)
+                loopBody = $"writer.Align({alignElA}); writer.{writerMethod}({fieldAccess}[i]);";
             else
                 loopBody = $"var item = {fieldAccess}[i]; item.Serialize(ref writer);";
 
-            return $@"writer.Align(4); 
-            writer.WriteUInt32((uint){fieldAccess}.Length);
+            return $@"{lengthWrite}
             for (int i = 0; i < {fieldAccess}.Length; i++)
             {{
                 {loopBody}
@@ -623,6 +626,17 @@ namespace CycloneDDS.CodeGen
             
             // For primitive sequences, we can loop calling WritePrimitive(0)
             // This handles alignment correctly via CdrSizer methods.
+            
+            // If element is string
+            if (elementType == "string" || elementType == "String" || elementType == "System.String") 
+            {
+                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
+            for (int i = 0; i < {fieldAccess}.Count; i++)
+            {{
+                sizer.Align(4); sizer.WriteString({fieldAccess}[i], isXcdr2);
+            }}";
+            }
+
             string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
             
             if (sizerMethod != null)
@@ -635,17 +649,6 @@ namespace CycloneDDS.CodeGen
             for (int i = 0; i < {fieldAccess}.Count; i++)
             {{
                 sizer.Align({align}); sizer.{sizerMethod}({dummy});
-            }}";
-            }
-            
-            // For nested structs or strings in sequence
-            // If element is string
-            if (elementType == "string") 
-            {
-                return $@"sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
-            for (int i = 0; i < {fieldAccess}.Count; i++)
-            {{
-                sizer.Align(4); sizer.WriteString({fieldAccess}[i], isXcdr2);
             }}";
             }
              
@@ -662,8 +665,18 @@ namespace CycloneDDS.CodeGen
             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
             string elementType = ExtractSequenceElementType(field.TypeName);
             
+            if (elementType == "string" || elementType == "String" || elementType == "System.String")
+            {
+                return $@"writer.Align(4); 
+            writer.WriteUInt32((uint){fieldAccess}.Count);
+            for (int i = 0; i < {fieldAccess}.Count; i++)
+            {{
+                writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);
+            }}";
+            }
+            
             // OPTIMIZATION for BoundedSeq primitives
-            if (IsPrimitive(elementType))
+            if (TypeMapper.IsBlittable(elementType))
             {
                  int alignP = GetAlignment(elementType);
                  string alignAP = alignP == 8 ? "writer.IsXcdr2 ? 4 : 8" : alignP.ToString();

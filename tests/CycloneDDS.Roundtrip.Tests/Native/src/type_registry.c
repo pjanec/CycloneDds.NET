@@ -34,6 +34,27 @@ extern const dds_topic_descriptor_t* descriptor_SequenceTopic();
 extern void fill_SequenceTopic(void* sample, int seed);
 extern bool compare_SequenceTopic(const void* a, const void* b);
 
+// ArrayInt32Topic
+extern void* alloc_ArrayInt32Topic();
+extern void free_ArrayInt32Topic(void* sample);
+extern const dds_topic_descriptor_t* descriptor_ArrayInt32Topic();
+extern void fill_ArrayInt32Topic(void* sample, int seed);
+extern bool compare_ArrayInt32Topic(const void* a, const void* b);
+
+// ArrayFloat64Topic
+extern void* alloc_ArrayFloat64Topic();
+extern void free_ArrayFloat64Topic(void* sample);
+extern const dds_topic_descriptor_t* descriptor_ArrayFloat64Topic();
+extern void fill_ArrayFloat64Topic(void* sample, int seed);
+extern bool compare_ArrayFloat64Topic(const void* a, const void* b);
+
+// ArrayStringTopic
+extern void* alloc_ArrayStringTopic();
+extern void free_ArrayStringTopic(void* sample);
+extern const dds_topic_descriptor_t* descriptor_ArrayStringTopic();
+extern void fill_ArrayStringTopic(void* sample, int seed);
+extern bool compare_ArrayStringTopic(const void* a, const void* b);
+
 // Add more as implemented...
 
 // ============================================================================
@@ -72,6 +93,30 @@ static const type_handler_t registry[] = {
         .descriptor_fn = descriptor_SequenceTopic,
         .fill_fn = fill_SequenceTopic,
         .compare_fn = compare_SequenceTopic
+    },
+    {
+        .topic_name = "ArrayInt32Topic",
+        .alloc_fn = alloc_ArrayInt32Topic,
+        .free_fn = free_ArrayInt32Topic,
+        .descriptor_fn = descriptor_ArrayInt32Topic,
+        .fill_fn = fill_ArrayInt32Topic,
+        .compare_fn = compare_ArrayInt32Topic
+    },
+    {
+        .topic_name = "ArrayFloat64Topic",
+        .alloc_fn = alloc_ArrayFloat64Topic,
+        .free_fn = free_ArrayFloat64Topic,
+        .descriptor_fn = descriptor_ArrayFloat64Topic,
+        .fill_fn = fill_ArrayFloat64Topic,
+        .compare_fn = compare_ArrayFloat64Topic
+    },
+    {
+        .topic_name = "ArrayStringTopic",
+        .alloc_fn = alloc_ArrayStringTopic,
+        .free_fn = free_ArrayStringTopic,
+        .descriptor_fn = descriptor_ArrayStringTopic,
+        .fill_fn = fill_ArrayStringTopic,
+        .compare_fn = compare_ArrayStringTopic
     },
     
     // Sentinel (end of table)

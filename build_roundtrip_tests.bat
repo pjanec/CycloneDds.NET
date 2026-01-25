@@ -119,20 +119,12 @@ echo.
 echo [Step 3/4] Building C# Application...
 echo.
 
-IF NOT EXIST "%APP_DIR%" (
-    echo [ERROR] App directory not found: %APP_DIR%
-    echo [INFO] Skipping C# build (framework incomplete)
-    goto :DEPLOY
-)
 
-IF NOT EXIST "%APP_DIR%\CycloneDDS.Roundtrip.App.csproj" (
-    echo [INFO] C# project not yet created
-    echo [INFO] Skipping C# build (will be added in next phase)
-    goto :DEPLOY
-)
+echo.
 
 echo [C#] Restoring packages...
 dotnet restore "%APP_DIR%\CycloneDDS.Roundtrip.App.csproj"
+
 
 IF ERRORLEVEL 1 (
     echo.

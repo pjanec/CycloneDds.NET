@@ -430,7 +430,7 @@ namespace CycloneDDS.CodeGen
             }}";
              }
              
-             if (elementType == "string")
+             if (elementType == "string" || elementType == "String" || elementType == "System.String")
              {
                  return $@"reader.Align(4);
             int length{field.Name} = (int)reader.ReadUInt32();
@@ -464,20 +464,8 @@ namespace CycloneDDS.CodeGen
             string fieldAccess = $"view.{ToPascalCase(field.Name)}"; // ToPascalCase added
 
             string elem = ExtractSequenceElementType(field.TypeName);
-            if (IsPrimitive(elem))
-            {
-                int elemSize = GetSize(elem);
-                return $@"reader.Align(4);
-            uint {field.Name}_len = reader.ReadUInt32();
-            {boundsCheck}
-            reader.Align({(GetAlignment(elem) == 8 ? "reader.IsXcdr2 ? 4 : 8" : GetAlignment(elem).ToString())});
-            {{
-                var span = MemoryMarshal.Cast<byte, {elem}>(reader.ReadFixedBytes((int){field.Name}_len * {elemSize}));
-                {fieldAccess} = new BoundedSeq<{elem}>(new System.Collections.Generic.List<{elem}>(span.ToArray()));
-            }}";
-            }
             
-            if (elem == "string")
+            if (elem == "string" || elem == "String" || elem == "System.String")
             {
                 return $@"reader.Align(4);
             uint {field.Name}_len = reader.ReadUInt32();
@@ -489,6 +477,19 @@ namespace CycloneDDS.CodeGen
                 list.Add(Encoding.UTF8.GetString(reader.ReadStringBytes().ToArray()));
             }}
             {fieldAccess} = new BoundedSeq<string>(list);";
+            }
+
+            if (TypeMapper.IsBlittable(elem))
+            {
+                int elemSize = GetSize(elem);
+                return $@"reader.Align(4);
+            uint {field.Name}_len = reader.ReadUInt32();
+            {boundsCheck}
+            reader.Align({(GetAlignment(elem) == 8 ? "reader.IsXcdr2 ? 4 : 8" : GetAlignment(elem).ToString())});
+            {{
+                var span = MemoryMarshal.Cast<byte, {elem}>(reader.ReadFixedBytes((int){field.Name}_len * {elemSize}));
+                {fieldAccess} = new BoundedSeq<{elem}>(new System.Collections.Generic.List<{elem}>(span.ToArray()));
+            }}";
             }
 
             string itemType = elem; 

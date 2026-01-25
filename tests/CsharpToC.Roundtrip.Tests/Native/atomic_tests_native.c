@@ -260,6 +260,42 @@ static int validate_StringBounded256Topic(void* data, int seed) {
 DEFINE_HANDLER(StringBounded256Topic, string_bounded_256_topic);
 
 // ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+// --- EnumTopic ---
+static void generate_EnumTopic(void* data, int seed) {
+    AtomicTests_EnumTopic* msg = (AtomicTests_EnumTopic*)data;
+    msg->id = seed;
+    msg->value = (AtomicTests_SimpleEnum)(seed % 3);
+}
+
+static int validate_EnumTopic(void* data, int seed) {
+    AtomicTests_EnumTopic* msg = (AtomicTests_EnumTopic*)data;
+    if (msg->id != seed) return -1;
+    AtomicTests_SimpleEnum expected = (AtomicTests_SimpleEnum)(seed % 3);
+    if (msg->value != expected) return -1;
+    return 0;
+}
+DEFINE_HANDLER(EnumTopic, enum_topic);
+
+// --- ColorEnumTopic ---
+static void generate_ColorEnumTopic(void* data, int seed) {
+    AtomicTests_ColorEnumTopic* msg = (AtomicTests_ColorEnumTopic*)data;
+    msg->id = seed;
+    msg->color = (AtomicTests_ColorEnum)(seed % 6);
+}
+
+static int validate_ColorEnumTopic(void* data, int seed) {
+    AtomicTests_ColorEnumTopic* msg = (AtomicTests_ColorEnumTopic*)data;
+    if (msg->id != seed) return -1;
+    AtomicTests_ColorEnum expected = (AtomicTests_ColorEnum)(seed % 6);
+    if (msg->color != expected) return -1;
+    return 0;
+}
+DEFINE_HANDLER(ColorEnumTopic, color_enum_topic);
+
+// ----------------------------------------------------------------------------
 // Arrays
 // ----------------------------------------------------------------------------
 
@@ -281,6 +317,109 @@ static int validate_ArrayInt32Topic(void* data, int seed) {
     return 0;
 }
 DEFINE_HANDLER(ArrayInt32Topic, array_int32_topic);
+
+// --- ArrayFloat64Topic ---
+static void generate_ArrayFloat64Topic(void* data, int seed) {
+    AtomicTests_ArrayFloat64Topic* msg = (AtomicTests_ArrayFloat64Topic*)data;
+    msg->id = seed;
+    for(int i=0; i<5; i++) {
+        msg->values[i] = (double)(seed + i) * 1.1;
+    }
+}
+
+static int validate_ArrayFloat64Topic(void* data, int seed) {
+    AtomicTests_ArrayFloat64Topic* msg = (AtomicTests_ArrayFloat64Topic*)data;
+    if (msg->id != seed) return -1;
+    for(int i=0; i<5; i++) {
+        double expected = (double)(seed + i) * 1.1;
+        if (fabs(msg->values[i] - expected) > 0.0001) return -1;
+    }
+    return 0;
+}
+DEFINE_HANDLER(ArrayFloat64Topic, array_float64_topic);
+
+// --- ArrayStringTopic ---
+static void generate_ArrayStringTopic(void* data, int seed) {
+    AtomicTests_ArrayStringTopic* msg = (AtomicTests_ArrayStringTopic*)data;
+    msg->id = seed;
+    for(int i=0; i<3; i++) {
+        char buffer[16];
+        snprintf(buffer, 16, "S_%d_%d", seed, i);
+        strncpy(msg->names[i], buffer, 16);
+        // msg->names[i][16] = '\0'; // Implicit if declared size 17
+    }
+}
+
+static int validate_ArrayStringTopic(void* data, int seed) {
+    AtomicTests_ArrayStringTopic* msg = (AtomicTests_ArrayStringTopic*)data;
+    if (msg->id != seed) return -1;
+    for(int i=0; i<3; i++) {
+        char buffer[16];
+        snprintf(buffer, 16, "S_%d_%d", seed, i);
+        if (strncmp(msg->names[i], buffer, 16) != 0) return -1;
+    }
+    return 0;
+}
+DEFINE_HANDLER(ArrayStringTopic, array_string_topic);
+
+// --- ArrayInt32TopicAppendable ---
+static void generate_ArrayInt32TopicAppendable(void* data, int seed) {
+    AtomicTests_ArrayInt32TopicAppendable* msg = (AtomicTests_ArrayInt32TopicAppendable*)data;
+    msg->id = seed;
+    for(int i=0; i<5; i++) {
+        msg->values[i] = seed + i;
+    }
+}
+static int validate_ArrayInt32TopicAppendable(void* data, int seed) {
+    AtomicTests_ArrayInt32TopicAppendable* msg = (AtomicTests_ArrayInt32TopicAppendable*)data;
+    if (msg->id != seed) return -1;
+    for(int i=0; i<5; i++) {
+        if (msg->values[i] != seed + i) return -1;
+    }
+    return 0;
+}
+DEFINE_HANDLER(ArrayInt32TopicAppendable, array_int32_topic_appendable);
+
+// --- ArrayFloat64TopicAppendable ---
+static void generate_ArrayFloat64TopicAppendable(void* data, int seed) {
+    AtomicTests_ArrayFloat64TopicAppendable* msg = (AtomicTests_ArrayFloat64TopicAppendable*)data;
+    msg->id = seed;
+    for(int i=0; i<5; i++) {
+        msg->values[i] = (double)(seed + i) * 1.1;
+    }
+}
+static int validate_ArrayFloat64TopicAppendable(void* data, int seed) {
+    AtomicTests_ArrayFloat64TopicAppendable* msg = (AtomicTests_ArrayFloat64TopicAppendable*)data;
+    if (msg->id != seed) return -1;
+    for(int i=0; i<5; i++) {
+        double expected = (double)(seed + i) * 1.1;
+        if (fabs(msg->values[i] - expected) > 0.0001) return -1;
+    }
+    return 0;
+}
+DEFINE_HANDLER(ArrayFloat64TopicAppendable, array_float64_topic_appendable);
+
+// --- ArrayStringTopicAppendable ---
+static void generate_ArrayStringTopicAppendable(void* data, int seed) {
+    AtomicTests_ArrayStringTopicAppendable* msg = (AtomicTests_ArrayStringTopicAppendable*)data;
+    msg->id = seed;
+    for(int i=0; i<3; i++) {
+        char buffer[16];
+        snprintf(buffer, 16, "S_%d_%d", seed, i);
+        strncpy(msg->names[i], buffer, 16);
+    }
+}
+static int validate_ArrayStringTopicAppendable(void* data, int seed) {
+    AtomicTests_ArrayStringTopicAppendable* msg = (AtomicTests_ArrayStringTopicAppendable*)data;
+    if (msg->id != seed) return -1;
+    for(int i=0; i<3; i++) {
+        char buffer[16];
+        snprintf(buffer, 16, "S_%d_%d", seed, i);
+        if (strncmp(msg->names[i], buffer, 16) != 0) return -1;
+    }
+    return 0;
+}
+DEFINE_HANDLER(ArrayStringTopicAppendable, array_string_topic_appendable);
 
 // ----------------------------------------------------------------------------
 // Sequences
@@ -677,3 +816,35 @@ static int validate_StringBounded256TopicAppendable(void* data, int seed) {
     return 0;
 }
 DEFINE_HANDLER(StringBounded256TopicAppendable, string_bounded_256_topic_appendable);
+
+// --- EnumTopicAppendable ---
+static void generate_EnumTopicAppendable(void* data, int seed) {
+    AtomicTests_EnumTopicAppendable* msg = (AtomicTests_EnumTopicAppendable*)data;
+    msg->id = seed;
+    msg->value = (AtomicTests_SimpleEnum)(seed % 3);
+}
+
+static int validate_EnumTopicAppendable(void* data, int seed) {
+    AtomicTests_EnumTopicAppendable* msg = (AtomicTests_EnumTopicAppendable*)data;
+    if (msg->id != seed) return -1;
+    AtomicTests_SimpleEnum expected = (AtomicTests_SimpleEnum)(seed % 3);
+    if (msg->value != expected) return -1;
+    return 0;
+}
+DEFINE_HANDLER(EnumTopicAppendable, enum_topic_appendable);
+
+// --- ColorEnumTopicAppendable ---
+static void generate_ColorEnumTopicAppendable(void* data, int seed) {
+    AtomicTests_ColorEnumTopicAppendable* msg = (AtomicTests_ColorEnumTopicAppendable*)data;
+    msg->id = seed;
+    msg->color = (AtomicTests_ColorEnum)(seed % 6);
+}
+
+static int validate_ColorEnumTopicAppendable(void* data, int seed) {
+    AtomicTests_ColorEnumTopicAppendable* msg = (AtomicTests_ColorEnumTopicAppendable*)data;
+    if (msg->id != seed) return -1;
+    AtomicTests_ColorEnum expected = (AtomicTests_ColorEnum)(seed % 6);
+    if (msg->color != expected) return -1;
+    return 0;
+}
+DEFINE_HANDLER(ColorEnumTopicAppendable, color_enum_topic_appendable);

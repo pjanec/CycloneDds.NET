@@ -19,6 +19,7 @@ namespace CycloneDDS.CodeGen
                 "float" or "Single" or "System.Single" => "WriteFloat",
                 "double" or "Double" or "System.Double" => "WriteDouble",
                 "bool" or "Boolean" or "System.Boolean" => "WriteBool",
+                // "string" removed to prevent IsPrimitive=true
                 "System.Guid" => "WriteGuid",
                 "System.DateTime" => "WriteDateTime",
                 "System.DateTimeOffset" => "WriteDateTimeOffset",

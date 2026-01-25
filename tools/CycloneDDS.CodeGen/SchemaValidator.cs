@@ -75,6 +75,19 @@ namespace CycloneDDS.CodeGen
                 return;
             }
             
+            // Arrays - recurse
+            if (typeName.EndsWith("[]"))
+            {
+                string innerType = typeName.Substring(0, typeName.Length - 2);
+                // Recursively validate inner type
+                if (!IsValidUserType(innerType) && !TypeMapper.IsPrimitive(innerType) && innerType != "string" && innerType != "System.String")
+                {
+                    errors.Add($"Field '{containerName}.{field.Name}' uses array of type '{innerType}', " +
+                               $"which is not a valid DDS type. Mark '{innerType}' with [DdsStruct] or [DdsTopic].");
+                }
+                return;
+            }
+            
             // Managed strings
             if (typeName == "string")
             {
