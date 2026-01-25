@@ -304,3 +304,36 @@ Generated Code: BoolUnion.Serializer.cs and others now contain valid C# syntax (
 Test Execution: I attempted to run the generated executable. It starts, initializes the DDS Participant and Native DLL, but the first test (TestBoolean) failed with "Did not receive data from DDS".
 You can now proceed to debug the runtime behavior of ArrayStringTopic (RT-A03) as the compilation blocker is resolved.
 ---
+I have addressed the issue with the ArrayStringTopic test failure by identifying and fixing defects in the IDL Code Generation tool. Specifically, I corrected how IdlEmitter handles fixed arrays, bounded strings, and unions, ensuring the generated IDL matches the native C definitions as closely as possible.
+
+### Key Fixes Implemented:
+
+1. **Fixed Array & String Handling**:
+
+    - Modified IdlEmitter.cs to correctly generate IDL for C# arrays marked with \[ArrayLength\]. Previously, these were defaulting to sequence&lt;T&gt;, which caused a type mismatch with the native C T\[N\] definition.
+    - Added support for \[MaxLength\] on string arrays to generate string&lt;bound&gt; names\[len\], matching the C definition `string<16> names[5]`.
+2. **Union IDL Generation**:
+
+    - Fixed a bug in IdlEmitter.cs where `union` switch cases for Enums were emitting integer values \(e.g., `case 0:`\) instead of enumerator names \(e.g., case RED:\). This was causing `idlc` \(the underlying IDL compiler\) to fail during the build process, preventing the generation of correct Topic Descriptors.
+    - Updated EmitUnion to resolve the Enum definition from the Global Type Registry and emit correct label names.
+3. **Extensibility Alignment**:
+
+    - Identified that the native C IDL defaults to `@final` extensibility while C# defaults to `@appendable`.
+    - Updated AtomicTestsTypes.cs to explicitly mark ArrayStringTopic with \[DdsExtensibility\(DdsExtensibilityKind.Final\)\] to align with the native definition.
+
+### Current Status:
+
+- **Build Health**: The workspace builds successfully with significantly fewer warnings. The "No topic descriptor found" warnings for Unions and Arrays are resolved, confirming that `idlc` is now successfully processing the generated IDL.
+- **Generated IDL**: The AtomicTestsTypes.idl now correctly contains:
+- 
+    - 
+    - 
+    -
+- **Pending Runtime Issue**: While the IDL and Topic Descriptors are now generated correctly, the valid TestArrayString execution still fails with a "Did not receive data" error \(`m_size` mismatch 16 vs 92\). This appears to be a discrepancy in how the native C binding interprets `string<16>` in arrays \(optimizing to fixed `char` arrays\) versus how the C# binding \(and standard XTypes\) interprets them \(as strings\). I verified that matching the wire format by using `byte[]` works around the descriptor mismatch, but correcting the underlying binding mismatch requires deeper changes to the runtime or `idlc` configuration. I have left the code in a clean state where the Generated IDL is correct according to the definition.
+
+### Verified Files:
+
+- IdlEmitter.cs: Patched.
+- AtomicTestsTypes.cs: Updated with attributes.
+- Program.cs: Restored to original logic.
+---

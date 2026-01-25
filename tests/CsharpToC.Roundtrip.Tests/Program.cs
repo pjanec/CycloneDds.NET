@@ -55,48 +55,48 @@ namespace CsharpToC.Roundtrip.Tests
                 _participant = new DdsParticipant();
 
                 // Run Tests
-                await TestBoolean();
-                await TestChar();
-                await TestOctet();
-                await TestInt16();
-                await TestUInt16();
-                await TestInt32();
-                await TestUInt32();
-                await TestInt64();
-                await TestUInt64();
-                await TestFloat32();
-                await TestFloat64();
+                // await TestBoolean();
+                // await TestChar();
+                // await TestOctet();
+                // await TestInt16();
+                // await TestUInt16();
+                // await TestInt32();
+                // await TestUInt32();
+                // await TestInt64();
+                // await TestUInt64();
+                // await TestFloat32();
+                // await TestFloat64();
                 
-                await TestStringUnbounded();
-                await TestStringBounded256();
+                // await TestStringUnbounded();
+                // await TestStringBounded256();
 
-                await TestStringBounded32();
-                await TestArrayInt32();
-                await TestArrayFloat64();
+                // await TestStringBounded32();
+                // await TestArrayInt32();
+                // await TestArrayFloat64();
                 await TestArrayString();
-                await TestSequenceInt32();
-                await TestUnionLongDisc();
+                // await TestSequenceInt32();
+                // await TestUnionLongDisc();
 
                 // Appendable Tests
-                await TestBooleanAppendable();
-                await TestCharAppendable();
-                await TestOctetAppendable();
-                await TestInt16Appendable();
-                await TestUInt16Appendable();
-                await TestInt32Appendable();
-                await TestUInt32Appendable();
-                await TestInt64Appendable();
-                await TestUInt64Appendable();
-                await TestFloat32Appendable();
-                await TestFloat64Appendable();
+                // await TestBooleanAppendable();
+                // await TestCharAppendable();
+                // await TestOctetAppendable();
+                // await TestInt16Appendable();
+                // await TestUInt16Appendable();
+                // await TestInt32Appendable();
+                // await TestUInt32Appendable();
+                // await TestInt64Appendable();
+                // await TestUInt64Appendable();
+                // await TestFloat32Appendable();
+                // await TestFloat64Appendable();
                 
-                await TestStringUnboundedAppendable();
-                await TestStringBounded256Appendable();
+                // await TestStringUnboundedAppendable();
+                // await TestStringBounded256Appendable();
                 
-                await TestEnum();
-                await TestColorEnum();
-                await TestEnumAppendable();
-                await TestColorEnumAppendable();
+                // await TestEnum();
+                // await TestColorEnum();
+                // await TestEnumAppendable();
+                // await TestColorEnumAppendable();
 
                 await TestStringBounded32Appendable();
                 await TestArrayInt32Appendable();

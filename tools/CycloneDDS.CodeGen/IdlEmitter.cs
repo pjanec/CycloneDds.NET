@@ -165,7 +165,7 @@ namespace CycloneDDS.CodeGen
                 if (type.TypeInfo.IsEnum)
                      EmitEnum(sb, type.TypeInfo, indent);
                 else if (type.TypeInfo.HasAttribute("DdsUnion"))
-                     EmitUnion(sb, type.TypeInfo, indent);
+                     EmitUnion(sb, type.TypeInfo, indent, registry);
                 else
                      EmitStruct(sb, type.TypeInfo, indent);
                 
@@ -333,7 +333,7 @@ namespace CycloneDDS.CodeGen
              sb.AppendLine($"{indent}}};");
         }
 
-        private void EmitUnion(StringBuilder sb, TypeInfo type, int indentLevel)
+        private void EmitUnion(StringBuilder sb, TypeInfo type, int indentLevel, GlobalTypeRegistry registry)
         {
             // Simplified port of existing logic with indentation
             string indent = GetIndent(indentLevel);
@@ -358,6 +358,21 @@ namespace CycloneDDS.CodeGen
             }
 
             sb.AppendLine($"{indent}union {type.Name} switch ({switchType}) {{");
+            
+            IdlTypeDefinition? enumDef = null;
+            foreach(var t in registry.AllTypes)
+            {
+                 if (t.TypeInfo != null && t.TypeInfo.IsEnum)
+                 {
+                     string idlName = t.TypeInfo.Name;
+                     if (!string.IsNullOrEmpty(t.TargetModule))
+                         idlName = t.TargetModule.Replace(".", "::") + "::" + idlName;
+                     
+                     if (idlName == switchType) { enumDef = t; break; }
+                     string csMapped = t.CSharpFullName.Replace(".", "::");
+                     if (csMapped == switchType) { enumDef = t; break; }
+                 }
+            }
 
             foreach (var field in type.Fields)
             {
@@ -367,7 +382,15 @@ namespace CycloneDDS.CodeGen
                 if (caseAttr != null)
                 {
                      foreach(var val in caseAttr.CaseValues)
-                        sb.AppendLine($"{fieldIndent}case {val}:");
+                     {
+                        string label = val.ToString();
+                        if (enumDef != null && val is int iVal)
+                        {
+                            if (iVal >= 0 && iVal < enumDef.TypeInfo.EnumMembers.Count)
+                                label = enumDef.TypeInfo.EnumMembers[iVal];
+                        }
+                        sb.AppendLine($"{fieldIndent}case {label}:");
+                     }
                 }
                 else if (field.HasAttribute("DdsDefault"))
                 {
@@ -437,7 +460,24 @@ namespace CycloneDDS.CodeGen
             {
                 var elementTypeName = typeName.Substring(0, typeName.Length - 2);
                 var innerField = new FieldInfo { TypeName = elementTypeName };
+                
+                // Propagate attributes if element is string, so we can detect string bound
+                if (elementTypeName == "string" || elementTypeName == "System.String")
+                {
+                    innerField.Attributes = field.Attributes; 
+                }
+
                 var (innerIdl, innerSuffix) = MapType(innerField);
+                
+                // Check for ArrayLength (Fixed Array)
+                var arrayLen = field.GetAttribute("ArrayLength");
+                if (arrayLen != null && arrayLen.Arguments.Count > 0)
+                {
+                    string dims = "";
+                    foreach(var arg in arrayLen.Arguments) dims += $"[{arg}]";
+                    return (innerIdl, innerSuffix + dims);
+                }
+
                 return ($"sequence<{innerIdl}>", "");
             }
 
@@ -466,7 +506,14 @@ namespace CycloneDDS.CodeGen
             }
 
             // Managed String
-            if (typeName == "string" || typeName == "System.String") return ("string", "");
+            if (typeName == "string" || typeName == "System.String")
+            {
+                var bound = field.GetAttribute("MaxLength")?.Arguments.FirstOrDefault() ?? 
+                            field.GetAttribute("DdsString")?.Arguments.FirstOrDefault();
+                
+                if (bound != null) return ($"string<{bound}>", "");
+                return ("string", "");
+            }
 
             // Nested types
             if (field.Type != null)

@@ -609,7 +609,7 @@ module AtomicTests {
     @topic
     struct ArrayStringTopic {
         @key long id;
-        string<16> names[3];
+        string<16> names[5];
     };
     
     @topic
@@ -750,54 +750,53 @@ module AtomicTests {
     };
     
     // ========================================================================
-    // SECTION 11: ADVANCED COMBINATIONS - COMMENTED OUT FOR NOW
+    // SECTION 11: ADVANCED COMBINATIONS (Test After Basics Pass)
     // ========================================================================
-    /*
-    @topic
-    struct SequenceOfOptionalTopic {
-        @key long id;
-        sequence<@optional long> opt_values;
-    };
     
-    @topic
-    struct OptionalSequenceTopic {
-        @key long id;
-        @optional sequence<long> opt_sequence;
-    };
+    // @topic
+    // struct SequenceOfOptionalTopic {
+    //     @key long id;
+    //     sequence<@optional long> opt_values;
+    // };
     
-    @topic
-    struct NestedSequenceTopic {
-        @key long id;
-        sequence<sequence<long>> matrix;
-    };
+    // @topic
+    // struct OptionalSequenceTopic {
+    //     @key long id;
+    //     @optional sequence<long> opt_sequence;
+    // };
     
-    @topic
-    struct SequenceOfStructWithSequenceTopic {
-        @key long id;
-        sequence<Container> containers;
-    };
+    // @topic
+    // struct NestedSequenceTopic {
+    //     @key long id;
+    //     sequence<sequence<long>> matrix;
+    // };
     
-    @appendable
-    @topic
-    struct AppendableWithSequenceTopic {
-        @key long id;
-        sequence<Point2D> points;
-        @optional string<64> description;
-    };
+    // @topic
+    // struct SequenceOfStructWithSequenceTopic {
+    //     @key long id;
+    //     sequence<Container> containers;
+    // };
     
-    @topic
-    struct ArrayOfSequenceTopic {
-        @key long id;
-        sequence<long>[3] seq_array;
-    };
+    // @appendable
+    // @topic
+    // struct AppendableWithSequenceTopic {
+    //     @key long id;
+    //     sequence<Point2D> points;
+    //     @optional string<64> description;
+    // };
     
-    @topic
-    struct ComplexKeyTopic {
-        @key long id;
-        @key Point2D key_point;
-        sequence<double> measurements;
-    };
-    */
+    // @topic
+    // struct ArrayOfSequenceTopic {
+    //     @key long id;
+    //     sequence<long>[3] seq_array;
+    // };
+    
+    // @topic
+    // struct ComplexKeyTopic {
+    //     @key long id;
+    //     @key Point2D key_point;
+    //     sequence<double> measurements;
+    // };
     
     // ========================================================================
     // SECTION 12: EDGE CASES
@@ -843,4 +842,162 @@ module AtomicTests {
         double double_val;
     };
     
-}; // module AtomicTests
+    // ========================================================================
+    // ROUNDTRIP SPECIFIC APPENDABLE DUPLICATES
+    // ========================================================================
+
+    @appendable
+    @topic
+    struct BooleanTopicAppendable {
+        @key long id;
+        boolean value;
+    };
+
+    @appendable
+    @topic
+    struct Int32TopicAppendable {
+        @key long id;
+        long value;
+    };
+
+    @appendable
+    @topic
+    struct StringBounded32TopicAppendable {
+        @key long id;
+        string<32> value;
+    };
+
+    @appendable
+    @topic
+    struct SequenceInt32TopicAppendable {
+        @key long id;
+        sequence<long> values;
+    };
+
+    @appendable
+    union SimpleUnionAppendable switch(long) {
+        case 1: long int_value;
+        case 2: double double_value;
+        case 3: string string_value;
+    };
+
+    @appendable
+    @topic
+    struct UnionLongDiscTopicAppendable {
+        @key long id;
+        SimpleUnionAppendable data;
+    };
+
+    @appendable
+    @topic
+    struct CharTopicAppendable {
+        @key long id;
+        char value;
+    };
+
+    @appendable
+    @topic
+    struct OctetTopicAppendable {
+        @key long id;
+        octet value;
+    };
+    
+    @appendable
+    @topic
+    struct Int16TopicAppendable {
+        @key long id;
+        short value;
+    };
+    
+    @appendable
+    @topic
+    struct UInt16TopicAppendable {
+        @key long id;
+        unsigned short value;
+    };
+    
+    @appendable
+    @topic
+    struct UInt32TopicAppendable {
+        @key long id;
+        unsigned long value;
+    };
+    
+    @appendable
+    @topic
+    struct Int64TopicAppendable {
+        @key long id;
+        long long value;
+    };
+    
+    @appendable
+    @topic
+    struct UInt64TopicAppendable {
+        @key long id;
+        unsigned long long value;
+    };
+
+    @appendable
+    @topic
+    struct Float32TopicAppendable {
+        @key long id;
+        float value;
+    };
+    
+    @appendable
+    @topic
+    struct Float64TopicAppendable {
+        @key long id;
+        double value;
+    };
+
+    @appendable
+    @topic
+    struct StringUnboundedTopicAppendable {
+        @key long id;
+        string value;
+    };
+    
+    @appendable
+    @topic
+    struct StringBounded256TopicAppendable {
+        @key long id;
+        string<256> value;
+    };
+
+    @appendable
+    @topic
+    struct EnumTopicAppendable {
+        @key long id;
+        SimpleEnum value;
+    };
+
+    @appendable
+    @topic
+    struct ColorEnumTopicAppendable {
+        @key long id;
+        ColorEnum color;
+    };
+
+    @appendable
+    @topic
+    struct ArrayInt32TopicAppendable {
+        @key long id;
+        long values[5];
+    };
+    
+    @appendable
+    @topic
+    struct ArrayFloat64TopicAppendable {
+        @key long id;
+        double values[5];
+    };
+    
+    @appendable
+    @topic
+    struct ArrayStringTopicAppendable {
+        @key long id;
+        string<16> names[5];
+    };
+
+};

@@ -265,9 +265,39 @@ int main(int argc, char** argv) {
     VERIFY_ATOMIC_TOPIC("NestedKeyGeoTopic", NestedKeyGeoTopic);
     VERIFY_ATOMIC_TOPIC("NestedTripleKeyTopic", NestedTripleKeyTopic);
 
+    // Verify AtomicTests (Batch 11: Edge Cases)
+    VERIFY_ATOMIC_TOPIC("EmptySequenceTopic", EmptySequenceTopic);
+    VERIFY_ATOMIC_TOPIC("LargeSequenceTopic", LargeSequenceTopic);
+    VERIFY_ATOMIC_TOPIC("LongStringTopic", LongStringTopic);
+    VERIFY_ATOMIC_TOPIC("UnboundedStringTopic", UnboundedStringTopic);
+    VERIFY_ATOMIC_TOPIC("AllPrimitivesAtomicTopic", AllPrimitivesAtomicTopic);
+
+    // Verify AtomicTests (Batch 12: Appendable Duplicates)
+    VERIFY_ATOMIC_TOPIC("BooleanTopicAppendable", BooleanTopicAppendable);
+    VERIFY_ATOMIC_TOPIC("Int32TopicAppendable", Int32TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("StringBounded32TopicAppendable", StringBounded32TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("SequenceInt32TopicAppendable", SequenceInt32TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("UnionLongDiscTopicAppendable", UnionLongDiscTopicAppendable);
+    VERIFY_ATOMIC_TOPIC("CharTopicAppendable", CharTopicAppendable);
+    VERIFY_ATOMIC_TOPIC("OctetTopicAppendable", OctetTopicAppendable);
+    VERIFY_ATOMIC_TOPIC("Int16TopicAppendable", Int16TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("UInt16TopicAppendable", UInt16TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("UInt32TopicAppendable", UInt32TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("Int64TopicAppendable", Int64TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("UInt64TopicAppendable", UInt64TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("Float32TopicAppendable", Float32TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("Float64TopicAppendable", Float64TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("StringUnboundedTopicAppendable", StringUnboundedTopicAppendable);
+    VERIFY_ATOMIC_TOPIC("StringBounded256TopicAppendable", StringBounded256TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("EnumTopicAppendable", EnumTopicAppendable);
+    VERIFY_ATOMIC_TOPIC("ColorEnumTopicAppendable", ColorEnumTopicAppendable);
+    VERIFY_ATOMIC_TOPIC("ArrayInt32TopicAppendable", ArrayInt32TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("ArrayFloat64TopicAppendable", ArrayFloat64TopicAppendable);
+    VERIFY_ATOMIC_TOPIC("ArrayStringTopicAppendable", ArrayStringTopicAppendable);
+
 
     printf("\n==================================================\n");
-    if (errors == 0) printf("RESULT: PASSED (All %d topics verified)\n", 10);
+    if (errors == 0) printf("RESULT: PASSED (All topics verified)\n");
     else printf("RESULT: FAILED (%d errors)\n", errors);
     printf("==================================================\n");
 

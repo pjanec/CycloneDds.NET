@@ -489,6 +489,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("ArrayStringTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ArrayStringTopic
     {
         [DdsKey]
