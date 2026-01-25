@@ -88,9 +88,10 @@ namespace CycloneDDS.CodeGen
 
                     bool isTopic = HasAttribute(typeSymbol, "CycloneDDS.Schema.DdsTopicAttribute");
                     bool isStruct = HasAttribute(typeSymbol, "CycloneDDS.Schema.DdsStructAttribute");
+                    bool isUnion = HasAttribute(typeSymbol, "CycloneDDS.Schema.DdsUnionAttribute");
                     bool isEnum = typeSymbol.TypeKind == TypeKind.Enum;
 
-                    if (isTopic || isStruct || isEnum)
+                    if (isTopic || isStruct || isUnion || isEnum)
                     {
                         var typeInfo = new TypeInfo 
                         { 
@@ -99,6 +100,7 @@ namespace CycloneDDS.CodeGen
                             SourceFile = tree.FilePath,
                             IsTopic = isTopic,
                             IsStruct = isStruct,
+                            IsUnion = isUnion,
                             IsEnum = isEnum,
                             Attributes = ExtractAttributes(typeSymbol)
                         };

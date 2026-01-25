@@ -400,14 +400,14 @@ namespace CsharpToC.Roundtrip.Tests
                 (s) => { 
                     var msg = new ArrayStringTopic();
                     msg.Id = s; 
-                    msg.Names = new string[3];
-                    for(int i=0; i<3; i++) msg.Names[i] = $"S_{s}_{i}";
+                    msg.Names = new string[5];
+                    for(int i=0; i<5; i++) msg.Names[i] = $"S_{s}_{i}";
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    if (msg.Names.Length != 3) return false;
-                    for(int i=0; i<3; i++) {
+                    if (msg.Names.Length != 5) return false;
+                    for(int i=0; i<5; i++) {
                          if (msg.Names[i] != $"S_{s}_{i}") return false;
                     }
                     return true;
@@ -622,14 +622,14 @@ namespace CsharpToC.Roundtrip.Tests
                 (s) => { 
                     var msg = new ArrayStringTopicAppendable();
                     msg.Id = s; 
-                    msg.Names = new string[3];
-                    for(int i=0; i<3; i++) msg.Names[i] = $"S_{s}_{i}";
+                    msg.Names = new string[5];
+                    for(int i=0; i<5; i++) msg.Names[i] = $"S_{s}_{i}";
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    if (msg.Names.Length != 3) return false;
-                    for(int i=0; i<3; i++) {
+                    if (msg.Names.Length != 5) return false;
+                    for(int i=0; i<5; i++) {
                          if (msg.Names[i] != $"S_{s}_{i}") return false;
                     }
                     return true;

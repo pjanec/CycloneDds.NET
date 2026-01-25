@@ -126,7 +126,9 @@ namespace CycloneDDS.CodeGen
             string discSizer = GetSizerCall(discriminator, isXcdr2);
             sb.AppendLine($"            {discSizer}; // Discriminator {discriminator.Name}");
             
-            sb.AppendLine($"            switch (({GetDiscriminatorCastType(discriminator.TypeName)})this.{ToPascalCase(discriminator.Name)})");
+            string castType = GetDiscriminatorCastType(discriminator.TypeName);
+            string castExpr = castType == "bool" ? "" : $"({castType})";
+            sb.AppendLine($"            switch ({castExpr}this.{ToPascalCase(discriminator.Name)})");
             sb.AppendLine("            {");
 
             foreach (var field in type.Fields)
@@ -136,7 +138,9 @@ namespace CycloneDDS.CodeGen
                 {
                     foreach (var val in caseAttr.CaseValues)
                     {
-                        sb.AppendLine($"                case {val}:");
+                        string caseLabel = val.ToString();
+                        if (val is bool b) caseLabel = b ? "true" : "false";
+                        sb.AppendLine($"                case {caseLabel}:");
                     }
                     sb.AppendLine($"                    {GetSizerCall(field, isXcdr2)};");
                     sb.AppendLine("                    break;");
@@ -163,6 +167,7 @@ namespace CycloneDDS.CodeGen
 
         private string GetDiscriminatorCastType(string typeName)
         {
+             if (typeName == "bool" || typeName == "System.Boolean") return "bool";
              // If enum simplify to int, assuming 32-bit discriminator for now as per instructions (Write int32)
              // But if it's long, we might need long.
              // Instructions: "Discriminator: Write int32."
@@ -239,7 +244,7 @@ namespace CycloneDDS.CodeGen
             string discWriter = GetWriterCall(discriminator, isXcdr2);
             sb.AppendLine($"            {discWriter}; // Discriminator {discriminator.Name}");
             
-            sb.AppendLine($"            switch (({GetDiscriminatorCastType(discriminator.TypeName)})this.{ToPascalCase(discriminator.Name)})");
+            sb.AppendLine($"            switch (this.{ToPascalCase(discriminator.Name)})");
             sb.AppendLine("            {");
 
             foreach (var field in type.Fields)
@@ -249,7 +254,23 @@ namespace CycloneDDS.CodeGen
                 {
                     foreach (var val in caseAttr.CaseValues)
                     {
-                        sb.AppendLine($"                case {val}:");
+                        string caseLabel;
+                        if (val is bool b)
+                        {
+                            caseLabel = b ? "true" : "false";
+                        }
+                        else
+                        {
+                             if (!TypeMapper.IsPrimitive(discriminator.TypeName) && discriminator.TypeName != "string")
+                             {
+                                 caseLabel = $"({discriminator.TypeName}){val}"; 
+                             }
+                             else
+                             {
+                                 caseLabel = val.ToString();
+                             }
+                        }
+                        sb.AppendLine($"                case {caseLabel}:");
                     }
                     sb.AppendLine($"                    {GetWriterCall(field, isXcdr2)};");
                     sb.AppendLine("                    break;");

@@ -86,7 +86,7 @@ namespace CycloneDDS.CodeGen
             // Emit Serializers (Per Type, C# code)
             foreach (var topic in types)
             {
-                if (topic.IsTopic || topic.IsStruct)
+                if (topic.IsTopic || topic.IsStruct || topic.IsUnion)
                 {
                     var serializerCode = _serializerEmitter.EmitSerializer(topic, registry);
                     File.WriteAllText(Path.Combine(outputDir, $"{topic.Name}.Serializer.cs"), serializerCode);

@@ -15,6 +15,7 @@ namespace CycloneDDS.CodeGen
         {
             _registry = registry;
             var sb = new StringBuilder();
+            sb.AppendLine("// CodeGen Version: FixApplied");
             
             if (generateUsings)
             {
@@ -179,8 +180,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine($"                {GetReadCall(type, discriminator)};");
             sb.AppendLine("            }");
 
-            // ToPascalCase added
-            sb.AppendLine($"            switch (({GetDiscriminatorCastType(discriminator.TypeName)})view.{ToPascalCase(discriminator.Name)})");
+            sb.AppendLine($"            switch (view.{ToPascalCase(discriminator.Name)})");
             sb.AppendLine("            {");
             
             foreach (var field in type.Fields)
@@ -190,7 +190,26 @@ namespace CycloneDDS.CodeGen
                 {
                     foreach (var val in caseAttr.CaseValues)
                     {
-                        sb.AppendLine($"                case {val}:");
+                        string caseLabel;
+                        if (val is bool b)
+                        {
+                            caseLabel = b ? "true" : "false";
+                        }
+                        else
+                        {
+                            // If discriminator is enum, we need to cast the integer value back to the enum type
+                            // so the case label matches the switch type.
+                            // If discriminator is int/short/byte, val (assuming it's int/object) is fine as is.
+                            if (!IsPrimitive(discriminator.TypeName) && discriminator.TypeName != "string")
+                            {
+                                caseLabel = $"({discriminator.TypeName}){val}"; 
+                            }
+                            else
+                            {
+                                caseLabel = val.ToString();
+                            }
+                        }
+                        sb.AppendLine($"                case {caseLabel}:");
                     }
                     sb.AppendLine($"                    if (reader.Position < endPos) {{ {GetReadCall(type, field)}; }}");
                     sb.AppendLine("                    break;");

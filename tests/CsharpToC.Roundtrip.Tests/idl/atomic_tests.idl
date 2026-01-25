@@ -383,7 +383,7 @@ module AtomicTests {
     @topic
     struct ArrayStringTopic {
         @key long id;
-        string<16> names[3];
+        string<16> names[5];
     };
     
     @topic
@@ -771,7 +771,7 @@ module AtomicTests {
     @topic
     struct ArrayStringTopicAppendable {
         @key long id;
-        string<16> names[3];
+        string<16> names[5];
     };
 
 };

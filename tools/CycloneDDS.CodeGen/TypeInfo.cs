@@ -16,6 +16,7 @@ namespace CycloneDDS.CodeGen
         public bool IsEnum { get; set; }
         public bool IsTopic { get; set; }
         public bool IsStruct { get; set; }
+        public bool IsUnion { get; set; }
         public List<string> EnumMembers { get; set; } = new List<string>();
 
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
@@ -52,6 +53,7 @@ namespace CycloneDDS.CodeGen
         public string Name { get; set; } = string.Empty;
         public List<object> Arguments { get; set; } = new List<object>();
         
-        public List<int> CaseValues => Arguments.OfType<int>().ToList();
+        // Return all arguments as case values, allowing bool, enum (int), etc.
+        public List<object> CaseValues => Arguments;
     }
 }

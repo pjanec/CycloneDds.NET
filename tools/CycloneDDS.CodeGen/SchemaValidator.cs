@@ -128,7 +128,7 @@ namespace CycloneDDS.CodeGen
                 errors.Add($"Union {type.FullName} must have exactly one [DdsDiscriminator]");
             
             // All [DdsCase] values must be unique
-            var caseValues = new HashSet<int>();
+            var caseValues = new HashSet<object>();
             foreach (var field in type.Fields.Where(f => f.HasAttribute("DdsCase")))
             {
                 var attr = field.GetAttribute("DdsCase");

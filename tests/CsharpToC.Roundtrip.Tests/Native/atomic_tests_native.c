@@ -342,7 +342,7 @@ DEFINE_HANDLER(ArrayFloat64Topic, array_float64_topic);
 static void generate_ArrayStringTopic(void* data, int seed) {
     AtomicTests_ArrayStringTopic* msg = (AtomicTests_ArrayStringTopic*)data;
     msg->id = seed;
-    for(int i=0; i<3; i++) {
+    for(int i=0; i<5; i++) {
         char buffer[16];
         snprintf(buffer, 16, "S_%d_%d", seed, i);
         strncpy(msg->names[i], buffer, 16);
@@ -353,7 +353,7 @@ static void generate_ArrayStringTopic(void* data, int seed) {
 static int validate_ArrayStringTopic(void* data, int seed) {
     AtomicTests_ArrayStringTopic* msg = (AtomicTests_ArrayStringTopic*)data;
     if (msg->id != seed) return -1;
-    for(int i=0; i<3; i++) {
+    for(int i=0; i<5; i++) {
         char buffer[16];
         snprintf(buffer, 16, "S_%d_%d", seed, i);
         if (strncmp(msg->names[i], buffer, 16) != 0) return -1;
@@ -403,7 +403,7 @@ DEFINE_HANDLER(ArrayFloat64TopicAppendable, array_float64_topic_appendable);
 static void generate_ArrayStringTopicAppendable(void* data, int seed) {
     AtomicTests_ArrayStringTopicAppendable* msg = (AtomicTests_ArrayStringTopicAppendable*)data;
     msg->id = seed;
-    for(int i=0; i<3; i++) {
+    for(int i=0; i<5; i++) {
         char buffer[16];
         snprintf(buffer, 16, "S_%d_%d", seed, i);
         strncpy(msg->names[i], buffer, 16);
@@ -412,7 +412,7 @@ static void generate_ArrayStringTopicAppendable(void* data, int seed) {
 static int validate_ArrayStringTopicAppendable(void* data, int seed) {
     AtomicTests_ArrayStringTopicAppendable* msg = (AtomicTests_ArrayStringTopicAppendable*)data;
     if (msg->id != seed) return -1;
-    for(int i=0; i<3; i++) {
+    for(int i=0; i<5; i++) {
         char buffer[16];
         snprintf(buffer, 16, "S_%d_%d", seed, i);
         if (strncmp(msg->names[i], buffer, 16) != 0) return -1;

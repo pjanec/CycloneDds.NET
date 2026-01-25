@@ -21,6 +21,7 @@
     </PropertyGroup>
     
     <Message Text="Running CycloneDDS Code Generator..." Importance="high" />
+    <Message Text="CodeGenToolPath: $(CodeGenToolPath)" Importance="high" />
     <Exec Command="&quot;$(CodeGenToolPath)&quot; &quot;$(SourcePath)&quot; &quot;$(OutputPath)&quot; &quot;@(ReferencePath)&quot;" />
     
     <ItemGroup>
