@@ -143,38 +143,41 @@ namespace CycloneDDS.Runtime
 
                 DdsApi.DdsEntity reader = default;
 
-                // STRATEGY: Retry logic for DataRepresentation to handle strict Topics (XCDR1 vs XCDR2)
-                // Attempt 1: XCDR1
-                if (topicName != "__FcdcSenderIdentity")
+                // Determine required encoding based on Extensibility
+                var attr = typeof(T).GetCustomAttribute<DdsExtensibilityAttribute>();
+                var extensibility = attr?.Kind ?? DdsExtensibilityKind.Appendable;
+
+                short[] reps;
+                if (topicName == "__FcdcSenderIdentity")
                 {
-                    short[] reps = { DdsApi.DDS_DATA_REPRESENTATION_XCDR1 };
-                    DdsApi.dds_qset_data_representation(actualQos, 1, reps);
+                    // Internal identity topic usually XCDR1 or defaults
+                    reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR1 };
                 }
-                
+                else if (extensibility == DdsExtensibilityKind.Appendable || extensibility == DdsExtensibilityKind.Mutable)
+                {
+                    // Appendable/Mutable MUST use XCDR2 to support DHEADER
+                    reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR2 };
+                }
+                else
+                {
+                    // Final types: Prefer XCDR1 for compatibility, but XCDR2 is valid too.
+                    // Sticking to XCDR1 for Final ensures compatibility with your existing AtomicTests.
+                    reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR1 };
+                }
+
+                DdsApi.dds_qset_data_representation(actualQos, (uint)reps.Length, reps);
+
                 reader = DdsApi.dds_create_reader(
                     participant.NativeEntity,
                     _topicHandle, 
                     actualQos, 
                     IntPtr.Zero);
 
-                // Attempt 2: XCDR2 (if first failed)
-                if (!reader.IsValid && topicName != "__FcdcSenderIdentity")
-                {
-                    short[] reps = { DdsApi.DDS_DATA_REPRESENTATION_XCDR2 };
-                    DdsApi.dds_qset_data_representation(actualQos, 1, reps);
-                    
-                    reader = DdsApi.dds_create_reader(
-                        participant.NativeEntity,
-                        _topicHandle, 
-                        actualQos, 
-                        IntPtr.Zero);
-                }
-
                 if (!reader.IsValid)
                 {
                       int err = reader.Handle;
                       DdsApi.DdsReturnCode rc = (DdsApi.DdsReturnCode)err;
-                      throw new DdsException(rc, $"Failed to create reader for '{topicName}' (tried XCDR1 and XCDR2)");
+                      throw new DdsException(rc, $"Failed to create reader for '{topicName}'");
                 }
                 _readerHandle = new DdsEntityHandle(reader);
             }

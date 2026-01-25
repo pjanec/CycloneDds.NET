@@ -113,41 +113,34 @@ namespace CycloneDDS.Runtime
                 // 1. Get or register topic (auto-discovery) - Use modified QoS
                 _topicHandle = participant.GetOrRegisterTopic<T>(topicName, actualQos);
 
-                // STRATEGY: Try XCDR1 first (for compatibility), then XCDR2 (for features)
-                // This handles cases where Native reader expects XCDR1 (BooleanTopic) 
-                // AND cases where Native reader requires XCDR2 (UnionLongDiscTopic).
-                
                 DdsApi.DdsEntity writer = default;
-                
-                // Attempt 1: XCDR1
+
+                short[] reps;
+
+                // _extensibilityKind is already a static field in DdsWriter<T>
+                if (_extensibilityKind == DdsExtensibilityKind.Appendable || _extensibilityKind == DdsExtensibilityKind.Mutable)
                 {
-                    short[] reps = { DdsApi.DDS_DATA_REPRESENTATION_XCDR1 };
-                    DdsApi.dds_qset_data_representation(actualQos, 1, reps);
+                    // Force XCDR2 for XTypes
+                    reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR2 };
+                    _encoding = CdrEncoding.Xcdr2;
+                }
+                else
+                {
+                    // Default/Final uses XCDR1
+                    reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR1 };
                     _encoding = CdrEncoding.Xcdr1;
-                    
-                    writer = DdsApi.dds_create_writer(
-                        participant.NativeEntity,
-                        _topicHandle,
-                        actualQos,
-                        IntPtr.Zero);
                 }
 
-                // Attempt 2: XCDR2 (if XCDR1 failed)
-                if (!writer.IsValid)
-                {
-                    short[] reps = { DdsApi.DDS_DATA_REPRESENTATION_XCDR2 };
-                    DdsApi.dds_qset_data_representation(actualQos, 1, reps);
-                    _encoding = CdrEncoding.Xcdr2;
-                    
-                    writer = DdsApi.dds_create_writer(
-                        participant.NativeEntity,
-                        _topicHandle,
-                        actualQos,
-                        IntPtr.Zero);
-                }
+                DdsApi.dds_qset_data_representation(actualQos, (uint)reps.Length, reps);
+
+                writer = DdsApi.dds_create_writer(
+                    participant.NativeEntity,
+                    _topicHandle,
+                    actualQos,
+                    IntPtr.Zero);
 
                 if (!writer.IsValid) 
-                    throw new DdsException(DdsApi.DdsReturnCode.Error, "Failed to create writer (tried XCDR1 and XCDR2)");
+                    throw new DdsException(DdsApi.DdsReturnCode.Error, "Failed to create writer");
                 
                 _writerHandle = new DdsEntityHandle(writer);
             }
