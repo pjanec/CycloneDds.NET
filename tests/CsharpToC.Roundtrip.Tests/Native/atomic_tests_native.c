@@ -915,3 +915,241 @@ static int validate_ArrayStructTopic(void* data, int seed) {
     return 0;
 }
 DEFINE_HANDLER(ArrayStructTopic, array_struct_topic);
+
+// ----------------------------------------------------------------------------
+// Nested Structures (Phase 4)
+// ----------------------------------------------------------------------------
+
+// --- NestedStructTopic ---
+static void generate_NestedStructTopic(void* data, int seed) {
+    AtomicTests_NestedStructTopic* msg = (AtomicTests_NestedStructTopic*)data;
+    msg->id = seed;
+    msg->point.x = (double)seed * 1.1;
+    msg->point.y = (double)seed * 2.2;
+}
+
+static int validate_NestedStructTopic(void* data, int seed) {
+    AtomicTests_NestedStructTopic* msg = (AtomicTests_NestedStructTopic*)data;
+    if (msg->id != seed) return -1;
+    if (fabs(msg->point.x - ((double)seed * 1.1)) > 0.0001) return -1;
+    if (fabs(msg->point.y - ((double)seed * 2.2)) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(NestedStructTopic, nested_struct_topic);
+
+// --- Nested3DTopic ---
+static void generate_Nested3DTopic(void* data, int seed) {
+    AtomicTests_Nested3DTopic* msg = (AtomicTests_Nested3DTopic*)data;
+    msg->id = seed;
+    msg->point.x = (double)seed + 1.0;
+    msg->point.y = (double)seed + 2.0;
+    msg->point.z = (double)seed + 3.0;
+}
+
+static int validate_Nested3DTopic(void* data, int seed) {
+    AtomicTests_Nested3DTopic* msg = (AtomicTests_Nested3DTopic*)data;
+    if (msg->id != seed) return -1;
+    if (fabs(msg->point.x - ((double)seed + 1.0)) > 0.0001) return -1;
+    if (fabs(msg->point.y - ((double)seed + 2.0)) > 0.0001) return -1;
+    if (fabs(msg->point.z - ((double)seed + 3.0)) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(Nested3DTopic, nested_3d_topic);
+
+// --- DoublyNestedTopic ---
+static void generate_DoublyNestedTopic(void* data, int seed) {
+    AtomicTests_DoublyNestedTopic* msg = (AtomicTests_DoublyNestedTopic*)data;
+    msg->id = seed;
+    // TopLeft
+    msg->box.topLeft.x = (double)seed;
+    msg->box.topLeft.y = (double)seed + 1.0;
+    // BottomRight
+    msg->box.bottomRight.x = (double)seed + 10.0;
+    msg->box.bottomRight.y = (double)seed + 11.0;
+}
+
+static int validate_DoublyNestedTopic(void* data, int seed) {
+    AtomicTests_DoublyNestedTopic* msg = (AtomicTests_DoublyNestedTopic*)data;
+    if (msg->id != seed) return -1;
+    if (fabs(msg->box.topLeft.x - ((double)seed)) > 0.0001) return -1;
+    if (fabs(msg->box.topLeft.y - ((double)seed + 1.0)) > 0.0001) return -1;
+    if (fabs(msg->box.bottomRight.x - ((double)seed + 10.0)) > 0.0001) return -1;
+    if (fabs(msg->box.bottomRight.y - ((double)seed + 11.0)) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(DoublyNestedTopic, doubly_nested_topic);
+
+// --- ComplexNestedTopic ---
+static void generate_ComplexNestedTopic(void* data, int seed) {
+    AtomicTests_ComplexNestedTopic* msg = (AtomicTests_ComplexNestedTopic*)data;
+    msg->id = seed;
+    msg->container.count = seed;
+    msg->container.radius = (double)seed * 0.5;
+    msg->container.center.x = (double)seed + 0.1;
+    msg->container.center.y = (double)seed + 0.2;
+    msg->container.center.z = (double)seed + 0.3;
+}
+
+static int validate_ComplexNestedTopic(void* data, int seed) {
+    AtomicTests_ComplexNestedTopic* msg = (AtomicTests_ComplexNestedTopic*)data;
+    if (msg->id != seed) return -1;
+    if (msg->container.count != seed) return -1;
+    if (fabs(msg->container.radius - ((double)seed * 0.5)) > 0.0001) return -1;
+    if (fabs(msg->container.center.x - ((double)seed + 0.1)) > 0.0001) return -1;
+    if (fabs(msg->container.center.y - ((double)seed + 0.2)) > 0.0001) return -1;
+    if (fabs(msg->container.center.z - ((double)seed + 0.3)) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(ComplexNestedTopic, complex_nested_topic);
+
+// ============================================================================
+// SECTION 9: COMPOSITE KEYS
+// ============================================================================
+
+// --- TwoKeyInt32Topic ---
+static void generate_TwoKeyInt32Topic(void* data, int seed) {
+    AtomicTests_TwoKeyInt32Topic* msg = (AtomicTests_TwoKeyInt32Topic*)data;
+    msg->key1 = seed;
+    msg->key2 = seed + 1;
+    msg->value = (double)seed * 1.5;
+}
+
+static int validate_TwoKeyInt32Topic(void* data, int seed) {
+    AtomicTests_TwoKeyInt32Topic* msg = (AtomicTests_TwoKeyInt32Topic*)data;
+    if (msg->key1 != seed) return -1;
+    if (msg->key2 != seed + 1) return -1;
+    if (fabs(msg->value - ((double)seed * 1.5)) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(TwoKeyInt32Topic, two_key_int32_topic);
+
+// --- TwoKeyStringTopic ---
+static void generate_TwoKeyStringTopic(void* data, int seed) {
+    AtomicTests_TwoKeyStringTopic* msg = (AtomicTests_TwoKeyStringTopic*)data;
+    snprintf(msg->key1, sizeof(msg->key1), "k1_%d", seed);
+    snprintf(msg->key2, sizeof(msg->key2), "k2_%d", seed);
+    msg->value = (double)seed * 2.5;
+}
+
+static int validate_TwoKeyStringTopic(void* data, int seed) {
+    AtomicTests_TwoKeyStringTopic* msg = (AtomicTests_TwoKeyStringTopic*)data;
+    char expected1[32];
+    char expected2[32];
+    snprintf(expected1, sizeof(expected1), "k1_%d", seed);
+    snprintf(expected2, sizeof(expected2), "k2_%d", seed);
+    
+    if (strcmp(msg->key1, expected1) != 0) return -1;
+    if (strcmp(msg->key2, expected2) != 0) return -1;
+    if (fabs(msg->value - ((double)seed * 2.5)) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(TwoKeyStringTopic, two_key_string_topic);
+
+// --- ThreeKeyTopic ---
+static void generate_ThreeKeyTopic(void* data, int seed) {
+    AtomicTests_ThreeKeyTopic* msg = (AtomicTests_ThreeKeyTopic*)data;
+    msg->key1 = seed;
+    snprintf(msg->key2, sizeof(msg->key2), "k2_%d", seed);
+    msg->key3 = (int16_t)(seed % 100);
+    msg->value = (double)seed * 3.5;
+}
+
+static int validate_ThreeKeyTopic(void* data, int seed) {
+    AtomicTests_ThreeKeyTopic* msg = (AtomicTests_ThreeKeyTopic*)data;
+    char expected2[32];
+    snprintf(expected2, sizeof(expected2), "k2_%d", seed);
+    
+    if (msg->key1 != seed) return -1;
+    if (strcmp(msg->key2, expected2) != 0) return -1;
+    if (msg->key3 != (int16_t)(seed % 100)) return -1;
+    if (fabs(msg->value - ((double)seed * 3.5)) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(ThreeKeyTopic, three_key_topic);
+
+// --- FourKeyTopic ---
+static void generate_FourKeyTopic(void* data, int seed) {
+    AtomicTests_FourKeyTopic* msg = (AtomicTests_FourKeyTopic*)data;
+    msg->key1 = seed;
+    msg->key2 = seed + 1;
+    msg->key3 = seed + 2;
+    msg->key4 = seed + 3;
+    snprintf(msg->description, sizeof(msg->description), "Desc_%d", seed);
+}
+
+static int validate_FourKeyTopic(void* data, int seed) {
+    AtomicTests_FourKeyTopic* msg = (AtomicTests_FourKeyTopic*)data;
+    char expectedDesc[64];
+    snprintf(expectedDesc, sizeof(expectedDesc), "Desc_%d", seed);
+    
+    if (msg->key1 != seed) return -1;
+    if (msg->key2 != seed + 1) return -1;
+    if (msg->key3 != seed + 2) return -1;
+    if (msg->key4 != seed + 3) return -1;
+    if (strcmp(msg->description, expectedDesc) != 0) return -1;
+    return 0;
+}
+DEFINE_HANDLER(FourKeyTopic, four_key_topic);
+
+// ============================================================================
+// SECTION 10: NESTED KEYS
+// ============================================================================
+
+// --- NestedKeyTopic ---
+static void generate_NestedKeyTopic(void* data, int seed) {
+    AtomicTests_NestedKeyTopic* msg = (AtomicTests_NestedKeyTopic*)data;
+    msg->loc.building = seed;
+    msg->loc.floor = (int16_t)(seed % 10);
+    msg->temperature = 20.0 + (double)seed;
+}
+
+static int validate_NestedKeyTopic(void* data, int seed) {
+    AtomicTests_NestedKeyTopic* msg = (AtomicTests_NestedKeyTopic*)data;
+    if (msg->loc.building != seed) return -1;
+    if (msg->loc.floor != (int16_t)(seed % 10)) return -1;
+    if (fabs(msg->temperature - (20.0 + (double)seed)) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(NestedKeyTopic, nested_key_topic);
+
+// --- NestedKeyGeoTopic ---
+static void generate_NestedKeyGeoTopic(void* data, int seed) {
+    AtomicTests_NestedKeyGeoTopic* msg = (AtomicTests_NestedKeyGeoTopic*)data;
+    msg->coords.latitude = (double)seed * 0.1;
+    msg->coords.longitude = (double)seed * 0.2;
+    snprintf(msg->location_name, sizeof(msg->location_name), "Loc_%d", seed);
+}
+
+static int validate_NestedKeyGeoTopic(void* data, int seed) {
+    AtomicTests_NestedKeyGeoTopic* msg = (AtomicTests_NestedKeyGeoTopic*)data;
+    char expected[128];
+    snprintf(expected, sizeof(expected), "Loc_%d", seed);
+    
+    if (fabs(msg->coords.latitude - ((double)seed * 0.1)) > 0.0001) return -1;
+    if (fabs(msg->coords.longitude - ((double)seed * 0.2)) > 0.0001) return -1;
+    if (strcmp(msg->location_name, expected) != 0) return -1;
+    return 0;
+}
+DEFINE_HANDLER(NestedKeyGeoTopic, nested_key_geo_topic);
+
+// --- NestedTripleKeyTopic ---
+static void generate_NestedTripleKeyTopic(void* data, int seed) {
+    AtomicTests_NestedTripleKeyTopic* msg = (AtomicTests_NestedTripleKeyTopic*)data;
+    msg->keys.id1 = seed;
+    msg->keys.id2 = seed + 1;
+    msg->keys.id3 = seed + 2;
+    snprintf(msg->data, sizeof(msg->data), "Data_%d", seed);
+}
+
+static int validate_NestedTripleKeyTopic(void* data, int seed) {
+    AtomicTests_NestedTripleKeyTopic* msg = (AtomicTests_NestedTripleKeyTopic*)data;
+    char expected[64];
+    snprintf(expected, sizeof(expected), "Data_%d", seed);
+    
+    if (msg->keys.id1 != seed) return -1;
+    if (msg->keys.id2 != seed + 1) return -1;
+    if (msg->keys.id3 != seed + 2) return -1;
+    if (strcmp(msg->data, expected) != 0) return -1;
+    return 0;
+}
+DEFINE_HANDLER(NestedTripleKeyTopic, nested_triple_key_topic);

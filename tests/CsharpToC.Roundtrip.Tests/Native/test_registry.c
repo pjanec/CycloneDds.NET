@@ -67,6 +67,19 @@ extern const topic_handler_t array_2d_int32_topic_handler;
 extern const topic_handler_t array_3d_int32_topic_handler;
 extern const topic_handler_t array_struct_topic_handler;
 
+extern const topic_handler_t nested_struct_topic_handler;
+extern const topic_handler_t nested_3d_topic_handler;
+extern const topic_handler_t doubly_nested_topic_handler;
+extern const topic_handler_t complex_nested_topic_handler;
+
+extern const topic_handler_t two_key_int32_topic_handler;
+extern const topic_handler_t two_key_string_topic_handler;
+extern const topic_handler_t three_key_topic_handler;
+extern const topic_handler_t four_key_topic_handler;
+extern const topic_handler_t nested_key_topic_handler;
+extern const topic_handler_t nested_key_geo_topic_handler;
+extern const topic_handler_t nested_triple_key_topic_handler;
+
 static const topic_handler_t* handlers[] = {
     &boolean_topic_handler,
     &int32_topic_handler,
@@ -113,6 +126,17 @@ static const topic_handler_t* handlers[] = {
     &array_2d_int32_topic_handler,
     &array_3d_int32_topic_handler,
     &array_struct_topic_handler,
+    &nested_struct_topic_handler,
+    &nested_3d_topic_handler,
+    &doubly_nested_topic_handler,
+    &complex_nested_topic_handler,
+    &two_key_int32_topic_handler,
+    &two_key_string_topic_handler,
+    &three_key_topic_handler,
+    &four_key_topic_handler,
+    &nested_key_topic_handler,
+    &nested_key_geo_topic_handler,
+    &nested_triple_key_topic_handler,
     NULL
 };
 

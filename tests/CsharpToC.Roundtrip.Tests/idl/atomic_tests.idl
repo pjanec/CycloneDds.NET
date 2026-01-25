@@ -163,6 +163,7 @@ module AtomicTests {
     // SECTION 3: NESTED STRUCTURES
     // ========================================================================
     
+    @final
     struct Point2D {
         double x;
         double y;
@@ -175,6 +176,7 @@ module AtomicTests {
         Point2D point;
     };
     
+    @final
     struct Point3D {
         double x;
         double y;
@@ -188,6 +190,7 @@ module AtomicTests {
         Point3D point;
     };
     
+    @final
     struct Box {
         Point2D topLeft;
         Point2D bottomRight;
@@ -200,6 +203,7 @@ module AtomicTests {
         Box box;
     };
     
+    @final
     struct Container {
         long count;
         Point3D center;
@@ -501,6 +505,7 @@ module AtomicTests {
     // SECTION 9: COMPOSITE KEYS
     // ========================================================================
     
+    @final
     @topic
     struct TwoKeyInt32Topic {
         @key long key1;
@@ -508,6 +513,7 @@ module AtomicTests {
         double value;
     };
     
+    @final
     @topic
     struct TwoKeyStringTopic {
         @key string<32> key1;
@@ -515,6 +521,7 @@ module AtomicTests {
         double value;
     };
     
+    @final
     @topic
     struct ThreeKeyTopic {
         @key long key1;
@@ -523,6 +530,7 @@ module AtomicTests {
         double value;
     };
     
+    @final
     @topic
     struct FourKeyTopic {
         @key long key1;
@@ -536,34 +544,40 @@ module AtomicTests {
     // SECTION 10: NESTED KEYS
     // ========================================================================
     
+    @final
     struct Location {
         @key long building;
         @key short floor;
     };
     
+    @final
     @topic
     struct NestedKeyTopic {
         @key Location loc;
         double temperature;
     };
     
+    @final
     struct Coordinates {
         @key double latitude;
         @key double longitude;
     };
     
+    @final
     @topic
     struct NestedKeyGeoTopic {
         @key Coordinates coords;
         string<128> location_name;
     };
     
+    @final
     struct TripleKey {
         @key long id1;
         @key long id2;
         @key long id3;
     };
     
+    @final
     @topic
     struct NestedTripleKeyTopic {
         @key TripleKey keys;
@@ -623,30 +637,35 @@ module AtomicTests {
     // SECTION 12: EDGE CASES
     // ========================================================================
     
+    @final
     @topic
     struct EmptySequenceTopic {
         @key long id;
         sequence<long> empty_seq;  // Will test with zero elements
     };
     
+    @final
     @topic
     struct LargeSequenceTopic {
         @key long id;
         sequence<long> large_seq;  // Will test with 1000+ elements
     };
     
+    @final
     @topic
     struct LongStringTopic {
         @key long id;
         string<4096> long_string;
     };
     
+    @final
     @topic
     struct UnboundedStringTopic {
         @key long id;
         string unbounded;  // Will test with varying sizes
     };
     
+    @final
     @topic
     struct AllPrimitivesAtomicTopic {
         @key long id;

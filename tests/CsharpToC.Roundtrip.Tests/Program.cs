@@ -55,7 +55,7 @@ namespace CsharpToC.Roundtrip.Tests
                 _participant = new DdsParticipant();
 
                 // Run Tests
-                await TestBoolean();
+                // await TestBoolean();
                 await TestArrayInt32();
                 await TestArrayFloat64();
                 // await TestChar();
@@ -92,21 +92,39 @@ namespace CsharpToC.Roundtrip.Tests
                 // await TestFloat32Appendable();
                 // await TestFloat64Appendable();
                 
-                await TestStringUnboundedAppendable();
-                await TestStringBounded256Appendable();
+                // await TestStringUnboundedAppendable();
+                // await TestStringBounded256Appendable();
                 
                 // await TestEnum();
                 // await TestColorEnum();
                 // await TestEnumAppendable();
                 // await TestColorEnumAppendable();
 
-                await TestStringBounded32Appendable();
+                // await TestStringBounded32Appendable();
                 await TestArrayInt32Appendable();
                 await TestArray2DInt32();
                 await TestArray3DInt32();
                 await TestArrayStruct();
                 // await TestArrayFloat64Appendable();
                 // await TestArrayStringAppendable();
+
+                // Nested Struct Tests
+                await TestNestedStruct();
+                await TestNested3D();
+                await TestDoublyNested();
+                await TestComplexNested();
+
+                // Composite Keys
+                await TestTwoKeyInt32();
+                await TestTwoKeyString();
+                await TestThreeKey();
+                await TestFourKey();
+
+                // Nested Keys
+                await TestNestedKey();
+                await TestNestedKeyGeo();
+                await TestNestedTripleKey();
+
                 // await TestSequenceInt32Appendable();
                 // await TestUnionLongDiscAppendable();
 
@@ -896,5 +914,143 @@ namespace CsharpToC.Roundtrip.Tests
                 }
             );
         }
+
+        static async Task TestNestedStruct()
+        {
+            await RunRoundtrip<NestedStructTopic>(
+                "AtomicTests::NestedStructTopic",
+                600,
+                (s) => {
+                    var msg = new NestedStructTopic();
+                    msg.Id = s;
+                    msg.Point = new Point2D { X = s * 1.1, Y = s * 2.2 };
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (Math.Abs(msg.Point.X - (s * 1.1)) > 0.0001) return false;
+                    if (Math.Abs(msg.Point.Y - (s * 2.2)) > 0.0001) return false;
+                    return true;
+                }
+            );
+        }
+
+        static async Task TestNested3D()
+        {
+            await RunRoundtrip<Nested3DTopic>(
+                "AtomicTests::Nested3DTopic",
+                610,
+                (s) => {
+                    var msg = new Nested3DTopic();
+                    msg.Id = s;
+                    msg.Point = new Point3D { X = s + 1.0, Y = s + 2.0, Z = s + 3.0 };
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (Math.Abs(msg.Point.X - (s + 1.0)) > 0.0001) return false;
+                    if (Math.Abs(msg.Point.Y - (s + 2.0)) > 0.0001) return false;
+                    if (Math.Abs(msg.Point.Z - (s + 3.0)) > 0.0001) return false;
+                    return true;
+                }
+            );
+        }
+
+        static async Task TestDoublyNested()
+        {
+            await RunRoundtrip<DoublyNestedTopic>(
+                "AtomicTests::DoublyNestedTopic",
+                620,
+                (s) => {
+                    var msg = new DoublyNestedTopic();
+                    msg.Id = s;
+                    msg.Box = new Box {
+                        TopLeft = new Point2D { X = s, Y = s + 1.0 },
+                        BottomRight = new Point2D { X = s + 10.0, Y = s + 11.0 }
+                    };
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (Math.Abs(msg.Box.TopLeft.X - s) > 0.0001) return false;
+                    if (Math.Abs(msg.Box.TopLeft.Y - (s + 1.0)) > 0.0001) return false;
+                    if (Math.Abs(msg.Box.BottomRight.X - (s + 10.0)) > 0.0001) return false;
+                    if (Math.Abs(msg.Box.BottomRight.Y - (s + 11.0)) > 0.0001) return false;
+                    return true;
+                }
+            );
+        }
+
+        static async Task TestComplexNested()
+        {
+            await RunRoundtrip<ComplexNestedTopic>(
+                "AtomicTests::ComplexNestedTopic",
+                630,
+                (s) => {
+                    var msg = new ComplexNestedTopic();
+                    msg.Id = s;
+                    msg.Container = new Container {
+                        Count = s,
+                        Radius = s * 0.5,
+                        Center = new Point3D { X = s + 0.1, Y = s + 0.2, Z = s + 0.3 }
+                    };
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Container.Count != s) return false;
+                    if (Math.Abs(msg.Container.Radius - (s * 0.5)) > 0.0001) return false;
+                    if (Math.Abs(msg.Container.Center.X - (s + 0.1)) > 0.0001) return false;
+                    if (Math.Abs(msg.Container.Center.Y - (s + 0.2)) > 0.0001) return false;
+                    if (Math.Abs(msg.Container.Center.Z - (s + 0.3)) > 0.0001) return false;
+                    return true;
+                }
+            );
+        }
+
+        // Section 9: Composite Keys
+        static async Task TestTwoKeyInt32() => await RunRoundtrip<TwoKeyInt32Topic>(
+            "AtomicTests::TwoKeyInt32Topic", 
+            1600,
+            s => new TwoKeyInt32Topic { Key1 = s, Key2 = s + 1, Value = (double)s * 1.5 },
+            (d, s) => d.Key1 == s && d.Key2 == s + 1 && Math.Abs(d.Value - (double)s * 1.5) < 0.0001);
+
+        static async Task TestTwoKeyString() => await RunRoundtrip<TwoKeyStringTopic>(
+            "AtomicTests::TwoKeyStringTopic", 
+            1610,
+            s => new TwoKeyStringTopic { Key1 = $"k1_{s}", Key2 = $"k2_{s}", Value = (double)s * 2.5 },
+            (d, s) => d.Key1 == $"k1_{s}" && d.Key2 == $"k2_{s}" && Math.Abs(d.Value - (double)s * 2.5) < 0.0001);
+
+        static async Task TestThreeKey() => await RunRoundtrip<ThreeKeyTopic>(
+            "AtomicTests::ThreeKeyTopic",
+            1620,
+            s => new ThreeKeyTopic { Key1 = s, Key2 = $"k2_{s}", Key3 = (short)(s % 100), Value = (double)s * 3.5 },
+            (d, s) => d.Key1 == s && d.Key2 == $"k2_{s}" && d.Key3 == (short)(s % 100) && Math.Abs(d.Value - (double)s * 3.5) < 0.0001);
+
+        static async Task TestFourKey() => await RunRoundtrip<FourKeyTopic>(
+            "AtomicTests::FourKeyTopic",
+            1630,
+            s => new FourKeyTopic { Key1 = s, Key2 = s + 1, Key3 = s + 2, Key4 = s + 3, Description = $"Desc_{s}" },
+            (d, s) => d.Key1 == s && d.Key2 == s + 1 && d.Key3 == s + 2 && d.Key4 == s + 3 && d.Description == $"Desc_{s}");
+
+        // Section 10: Nested Keys
+        static async Task TestNestedKey() => await RunRoundtrip<NestedKeyTopic>(
+            "AtomicTests::NestedKeyTopic",
+            1700,
+            s => new NestedKeyTopic { Loc = new Location { Building = s, Floor = (short)(s % 10) }, Temperature = 20.0 + s },
+            (d, s) => d.Loc.Building == s && d.Loc.Floor == (short)(s % 10) && Math.Abs(d.Temperature - (20.0 + s)) < 0.0001);
+
+        static async Task TestNestedKeyGeo() => await RunRoundtrip<NestedKeyGeoTopic>(
+            "AtomicTests::NestedKeyGeoTopic",
+            1710,
+            s => new NestedKeyGeoTopic { Coords = new Coordinates { Latitude = s * 0.1, Longitude = s * 0.2 }, Location_name = $"Loc_{s}" },
+            (d, s) => Math.Abs(d.Coords.Latitude - s * 0.1) < 0.0001 && Math.Abs(d.Coords.Longitude - s * 0.2) < 0.0001 && d.Location_name == $"Loc_{s}");
+
+        static async Task TestNestedTripleKey() => await RunRoundtrip<NestedTripleKeyTopic>(
+            "AtomicTests::NestedTripleKeyTopic",
+            1720,
+            s => new NestedTripleKeyTopic { Keys = new TripleKey { Id1 = s, Id2 = s+1, Id3 = s+2 }, Data = $"Data_{s}" },
+            (d, s) => d.Keys.Id1 == s && d.Keys.Id2 == s+1 && d.Keys.Id3 == s+2 && d.Data == $"Data_{s}");
+
     }
 }

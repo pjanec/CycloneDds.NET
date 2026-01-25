@@ -188,6 +188,7 @@ namespace AtomicTests
     }
 
     [DdsStruct]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Point3D
     {
         public double X;
@@ -205,6 +206,7 @@ namespace AtomicTests
     }
 
     [DdsStruct]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Box
     {
         public Point2D TopLeft;
@@ -221,6 +223,7 @@ namespace AtomicTests
     }
 
     [DdsStruct]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Container
     {
         public int Count;
@@ -692,6 +695,7 @@ namespace AtomicTests
     }
 
     [DdsStruct]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Location
     {
         [DdsKey]
@@ -710,6 +714,7 @@ namespace AtomicTests
     }
 
     [DdsStruct]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Coordinates
     {
         [DdsKey]
@@ -730,6 +735,7 @@ namespace AtomicTests
     }
 
     [DdsStruct]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct TripleKey
     {
         [DdsKey]

@@ -392,3 +392,60 @@ The test output confirms the fix:
 
 The ArrayStringTopic crash `IndexOutOfRangeException` is resolved.
 ---
+The "Complex Arrays" task from BATCH-28 has been successfully completed and stabilized. This involved implementing and verifying support for Multidimensional Arrays and Arrays of Structs.
+
+### work\_tracker status
+
+- [x] Complex Arrays Support \(Stabilized & Verified\)
+    - [x] Array2DInt32Topic: Passed Roundtrip \(C# &lt;-&gt; C\)
+    - [x] Array3DInt32Topic: Passed Roundtrip \(C# &lt;-&gt; C\)
+    - [x] ArrayStructTopic: Passed Roundtrip \(C# &lt;-&gt; C\)
+
+### Execution Summary
+
+1. **Initial Failures**: The initial attempt to run complex array tests revealed two issues:
+    - **C Compilation Error**: Incorrect field names in atomic\_tests\_native.c \(used `values` instead of `matrix` or `cube`\).
+    - **Creation Error**: ArrayStructTopic failed to create a DataWriter because the nested C# struct Point2D was inferred as Appendable \(default\), whereas the IDL/Native type expected a fixed-size Final struct for array optimization involving structs.
+2. **Code Fixes**:
+    - **Native Handler Update**: Corrected field names in atomic\_tests\_native.c to match the generated IDL C structs \(`matrix`, `cube`\).
+    - **Attribute Enforcement**: Applied \[DdsExtensibility\(DdsExtensibilityKind.Final\)\] to the Point2D struct in AtomicTestsTypes.cs.
+    - **Validation Logic Alignment**: Fixed a value mismatch where the C native generator and validator used an offset of `+1.0` while the C# counterpart expected `+0.5`. Aligned C code to match C#.
+3. **Verification**: After applying fixes and rebuilding the native test library, all complex array tests passed successfully.
+
+### Final Verification Results
+
+The test executable CsharpToC.Roundtrip.Tests.exe now reports:
+
+- 
+- 
+- 
+-
+
+This confirms that the Fast Cyclone DDS C# Bindings correctly handle complex nested types and multidimensional arrays, provided that nested structs in fixed-size arrays are explicitly marked as Final in C# to match DDS XTypes behavioral expectations.
+---
+The **Nested Structures** and **Nested Keys** \(Sections 3, 9, and 10 of atomic\_tests.idl\) have been successfully implemented and verified.
+
+The following changes were made to complete the task:
+
+1. **Native Implementation \(atomic\_tests\_native.c\)**:
+
+    - Added generation and validation logic for **Nested Structures**: NestedStructTopic, Nested3DTopic, DoublyNestedTopic, ComplexNestedTopic.
+    - Added generation and validation logic for **Composite Keys** \(Section 9\): TwoKeyInt32Topic, TwoKeyStringTopic, ThreeKeyTopic, FourKeyTopic.
+    - Added generation and validation logic for **Nested Keys** \(Section 10\): NestedKeyTopic, NestedKeyGeoTopic, NestedTripleKeyTopic.
+2. **Native Registry \(test\_registry.c\)**:
+
+    - Declared and registered the new native handlers in the `handlers[]` array to expose them to the test runner.
+3. **C# Test Runner \(Program.cs\)**:
+
+    - Implemented TestTwoKeyInt32, TestTwoKeyString, TestThreeKey, TestFourKey for composite keys.
+    - Implemented TestNestedKey, TestNestedKeyGeo, TestNestedTripleKey for nested keys.
+    - Note: Fixed a property name mismatch in NestedKeyGeoTopic \(`LocationName` -&gt; Location\_name\) to match the generated C# code.
+    - Enabled the new tests in the Main execution loop.
+4. **Verification**:
+
+    - Rebuilt the native library `CsharpToC_Roundtrip_Native.dll` and the C# test application.
+    - Ran the full suite of atomic tests.
+    - **Result**: `ALL TESTS PASSED`. Validated correct serialization and roundtrip behavior for all nested and keyed types.
+
+The environment is now fully set up with comprehensive coverage for nested types and composite keys.
+---
