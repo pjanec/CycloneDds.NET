@@ -28,84 +28,98 @@ module AtomicTests {
     // Key is always 'id' to keep it simple and consistent.
     // ========================================================================
     
+    @final
     @topic
     struct BooleanTopic {
         @key long id;
         boolean value;
     };
     
+    @final
     @topic
     struct CharTopic {
         @key long id;
         char value;
     };
     
+    @final
     @topic
     struct OctetTopic {
         @key long id;
         octet value;
     };
     
+    @final
     @topic
     struct Int16Topic {
         @key long id;
         short value;
     };
     
+    @final
     @topic
     struct UInt16Topic {
         @key long id;
         unsigned short value;
     };
     
+    @final
     @topic
     struct Int32Topic {
         @key long id;
         long value;
     };
     
+    @final
     @topic
     struct UInt32Topic {
         @key long id;
         unsigned long value;
     };
     
+    @final
     @topic
     struct Int64Topic {
         @key long id;
         long long value;
     };
     
+    @final
     @topic
     struct UInt64Topic {
         @key long id;
         unsigned long long value;
     };
     
+    @final
     @topic
     struct Float32Topic {
         @key long id;
         float value;
     };
     
+    @final
     @topic
     struct Float64Topic {
         @key long id;
         double value;
     };
     
+    @final
     @topic
     struct StringUnboundedTopic {
         @key long id;
         string value;
     };
     
+    @final
     @topic
     struct StringBounded32Topic {
         @key long id;
         string<32> value;
     };
     
+    @final
     @topic
     struct StringBounded256Topic {
         @key long id;
@@ -122,6 +136,7 @@ module AtomicTests {
         THIRD 
     };
     
+    @final
     @topic
     struct EnumTopic {
         @key long id;
@@ -137,6 +152,7 @@ module AtomicTests {
         CYAN 
     };
     
+    @final
     @topic
     struct ColorEnumTopic {
         @key long id;
@@ -152,6 +168,7 @@ module AtomicTests {
         double y;
     };
     
+    @final
     @topic
     struct NestedStructTopic {
         @key long id;
@@ -164,6 +181,7 @@ module AtomicTests {
         double z;
     };
     
+    @final
     @topic
     struct Nested3DTopic {
         @key long id;
@@ -175,6 +193,7 @@ module AtomicTests {
         Point2D bottomRight;
     };
     
+    @final
     @topic
     struct DoublyNestedTopic {
         @key long id;
@@ -187,6 +206,7 @@ module AtomicTests {
         double radius;
     };
     
+    @final
     @topic
     struct ComplexNestedTopic {
         @key long id;
@@ -204,6 +224,7 @@ module AtomicTests {
         case 3: string string_value;
     };
     
+    @final
     @topic
     struct UnionLongDiscTopic {
         @key long id;
@@ -216,6 +237,7 @@ module AtomicTests {
         case FALSE: double false_val;
     };
     
+    @final
     @topic
     struct UnionBoolDiscTopic {
         @key long id;
@@ -230,6 +252,7 @@ module AtomicTests {
         case YELLOW: Point2D yellow_point;
     };
     
+    @final
     @topic
     struct UnionEnumDiscTopic {
         @key long id;
@@ -244,6 +267,7 @@ module AtomicTests {
         case 4: float float_val;
     };
     
+    @final
     @topic
     struct UnionShortDiscTopic {
         @key long id;
@@ -254,36 +278,42 @@ module AtomicTests {
     // SECTION 5: OPTIONAL FIELDS
     // ========================================================================
     
+    @final
     @topic
     struct OptionalInt32Topic {
         @key long id;
         @optional long opt_value;
     };
     
+    @final
     @topic
     struct OptionalFloat64Topic {
         @key long id;
         @optional double opt_value;
     };
     
+    @final
     @topic
     struct OptionalStringTopic {
         @key long id;
         @optional string<64> opt_string;
     };
     
+    @final
     @topic
     struct OptionalStructTopic {
         @key long id;
         @optional Point2D opt_point;
     };
     
+    @final
     @topic
     struct OptionalEnumTopic {
         @key long id;
         @optional SimpleEnum opt_enum;
     };
     
+    @final
     @topic
     struct MultiOptionalTopic {
         @key long id;
@@ -296,42 +326,49 @@ module AtomicTests {
     // SECTION 6: SIMPLE SEQUENCES
     // ========================================================================
     
+    @final
     @topic
     struct SequenceInt32Topic {
         @key long id;
         sequence<long> values;
     };
     
+    @final
     @topic
     struct BoundedSequenceInt32Topic {
         @key long id;
         sequence<long, 10> values;
     };
     
+    @final
     @topic
     struct SequenceInt64Topic {
         @key long id;
         sequence<long long> values;
     };
     
+    @final
     @topic
     struct SequenceFloat32Topic {
         @key long id;
         sequence<float> values;
     };
     
+    @final
     @topic
     struct SequenceFloat64Topic {
         @key long id;
         sequence<double> values;
     };
     
+    @final
     @topic
     struct SequenceBooleanTopic {
         @key long id;
         sequence<boolean> values;
     };
     
+    @final
     @topic
     struct SequenceOctetTopic {
         @key long id;
@@ -340,24 +377,28 @@ module AtomicTests {
     
     typedef string<32> String32;
 
+    @final
     @topic
     struct SequenceStringTopic {
         @key long id;
         sequence<String32> values;
     };
     
+    @final
     @topic
     struct SequenceEnumTopic {
         @key long id;
         sequence<SimpleEnum> values;
     };
     
+    @final
     @topic
     struct SequenceStructTopic {
         @key long id;
         sequence<Point2D> points;
     };
     
+    @final
     @topic
     struct SequenceUnionTopic {
         @key long id;
@@ -368,36 +409,42 @@ module AtomicTests {
     // SECTION 7: ARRAYS
     // ========================================================================
     
+    @final
     @topic
     struct ArrayInt32Topic {
         @key long id;
         long values[5];
     };
     
+    @final
     @topic
     struct ArrayFloat64Topic {
         @key long id;
         double values[5];
     };
     
+    @final
     @topic
     struct ArrayStringTopic {
         @key long id;
         string<16> names[5];
     };
     
+    @final
     @topic
     struct Array2DInt32Topic {
         @key long id;
         long matrix[3][4];
     };
     
+    @final
     @topic
     struct Array3DInt32Topic {
         @key long id;
         long cube[2][3][4];
     };
     
+    @final
     @topic
     struct ArrayStructTopic {
         @key long id;

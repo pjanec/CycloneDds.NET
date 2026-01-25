@@ -34,7 +34,7 @@
 - [x] **RT-P09** UInt64Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#51-primitive-types)
 - [x] **RT-P10** Float32Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#example-adding-float32topic)
 - [x] **RT-P11** Float64Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#51-primitive-types)
-- [x] **RT-P12** StringBounded32Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#52-strings)
+- [x] **RT-P12** StringBounded32Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#52-strings) **[WARNING: Appendable Verify Failed]**
 - [x] **RT-P13** StringUnboundedTopic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#52-strings)
 - [x] **RT-P14** StringBounded256Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#52-strings)
 
@@ -57,9 +57,9 @@
 **Status:** 0/6 complete (1 defined but skipped)  
 **Estimated Effort:** 8-12 hours
 
-- [ ] **RT-A01** ArrayInt32Topic *[FIX EXISTING]* → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#54-arrays)
+- [ ] **RT-A01** ArrayInt32Topic *[FIX EXISTING]* → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#54-arrays) **[FAILED: Appendable Crash]**
 - [ ] **RT-A02** ArrayFloat64Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#54-arrays)
-- [ ] **RT-A03** ArrayStringTopic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#54-arrays)
+- [ ] **RT-A03** ArrayStringTopic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#54-arrays) **[PARTIAL: Final Passed, Appendable Blocked]**
 - [ ] **RT-A04** Array2DInt32Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#54-arrays)
 - [ ] **RT-A05** Array3DInt32Topic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#54-arrays)
 - [ ] **RT-A06** ArrayStructTopic → [guide](ROUNDTRIP-IMPLEMENTATION-GUIDE.md#54-arrays)

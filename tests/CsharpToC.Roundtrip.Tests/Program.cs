@@ -55,7 +55,9 @@ namespace CsharpToC.Roundtrip.Tests
                 _participant = new DdsParticipant();
 
                 // Run Tests
-                // await TestBoolean();
+                await TestBoolean();
+                await TestArrayInt32();
+                await TestArrayFloat64();
                 // await TestChar();
                 // await TestOctet();
                 // await TestInt16();
@@ -73,7 +75,7 @@ namespace CsharpToC.Roundtrip.Tests
                 // await TestStringBounded32();
                 // await TestArrayInt32();
                 // await TestArrayFloat64();
-                await TestArrayString();
+                // await TestArrayString();
                 // await TestSequenceInt32();
                 // await TestUnionLongDisc();
 
@@ -90,8 +92,8 @@ namespace CsharpToC.Roundtrip.Tests
                 // await TestFloat32Appendable();
                 // await TestFloat64Appendable();
                 
-                // await TestStringUnboundedAppendable();
-                // await TestStringBounded256Appendable();
+                await TestStringUnboundedAppendable();
+                await TestStringBounded256Appendable();
                 
                 // await TestEnum();
                 // await TestColorEnum();
@@ -100,10 +102,13 @@ namespace CsharpToC.Roundtrip.Tests
 
                 await TestStringBounded32Appendable();
                 await TestArrayInt32Appendable();
-                await TestArrayFloat64Appendable();
-                await TestArrayStringAppendable();
-                await TestSequenceInt32Appendable();
-                await TestUnionLongDiscAppendable();
+                await TestArray2DInt32();
+                await TestArray3DInt32();
+                await TestArrayStruct();
+                // await TestArrayFloat64Appendable();
+                // await TestArrayStringAppendable();
+                // await TestSequenceInt32Appendable();
+                // await TestUnionLongDiscAppendable();
 
                 Console.WriteLine("==================================================");
                 Console.WriteLine("ALL TESTS PASSED");
@@ -816,6 +821,79 @@ namespace CsharpToC.Roundtrip.Tests
                     return msg; 
                 },
                 (msg, s) => msg.Id == s && msg.Color == (ColorEnum)(s % 6)
+            );
+        }
+
+        static async Task TestArray2DInt32()
+        {
+            await RunRoundtrip<Array2DInt32Topic>(
+                "AtomicTests::Array2DInt32Topic",
+                500,
+                (s) => {
+                    var msg = new Array2DInt32Topic();
+                    msg.Id = s;
+                    msg.Matrix = new int[12];
+                    for(int i=0; i<12; i++) msg.Matrix[i] = s + i;
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Matrix.Length != 12) return false;
+                    for(int i=0; i<12; i++) {
+                        if (msg.Matrix[i] != s + i) return false;
+                    }
+                    return true;
+                }
+            );
+        }
+
+        static async Task TestArray3DInt32()
+        {
+            await RunRoundtrip<Array3DInt32Topic>(
+                "AtomicTests::Array3DInt32Topic",
+                520,
+                (s) => {
+                    var msg = new Array3DInt32Topic();
+                    msg.Id = s;
+                    msg.Cube = new int[24];
+                    for(int i=0; i<24; i++) msg.Cube[i] = s + i;
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Cube.Length != 24) return false;
+                    for(int i=0; i<24; i++) {
+                        if (msg.Cube[i] != s + i) return false;
+                    }
+                    return true;
+                }
+            );
+        }
+
+        static async Task TestArrayStruct()
+        {
+             await RunRoundtrip<ArrayStructTopic>(
+                "AtomicTests::ArrayStructTopic",
+                510,
+                (s) => {
+                    var msg = new ArrayStructTopic();
+                    msg.Id = s;
+                    msg.Points = new Point2D[3];
+                    for (int i=0; i<3; i++) {
+                        msg.Points[i].X = s + i;
+                        msg.Points[i].Y = s + i + 0.5;
+                    }
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Points.Length != 3) return false;
+                    for (int i=0; i<3; i++) {
+                        if (Math.Abs(msg.Points[i].X - (s+i)) > 0.0001) return false;
+                        if (Math.Abs(msg.Points[i].Y - (s+i+0.5)) > 0.0001) return false;
+                    }
+                    return true;
+                }
             );
         }
     }

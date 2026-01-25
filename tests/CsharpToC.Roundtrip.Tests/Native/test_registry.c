@@ -63,6 +63,10 @@ extern const topic_handler_t array_int32_topic_appendable_handler;
 extern const topic_handler_t array_float64_topic_appendable_handler;
 extern const topic_handler_t array_string_topic_appendable_handler;
 
+extern const topic_handler_t array_2d_int32_topic_handler;
+extern const topic_handler_t array_3d_int32_topic_handler;
+extern const topic_handler_t array_struct_topic_handler;
+
 static const topic_handler_t* handlers[] = {
     &boolean_topic_handler,
     &int32_topic_handler,
@@ -106,6 +110,9 @@ static const topic_handler_t* handlers[] = {
     &array_int32_topic_appendable_handler,
     &array_float64_topic_appendable_handler,
     &array_string_topic_appendable_handler,
+    &array_2d_int32_topic_handler,
+    &array_3d_int32_topic_handler,
+    &array_struct_topic_handler,
     NULL
 };
 

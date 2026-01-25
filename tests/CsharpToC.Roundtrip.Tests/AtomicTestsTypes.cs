@@ -5,6 +5,7 @@ using CycloneDDS.Schema;
 namespace AtomicTests
 {
     [DdsTopic("BooleanTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct BooleanTopic
     {
         [DdsKey]
@@ -13,6 +14,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("CharTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct CharTopic
     {
         [DdsKey]
@@ -21,6 +23,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("OctetTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct OctetTopic
     {
         [DdsKey]
@@ -29,6 +32,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("Int16Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Int16Topic
     {
         [DdsKey]
@@ -37,6 +41,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("UInt16Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct UInt16Topic
     {
         [DdsKey]
@@ -45,6 +50,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("Int32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Int32Topic
     {
         [DdsKey]
@@ -53,6 +59,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("UInt32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct UInt32Topic
     {
         [DdsKey]
@@ -61,6 +68,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("Int64Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Int64Topic
     {
         [DdsKey]
@@ -69,6 +77,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("UInt64Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct UInt64Topic
     {
         [DdsKey]
@@ -77,6 +86,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("Float32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Float32Topic
     {
         [DdsKey]
@@ -85,6 +95,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("Float64Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Float64Topic
     {
         [DdsKey]
@@ -93,6 +104,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("StringUnboundedTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct StringUnboundedTopic
     {
         [DdsKey]
@@ -102,6 +114,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("StringBounded32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct StringBounded32Topic
     {
         [DdsKey]
@@ -112,6 +125,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("StringBounded256Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct StringBounded256Topic
     {
         [DdsKey]
@@ -129,6 +143,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("EnumTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct EnumTopic
     {
         [DdsKey]
@@ -147,6 +162,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("ColorEnumTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ColorEnumTopic
     {
         [DdsKey]
@@ -155,6 +171,7 @@ namespace AtomicTests
     }
 
     [DdsStruct]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Point2D
     {
         public double X;
@@ -162,6 +179,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("NestedStructTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct NestedStructTopic
     {
         [DdsKey]
@@ -178,6 +196,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("Nested3DTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Nested3DTopic
     {
         [DdsKey]
@@ -193,6 +212,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("DoublyNestedTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct DoublyNestedTopic
     {
         [DdsKey]
@@ -209,6 +229,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("ComplexNestedTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ComplexNestedTopic
     {
         [DdsKey]
@@ -231,6 +252,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("UnionLongDiscTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct UnionLongDiscTopic
     {
         [DdsKey]
@@ -251,6 +273,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("UnionBoolDiscTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct UnionBoolDiscTopic
     {
         [DdsKey]
@@ -275,6 +298,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("UnionEnumDiscTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct UnionEnumDiscTopic
     {
         [DdsKey]
@@ -299,6 +323,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("UnionShortDiscTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct UnionShortDiscTopic
     {
         [DdsKey]
@@ -307,6 +332,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("OptionalInt32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct OptionalInt32Topic
     {
         [DdsKey]
@@ -316,6 +342,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("OptionalFloat64Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct OptionalFloat64Topic
     {
         [DdsKey]
@@ -325,6 +352,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("OptionalStringTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct OptionalStringTopic
     {
         [DdsKey]
@@ -336,6 +364,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("OptionalStructTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct OptionalStructTopic
     {
         [DdsKey]
@@ -345,6 +374,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("OptionalEnumTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct OptionalEnumTopic
     {
         [DdsKey]
@@ -354,6 +384,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("MultiOptionalTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct MultiOptionalTopic
     {
         [DdsKey]
@@ -369,6 +400,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceInt32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceInt32Topic
     {
         [DdsKey]
@@ -378,6 +410,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("BoundedSequenceInt32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct BoundedSequenceInt32Topic
     {
         [DdsKey]
@@ -388,6 +421,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceInt64Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceInt64Topic
     {
         [DdsKey]
@@ -397,6 +431,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceFloat32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceFloat32Topic
     {
         [DdsKey]
@@ -406,6 +441,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceFloat64Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceFloat64Topic
     {
         [DdsKey]
@@ -415,6 +451,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceBooleanTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceBooleanTopic
     {
         [DdsKey]
@@ -424,6 +461,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceOctetTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceOctetTopic
     {
         [DdsKey]
@@ -433,6 +471,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceStringTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceStringTopic
     {
         [DdsKey]
@@ -442,6 +481,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceEnumTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceEnumTopic
     {
         [DdsKey]
@@ -451,6 +491,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceStructTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceStructTopic
     {
         [DdsKey]
@@ -460,6 +501,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("SequenceUnionTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct SequenceUnionTopic
     {
         [DdsKey]
@@ -592,6 +634,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("TwoKeyInt32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct TwoKeyInt32Topic
     {
         [DdsKey]
@@ -602,6 +645,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("TwoKeyStringTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct TwoKeyStringTopic
     {
         [DdsKey]
@@ -616,6 +660,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("ThreeKeyTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ThreeKeyTopic
     {
         [DdsKey]
@@ -630,6 +675,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("FourKeyTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct FourKeyTopic
     {
         [DdsKey]
@@ -655,6 +701,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("NestedKeyTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct NestedKeyTopic
     {
         [DdsKey]
@@ -672,6 +719,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("NestedKeyGeoTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct NestedKeyGeoTopic
     {
         [DdsKey]
@@ -693,6 +741,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("NestedTripleKeyTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct NestedTripleKeyTopic
     {
         [DdsKey]
@@ -703,6 +752,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("EmptySequenceTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct EmptySequenceTopic
     {
         [DdsKey]
@@ -712,6 +762,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("LargeSequenceTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct LargeSequenceTopic
     {
         [DdsKey]
@@ -721,6 +772,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("LongStringTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct LongStringTopic
     {
         [DdsKey]
@@ -731,6 +783,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("UnboundedStringTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct UnboundedStringTopic
     {
         [DdsKey]
@@ -740,6 +793,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("AllPrimitivesAtomicTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct AllPrimitivesAtomicTopic
     {
         [DdsKey]
