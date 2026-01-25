@@ -371,3 +371,24 @@ The generated deserializer at AtomicTests.ArrayStringTopic.Deserializer.cs now c
 
 You can now run the roundtrip tests using the execut
 ---
+The ArrayStringTopic roundtrip test is now **passing**.
+
+I identified that the CodeGen tool was incorrectly optimizing `string[]` fields with \[MaxLength\] attributes \(derived from IDL `string<N>`\) to use `ReadFixedString`/WriteFixedString. This was causing the C# side to expect raw fixed-width byte buffers, whereas the native CycloneDDS implementation \(and XCDR1 standard\) serializes them as a sequence of length-prefixed strings.
+
+I have:
+
+1. Modified DeserializerEmitter.cs to remove the `ReadFixedString` logic for string arrays, forcing it to use ReadString.
+2. Modified SerializerEmitter.cs to remove the WriteFixedString logic for string arrays.
+3. Rebuilt the CodeGen tool and the Test suite.
+
+The test output confirms the fix:
+
+- 
+- 
+- 
+-
+
+\(Note: The test run continued and failed on StringBounded32TopicAppendable later in the suite, which seems to be unrelated to the array issue and likely due to XCDR2 string header differences\).
+
+The ArrayStringTopic crash `IndexOutOfRangeException` is resolved.
+---

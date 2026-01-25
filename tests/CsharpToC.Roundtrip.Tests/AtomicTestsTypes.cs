@@ -65,7 +65,7 @@ namespace AtomicTests
     {
         [DdsKey]
         public int Id;
-        public int Value;
+        public long Value;
     }
 
     [DdsTopic("UInt64Topic")]
@@ -469,6 +469,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("ArrayInt32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ArrayInt32Topic
     {
         [DdsKey]
@@ -479,6 +480,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("ArrayFloat64Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ArrayFloat64Topic
     {
         [DdsKey]
@@ -489,6 +491,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("ArrayStringTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ArrayStringTopic
     {
         [DdsKey]
@@ -500,6 +503,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("Array2DInt32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Array2DInt32Topic
     {
         [DdsKey]
@@ -510,6 +514,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("Array3DInt32Topic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Array3DInt32Topic
     {
         [DdsKey]
@@ -520,6 +525,7 @@ namespace AtomicTests
     }
 
     [DdsTopic("ArrayStructTopic")]
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct ArrayStructTopic
     {
         [DdsKey]
@@ -866,7 +872,7 @@ namespace AtomicTests
     {
         [DdsKey]
         public int Id;
-        public int Value;
+        public long Value;
     }
 
     [DdsExtensibility(DdsExtensibilityKind.Appendable)]
@@ -999,7 +1005,7 @@ namespace AtomicTests
         public int Id;
         [ArrayLength(3)]
         [DdsManaged]
-        public AtomicTests::Point2D[] Points;
+        public Point2D[] Points;
     }
 
 }

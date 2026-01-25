@@ -628,17 +628,7 @@ namespace CycloneDDS.CodeGen
 
             if (elementType == "string" || elementType == "String" || elementType == "System.String")
             { 
-                var maxLenAttr = field.GetAttribute("System.ComponentModel.DataAnnotations.MaxLengthAttribute") 
-                                 ?? field.GetAttribute("MaxLength");
-                if (maxLenAttr != null)
-                {
-                    int maxLen = (int)maxLenAttr.Arguments[0];
-                    loopBody = $"writer.WriteFixedString({fieldAccess}[i], {maxLen + 1});";
-                }
-                else
-                {
-                    loopBody = $"writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);";
-                }
+                loopBody = $"writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);";
             }
             else if (writerMethod != null)
                 loopBody = $"writer.Align({alignElA}); writer.{writerMethod}({fieldAccess}[i]);";

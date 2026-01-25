@@ -455,19 +455,6 @@ namespace CycloneDDS.CodeGen
              
              if (elementType == "string" || elementType == "String" || elementType == "System.String")
              {
-                 var maxLenAttr = field.GetAttribute("System.ComponentModel.DataAnnotations.MaxLengthAttribute") 
-                                 ?? field.GetAttribute("MaxLength");
-                 if (maxLenAttr != null)
-                 {
-                    int maxLen = (int)maxLenAttr.Arguments[0];
-                    return $@"{lengthRead}
-            {fieldAccess} = new string[length{field.Name}];
-            for (int i = 0; i < length{field.Name}; i++)
-            {{
-                {fieldAccess}[i] = reader.ReadFixedString({maxLen} + 1);
-            }}";
-                 }
-
                  return $@"{lengthRead}
             {fieldAccess} = new string[length{field.Name}];
             for (int i = 0; i < length{field.Name}; i++)
