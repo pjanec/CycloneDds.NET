@@ -105,7 +105,7 @@ namespace CycloneDDS.CodeGen
                     }
                     else
                     {
-                        string sizerCall = GetSizerCall(field, isXcdr2);
+                        string sizerCall = GetSizerCall(field, isXcdr2, isAppendable);
                         sb.AppendLine($"            {sizerCall}; // {field.Name}");
                     }
                 }
@@ -217,7 +217,7 @@ namespace CycloneDDS.CodeGen
                     }
                     else
                     {
-                        string writerCall = GetWriterCall(field, isXcdr2);
+                        string writerCall = GetWriterCall(field, isXcdr2, isAppendable);
                         sb.AppendLine($"            {writerCall}; // {field.Name}");
                     }
                 }
@@ -440,7 +440,7 @@ namespace CycloneDDS.CodeGen
             };
         }
 
-        private string GetSizerCall(FieldInfo field, bool isXcdr2)
+        private string GetSizerCall(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
         {
             // 1. Strings (Variable)
             if (field.TypeName == "string")
@@ -462,7 +462,7 @@ namespace CycloneDDS.CodeGen
 
             if (field.TypeName.EndsWith("[]"))
             {
-                 return EmitArraySizer(field, isXcdr2);
+                 return EmitArraySizer(field, isXcdr2, isAppendableStruct);
             }
 
             // 3. Fixed Strings
@@ -495,7 +495,7 @@ namespace CycloneDDS.CodeGen
             }
         }
         
-        private string GetWriterCall(FieldInfo field, bool isXcdr2)
+        private string GetWriterCall(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
         {
             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
             
@@ -519,7 +519,7 @@ namespace CycloneDDS.CodeGen
 
             if (field.TypeName.EndsWith("[]"))
             {
-                 return EmitArrayWriter(field, isXcdr2);
+                 return EmitArrayWriter(field, isXcdr2, isAppendableStruct);
             }
 
             if (field.TypeName.Contains("FixedString"))
@@ -548,7 +548,7 @@ namespace CycloneDDS.CodeGen
             }
         }
 
-        private string EmitArraySizer(FieldInfo field, bool isXcdr2)
+        private string EmitArraySizer(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
         {
             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
             string elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
@@ -571,8 +571,12 @@ namespace CycloneDDS.CodeGen
             // Loop code similar to sequence
             if (elementType == "string" || elementType == "String" || elementType == "System.String") 
             {
+                string headerWrite = "";
+                if (isAppendableStruct)
+                    headerWrite = "if (encoding == CdrEncoding.Xcdr2) { sizer.Align(4); sizer.WriteUInt32(0); } // XCDR2 Array Header\r\n            ";
+
                 return $@"{lengthWrite}
-            for (int i = 0; i < {fieldAccess}.Length; i++)
+            {headerWrite}for (int i = 0; i < {fieldAccess}.Length; i++)
             {{
                 sizer.Align(4); sizer.WriteString({fieldAccess}[i], isXcdr2);
             }}";
@@ -599,7 +603,7 @@ namespace CycloneDDS.CodeGen
             }}";
         }
         
-        private string EmitArrayWriter(FieldInfo field, bool isXcdr2)
+        private string EmitArrayWriter(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
         {
             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
             string elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
@@ -629,6 +633,30 @@ namespace CycloneDDS.CodeGen
             if (elementType == "string" || elementType == "String" || elementType == "System.String")
             { 
                 loopBody = $"writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);";
+                if (isAppendableStruct)
+                {
+                    return $@"{lengthWrite}
+            int arrayHeaderPos{field.Name} = 0;
+            int arrayBodyStart{field.Name} = 0;
+            if (writer.IsXcdr2)
+            {{
+
+                writer.Align(4);
+                arrayHeaderPos{field.Name} = writer.Position;
+                writer.WriteInt32(0); // Placeholder
+                arrayBodyStart{field.Name} = writer.Position;
+            }}
+            for (int i = 0; i < {fieldAccess}.Length; i++)
+            {{
+                {loopBody}
+            }}
+            if (writer.IsXcdr2)
+            {{
+                int arrayBodyEnd{field.Name} = writer.Position;
+                writer.WriteUInt32At(arrayHeaderPos{field.Name}, (uint)(arrayBodyEnd{field.Name} - arrayBodyStart{field.Name}));
+
+            }}"; 
+                }
             }
             else if (writerMethod != null)
                 loopBody = $"writer.Align({alignElA}); writer.{writerMethod}({fieldAccess}[i]);";

@@ -11,9 +11,9 @@ namespace CsharpToC.Roundtrip.Tests
         private delegate void SerializeDelegate<T>(in T sample, ref CdrWriter writer);
         private delegate int GetSerializedSizeDelegate<T>(in T sample, int currentAlignment, CdrEncoding encoding);
         
-        public static byte[] Serialize<T>(T sample, byte encodingKind) where T : struct
+        public static byte[] Serialize<T>(T sample, byte[] header) where T : struct
         {
-             return SerializerCache<T>.Serialize(sample, encodingKind);
+             return SerializerCache<T>.Serialize(sample, header);
         }
 
         private static class SerializerCache<T>
@@ -63,8 +63,9 @@ namespace CsharpToC.Roundtrip.Tests
                 _sizer = (GetSerializedSizeDelegate<T>)dmSize.CreateDelegate(typeof(GetSerializedSizeDelegate<T>));
             }
 
-            public static byte[] Serialize(T sample, byte encodingKind)
+            public static byte[] Serialize(T sample, ReadOnlySpan<byte> header)
             {
+                byte encodingKind = header[1];
                 CdrEncoding encoding = CdrEncoding.Xcdr1;
                 if (encodingKind >= 6) encoding = CdrEncoding.Xcdr2;
 
@@ -77,10 +78,7 @@ namespace CsharpToC.Roundtrip.Tests
                 var writer = new CdrWriter(span, encoding);
                 
                 // Write Header
-                writer.WriteByte(0x00); 
-                writer.WriteByte(encodingKind); 
-                writer.WriteByte(0x00); 
-                writer.WriteByte(0x00);
+                writer.WriteBytes(header);
                 
                 _serializer(in sample, ref writer);
                 

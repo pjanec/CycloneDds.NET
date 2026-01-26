@@ -188,12 +188,13 @@ namespace CsharpToC.Roundtrip.Tests
                 }
                 else
                 {
-                    byte encodingKind = receivedBytes[1];
+                    byte[] header = new byte[4];
+                    Array.Copy(receivedBytes, header, 4);
                     CdrDumper.SaveBin(topicName, testSeed, "native_received", receivedBytes);
                     
                     try 
                     {
-                        byte[] reSerialized = SerializerHelper.Serialize(received, encodingKind);
+                        byte[] reSerialized = SerializerHelper.Serialize(received, header);
                         
                         // FIX: Pad C# output if necessary to match Native alignment (e.g. BooleanTopic ends at 9 bytes, needs 12)
                         // Top-level XCDR serialized data must be 4-byte aligned

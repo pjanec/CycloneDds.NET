@@ -66,6 +66,8 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine("                reader.Align(4);");
                 sb.AppendLine("                uint dheader = reader.ReadUInt32();");
                 sb.AppendLine("                endPos = reader.Position + (int)dheader;");
+
+
                 sb.AppendLine("            }");
             }
             else
@@ -383,7 +385,7 @@ namespace CycloneDDS.CodeGen
 
             if (field.TypeName.EndsWith("[]"))
             {
-                 return EmitArrayReader(field);
+                 return EmitArrayReader(field, type);
             }
 
             if (field.TypeName.StartsWith("BoundedSeq"))
@@ -410,7 +412,7 @@ namespace CycloneDDS.CodeGen
             return $"{alignCall}view.{ToPascalCase(field.Name)} = {field.TypeName}.Deserialize(ref reader)";
         }
         
-        private string EmitArrayReader(FieldInfo field)
+        private string EmitArrayReader(FieldInfo field, TypeInfo parentType)
         {
             string elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
             string fieldAccess = $"view.{ToPascalCase(field.Name)}"; // ToPascalCase added
@@ -455,8 +457,14 @@ namespace CycloneDDS.CodeGen
              
              if (elementType == "string" || elementType == "String" || elementType == "System.String")
              {
+                 string headerRead = "";
+                 if (IsAppendable(parentType))
+                 {
+                    headerRead = "if (reader.Encoding == CdrEncoding.Xcdr2) { reader.ReadInt32(); } // XCDR2 Array Header\r\n            ";
+                 }
+
                  return $@"{lengthRead}
-            {fieldAccess} = new string[length{field.Name}];
+            {headerRead}{fieldAccess} = new string[length{field.Name}];
             for (int i = 0; i < length{field.Name}; i++)
             {{
                 reader.Align(4);

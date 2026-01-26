@@ -61,7 +61,6 @@ namespace CycloneDDS.Core
         public void WriteInt32(int value)
         {
             EnsureSize(sizeof(int));
-            Console.WriteLine($"[CdrWriter] WriteInt32 Val={value} @ {_buffered} (Hex {value:X})");
             BinaryPrimitives.WriteInt32LittleEndian(_span.Slice(_buffered), value);
             _buffered += sizeof(int);
         }

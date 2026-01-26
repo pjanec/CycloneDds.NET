@@ -43,11 +43,4 @@
 
   <Import Project="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
 
-  <Target Name="PatchGeneratedCode" AfterTargets="CycloneDDSCodeGen" BeforeTargets="CoreCompile">
-    <Message Text="Swapping generated deserializer for manual patch..." Importance="high" />
-    <ItemGroup>
-        <Compile Remove="$(MSBuildProjectDirectory)\obj\Generated\AtomicTests.ArrayStringTopicAppendable.Deserializer.cs" />
-    </ItemGroup>
-  </Target>
-
 </Project>
