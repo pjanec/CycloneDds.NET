@@ -381,7 +381,7 @@ namespace CycloneDDS.CodeGen
         {
             int align = GetAlignment(field.TypeName);
             string alignA = align.ToString();
-            string alignCall = align > 1 ? $"reader.Align({alignA}); " : "";
+            string alignCall = align > 1 ? $"reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : {alignA}); " : "";
             
             // ToPascalCase added to all field access below
             if (field.TypeName == "string")
@@ -398,12 +398,12 @@ namespace CycloneDDS.CodeGen
 
             if (field.TypeName.StartsWith("BoundedSeq"))
             {
-                return EmitSequenceReader(field);
+                return EmitSequenceReader(field, type);
             }
 
             if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
             {
-                 return EmitListReader(field);
+                 return EmitListReader(field, type);
             }
             
             if (IsPrimitive(field.TypeName))
@@ -438,7 +438,7 @@ namespace CycloneDDS.CodeGen
                  return $@"{lengthRead}
             if (length{field.Name} > 0)
             {{
-                reader.Align({alignA});
+                reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : {alignA});
                 var bytes = reader.ReadFixedBytes(length{field.Name} * {TypeMapper.GetSize(elementType)});
                 {fieldAccess} = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, {elementType}>(bytes).ToArray();
             }}
@@ -458,7 +458,7 @@ namespace CycloneDDS.CodeGen
             {fieldAccess} = new {elementType}[length{field.Name}];
             for (int i = 0; i < length{field.Name}; i++)
             {{
-                reader.Align({GetAlignment(elementType)});
+                reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : {GetAlignment(elementType)});
                 {fieldAccess}[i] = reader.{readMethod}();
             }}";
              }
@@ -488,7 +488,7 @@ namespace CycloneDDS.CodeGen
             }}";
         }
 
-        private string EmitSequenceReader(FieldInfo field)
+        private string EmitSequenceReader(FieldInfo field, TypeInfo parentType)
         {
             var boundsAttr = field.GetAttribute("DdsBounds");
             string boundsCheck = "";
@@ -502,16 +502,22 @@ namespace CycloneDDS.CodeGen
 
             string elem = ExtractSequenceElementType(field.TypeName);
             
+            string headerRead = "";
+            if (IsAppendable(parentType))
+            {
+                 headerRead = "if (reader.Encoding == CdrEncoding.Xcdr2) { reader.ReadUInt32(); } // XCDR2 Sequence Header\r\n            ";
+            }
+            
             if (elem == "string" || elem == "String" || elem == "System.String")
             {
-                return $@"reader.Align({GetAlignment(field.TypeName)});
-            uint {field.Name}_len = reader.ReadUInt32();
+                return $@"reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : 4);
+            {headerRead}uint {field.Name}_len = reader.ReadUInt32();
             {boundsCheck}
             var list = new System.Collections.Generic.List<string>((int){field.Name}_len);
             for(int i=0; i<{field.Name}_len; i++)
             {{
-                reader.Align(4);
-                list.Add(Encoding.UTF8.GetString(reader.ReadStringBytes().ToArray()));
+                reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : 4);
+                list.Add(reader.ReadString()); // Use ReadString helper
             }}
             {fieldAccess} = new BoundedSeq<string>(list);";
             }
@@ -519,23 +525,28 @@ namespace CycloneDDS.CodeGen
             if (TypeMapper.IsBlittable(elem))
             {
                 int elemSize = GetSize(elem);
-                return $@"reader.Align({GetAlignment(field.TypeName)});
-            uint {field.Name}_len = reader.ReadUInt32();
+                // Align 4 for Header
+                return $@"reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : 4);
+            {headerRead}uint {field.Name}_len = reader.ReadUInt32();
             {boundsCheck}
-            reader.Align({GetAlignment(elem)});
+            if ({field.Name}_len > 0)
             {{
+                reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : {GetAlignment(elem)});
                 var span = MemoryMarshal.Cast<byte, {elem}>(reader.ReadFixedBytes((int){field.Name}_len * {elemSize}));
                 {fieldAccess} = new BoundedSeq<{elem}>(new System.Collections.Generic.List<{elem}>(span.ToArray()));
+            }}
+            else
+            {{
+                {fieldAccess} = new BoundedSeq<{elem}>(new System.Collections.Generic.List<{elem}>());
             }}";
             }
 
             string itemType = elem; 
             string deserializerCall = $"{elem}.Deserialize(ref reader).ToOwned()";
             
-            int seqAlign = GetAlignment(field.TypeName);
-            return $@"// FieldType: {field.TypeName} SeqAlign: {seqAlign} [SequenceReader.Complex]
-            reader.Align({seqAlign});
-            uint {field.Name}_len = reader.ReadUInt32();
+            return $@"// FieldType: {field.TypeName} SeqAlign: {GetAlignment(field.TypeName)} [SequenceReader.Complex]
+            reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : 4);
+            {headerRead}uint {field.Name}_len = reader.ReadUInt32();
             {boundsCheck}
             var list = new System.Collections.Generic.List<{itemType}>((int){field.Name}_len);
             for(int i=0; i<{field.Name}_len; i++)
@@ -689,11 +700,17 @@ namespace CycloneDDS.CodeGen
             return typeName.Substring(start, end - start).Trim();
         }
 
-        private string EmitListReader(FieldInfo field)
+        private string EmitListReader(FieldInfo field, TypeInfo parentType)
         {
             string elementType = ExtractGenericType(field.TypeName);
             string fieldAccess = $"view.{ToPascalCase(field.Name)}"; // ToPascalCase added
             int seqAlign = GetAlignment(field.TypeName);
+
+            string headerRead = "";
+            if (IsAppendable(parentType))
+            {
+                 headerRead = "if (reader.Encoding == CdrEncoding.Xcdr2) { reader.ReadUInt32(); } // XCDR2 Sequence Header\r\n            ";
+            }
 
             if (IsPrimitive(elementType))
             {
@@ -701,14 +718,17 @@ namespace CycloneDDS.CodeGen
                 int align = GetAlignment(elementType);
                 string alignA = align.ToString();
 
-                return $@"reader.Align({seqAlign});
-            uint {field.Name}_len = reader.ReadUInt32();
+                return $@"reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : {seqAlign});
+            {headerRead}uint {field.Name}_len = reader.ReadUInt32();
             {fieldAccess} = new List<{elementType}>((int){field.Name}_len);
             System.Runtime.InteropServices.CollectionsMarshal.SetCount({fieldAccess}, (int){field.Name}_len);
             var targetSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan({fieldAccess});
-            reader.Align({alignA});
-            var sourceBytes = reader.ReadFixedBytes((int){field.Name}_len * {elemSize});
-            System.Runtime.InteropServices.MemoryMarshal.Cast<byte, {elementType}>(sourceBytes).CopyTo(targetSpan);";
+            if ({field.Name}_len > 0)
+            {{
+                reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : {alignA});
+                var sourceBytes = reader.ReadFixedBytes((int){field.Name}_len * {elemSize});
+                System.Runtime.InteropServices.MemoryMarshal.Cast<byte, {elementType}>(sourceBytes).CopyTo(targetSpan);
+            }}";
             }
 
             string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
@@ -727,24 +747,25 @@ namespace CycloneDDS.CodeGen
             {
                  int align = GetAlignment(elementType);
                  string alignA = align.ToString();
-                 addStatement = $"reader.Align({alignA}); {fieldAccess}.Add(reader.{readMethod}());";
+                 addStatement = $"reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : {alignA}); {fieldAccess}.Add(reader.{readMethod}());";
             }
             else if (elementType == "string" || elementType == "System.String")
             {
-                 addStatement = $"reader.Align(4); {fieldAccess}.Add(reader.ReadString());";
+                 addStatement = $"reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : 4); {fieldAccess}.Add(reader.ReadString());";
             }
             else if (isEnum)
             {
-                 addStatement = $"reader.Align(4); {fieldAccess}.Add(({elementType})reader.ReadInt32());";
+                 addStatement = $"reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : 4); {fieldAccess}.Add(({elementType})reader.ReadInt32());";
             }
             else
             {
                  addStatement = $"{fieldAccess}.Add({elementType}.Deserialize(ref reader).ToOwned());";
             }
 
-            return $@"// FieldType: {field.TypeName} SeqAlign: {seqAlign}
-            reader.Align({seqAlign});
-            uint {field.Name}_len = reader.ReadUInt32();
+            return $@"// FieldType: {field.TypeName} SeqAlign: {seqAlign} Ext: {parentType.Extensibility}
+            // Force 4-byte alignment for Sequence Header (Length/DHeader)
+            reader.Align(reader.Encoding == CdrEncoding.Xcdr2 ? 1 : 4);
+            {headerRead}uint {field.Name}_len = reader.ReadUInt32();
             {fieldAccess} = new List<{elementType}>((int){field.Name}_len);
             for(int i=0; i<{field.Name}_len; i++)
             {{

@@ -590,7 +590,7 @@ namespace CycloneDDS.CodeGen
             {
                 int align = GetAlignment(field.TypeName);
                 string alignA = align == 8 ? "8" : align.ToString();
-                return $"writer.Align({alignA}); writer.{method}({fieldAccess})";
+                return $"writer.Align(writer.IsXcdr2 ? 1 : {alignA}); writer.{method}({fieldAccess})";
             }
             
             if (_registry != null && _registry.TryGetDefinition(field.TypeName, out var def) && def.TypeInfo != null && def.TypeInfo.IsEnum)
@@ -674,7 +674,7 @@ namespace CycloneDDS.CodeGen
                 return $@"{lengthWrite}
             if ({fieldAccess}.Length > 0)
             {{
-                writer.Align({alignA});
+                writer.Align(writer.IsXcdr2 ? 1 : {alignA});
                 var span = new System.ReadOnlySpan<{elementType}>({fieldAccess});
                 var byteSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(span);
                 writer.WriteBytes(byteSpan);

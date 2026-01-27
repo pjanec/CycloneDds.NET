@@ -110,15 +110,30 @@ namespace CycloneDDS.CodeGen
                         if (extAttr != null && extAttr.ConstructorArguments.Length > 0)
                         {
                             var val = extAttr.ConstructorArguments[0].Value;
+                            Console.WriteLine($"[DEBUG-SCHEMA] Type {typeSymbol.Name} has Extensibility Attr. ValType={val?.GetType().Name} Val={val}");
                             if (val is int intVal)
                             {
                                 typeInfo.Extensibility = (DdsExtensibilityKind)intVal;
+                                Console.WriteLine($"[DEBUG-SCHEMA]   -> Set to {typeInfo.Extensibility}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[DEBUG-SCHEMA]   -> Value is not int! Fallback to Appendable?");
+                                // Force correct cast if it's not int (e.g. underlying type issue)
+                                try {
+                                    typeInfo.Extensibility = (DdsExtensibilityKind)Convert.ToInt32(val);
+                                    Console.WriteLine($"[DEBUG-SCHEMA]   -> Converted to {typeInfo.Extensibility}");
+                                } catch (Exception ex) {
+                                    Console.WriteLine($"[DEBUG-SCHEMA]   -> Convention failed: {ex.Message}");
+                                }
                             }
                         }
                         else
                         {
                             // Default to Appendable
                             typeInfo.Extensibility = DdsExtensibilityKind.Appendable;
+                            //Console.WriteLine($"[DEBUG-SCHEMA] Type {typeSymbol.Name} default Extensibility Appendable (No Attr)");
+
                         }
 
                         if (isEnum)
