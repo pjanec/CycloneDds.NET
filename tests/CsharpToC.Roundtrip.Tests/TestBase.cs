@@ -71,7 +71,7 @@ namespace CsharpToC.Roundtrip.Tests
                 
                 // Print hex dump before parsing (accessing samples[0] triggers parsing)
                 Console.WriteLine($"   [C -> C# Raw] received {bytes.Length} bytes");
-                // Console.WriteLine($"   {CdrDumper.ToHexString(bytes)}");
+                Console.WriteLine($"   {CdrDumper.ToHexString(bytes)}");
                 
                 return (samples[0], bytes);
             }
@@ -130,7 +130,6 @@ namespace CsharpToC.Roundtrip.Tests
                         
                         try 
                         {
-                            /*
                             byte[] reSerialized = SerializerHelper.Serialize(received, header);
                             
                             // FIX: Pad C# output if necessary to match Native alignment (e.g. BooleanTopic ends at 9 bytes, needs 12)
@@ -141,7 +140,7 @@ namespace CsharpToC.Roundtrip.Tests
                                 Array.Resize(ref reSerialized, newLen);
                             }
 
-                            CdrDumper.SaveBin(topicName, testSeed, "csharp_generated", reSerialized);
+                            // CdrDumper.SaveBin(topicName, testSeed, "csharp_generated", reSerialized);
                             
                             if (CdrDumper.Compare(receivedBytes, reSerialized, out string err))
                             {
@@ -154,8 +153,8 @@ namespace CsharpToC.Roundtrip.Tests
                                  // Actually, for atomic tests, we EXPECT exact matches for primitives.
                                  Console.WriteLine("   [CDR Verify] Proceeding with test..."); 
                             }
-                            */
-                            Console.WriteLine("   [CDR Verify] SKIP (Debugging crash)");
+                            
+                            // Console.WriteLine("   [CDR Verify] SKIP (Debugging crash)");
                         }
                         catch (Exception ex)
                         {

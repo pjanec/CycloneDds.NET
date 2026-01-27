@@ -724,15 +724,22 @@ namespace CycloneDDS.Runtime
             uint size = DdsApi.ddsi_serdata_size(serdata);
             if (size == 0) return Array.Empty<byte>();
 
-            byte[] bytes = new byte[size];
+            // FIX: Allocate extra padding to prevent AccessViolation if native writes alignment bytes
+            byte[] buffer = new byte[size + 4096]; 
+            
             unsafe
             {
-                fixed (byte* p = bytes)
+                fixed (byte* p = buffer)
                 {
+                    // This copies data into 'buffer'
                     DdsApi.ddsi_serdata_to_ser(serdata, UIntPtr.Zero, (UIntPtr)size, (IntPtr)p);
                 }
             }
-            return bytes;
+
+            // Return only the valid data part
+            byte[] result = new byte[size];
+            Array.Copy(buffer, result, size);
+            return result;
         }
 
         public int Count => _count;
@@ -797,7 +804,6 @@ namespace CycloneDDS.Runtime
                     {
                         fixed (byte* p = buffer)
                         {
-                            // Extract CDR from serdata
                             DdsApi.ddsi_serdata_to_ser(serdata, UIntPtr.Zero, (UIntPtr)size, (IntPtr)p);
                             
                             // Deserialize
@@ -834,7 +840,9 @@ namespace CycloneDDS.Runtime
                             
                             try 
                             {
+                                System.Console.WriteLine("[DdsReader] Invoke Deserializer...");
                                 _deserializer!(ref reader, out TView view);
+                                System.Console.WriteLine("[DdsReader] Deserialization Done.");
                                 return view;
                             }
                             catch (Exception ex)

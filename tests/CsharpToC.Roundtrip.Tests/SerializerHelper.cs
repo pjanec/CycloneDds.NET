@@ -69,13 +69,17 @@ namespace CsharpToC.Roundtrip.Tests
                 CdrEncoding encoding = CdrEncoding.Xcdr1;
                 if (encodingKind >= 6) encoding = CdrEncoding.Xcdr2;
 
+                // FIX: Calculate correct origin
+                int origin = encoding == CdrEncoding.Xcdr2 ? 0 : 4; 
+
                 // Calculate size (start at offset 4 to account for header)
-                int size = _sizer(in sample, 4, encoding);
+                int size = _sizer(in sample, 4 + origin, encoding);
                 
                 byte[] buffer = new byte[size + 4]; 
                 var span = new Span<byte>(buffer);
                 
-                var writer = new CdrWriter(span, encoding);
+                // FIX: Pass origin to Writer
+                var writer = new CdrWriter(span, encoding, origin: origin);
                 
                 // Write Header
                 writer.WriteBytes(header);

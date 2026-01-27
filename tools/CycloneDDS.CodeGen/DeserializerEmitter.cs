@@ -55,6 +55,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("    {");
             sb.AppendLine($"        public static {type.Name} Deserialize(ref CdrReader reader)");
             sb.AppendLine("        {");
+            sb.AppendLine($"            System.Console.WriteLine(\"DEBUG: Deserialize {type.Name} Pos=\" + reader.Position);");
             sb.AppendLine($"            var view = new {type.Name}();");
             // sb.AppendLine($"            System.Console.WriteLine(\"[Type={type.Name}] Pos=\" + reader.Position + \" Enc=\" + reader.Encoding + \" IsApp={IsAppendable(type)}\");");
             
@@ -473,6 +474,7 @@ namespace CycloneDDS.CodeGen
             {fieldAccess} = new {elementType}[length{field.Name}];
             for (int i = 0; i < length{field.Name}; i++)
             {{
+                System.Console.WriteLine(""DEBUG: ReadArrayElem {elementType} Index="" + i + "" Pos="" + reader.Position);
                 reader.Align({GetAlignment(elementType)});
                 {fieldAccess}[i] = reader.{readMethod}();
             }}";
