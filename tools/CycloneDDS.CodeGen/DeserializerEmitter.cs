@@ -717,9 +717,10 @@ namespace CycloneDDS.CodeGen
             int seqAlign = GetAlignment(field.TypeName);
 
             string headerRead = "";
-            if (IsAppendable(parentType))
+            bool isPrimitive = IsPrimitive(elementType);
+            if (IsAppendable(parentType) && !isPrimitive)
             {
-                 headerRead = "if (reader.IsXcdr2) { reader.ReadUInt32(); } // XCDR2 List Header\r\n            ";
+                 headerRead = "if (reader.IsXcdr2) { reader.Align(4); reader.ReadUInt32(); } // XCDR2 List Header\r\n            ";
             }
 
 

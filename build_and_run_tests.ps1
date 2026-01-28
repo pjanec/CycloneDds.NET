@@ -1,3 +1,7 @@
+param(
+    [string]$Filter = ""
+)
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "1. Building CodeGen (Release) - Crucial for applying SerializerEmitter changes..." -ForegroundColor Cyan
@@ -18,5 +22,11 @@ Write-Host "4. Rebuilding Native Lib (via bat script but only the native part if
 if ($LASTEXITCODE -ne 0) { Write-Error "Bat script failed"; exit 1 }
 
 Write-Host "5. Running CsharpToC Tests..." -ForegroundColor Cyan
-dotnet test tests\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj -c Release --logger "console;verbosity=normal"
+if ([string]::IsNullOrWhiteSpace($Filter)) {
+    dotnet test tests\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj -c Release --logger "console;verbosity=normal"
+}
+else {
+    Write-Host "Applying Filter: $Filter" -ForegroundColor Yellow
+    dotnet test tests\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj -c Release --logger "console;verbosity=normal" --filter $Filter
+}
 

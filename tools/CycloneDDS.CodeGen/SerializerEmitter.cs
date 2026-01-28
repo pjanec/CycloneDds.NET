@@ -118,7 +118,9 @@ namespace CycloneDDS.CodeGen
             }
             
             sb.AppendLine();
-            sb.AppendLine("            return sizer.GetSizeDelta(currentOffset);");
+            
+            sb.AppendLine("            int size = sizer.GetSizeDelta(currentOffset);");
+            sb.AppendLine("            return size;");
             sb.AppendLine("        }");
             sb.AppendLine();
         }
@@ -181,9 +183,6 @@ namespace CycloneDDS.CodeGen
         
         private void EmitSerialize(StringBuilder sb, TypeInfo type)
         {
-            // DEBUG: Check extensibility
-            Console.WriteLine($"[CodeGen] Generating Serialize for {type.Name}, Extensibility: {type.Extensibility}, IsAppendable: {IsAppendable(type)}");
-
             sb.AppendLine("        public void Serialize(ref CdrWriter writer)");
             sb.AppendLine("        {");
             
@@ -235,9 +234,9 @@ namespace CycloneDDS.CodeGen
             {
                 sb.AppendLine("            if (writer.Encoding == CdrEncoding.Xcdr2)");
                 sb.AppendLine("            {");
+                sb.AppendLine("                writer.Align(4);");
                 sb.AppendLine("                int bodyLen = writer.Position - bodyStart;");
                 sb.AppendLine("                writer.WriteUInt32At(dheaderPos, (uint)bodyLen);");
-                sb.AppendLine("                writer.Align(4);");
                 sb.AppendLine("            }");
             }
 
@@ -411,6 +410,7 @@ namespace CycloneDDS.CodeGen
         
         private bool IsPrimitive(string typeName)
         {
+            if (typeName.StartsWith("System.")) typeName = typeName.Substring(7);
             return typeName.ToLower() is 
                 "byte" or "uint8" or "sbyte" or "int8" or "bool" or "boolean" or
                 "short" or "int16" or "ushort" or "uint16" or
@@ -756,14 +756,16 @@ namespace CycloneDDS.CodeGen
             string elementType = ExtractSequenceElementType(field.TypeName);
             
             string headerSizer = "";
-            // In XCDR2, all sequences in Appendable structs have a member header (DHeader)
-            /*
-            if (isAppendableStruct)
+            bool isPrimitive = IsPrimitive(elementType);
+            
+            // In XCDR2, Sequences in Appendable structs:
+            // - Primitive: NO Member Header.
+            // - Complex (Enum, Union, Struct): YES Member Header.
+            if (isAppendableStruct && !isPrimitive)
             {
                  headerSizer = "if (encoding == CdrEncoding.Xcdr2) { sizer.Align(4); sizer.WriteInt32(0); } ";
             }
-            */
-
+            
             // For primitive sequences, we can loop calling WritePrimitive(0)
             // This handles alignment correctly via CdrSizer methods.
             
@@ -815,16 +817,15 @@ namespace CycloneDDS.CodeGen
             string headerStart = "";
             string headerEnd = "";
             
-            // In XCDR2, Appendable structs sequences do not need member header in this implementation.
-            // Removing header logic to fix Native Error.
-            /*
-            if (isAppendableStruct)
+            // In XCDR2, Sequences in Appendable structs:
+            // - Primitive: NO Member Header.
+            // - Complex (Enum, Union, Struct): YES Member Header.
+            if (isAppendableStruct && isXcdr2 && !IsPrimitive(elementType))
             {
-                headerStart = $@"int seqHeadPos{field.Name} = 0; int seqBodyStart{field.Name} = 0; 
-            if (writer.IsXcdr2) {{ writer.Align(4); seqHeadPos{field.Name} = writer.Position; writer.WriteInt32(0); seqBodyStart{field.Name} = writer.Position; }}";
-                headerEnd = $@"if (writer.IsXcdr2) {{ int seqBodyEnd{field.Name} = writer.Position; writer.WriteUInt32At(seqHeadPos{field.Name}, (uint)(seqBodyEnd{field.Name} - seqBodyStart{field.Name})); }}";
+                headerStart = $@"int seqHeadPos{ToPascalCase(field.Name)} = 0; int seqBodyStart{ToPascalCase(field.Name)} = 0; 
+            if (writer.IsXcdr2) {{ writer.Align(4); seqHeadPos{ToPascalCase(field.Name)} = writer.Position; writer.WriteInt32(0); seqBodyStart{ToPascalCase(field.Name)} = writer.Position; }}";
+                headerEnd = $@"if (writer.IsXcdr2) {{ int seqBodyEnd{ToPascalCase(field.Name)} = writer.Position; writer.WriteUInt32At(seqHeadPos{ToPascalCase(field.Name)}, (uint)(seqBodyEnd{ToPascalCase(field.Name)} - seqBodyStart{ToPascalCase(field.Name)})); }}";
             }
-            */
             
             if (elementType == "string" || elementType == "String" || elementType == "System.String")
             {
@@ -971,13 +972,11 @@ namespace CycloneDDS.CodeGen
 
         private string EmitListWriter(FieldInfo field, bool isXcdr2, bool isAppendableStruct)
         {
-             // DEBUG LOG
-             System.Console.WriteLine($"[DEBUG] EmitListWriter for {field.Name} type={field.TypeName}");
-
              string fieldAccess = $"this.{ToPascalCase(field.Name)}";
              string elementType = ExtractGenericType(field.TypeName);
              
              // OPTIMIZATION: Block copy for primitives
+             /*
              if (IsPrimitive(elementType))
              {
                  int alignP = GetAlignment(elementType);
@@ -998,6 +997,7 @@ namespace CycloneDDS.CodeGen
                 writer.WriteBytes(byteSpan);
             }}{dheaderEndP}";
              }
+             */
              
              string? writerMethod = TypeMapper.GetWriterMethod(elementType);
              int align = GetAlignment(elementType);
@@ -1012,8 +1012,16 @@ namespace CycloneDDS.CodeGen
              
              string dheaderStart = "";
              string dheaderEnd = "";
-
-
+             
+             // XCDR2: Lists/Sequences in Appendable Structs generally DO NOT have Member Headers for primitives (e.g. List<int>).
+             // However, List<Union> or List<Complex> DOES have a Member Header.
+             // See TestSequenceInt32Appendable (No Header) vs TestSequenceUnionAppendable (Header).
+             if (isAppendableStruct && isXcdr2 && !IsPrimitive(elementType))
+             {
+                 dheaderStart = $@"int listHeadPos{ToPascalCase(field.Name)} = 0; int listBodyStart{ToPascalCase(field.Name)} = 0; 
+            if (writer.IsXcdr2) {{ writer.Align(4); listHeadPos{ToPascalCase(field.Name)} = writer.Position; writer.WriteInt32(0); listBodyStart{ToPascalCase(field.Name)} = writer.Position; }}";
+                 dheaderEnd = $@"if (writer.IsXcdr2) {{ int listBodyEnd{ToPascalCase(field.Name)} = writer.Position; writer.WriteUInt32At(listHeadPos{ToPascalCase(field.Name)}, (uint)(listBodyEnd{ToPascalCase(field.Name)} - listBodyStart{ToPascalCase(field.Name)})); }}";
+             }
              
              bool isEnum = false;
              if (_registry != null && _registry.TryGetDefinition(elementType, out var def))
@@ -1070,8 +1078,13 @@ namespace CycloneDDS.CodeGen
             
             string dheader = "";
             bool isPrimitive = IsPrimitive(elementType);
-            // Appendable structs do NOT use Member Headers (DHEADER) for Lists in XCDR2
-            // Validating this hypothesis by removing header logic.
+            // Appendable structs do NOT use Member Headers (DHEADER) for Primitives in XCDR2
+            // But Complex Types (Seq<Enum>, Seq<Union>) DO use them.
+            if (isAppendableStruct && !isPrimitive)
+            {
+               dheader = "if (encoding == CdrEncoding.Xcdr2) { sizer.Align(4); sizer.WriteUInt32(0); } ";
+            }
+
 
 
 
@@ -1108,7 +1121,8 @@ namespace CycloneDDS.CodeGen
             return $@"{dheader}sizer.Align({lengthAlign}); sizer.WriteUInt32(0); // Sequence Length
             foreach (var item in {fieldAccess})
             {{
-                sizer.Skip(item.GetSerializedSize(sizer.Position, encoding));
+                int sz_{field.Name} = item.GetSerializedSize(sizer.Position, encoding);
+                sizer.Skip(sz_{field.Name});
             }}";
         }
 
