@@ -429,7 +429,7 @@ namespace CycloneDDS.CodeGen
                  return $"{alignCall}view.{ToPascalCase(field.Name)} = ({field.TypeName})reader.ReadInt32()";
             }
             
-            return $"{alignCall}view.{ToPascalCase(field.Name)} = {field.TypeName}.Deserialize(ref reader)";
+            return $"view.{ToPascalCase(field.Name)} = {field.TypeName}.Deserialize(ref reader)";
         }
         
         private string EmitArrayReader(FieldInfo field, TypeInfo parentType)

@@ -565,7 +565,7 @@ namespace CycloneDDS.CodeGen
                 // Nested struct
                 // Use actual instance for variable sizing logic
                 int align = GetAlignment(field.TypeName);
-                return $"sizer.Align({align}); sizer.Skip(this.{ToPascalCase(field.Name)}.GetSerializedSize(sizer.Position, encoding))"; // Pass encoding
+                return $"sizer.Skip(this.{ToPascalCase(field.Name)}.GetSerializedSize(sizer.Position, encoding))"; // Pass encoding
             }
         }
         
@@ -622,9 +622,7 @@ namespace CycloneDDS.CodeGen
             
             else
             {
-                int align = GetAlignment(field.TypeName);
-                string alignA = align == 8 ? "8" : align.ToString();
-                return $"writer.Align({alignA}); {fieldAccess}.Serialize(ref writer)";
+                return $"{fieldAccess}.Serialize(ref writer)";
             }
         }
 
