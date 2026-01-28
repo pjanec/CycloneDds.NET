@@ -1,0 +1,12 @@
+#include "included.idl"
+
+module App {
+    struct Rect {
+        Geom::Point p1;
+        Geom::Point p2;
+    };
+    enum Status {
+        OK,
+        ERROR
+    };
+};

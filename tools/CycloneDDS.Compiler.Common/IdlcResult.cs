@@ -1,4 +1,4 @@
-namespace CycloneDDS.CodeGen
+namespace CycloneDDS.Compiler.Common
 {
     public class IdlcResult
     {

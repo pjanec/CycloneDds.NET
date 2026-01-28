@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using CycloneDDS.CodeGen.IdlJson;
+using CycloneDDS.Compiler.Common.IdlJson;
 
-namespace CycloneDDS.CodeGen
+namespace CycloneDDS.Compiler.Common
 {
     /// <summary>
     /// Parser for JSON output from 'idlc -l json' command.

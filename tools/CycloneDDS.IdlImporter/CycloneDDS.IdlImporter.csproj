@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CycloneDDS.IdlImporter</RootNamespace>
+    <AssemblyName>CycloneDDS.IdlImporter</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageReference Include="System.Text.Json" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference to Schema for attribute types -->
+    <ProjectReference Include="..\..\src\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
+    <ProjectReference Include="..\CycloneDDS.Compiler.Common\CycloneDDS.Compiler.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- TODO: Add reference to shared compiler library when extracted -->
+    <!-- For now, will need to link or reference CodeGen project for IdlcRunner and JsonModels -->
+  </ItemGroup>
+
+</Project>

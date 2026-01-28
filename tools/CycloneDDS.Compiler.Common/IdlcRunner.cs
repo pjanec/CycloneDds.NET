@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 
-namespace CycloneDDS.CodeGen
+namespace CycloneDDS.Compiler.Common
 {
     public class IdlcRunner
     {
@@ -70,7 +70,7 @@ namespace CycloneDDS.CodeGen
             throw new FileNotFoundException("idlc.exe not found. Set CYCLONEDDS_HOME or add to PATH.");
         }
 
-        public IdlcResult RunIdlc(string idlFilePath, string outputDir)
+        public IdlcResult RunIdlc(string idlFilePath, string outputDir, string? includePath = null)
         {
             string idlcPath = FindIdlc();
             
@@ -83,7 +83,7 @@ namespace CycloneDDS.CodeGen
             var startInfo = new ProcessStartInfo
             {
                 FileName = idlcPath,
-                Arguments = $"-l json -o \"{outputDir}\" \"{idlFilePath}\"",
+                Arguments = GetArguments(idlFilePath, outputDir, includePath),
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -108,6 +108,17 @@ namespace CycloneDDS.CodeGen
                 StandardError = stderr,
                 GeneratedFiles = FindGeneratedFiles(outputDir, idlFilePath)
             };
+        }
+
+        public string GetArguments(string idlFilePath, string outputDir, string? includePath)
+        {
+            var args = $"-l json -o \"{outputDir}\"";
+            if (!string.IsNullOrEmpty(includePath))
+            {
+                args += $" -I \"{includePath}\"";
+            }
+            args += $" \"{idlFilePath}\"";
+            return args;
         }
         
         private string[] FindGeneratedFiles(string outputDir, string idlFile)

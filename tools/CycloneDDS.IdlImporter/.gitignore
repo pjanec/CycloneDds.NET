@@ -1,0 +1,15 @@
+# Build outputs
+bin/
+obj/
+*.user
+*.suo
+
+# IDE files
+.vs/
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+.idlc_temp/
