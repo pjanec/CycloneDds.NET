@@ -172,6 +172,12 @@ namespace CycloneDDS.Compiler.Common.IdlJson
         public int? Value { get; set; }
 
         /// <summary>
+        /// Member Offset
+        /// </summary>
+        [JsonPropertyName("Offset")]
+        public int? Offset { get; set; }
+
+        /// <summary>
         /// Nested members (for complex types)
         /// </summary>
         [JsonPropertyName("Members")]

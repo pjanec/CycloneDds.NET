@@ -24,8 +24,29 @@ public class TypeMapper
         { "unsigned long long", "ulong" },
         { "float", "float" },
         { "double", "double" },
-        { "string", "string" }
+        { "string", "string" },
+        // idlc output mappings
+        { "int32_t", "int" },
+        { "uint32_t", "uint" },
+        { "int16_t", "short" },
+        { "uint16_t", "ushort" },
+        { "int64_t", "long" },
+        { "uint64_t", "ulong" },
+        { "int8_t", "sbyte" },
+        { "uint8_t", "byte" },
+        { "bool", "bool" }
     };
+
+    private readonly Dictionary<string, string> _flattenedToScoped = new();
+
+    public void RegisterType(string scopedName)
+    {
+        // Geom::Point -> Geom_Point
+        // We want to map Geom_Point -> Geom.Point in C#
+        string flattened = scopedName.Replace("::", "_");
+        string csName = scopedName.Replace("::", ".");
+        _flattenedToScoped[flattened] = csName;
+    }
 
     /// <summary>
     /// Maps an IDL primitive type name to its C# equivalent.
@@ -113,6 +134,12 @@ public class TypeMapper
         }
         catch 
         {
+            // Check if flattened name matches a known type
+            if (_flattenedToScoped.TryGetValue(idlType, out var scoped))
+            {
+                return scoped;
+            }
+
             // User defined type (e.g. MyModule::MyType)
             // Replace :: with .
             return GetCSharpNamespace(idlType);

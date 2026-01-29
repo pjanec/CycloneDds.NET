@@ -45,8 +45,8 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Implement recursive IDL processing and file structure mirroring  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-004** Importer Core - File Queue and Recursion → [details](./IDLImport-TASK-DETAILS.md#idlimp-004-importer-core---file-queue-and-recursion) 🔵
-- [ ] **IDLIMP-005** JSON Parsing and File Metadata Extraction → [details](./IDLImport-TASK-DETAILS.md#idlimp-005-json-parsing-and-file-metadata-extraction) 🔵
+- [x] **IDLIMP-004** Importer Core - File Queue and Recursion → [details](./IDLImport-TASK-DETAILS.md#idlimp-004-importer-core---file-queue-and-recursion) ✅
+- [x] **IDLIMP-005** JSON Parsing and File Metadata Extraction → [details](./IDLImport-TASK-DETAILS.md#idlimp-005-json-parsing-and-file-metadata-extraction) ✅
 
 **Success Criteria:**
 - ✅ Processes master file and all recursive includes exactly once
@@ -61,7 +61,7 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Implement C# DSL code emission for all IDL type constructs  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-006** CSharpEmitter - Struct and Enum Generation → [details](./IDLImport-TASK-DETAILS.md#idlimp-006-csharpemitter---struct-and-enum-generation) 🔵
+- [x] **IDLIMP-006** CSharpEmitter - Struct and Enum Generation → [details](./IDLImport-TASK-DETAILS.md#idlimp-006-csharpemitter---struct-and-enum-generation) ✅
 - [ ] **IDLIMP-007** CSharpEmitter - Collection Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-007-csharpemitter---collection-type-support) 🔵
 - [ ] **IDLIMP-008** CSharpEmitter - Union Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-008-csharpemitter---union-type-support) 🔵
 
@@ -131,12 +131,12 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 | Phase | Tasks | Status | Estimated Effort |
 |-------|-------|--------|------------------|
 | Phase 1: Foundation | 3 | ✅ COMPLETE | 5-8 days |
-| Phase 2: Core Logic | 2 | 🔵 NOT STARTED | 4-6 days |
+| Phase 2: Core Logic | 2 | ✅ COMPLETE | 4-6 days |
 | Phase 3: Generation | 4 | 🔵 NOT STARTED | 8-12 days |
 | Phase 4: CLI & Integration | 2 | 🔵 NOT STARTED | 3-5 days |
 | Phase 5: Advanced | 3 | 🔵 NOT STARTED | 5-8 days |
 | Phase 6: Testing | 2 | 🔵 NOT STARTED | 5-8 days |
-| **Total** | **15** | **3/15** | **30-45 days** |
+| **Total** | **15** | **6/15** | **30-45 days** |
 
 ---
 

@@ -1,38 +1,22 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
+using CycloneDDS.Compiler.Common.IdlJson;
 
 namespace CycloneDDS.IdlImporter;
 
-/// <summary>
-/// Generates C# DSL code from IDL JSON type definitions.
-/// Emits structs, unions, enums with proper CycloneDDS.Schema attributes.
-/// </summary>
-/// <remarks>
-/// Implementation planned across multiple tasks:
-/// - IDLIMP-006: Struct and Enum Generation
-/// - IDLIMP-007: Collection Type Support
-/// - IDLIMP-008: Union Type Support
-/// See: tools/CycloneDDS.IdlImporter/IDLImport-TASK-DETAILS.md
-/// </remarks>
 public class CSharpEmitter
 {
-    private readonly List<object> _allTypes; // TODO: Replace with actual JsonTypeDefinition from shared models
     private readonly TypeMapper _typeMapper;
 
-    public CSharpEmitter(List<object> allTypes)
+    public CSharpEmitter(TypeMapper typeMapper)
     {
-        _allTypes = allTypes;
-        _typeMapper = new TypeMapper();
+        _typeMapper = typeMapper;
     }
 
-    /// <summary>
-    /// Generates complete C# file content for a set of types.
-    /// </summary>
-    /// <param name="typeNames">Names of types to include in this file</param>
-    /// <param name="originalIdlFileName">Original IDL filename for header comment</param>
-    /// <returns>Complete C# source code</returns>
-    public string GenerateCSharp(List<string> typeNames, string originalIdlFileName)
+    public void GenerateCSharp(List<JsonTypeDefinition> types, string originalIdlFileName, string outputFilePath)
     {
         var sb = new StringBuilder();
         
@@ -44,75 +28,168 @@ public class CSharpEmitter
         sb.AppendLine("// </auto-generated>");
         sb.AppendLine();
         
-        // Usings
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using System.Runtime.InteropServices;");
         sb.AppendLine("using CycloneDDS.Schema;");
         sb.AppendLine();
 
-        // TODO: Implement in IDLIMP-006, IDLIMP-007, IDLIMP-008
-        // 1. Group types by namespace
-        // 2. For each namespace:
-        //    - Emit namespace declaration
-        //    - For each type:
-        //      - Emit attributes (extensibility, topic/struct/union)
-        //      - Emit type declaration
-        //      - Emit members with attributes
+        // Group by namespace
+        var typesByNamespace = types
+            .GroupBy(t => GetNamespaceFromType(t.Name))
+            .OrderBy(g => g.Key);
+
+        foreach (var group in typesByNamespace)
+        {
+            var ns = group.Key;
+            bool hasNamespace = !string.IsNullOrEmpty(ns);
+
+            if (hasNamespace)
+            {
+                sb.AppendLine($"namespace {ns}");
+                sb.AppendLine("{");
+            }
+            
+            foreach (var type in group)
+            {
+                EmitType(sb, type, hasNamespace ? 1 : 0);
+            }
+
+            if (hasNamespace)
+            {
+                sb.AppendLine("}");
+                sb.AppendLine();
+            }
+        }
         
-        sb.AppendLine("// TODO: Type emission not yet implemented (IDLIMP-006, IDLIMP-007, IDLIMP-008)");
+        File.WriteAllText(outputFilePath, sb.ToString());
+    }
+
+    private string GetNamespaceFromType(string fullTypeName)
+    {
+        string csName = _typeMapper.GetCSharpNamespace(fullTypeName);
+        int lastDot = csName.LastIndexOf('.');
+        if (lastDot > 0)
+        {
+            return csName.Substring(0, lastDot);
+        }
+        return string.Empty; // Global namespace
+    }
+
+    private string GetSimpleTypeName(string fullTypeName)
+    {
+        string csName = _typeMapper.GetCSharpNamespace(fullTypeName);
+        int lastDot = csName.LastIndexOf('.');
+        if (lastDot >= 0)
+        {
+            return csName.Substring(lastDot + 1);
+        }
+        return csName;
+    }
+
+    private void EmitType(StringBuilder sb, JsonTypeDefinition type, int indentLevel)
+    {
+        string indent = new string(' ', indentLevel * 4);
+        string typeName = GetSimpleTypeName(type.Name);
         
-        return sb.ToString();
+        if (type.Kind == "struct")
+        {
+            EmitStruct(sb, type, typeName, indent);
+        }
+        else if (type.Kind == "enum")
+        {
+            EmitEnum(sb, type, typeName, indent);
+        }
     }
 
-    private void EmitType(StringBuilder sb, object type, int indentLevel)
+    private void EmitStruct(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
     {
-        // TODO: Implement in IDLIMP-006
-        throw new NotImplementedException("Type emission not yet implemented (IDLIMP-006)");
+        bool hasIdsKey = type.Members.Any(m => m.IsKey);
+        
+        if (hasIdsKey)
+        {
+             sb.AppendLine($"{indent}[DdsTopic(\"{type.Name}\")]"); 
+        }
+        else
+        {
+             sb.AppendLine($"{indent}[DdsStruct(\"{type.Name}\")]");
+        }
+        
+        if (!string.IsNullOrEmpty(type.Extensibility))
+        {
+            string kind = type.Extensibility.ToLower() switch 
+            {
+                "final" => "Final",
+                "appendable" => "Appendable",
+                "mutable" => "Mutable",
+                _ => "Final"
+            };
+            sb.AppendLine($"{indent}[DdsExtensibility(DdsExtensibilityKind.{kind})]");
+        }
+
+        sb.AppendLine($"{indent}public partial struct {typeName}");
+        sb.AppendLine($"{indent}{{");
+        
+        foreach (var member in type.Members)
+        {
+            EmitStructMember(sb, member, indent + "    ");
+        }
+
+        sb.AppendLine($"{indent}}}");
+        sb.AppendLine();
     }
 
-    private void EmitStructMembers(StringBuilder sb, object type, int indentLevel)
+    private void EmitStructMember(StringBuilder sb, JsonMember member, string indent)
     {
-        // TODO: Implement in IDLIMP-006, IDLIMP-007
-        throw new NotImplementedException("Struct member emission not yet implemented (IDLIMP-006, IDLIMP-007)");
+        var (csType, isManaged, arrayLen, bound) = _typeMapper.MapMember(member);
+        
+        if (member.IsKey) sb.AppendLine($"{indent}[DdsKey]");
+        
+        if (csType == "string" && bound > 0)
+        {
+            sb.AppendLine($"{indent}[DdsString({bound})]");
+        }
+        
+        sb.AppendLine($"{indent}public {csType} {ToPascalCase(member.Name)};");
     }
 
-    private void EmitEnumMembers(StringBuilder sb, object type, int indentLevel)
+    private void EmitEnum(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
     {
-        // TODO: Implement in IDLIMP-006
-        throw new NotImplementedException("Enum member emission not yet implemented (IDLIMP-006)");
-    }
+        sb.AppendLine($"{indent}public enum {typeName} : int");
+        sb.AppendLine($"{indent}{{");
+        
+        for (int i = 0; i < type.Members.Count; i++)
+        {
+            var m = type.Members[i];
+            string comma = (i < type.Members.Count - 1) ? "," : "";
+            int val = m.Value ?? (m.Id ?? i);
+            sb.AppendLine($"{indent}    {ToPascalCase(m.Name)} = {val}{comma}");
+        }
 
-    private void EmitUnionMembers(StringBuilder sb, object type, int indentLevel)
-    {
-        // TODO: Implement in IDLIMP-008
-        throw new NotImplementedException("Union member emission not yet implemented (IDLIMP-008)");
-    }
-
-    private string GetIndent(int level)
-    {
-        return new string(' ', level * 4);
-    }
-
-    private string GetNamespace(string fullTypeName)
-    {
-        // IDL uses :: as separator (e.g., "Module::SubModule::Type")
-        // Convert to C# namespace (e.g., "Module.SubModule")
-        int lastSep = fullTypeName.LastIndexOf("::");
-        if (lastSep < 0) return string.Empty;
-        return fullTypeName.Substring(0, lastSep).Replace("::", ".");
-    }
-
-    private string GetSimpleName(string fullTypeName)
-    {
-        int lastSep = fullTypeName.LastIndexOf("::");
-        if (lastSep < 0) return fullTypeName;
-        return fullTypeName.Substring(lastSep + 2);
+        sb.AppendLine($"{indent}}}");
+        sb.AppendLine();
     }
 
     private string ToPascalCase(string name)
     {
         if (string.IsNullOrEmpty(name)) return name;
-        if (name == "_d") return "_d"; // Special case for union discriminator
-        return char.ToUpper(name[0]) + name.Substring(1);
+        if (name == "_d") return "_d";
+
+        var parts = name.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        var sb = new StringBuilder();
+        
+        foreach (var part in parts)
+        {
+            if (part.Length > 0)
+            {
+                sb.Append(char.ToUpper(part[0]));
+                if (part.Length > 1)
+                {
+                    sb.Append(part.Substring(1).ToLower());
+                }
+            }
+        }
+        
+        return sb.ToString();
     }
 }

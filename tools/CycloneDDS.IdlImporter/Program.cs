@@ -109,17 +109,21 @@ public class Program
         // Create output directory if it doesn't exist
         Directory.CreateDirectory(fullOutputRoot);
 
-        // TODO: Implement importer logic
-        // var importer = new Importer(verbose, idlcPath);
-        // await importer.ImportAsync(fullMasterPath, fullSourceRoot, fullOutputRoot);
-        
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("⚠ Importer logic not yet implemented (IDLIMP-001 - IDLIMP-010)");
-        Console.ResetColor();
+        // Run the Importer
+        try 
+        {
+            var importer = new Importer(verbose, idlcPath);
+            importer.Import(fullMasterPath, fullSourceRoot, fullOutputRoot);
+        }
+        catch (Exception ex)
+        {
+             // Log error but allow Main to catch it for consistent exit codes
+             throw ex;
+        }
         
         Console.WriteLine();
         Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine("✓ Validation complete");
+        Console.WriteLine("✓ Import complete");
         Console.ResetColor();
 
         await Task.CompletedTask;
