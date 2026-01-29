@@ -10,6 +10,7 @@ namespace CycloneDDS.IdlImporter;
 public class CSharpEmitter
 {
     private readonly TypeMapper _typeMapper;
+    private HashSet<string> _knownTypes = new HashSet<string>();
 
     public CSharpEmitter(TypeMapper typeMapper)
     {
@@ -18,6 +19,19 @@ public class CSharpEmitter
 
     public void GenerateCSharp(List<JsonTypeDefinition> types, string originalIdlFileName, string outputFilePath)
     {
+        // 1. Build known types set (full C# names)
+        _knownTypes.Clear();
+        foreach (var t in types)
+        {
+            try 
+            {
+                // Note: GetCSharpNamespace converts "A::B" to "A.B"
+                string fullCsName = _typeMapper.GetCSharpNamespace(t.Name);
+                _knownTypes.Add(fullCsName);
+            }
+            catch {}
+        }
+
         var sb = new StringBuilder();
         
         // Header
@@ -34,9 +48,16 @@ public class CSharpEmitter
         sb.AppendLine("using CycloneDDS.Schema;");
         sb.AppendLine();
 
-        // Group by namespace
-        var typesByNamespace = types
-            .GroupBy(t => GetNamespaceFromType(t.Name))
+        // 2. Group by Namespace
+        // specialized grouping that respects nested types
+        var typeInfos = types.Select(t => {
+            var fullCsName = _typeMapper.GetCSharpNamespace(t.Name);
+            var (ns, parents, simpleName) = AnalyzeTypePath(fullCsName);
+            return new { Type = t, Namespace = ns, Parents = parents, SimpleName = simpleName };
+        }).ToList();
+
+        var typesByNamespace = typeInfos
+            .GroupBy(t => t.Namespace)
             .OrderBy(g => g.Key);
 
         foreach (var group in typesByNamespace)
@@ -50,9 +71,29 @@ public class CSharpEmitter
                 sb.AppendLine("{");
             }
             
-            foreach (var type in group)
+            foreach (var item in group)
             {
-                EmitType(sb, type, hasNamespace ? 1 : 0);
+                // To handle nesting, we wrap the emission in partial structs for parents
+                int baseIndent = hasNamespace ? 1 : 0;
+                
+                // Open parents
+                foreach (var parent in item.Parents)
+                {
+                    string indent = new string(' ', baseIndent * 4);
+                    sb.AppendLine($"{indent}public partial struct {parent}");
+                    sb.AppendLine($"{indent}{{");
+                    baseIndent++;
+                }
+
+                EmitType(sb, item.Type, item.SimpleName, baseIndent);
+
+                // Close parents
+                for (int i = item.Parents.Count - 1; i >= 0; i--)
+                {
+                    baseIndent--;
+                    string indent = new string(' ', baseIndent * 4);
+                    sb.AppendLine($"{indent}}}");
+                }
             }
 
             if (hasNamespace)
@@ -65,44 +106,74 @@ public class CSharpEmitter
         File.WriteAllText(outputFilePath, sb.ToString());
     }
 
-    private string GetNamespaceFromType(string fullTypeName)
+    private (string ns, List<string> parents, string simpleName) AnalyzeTypePath(string fullCsName)
     {
-        string csName = _typeMapper.GetCSharpNamespace(fullTypeName);
-        int lastDot = csName.LastIndexOf('.');
-        if (lastDot > 0)
-        {
-            return csName.Substring(0, lastDot);
-        }
-        return string.Empty; // Global namespace
-    }
+        var parts = fullCsName.Split('.');
+        if (parts.Length == 0) return ("", new List<string>(), "");
+        if (parts.Length == 1) return ("", new List<string>(), parts[0]);
 
-    private string GetSimpleTypeName(string fullTypeName)
-    {
-        string csName = _typeMapper.GetCSharpNamespace(fullTypeName);
-        int lastDot = csName.LastIndexOf('.');
-        if (lastDot >= 0)
-        {
-            return csName.Substring(lastDot + 1);
-        }
-        return csName;
-    }
+        string currentPath = parts[0];
+        int typeStartIndex = -1;
 
-    private void EmitType(StringBuilder sb, JsonTypeDefinition type, int indentLevel)
+        if (_knownTypes.Contains(currentPath))
+        {
+            typeStartIndex = 0;
+        }
+        else
+        {
+            for (int i = 1; i < parts.Length; i++)
+            {
+                currentPath += "." + parts[i];
+                if (_knownTypes.Contains(currentPath))
+                {
+                    typeStartIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (typeStartIndex == -1)
+        {
+            string simple = parts.Last();
+            string ns = string.Join(".", parts.Take(parts.Length - 1));
+            return (ns, new List<string>(), simple);
+        }
+
+        if (typeStartIndex == parts.Length - 1)
+        {
+            string simple = parts.Last();
+            string ns = string.Join(".", parts.Take(parts.Length - 1));
+            return (ns, new List<string>(), simple);
+        }
+
+        string correctNs = string.Join(".", parts.Take(typeStartIndex));
+        
+        var parents = new List<string>();
+        for (int i = typeStartIndex; i < parts.Length - 1; i++)
+        {
+            parents.Add(parts[i]);
+        }
+        
+        string simpleName = parts.Last();
+        
+        return (correctNs, parents, simpleName);
+    }
+    
+    private void EmitType(StringBuilder sb, JsonTypeDefinition type, string simpleName, int indentLevel)
     {
         string indent = new string(' ', indentLevel * 4);
-        string typeName = GetSimpleTypeName(type.Name);
         
         if (type.Kind == "struct")
         {
-            EmitStruct(sb, type, typeName, indent);
+            EmitStruct(sb, type, simpleName, indent);
         }
         else if (type.Kind == "union")
         {
-             EmitUnion(sb, type, typeName, indent);
+             EmitUnion(sb, type, simpleName, indent);
         }
         else if (type.Kind == "enum")
         {
-            EmitEnum(sb, type, typeName, indent);
+            EmitEnum(sb, type, simpleName, indent);
         }
     }
 
@@ -150,6 +221,9 @@ public class CSharpEmitter
         
         var (csType, isManaged, arrayLen, bound) = _typeMapper.MapMember(member);
         
+        if (member.IsOptional) sb.AppendLine($"{indent}[DdsOptional]");
+        if (member.Id.HasValue) sb.AppendLine($"{indent}[DdsId({member.Id.Value})]");
+        
         if (arrayLen > 0)
         {
             sb.AppendLine($"{indent}[ArrayLength({arrayLen})]");
@@ -159,7 +233,7 @@ public class CSharpEmitter
         {
             if (csType == "string")
             {
-                sb.AppendLine($"{indent}[DdsString({bound})]");
+                sb.AppendLine($"{indent}[MaxLength({bound})]");
             }
             else
             {
@@ -182,7 +256,7 @@ public class CSharpEmitter
         }
         else
         {
-             sb.AppendLine($"{indent}[DdsStruct(\"{type.Name}\")]");
+             sb.AppendLine($"{indent}[DdsStruct]");
         }
         
         if (!string.IsNullOrEmpty(type.Extensibility))
@@ -214,6 +288,8 @@ public class CSharpEmitter
         var (csType, isManaged, arrayLen, bound) = _typeMapper.MapMember(member);
         
         if (member.IsKey) sb.AppendLine($"{indent}[DdsKey]");
+        if (member.IsOptional) sb.AppendLine($"{indent}[DdsOptional]");
+        if (member.Id.HasValue) sb.AppendLine($"{indent}[DdsId({member.Id.Value})]");
         
         if (arrayLen > 0)
         {
@@ -224,7 +300,7 @@ public class CSharpEmitter
         {
             if (csType == "string")
             {
-                sb.AppendLine($"{indent}[DdsString({bound})]");
+                sb.AppendLine($"{indent}[MaxLength({bound})]");
             }
             else
             {

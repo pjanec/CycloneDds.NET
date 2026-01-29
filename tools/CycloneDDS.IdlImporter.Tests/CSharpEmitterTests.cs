@@ -39,7 +39,7 @@ namespace CycloneDDS.IdlImporter.Tests
                 Assert.Contains("namespace Module", content); // Converted namespace
                 Assert.Contains("public partial struct MyStruct", content);
                 Assert.Contains("public int MyField;", content); // PascalCase verification
-                Assert.Contains("[DdsStruct(\"Module::MyStruct\")]", content);
+                Assert.Contains("[DdsStruct]", content);
             }
             finally
             {
@@ -264,6 +264,82 @@ namespace CycloneDDS.IdlImporter.Tests
             finally 
             { 
                 if(File.Exists(tempFile)) File.Delete(tempFile); 
+            }
+        }
+
+        [Fact]
+        public void GeneratesOptionalMember()
+        {
+            // Arrange
+            var types = new List<JsonTypeDefinition>
+            {
+                new JsonTypeDefinition
+                {
+                    Name = "OptionalStruct",
+                    Kind = "struct",
+                    Members = new List<JsonMember>
+                    {
+                        new JsonMember { Name = "opt_long", Type = "long", IsOptional = true },
+                        new JsonMember { Name = "opt_str", Type = "string", IsOptional = true }
+                    }
+                }
+            };
+            
+            var emitter = new CSharpEmitter(new TypeMapper());
+            string tempFile = Path.GetTempFileName();
+            
+            try
+            {
+                // Act
+                emitter.GenerateCSharp(types, "opt.idl", tempFile);
+                string content = File.ReadAllText(tempFile);
+                
+                // Assert
+                Assert.Contains("[DdsOptional]", content);
+                Assert.Contains("public int? OptLong;", content);
+                Assert.Contains("public string OptStr;", content);
+            }
+            finally
+            {
+                if (File.Exists(tempFile)) File.Delete(tempFile);
+            }
+        }
+
+        [Fact]
+        public void GeneratesMemberIds()
+        {
+            // Arrange
+            var types = new List<JsonTypeDefinition>
+            {
+                new JsonTypeDefinition
+                {
+                    Name = "MutableStruct",
+                    Kind = "struct",
+                    Extensibility = "mutable",
+                    Members = new List<JsonMember>
+                    {
+                        new JsonMember { Name = "v1", Type = "long", Id = 1 },
+                        new JsonMember { Name = "v2", Type = "long", Id = 100 }
+                    }
+                }
+            };
+            
+            var emitter = new CSharpEmitter(new TypeMapper());
+            string tempFile = Path.GetTempFileName();
+            
+            try
+            {
+                // Act
+                emitter.GenerateCSharp(types, "mutable.idl", tempFile);
+                string content = File.ReadAllText(tempFile);
+                
+                // Assert
+                Assert.Contains("[DdsId(1)]", content);
+                Assert.Contains("[DdsId(100)]", content);
+            }
+            finally
+            {
+                if (File.Exists(tempFile)) File.Delete(tempFile);
             }
         }
     }

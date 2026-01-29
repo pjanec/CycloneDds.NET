@@ -17,13 +17,13 @@ public class Program
             name: "master-idl",
             description: "Path to the entry-point IDL file");
 
-        var sourceRootArg = new Argument<string>(
-            name: "source-root",
-            description: "Root directory containing all IDL files");
+        var sourceRootOption = new Option<string?>(
+            name: "--source-root",
+            description: "Root directory containing all IDL files (default: master-idl directory)");
 
-        var outputRootArg = new Argument<string>(
-            name: "output-root",
-            description: "Root directory for generated C# files");
+        var outputRootOption = new Option<string?>(
+            name: "--output-root",
+            description: "Root directory for generated C# files (default: current directory)");
 
         var idlcPathOption = new Option<string?>(
             name: "--idlc-path",
@@ -36,8 +36,8 @@ public class Program
         var rootCommand = new RootCommand("CycloneDDS IDL Importer v1.0")
         {
             masterIdlArg,
-            sourceRootArg,
-            outputRootArg,
+            sourceRootOption,
+            outputRootOption,
             idlcPathOption,
             verboseOption
         };
@@ -45,6 +45,17 @@ public class Program
         rootCommand.SetHandler(
             async (masterIdl, sourceRoot, outputRoot, idlcPath, verbose) =>
             {
+                // Default logic
+                if (string.IsNullOrEmpty(sourceRoot))
+                {
+                    sourceRoot = Path.GetDirectoryName(Path.GetFullPath(masterIdl)) ?? Directory.GetCurrentDirectory();
+                }
+
+                if (string.IsNullOrEmpty(outputRoot))
+                {
+                    outputRoot = Directory.GetCurrentDirectory();
+                }
+
                 try
                 {
                     await RunImporter(masterIdl, sourceRoot, outputRoot, idlcPath, verbose);
@@ -63,7 +74,7 @@ public class Program
                     Environment.Exit(1);
                 }
             },
-            masterIdlArg, sourceRootArg, outputRootArg, idlcPathOption, verboseOption);
+            masterIdlArg, sourceRootOption, outputRootOption, idlcPathOption, verboseOption);
 
         return await rootCommand.InvokeAsync(args);
     }

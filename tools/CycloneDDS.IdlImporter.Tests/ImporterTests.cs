@@ -2,6 +2,11 @@ using System;
 using System.IO;
 using System.Linq;
 using Xunit;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using CycloneDDS.Schema;
+using System.Reflection;
+using System.Collections.Generic;
 
 namespace CycloneDDS.IdlImporter.Tests
 {
@@ -141,6 +146,98 @@ module Test { struct B { long v; }; };
             // Assert
             Assert.True(File.Exists(Path.Combine(_outputRoot, "A.cs")));
             Assert.True(File.Exists(Path.Combine(_outputRoot, "B.cs")));
+        }
+
+        [Fact]
+        public void Import_GeneratesCompilableCode()
+        {
+            // Setup complex IDL
+            Directory.CreateDirectory(Path.Combine(_sourceRoot, "Complex"));
+            
+            // 1. Base types
+            string basicIdl = Path.Combine(_sourceRoot, "Complex", "Basic.idl");
+            File.WriteAllText(basicIdl, @"
+module Core {
+    struct DateTime {
+        long sec;
+        unsigned long nanosec;
+    };
+    
+    enum Status {
+        OK,
+        ERROR,
+        UNKNOWN
+    };
+};");
+
+            // 2. Complex types (Sequences, Arrays, Nested, Optional, ID)
+            string complexIdl = Path.Combine(_sourceRoot, "Complex", "Complex.idl");
+            File.WriteAllText(complexIdl, @"
+#include ""Basic.idl""
+
+module Business {
+    @mutable
+    struct Record {
+        @key @id(1) long id;
+        @id(2) string<128> name;
+        @optional @id(3) Core::DateTime timestamp;
+        @id(4) sequence<Core::Status> history;
+        @id(5) long values[10];
+        @id(6) Core::Status current_status;
+    };
+
+    union Result switch (Core::Status) {
+        case Core::OK: Record record;
+        case Core::ERROR: string error_msg;
+        default: boolean flag;
+    };
+};");
+
+            // Run Importer
+            var importer = new Importer();
+            importer.Import(complexIdl, _sourceRoot, _outputRoot);
+
+            // Collect all generated files
+            var syntaxTrees = Directory.GetFiles(_outputRoot, "*.cs", SearchOption.AllDirectories)
+                .Select(path => CSharpSyntaxTree.ParseText(File.ReadAllText(path)))
+                .ToList();
+                
+            Assert.NotEmpty(syntaxTrees);
+
+            // Add references
+            // System.Runtime (PrivateCoreLib)
+            var systemRef = MetadataReference.CreateFromFile(typeof(object).Assembly.Location);
+            // System.Runtime.dll
+            var runtimePath = Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location), "System.Runtime.dll");
+            var runtimeRef = MetadataReference.CreateFromFile(runtimePath);
+            
+            // System.Collections
+            var collectionsRef = MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location);
+            // System.Runtime.InteropServices (for attributes if needed)
+            var interopRef = MetadataReference.CreateFromFile(typeof(System.Runtime.InteropServices.StructLayoutAttribute).Assembly.Location);
+            // CycloneDDS.Schema
+            var schemaRef = MetadataReference.CreateFromFile(typeof(DdsStructAttribute).Assembly.Location);
+            
+            // Console (System.Console) might be needed if generated code uses it? No.
+            
+            var references = new List<MetadataReference> { systemRef, runtimeRef, collectionsRef, interopRef, schemaRef };
+            
+            // Need to add System.Private.CoreLib explicitly? typeof(object).Assembly.Location usually points to it.
+
+            // Compile
+            var compilation = CSharpCompilation.Create("ComplexAssembly")
+                .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+                .AddReferences(references)
+                .AddSyntaxTrees(syntaxTrees);
+                
+            var diagnostics = compilation.GetDiagnostics();
+            var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+            
+            if (errors.Any())
+            {
+                var msgs = string.Join("\n", errors.Select(e => e.ToString()));
+                Assert.Fail($"Compilation failed with {errors.Count} errors:\n{msgs}");
+            }
         }
     }
 }

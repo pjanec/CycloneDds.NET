@@ -121,6 +121,17 @@ public class TypeMapper
                     bound = member.Bound.Value;
                 }
             }
+            
+            // Handle optional
+            if (member.IsOptional)
+            {
+                // Value types need explicit nullable ?
+                // We assume anything that isn't string, List<T>, or T[] is a value type (primitive or struct/enum)
+                if (csType != "string" && !csType.StartsWith("List<") && !csType.EndsWith("[]"))
+                {
+                    csType += "?";
+                }
+            }
         }
 
         return (csType, isManaged, arrayLen, bound);
@@ -128,6 +139,12 @@ public class TypeMapper
 
     private string MapPrimitiveOrUserType(string idlType)
     {
+        // Handle idlc implicit sequence type names (e.g. dds_sequence_long)
+        while (idlType.StartsWith("dds_sequence_"))
+        {
+            idlType = idlType.Substring("dds_sequence_".Length);
+        }
+
         try 
         {
             return MapPrimitive(idlType);

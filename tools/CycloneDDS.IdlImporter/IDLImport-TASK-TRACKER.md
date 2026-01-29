@@ -78,8 +78,8 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Complete tool with user-friendly CLI and end-to-end validation  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-009** Command-Line Interface Implementation → [details](./IDLImport-TASK-DETAILS.md#idlimp-009-command-line-interface-implementation) 🔵
-- [ ] **IDLIMP-010** End-to-End Integration with Existing Test IDL → [details](./IDLImport-TASK-DETAILS.md#idlimp-010-end-to-end-integration-with-existing-test-idl) 🔵 **🚨 GATE**
+- [x] **IDLIMP-009** Command-Line Interface Implementation → [details](./IDLImport-TASK-DETAILS.md#idlimp-009-command-line-interface-implementation) ✅
+- [x] **IDLIMP-010** End-to-End Integration with Existing Test IDL → [details](./IDLImport-TASK-DETAILS.md#idlimp-010-end-to-end-integration-with-existing-test-idl) ✅ **🚨 GATE**
 
 **Success Criteria:**
 - ✅ CLI with argument validation and help system
@@ -96,9 +96,9 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Support advanced IDL features (nested types, optional, member IDs)  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-011** Nested Struct Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-011-nested-struct-support) 🔵
-- [ ] **IDLIMP-012** Optional Member Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-012-optional-member-support) 🔵
-- [ ] **IDLIMP-013** Member ID (@id) Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-013-member-id-id-support) 🔵
+- [x] **IDLIMP-011** Nested Struct Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-011-nested-struct-support) ✅
+- [x] **IDLIMP-012** Optional Member Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-012-optional-member-support) ✅
+- [x] **IDLIMP-013** Member ID (@id) Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-013-member-id-id-support) ✅
 
 **Success Criteria:**
 - ✅ Nested struct types with proper dependencies
@@ -133,10 +133,10 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 | Phase 1: Foundation | 3 | ✅ COMPLETE | 5-8 days |
 | Phase 2: Core Logic | 2 | ✅ COMPLETE | 4-6 days |
 | Phase 3: Generation | 4 | ✅ COMPLETE | 8-12 days |
-| Phase 4: CLI & Integration | 2 | 🔵 NOT STARTED | 3-5 days |
-| Phase 5: Advanced | 3 | 🔵 NOT STARTED | 5-8 days |
+| Phase 4: CLI & Integration | 2 | ✅ COMPLETE | 3-5 days |
+| Phase 5: Advanced | 3 | ✅ COMPLETE | 5-8 days |
 | Phase 6: Testing | 2 | 🔵 NOT STARTED | 5-8 days |
-| **Total** | **15** | **8/15** | **30-45 days** |
+| **Total** | **15** | **13/15** | **30-45 days** |
 
 ---
 
