@@ -62,8 +62,8 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Status:** 🔵 NOT STARTED
 
 - [x] **IDLIMP-006** CSharpEmitter - Struct and Enum Generation → [details](./IDLImport-TASK-DETAILS.md#idlimp-006-csharpemitter---struct-and-enum-generation) ✅
-- [ ] **IDLIMP-007** CSharpEmitter - Collection Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-007-csharpemitter---collection-type-support) 🔵
-- [ ] **IDLIMP-008** CSharpEmitter - Union Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-008-csharpemitter---union-type-support) 🔵
+- [x] **IDLIMP-007** CSharpEmitter - Collection Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-007-csharpemitter---collection-type-support) ✅
+- [x] **IDLIMP-008** CSharpEmitter - Union Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-008-csharpemitter---union-type-support) ✅
 
 **Success Criteria:**
 - ✅ Generates valid C# syntax with proper attributes
@@ -132,11 +132,11 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 |-------|-------|--------|------------------|
 | Phase 1: Foundation | 3 | ✅ COMPLETE | 5-8 days |
 | Phase 2: Core Logic | 2 | ✅ COMPLETE | 4-6 days |
-| Phase 3: Generation | 4 | 🔵 NOT STARTED | 8-12 days |
+| Phase 3: Generation | 4 | ✅ COMPLETE | 8-12 days |
 | Phase 4: CLI & Integration | 2 | 🔵 NOT STARTED | 3-5 days |
 | Phase 5: Advanced | 3 | 🔵 NOT STARTED | 5-8 days |
 | Phase 6: Testing | 2 | 🔵 NOT STARTED | 5-8 days |
-| **Total** | **15** | **6/15** | **30-45 days** |
+| **Total** | **15** | **8/15** | **30-45 days** |
 
 ---
 

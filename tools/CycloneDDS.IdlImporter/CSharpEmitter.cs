@@ -96,10 +96,80 @@ public class CSharpEmitter
         {
             EmitStruct(sb, type, typeName, indent);
         }
+        else if (type.Kind == "union")
+        {
+             EmitUnion(sb, type, typeName, indent);
+        }
         else if (type.Kind == "enum")
         {
             EmitEnum(sb, type, typeName, indent);
         }
+    }
+
+    private void EmitUnion(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
+    {
+        sb.AppendLine($"{indent}[DdsUnion]");
+        sb.AppendLine($"{indent}public partial struct {typeName}");
+        sb.AppendLine($"{indent}{{");
+        
+        if (type.Members.Count > 0)
+        {
+            // Discriminator is always first
+            var disc = type.Members[0];
+            var (discType, _, _, _) = _typeMapper.MapMember(disc);
+            
+            sb.AppendLine($"{indent}    [DdsDiscriminator]");
+            sb.AppendLine($"{indent}    public {discType} {ToPascalCase(disc.Name)};");
+            
+            foreach (var member in type.Members.Skip(1))
+            {
+                EmitUnionMember(sb, member, indent + "    ");
+            }
+        }
+
+        sb.AppendLine($"{indent}}}");
+        sb.AppendLine();
+    }
+
+    private void EmitUnionMember(StringBuilder sb, JsonMember member, string indent)
+    {
+        if (member.Labels != null)
+        {
+            foreach (var label in member.Labels)
+            {
+                if (label == "default")
+                {
+                    sb.AppendLine($"{indent}[DdsDefaultCase]");
+                }
+                else
+                {
+                    sb.AppendLine($"{indent}[DdsCase({label})]");
+                }
+            }
+        }
+        
+        var (csType, isManaged, arrayLen, bound) = _typeMapper.MapMember(member);
+        
+        if (arrayLen > 0)
+        {
+            sb.AppendLine($"{indent}[ArrayLength({arrayLen})]");
+        }
+
+        if (bound > 0)
+        {
+            if (csType == "string")
+            {
+                sb.AppendLine($"{indent}[DdsString({bound})]");
+            }
+            else
+            {
+                sb.AppendLine($"{indent}[MaxLength({bound})]");
+            }
+        }
+
+        if (isManaged) sb.AppendLine($"{indent}[DdsManaged]");
+        
+        sb.AppendLine($"{indent}public {csType} {ToPascalCase(member.Name)};");
     }
 
     private void EmitStruct(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
@@ -145,10 +215,24 @@ public class CSharpEmitter
         
         if (member.IsKey) sb.AppendLine($"{indent}[DdsKey]");
         
-        if (csType == "string" && bound > 0)
+        if (arrayLen > 0)
         {
-            sb.AppendLine($"{indent}[DdsString({bound})]");
+            sb.AppendLine($"{indent}[ArrayLength({arrayLen})]");
         }
+
+        if (bound > 0)
+        {
+            if (csType == "string")
+            {
+                sb.AppendLine($"{indent}[DdsString({bound})]");
+            }
+            else
+            {
+                sb.AppendLine($"{indent}[MaxLength({bound})]");
+            }
+        }
+
+        if (isManaged) sb.AppendLine($"{indent}[DdsManaged]");
         
         sb.AppendLine($"{indent}public {csType} {ToPascalCase(member.Name)};");
     }
