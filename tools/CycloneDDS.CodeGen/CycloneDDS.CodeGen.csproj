@@ -13,6 +13,7 @@
     <!-- <PackageReference Include="libclang.runtime.win-x64" Version="21.1.8" /> -->
     <!-- <PackageReference Include="libClangSharp.runtime.win-x64" Version="21.1.8.2" /> -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    <ProjectReference Include="..\CycloneDDS.Compiler.Common\CycloneDDS.Compiler.Common.csproj" />
     <ProjectReference Include="..\..\Src\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
     <ProjectReference Include="..\..\Src\CycloneDDS.Core\CycloneDDS.Core.csproj" />
   </ItemGroup>

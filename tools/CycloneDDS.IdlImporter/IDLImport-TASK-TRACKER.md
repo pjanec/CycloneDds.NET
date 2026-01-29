@@ -29,9 +29,9 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Establish project structure and shared infrastructure  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-001** Project Setup and Shared Infrastructure → [details](./IDLImport-TASK-DETAILS.md#idlimp-001-project-setup-and-shared-infrastructure) 🔵
-- [ ] **IDLIMP-002** IdlcRunner Enhancement for Include Paths → [details](./IDLImport-TASK-DETAILS.md#idlimp-002-idlcrunner-enhancement-for-include-paths) 🔵
-- [ ] **IDLIMP-003** Type Mapper Implementation → [details](./IDLImport-TASK-DETAILS.md#idlimp-003-type-mapper-implementation) 🔵
+- [x] **IDLIMP-001** Project Setup and Shared Infrastructure → [details](./IDLImport-TASK-DETAILS.md#idlimp-001-project-setup-and-shared-infrastructure) ✅
+- [x] **IDLIMP-002** IdlcRunner Enhancement for Include Paths → [details](./IDLImport-TASK-DETAILS.md#idlimp-002-idlcrunner-enhancement-for-include-paths) ✅
+- [x] **IDLIMP-003** Type Mapper Implementation → [details](./IDLImport-TASK-DETAILS.md#idlimp-003-type-mapper-implementation) ✅
 
 **Success Criteria:**
 - ✅ .NET 8 console project builds successfully
@@ -130,13 +130,13 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 
 | Phase | Tasks | Status | Estimated Effort |
 |-------|-------|--------|------------------|
-| Phase 1: Foundation | 3 | 🔵 NOT STARTED | 5-8 days |
+| Phase 1: Foundation | 3 | ✅ COMPLETE | 5-8 days |
 | Phase 2: Core Logic | 2 | 🔵 NOT STARTED | 4-6 days |
 | Phase 3: Generation | 4 | 🔵 NOT STARTED | 8-12 days |
 | Phase 4: CLI & Integration | 2 | 🔵 NOT STARTED | 3-5 days |
 | Phase 5: Advanced | 3 | 🔵 NOT STARTED | 5-8 days |
 | Phase 6: Testing | 2 | 🔵 NOT STARTED | 5-8 days |
-| **Total** | **15** | **0/15** | **30-45 days** |
+| **Total** | **15** | **3/15** | **30-45 days** |
 
 ---
 
