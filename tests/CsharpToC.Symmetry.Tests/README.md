@@ -10,7 +10,7 @@
 
 ## Overview
 
-The **CsharpToC.Symmetry** test framework provides **99% faster iteration cycles** compared to traditional roundtrip tests by using pre-captured golden CDR data files. This enables rapid debugging and fixing of serialization bugs with **2-5 second feedback loops** instead of minutes.
+The **CsharpToC.Symmetry.Tests** test framework provides **99% faster iteration cycles** compared to traditional roundtrip tests by using pre-captured golden CDR data files. This enables rapid debugging and fixing of serialization bugs with **2-5 second feedback loops** instead of minutes.
 
 ### Key Benefits
 
@@ -34,7 +34,7 @@ The **CsharpToC.Symmetry** test framework provides **99% faster iteration cycles
 
 ```powershell
 # 1. Navigate to project folder
-cd D:\WORK\FastCycloneDdsCsharpBindings\tests\CsharpToC.Symmetry
+cd D:\WORK\FastCycloneDdsCsharpBindings\tests\CsharpToC.Symmetry.Tests
 
 # 2. Run initial build (generates code and golden data)
 .\rebuild_and_test.ps1
@@ -72,7 +72,7 @@ code ..\..\tools\CycloneDDS.CodeGen\SerializerEmitter.cs
 
 ```
 ┌─────────────────────────────────────────┐
-│         CsharpToC.Symmetry              │
+│         CsharpToC.Symmetry.Tests        │
 │                                         │
 │  ┌───────────┐      ┌──────────────┐  │
 │  │  Golden   │      │Infrastructure│  │
@@ -113,13 +113,13 @@ C# CDR Bytes
 ## Project Structure
 
 ```
-CsharpToC.Symmetry/
+CsharpToC.Symmetry.Tests/
 ├── README.md                    # This file
 ├── DESIGN.md                    # Detailed architecture
 ├── TASK-DETAILS.md              # Implementation task breakdown
 ├── TASK-TRACKER.md              # Progress tracking
 ├── FAST-ITERATION-GUIDE.md      # Developer workflow guide
-├── CsharpToC.Symmetry.csproj    # Main test project
+├── CsharpToC.Symmetry.Tests.csproj    # Main test project
 ├── rebuild_and_test.ps1         # Full rebuild + test script
 ├── run_tests_only.ps1           # Hot-patch mode script
 ├── generate_golden_data.ps1     # Regenerate golden data

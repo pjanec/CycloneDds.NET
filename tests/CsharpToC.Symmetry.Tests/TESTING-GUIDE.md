@@ -3,7 +3,7 @@
 
  - <TODO: add here the list of failing tests>
 
-Pls use the method described in tests\CsharpToC.Symmetry\FAST-ITERATION-GUIDE.md 
+Pls use the method described in tests\CsharpToC.Symmetry.Tests\FAST-ITERATION-GUIDE.md 
 to fix the failing topics.
 
 Use the following as a reference for finding out detail about the CDR stream format to know how to properly serializa and deserialize:

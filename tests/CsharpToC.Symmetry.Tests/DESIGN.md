@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The **CsharpToC.Symmetry** test framework is a high-velocity verification system designed to validate C# serialization/deserialization code against CycloneDDS native implementation with sub-second iteration cycles. It achieves 99% reduction in test execution time compared to the full roundtrip tests by using golden data files and eliminating runtime DDS infrastructure during iterative development.
+The **CsharpToC.Symmetry.Tests** test framework is a high-velocity verification system designed to validate C# serialization/deserialization code against CycloneDDS native implementation with sub-second iteration cycles. It achieves 99% reduction in test execution time compared to the full roundtrip tests by using golden data files and eliminating runtime DDS infrastructure during iterative development.
 
 **Key Metrics:**
 - **Traditional Roundtrip:** ~3-5 minutes per test cycle (native DLL, DDS runtime, network)

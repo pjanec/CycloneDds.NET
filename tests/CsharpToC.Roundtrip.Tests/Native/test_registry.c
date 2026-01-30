@@ -78,6 +78,9 @@ extern const topic_handler_t array_string_topic_appendable_handler;
 extern const topic_handler_t array_2d_int32_topic_handler;
 extern const topic_handler_t array_3d_int32_topic_handler;
 extern const topic_handler_t array_struct_topic_handler;
+extern const topic_handler_t array_2d_int32_topic_appendable_handler;
+extern const topic_handler_t array_3d_int32_topic_appendable_handler;
+extern const topic_handler_t array_struct_topic_appendable_handler;
 
 extern const topic_handler_t nested_struct_topic_handler;
 extern const topic_handler_t nested_3d_topic_handler;
@@ -150,6 +153,7 @@ extern const topic_handler_t final_int32_topic_handler;
 extern const topic_handler_t final_struct_topic_handler;
 extern const topic_handler_t mutable_int32_topic_handler;
 extern const topic_handler_t mutable_struct_topic_handler;
+extern const topic_handler_t appendable_struct_topic_handler;
 extern const topic_handler_t optional_int32_topic_handler;
 extern const topic_handler_t optional_float64_topic_handler;
 extern const topic_handler_t optional_string_topic_handler;
@@ -215,6 +219,9 @@ static const topic_handler_t* handlers[] = {
     &array_2d_int32_topic_handler,
     &array_3d_int32_topic_handler,
     &array_struct_topic_handler,
+    &array_2d_int32_topic_appendable_handler,
+    &array_3d_int32_topic_appendable_handler,
+    &array_struct_topic_appendable_handler,
     &nested_struct_topic_handler,
     &nested_3d_topic_handler,
     &doubly_nested_topic_handler,
@@ -282,6 +289,7 @@ static const topic_handler_t* handlers[] = {
     &final_struct_topic_handler,
     &mutable_int32_topic_handler,
     &mutable_struct_topic_handler,
+    &appendable_struct_topic_handler,
     &optional_int32_topic_handler,
     &optional_float64_topic_handler,
     &optional_string_topic_handler,

@@ -440,6 +440,74 @@ static int validate_ArrayStringTopicAppendable(void* data, int seed) {
 }
 DEFINE_HANDLER(ArrayStringTopicAppendable, array_string_topic_appendable);
 
+// --- Array2DInt32TopicAppendable ---
+static void generate_Array2DInt32TopicAppendable(void* data, int seed) {
+    AtomicTests_Array2DInt32TopicAppendable* msg = (AtomicTests_Array2DInt32TopicAppendable*)data;
+    msg->id = seed;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 4; j++) {
+            msg->matrix[i][j] = seed + (i * 4) + j;
+        }
+    }
+}
+static int validate_Array2DInt32TopicAppendable(void* data, int seed) {
+    AtomicTests_Array2DInt32TopicAppendable* msg = (AtomicTests_Array2DInt32TopicAppendable*)data;
+    if (msg->id != seed) return -1;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 4; j++) {
+            if (msg->matrix[i][j] != (seed + (i * 4) + j)) return -1;
+        }
+    }
+    return 0;
+}
+DEFINE_HANDLER(Array2DInt32TopicAppendable, array_2d_int32_topic_appendable);
+
+// --- Array3DInt32TopicAppendable ---
+static void generate_Array3DInt32TopicAppendable(void* data, int seed) {
+    AtomicTests_Array3DInt32TopicAppendable* msg = (AtomicTests_Array3DInt32TopicAppendable*)data;
+    msg->id = seed;
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 3; j++) {
+            for (int k = 0; k < 4; k++) {
+                msg->cube[i][j][k] = seed + (i * 12) + (j * 4) + k;
+            }
+        }
+    }
+}
+static int validate_Array3DInt32TopicAppendable(void* data, int seed) {
+    AtomicTests_Array3DInt32TopicAppendable* msg = (AtomicTests_Array3DInt32TopicAppendable*)data;
+    if (msg->id != seed) return -1;
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 3; j++) {
+            for (int k = 0; k < 4; k++) {
+                if (msg->cube[i][j][k] != (seed + (i * 12) + (j * 4) + k)) return -1;
+            }
+        }
+    }
+    return 0;
+}
+DEFINE_HANDLER(Array3DInt32TopicAppendable, array_3d_int32_topic_appendable);
+
+// --- ArrayStructTopicAppendable ---
+static void generate_ArrayStructTopicAppendable(void* data, int seed) {
+    AtomicTests_ArrayStructTopicAppendable* msg = (AtomicTests_ArrayStructTopicAppendable*)data;
+    msg->id = seed;
+    for(int i = 0; i < 3; i++) {
+         msg->points[i].x = (double)(seed + i);
+         msg->points[i].y = (double)(seed + i) + 0.5;
+    }
+}
+static int validate_ArrayStructTopicAppendable(void* data, int seed) {
+    AtomicTests_ArrayStructTopicAppendable* msg = (AtomicTests_ArrayStructTopicAppendable*)data;
+    if (msg->id != seed) return -1;
+    for(int i = 0; i < 3; i++) {
+        if(fabs(msg->points[i].x - (double)(seed + i)) > 0.000001) return -1;
+        if(fabs(msg->points[i].y - ((double)(seed + i) + 0.5)) > 0.000001) return -1;
+    }
+    return 0;
+}
+DEFINE_HANDLER(ArrayStructTopicAppendable, array_struct_topic_appendable);
+
 // ----------------------------------------------------------------------------
 // Sequences
 // ----------------------------------------------------------------------------
@@ -2433,6 +2501,22 @@ static void generate_MutableStructTopic(void* data, int seed) {
 }
 static int validate_MutableStructTopic(void* data, int seed) { return 0; }
 DEFINE_HANDLER(MutableStructTopic, mutable_struct_topic);
+
+// --- Extensibility: Appendable Struct ---
+static void generate_AppendableStructTopic(void* data, int seed) {
+    AtomicTests_AppendableStructTopic* m = (AtomicTests_AppendableStructTopic*)data;
+    m->id = seed;
+    m->point.x = (double)seed * 1.1;
+    m->point.y = (double)seed * 2.2;
+}
+static int validate_AppendableStructTopic(void* data, int seed) {
+    AtomicTests_AppendableStructTopic* m = (AtomicTests_AppendableStructTopic*)data;
+    if (m->id != seed) return -1;
+    if (fabs(m->point.x - (double)seed * 1.1) > 0.0001) return -1;
+    if (fabs(m->point.y - (double)seed * 2.2) > 0.0001) return -1;
+    return 0;
+}
+DEFINE_HANDLER(AppendableStructTopic, appendable_struct_topic);
 
 // --- Optionals (Non-Appendable) ---
 static void generate_OptionalInt32Topic(void* data, int seed) {

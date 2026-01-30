@@ -14,7 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
-$ProjectPath = "CsharpToC.Symmetry.csproj"
+$ProjectPath = "CsharpToC.Symmetry.Tests.csproj"
 $TestConfig = "Debug"
 
 Write-Host "========================================" -ForegroundColor Cyan

@@ -231,5 +231,83 @@ namespace CsharpToC.Roundtrip.Tests
                 }
             );
         }
+
+        // --- Appendable Multi-Dimensional Arrays (Will expose bugs) ---
+
+        [Fact]
+        public async Task TestArray2DInt32Appendable()
+        {
+            await RunRoundtrip<Array2DInt32TopicAppendable>(
+                "AtomicTests::Array2DInt32TopicAppendable",
+                1500,
+                (s) => {
+                    var msg = new Array2DInt32TopicAppendable();
+                    msg.Id = s;
+                    msg.Matrix = new int[12];  // 3x4 matrix flattened
+                    for(int i=0; i<12; i++) msg.Matrix[i] = s + i;
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Matrix.Length != 12) return false;
+                    for(int i=0; i<12; i++) {
+                        if (msg.Matrix[i] != s + i) return false;
+                    }
+                    return true;
+                }
+            );
+        }
+
+        [Fact]
+        public async Task TestArray3DInt32Appendable()
+        {
+            await RunRoundtrip<Array3DInt32TopicAppendable>(
+                "AtomicTests::Array3DInt32TopicAppendable",
+                1520,
+                (s) => {
+                    var msg = new Array3DInt32TopicAppendable();
+                    msg.Id = s;
+                    msg.Cube = new int[24];  // 2x3x4 cube flattened
+                    for(int i=0; i<24; i++) msg.Cube[i] = s + i;
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Cube.Length != 24) return false;
+                    for(int i=0; i<24; i++) {
+                        if (msg.Cube[i] != s + i) return false;
+                    }
+                    return true;
+                }
+            );
+        }
+
+        [Fact]
+        public async Task TestArrayStructAppendable()
+        {
+            await RunRoundtrip<ArrayStructTopicAppendable>(
+                "AtomicTests::ArrayStructTopicAppendable",
+                1510,
+                (s) => {
+                    var msg = new ArrayStructTopicAppendable();
+                    msg.Id = s;
+                    msg.Points = new Point2D[3];
+                    for (int i=0; i<3; i++) {
+                        msg.Points[i].X = s + i;
+                        msg.Points[i].Y = s + i + 0.5;
+                    }
+                    return msg;
+                },
+                (msg, s) => {
+                    if (msg.Id != s) return false;
+                    if (msg.Points.Length != 3) return false;
+                    for (int i=0; i<3; i++) {
+                        if (Math.Abs(msg.Points[i].X - (s+i)) > 0.0001) return false;
+                        if (Math.Abs(msg.Points[i].Y - (s+i+0.5)) > 0.0001) return false;
+                    }
+                    return true;
+                }
+            );
+        }
     }
 }

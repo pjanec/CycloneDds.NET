@@ -13,7 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
-$ProjectPath = "CsharpToC.Symmetry.csproj"
+$ProjectPath = "CsharpToC.Symmetry.Tests.csproj"
 $TestConfig = "Debug"
 $GoldenDataPath = "bin\$TestConfig\net8.0\GoldenData"
 

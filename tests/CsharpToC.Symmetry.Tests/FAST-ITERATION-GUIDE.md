@@ -1,4 +1,4 @@
-# CsharpToC.Symmetry - Fast Iteration Guide
+# CsharpToC.Symmetry.Tests - Fast Iteration Guide
 
 **Project:** FastCycloneDDS C# Bindings  
 **Version:** 1.0  
