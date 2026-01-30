@@ -116,7 +116,7 @@ namespace CycloneDDS.CodeGen
             
             if (isAppendable)
             {
-                sb.AppendLine("            if (isXcdr2) sizer.Align(4);");
+               // sb.AppendLine("            if (isXcdr2) sizer.Align(4);");
             }
             
             sb.AppendLine();
@@ -238,7 +238,6 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine("            {");
                 sb.AppendLine("                int bodyLen = writer.Position - bodyStart;");
                 sb.AppendLine("                writer.WriteUInt32At(dheaderPos, (uint)bodyLen);");
-                sb.AppendLine("                writer.Align(4);");
                 sb.AppendLine("            }");
             }
 
@@ -448,7 +447,7 @@ namespace CycloneDDS.CodeGen
             return typeName.ToLower() is 
                 "byte" or "uint8" or "sbyte" or "int8" or "bool" or "boolean" or
                 "short" or "int16" or "ushort" or "uint16" or
-                "int" or "int32" or "uint" or "uint32" or "float" or
+                "int" or "int32" or "uint" or "uint32" or "float" or "single" or
                 "long" or "int64" or "ulong" or "uint64" or "double";
         }
         
