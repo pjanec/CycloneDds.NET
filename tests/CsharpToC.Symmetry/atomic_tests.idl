@@ -1,0 +1,1350 @@
+// ============================================================================
+// C# to C Atomic Test Topics - Minimalistic DDS Interoperability Testing
+// ============================================================================
+// This IDL file contains MINIMALISTIC test topics designed to test each
+// DDS feature in isolation. Each topic tests exactly ONE concept.
+//
+// Design Philosophy:
+// - Start from the simplest primitives
+// - Build up complexity incrementally
+// - One feature per topic
+// - Easy to debug when something fails
+//
+// Testing Strategy:
+// 1. All topics must pass IdlJson.Tests verification first
+// 2. Native C sends deterministic data from seed
+// 3. C# receives, deserializes, and validates
+// 4. C# captures CDR byte stream for reference
+// 5. C# serializes and compares to native CDR
+// 6. C# sends back to native for final validation
+// ============================================================================
+
+module AtomicTests {
+    
+    // ========================================================================
+    // SECTION 1: BASIC PRIMITIVES (Single Field Each)
+    // ========================================================================
+    // Each topic tests serialization/deserialization of ONE primitive type.
+    // Key is always 'id' to keep it simple and consistent.
+    // ========================================================================
+    
+    @final
+    @topic
+    struct BooleanTopic {
+        @key long id;
+        boolean value;
+    };
+    
+    @final
+    @topic
+    struct CharTopic {
+        @key long id;
+        char value;
+    };
+    
+    @final
+    @topic
+    struct OctetTopic {
+        @key long id;
+        octet value;
+    };
+    
+    @final
+    @topic
+    struct Int16Topic {
+        @key long id;
+        short value;
+    };
+    
+    @final
+    @topic
+    struct UInt16Topic {
+        @key long id;
+        unsigned short value;
+    };
+    
+    @final
+    @topic
+    struct Int32Topic {
+        @key long id;
+        long value;
+    };
+    
+    @final
+    @topic
+    struct UInt32Topic {
+        @key long id;
+        unsigned long value;
+    };
+    
+    @final
+    @topic
+    struct Int64Topic {
+        @key long id;
+        long long value;
+    };
+    
+    @final
+    @topic
+    struct UInt64Topic {
+        @key long id;
+        unsigned long long value;
+    };
+    
+    @final
+    @topic
+    struct Float32Topic {
+        @key long id;
+        float value;
+    };
+    
+    @final
+    @topic
+    struct Float64Topic {
+        @key long id;
+        double value;
+    };
+    
+    @final
+    @topic
+    struct StringUnboundedTopic {
+        @key long id;
+        string value;
+    };
+    
+    @final
+    @topic
+    struct StringBounded32Topic {
+        @key long id;
+        string<32> value;
+    };
+    
+    @final
+    @topic
+    struct StringBounded256Topic {
+        @key long id;
+        string<256> value;
+    };
+    
+    // ========================================================================
+    // SECTION 2: ENUMERATIONS
+    // ========================================================================
+    
+    enum SimpleEnum { 
+        FIRST, 
+        SECOND, 
+        THIRD 
+    };
+    
+    @final
+    @topic
+    struct EnumTopic {
+        @key long id;
+        SimpleEnum value;
+    };
+    
+    enum ColorEnum { 
+        RED, 
+        GREEN, 
+        BLUE, 
+        YELLOW, 
+        MAGENTA, 
+        CYAN 
+    };
+    
+    @final
+    @topic
+    struct ColorEnumTopic {
+        @key long id;
+        ColorEnum color;
+    };
+    
+    // ========================================================================
+    // SECTION 3: NESTED STRUCTURES
+    // ========================================================================
+    
+    @final
+    struct Point2D {
+        double x;
+        double y;
+    };
+    
+    @final
+    @topic
+    struct NestedStructTopic {
+        @key long id;
+        Point2D point;
+    };
+    
+    @final
+    struct Point3D {
+        double x;
+        double y;
+        double z;
+    };
+    
+    @final
+    @topic
+    struct Nested3DTopic {
+        @key long id;
+        Point3D point;
+    };
+    
+    @final
+    struct Box {
+        Point2D topLeft;
+        Point2D bottomRight;
+    };
+    
+    @final
+    @topic
+    struct DoublyNestedTopic {
+        @key long id;
+        Box box;
+    };
+    
+    @final
+    struct Container {
+        long count;
+        Point3D center;
+        double radius;
+    };
+    
+    @final
+    @topic
+    struct ComplexNestedTopic {
+        @key long id;
+        Container container;
+    };
+    
+    // ========================================================================
+    // SECTION 4: UNIONS
+    // ========================================================================
+    
+    // Union with long discriminator
+    @final
+    union SimpleUnion switch(long) {
+        case 1: long int_value;
+        case 2: double double_value;
+        case 3: string string_value;
+    };
+    
+    @final
+    @topic
+    struct UnionLongDiscTopic {
+        @key long id;
+        SimpleUnion data;
+    };
+    
+    // Union with boolean discriminator
+    @final
+    union BoolUnion switch(boolean) {
+        case TRUE: long true_val;
+        case FALSE: double false_val;
+    };
+    
+    @final
+    @topic
+    struct UnionBoolDiscTopic {
+        @key long id;
+        BoolUnion data;
+    };
+    
+    // Union with enum discriminator
+    @final
+    union ColorUnion switch(ColorEnum) {
+        case RED: long red_data;
+        case GREEN: double green_data;
+        case BLUE: string blue_data;
+        case YELLOW: Point2D yellow_point;
+    };
+    
+    @final
+    @topic
+    struct UnionEnumDiscTopic {
+        @key long id;
+        ColorUnion data;
+    };
+    
+    // Union with short discriminator
+    @final
+    union ShortUnion switch(short) {
+        case 1: octet byte_val;
+        case 2: short short_val;
+        case 3: long long_val;
+        case 4: float float_val;
+    };
+    
+    @final
+    @topic
+    struct UnionShortDiscTopic {
+        @key long id;
+        ShortUnion data;
+    };
+    
+    // ========================================================================
+    // SECTION 5: OPTIONAL FIELDS
+    // ========================================================================
+    
+    @final
+    @topic
+    struct OptionalInt32Topic {
+        @key long id;
+        @optional long opt_value;
+    };
+    
+    @final
+    @topic
+    struct OptionalFloat64Topic {
+        @key long id;
+        @optional double opt_value;
+    };
+    
+    @final
+    @topic
+    struct OptionalStringTopic {
+        @key long id;
+        @optional string<64> opt_string;
+    };
+    
+    @final
+    @topic
+    struct OptionalStructTopic {
+        @key long id;
+        @optional Point2D opt_point;
+    };
+    
+    @final
+    @topic
+    struct OptionalEnumTopic {
+        @key long id;
+        @optional SimpleEnum opt_enum;
+    };
+    
+    @final
+    @topic
+    struct MultiOptionalTopic {
+        @key long id;
+        @optional long opt_int;
+        @optional double opt_double;
+        @optional string<32> opt_string;
+    };
+    
+    // ========================================================================
+    // SECTION 6: SIMPLE SEQUENCES
+    // ========================================================================
+    
+    @final
+    @topic
+    struct SequenceInt32Topic {
+        @key long id;
+        sequence<long> values;
+    };
+    
+    @final
+    @topic
+    struct BoundedSequenceInt32Topic {
+        @key long id;
+        sequence<long, 10> values;
+    };
+    
+    @final
+    @topic
+    struct SequenceInt64Topic {
+        @key long id;
+        sequence<long long> values;
+    };
+    
+    @final
+    @topic
+    struct SequenceFloat32Topic {
+        @key long id;
+        sequence<float> values;
+    };
+    
+    @final
+    @topic
+    struct SequenceFloat64Topic {
+        @key long id;
+        sequence<double> values;
+    };
+    
+    @final
+    @topic
+    struct SequenceBooleanTopic {
+        @key long id;
+        sequence<boolean> values;
+    };
+    
+    @final
+    @topic
+    struct SequenceOctetTopic {
+        @key long id;
+        sequence<octet> bytes;
+    };
+    
+    typedef string<32> String32;
+
+    @final
+    @topic
+    struct SequenceStringTopic {
+        @key long id;
+        sequence<String32> values;
+    };
+    
+    @final
+    @topic
+    struct SequenceEnumTopic {
+        @key long id;
+        sequence<SimpleEnum> values;
+    };
+    
+    @final
+    @topic
+    struct SequenceStructTopic {
+        @key long id;
+        sequence<Point2D> points;
+    };
+    
+    @final
+    @topic
+    struct SequenceUnionTopic {
+        @key long id;
+        sequence<SimpleUnion> unions;
+    };
+    
+    // ========================================================================
+    // SECTION 7: ARRAYS
+    // ========================================================================
+    
+    @final
+    @topic
+    struct ArrayInt32Topic {
+        @key long id;
+        long values[5];
+    };
+    
+    @final
+    @topic
+    struct ArrayFloat64Topic {
+        @key long id;
+        double values[5];
+    };
+    
+    @final
+    @topic
+    struct ArrayStringTopic {
+        @key long id;
+        string<16> names[5];
+    };
+    
+    @final
+    @topic
+    struct Array2DInt32Topic {
+        @key long id;
+        long matrix[3][4];
+    };
+    
+    @final
+    @topic
+    struct Array3DInt32Topic {
+        @key long id;
+        long cube[2][3][4];
+    };
+    
+    @final
+    @topic
+    struct ArrayStructTopic {
+        @key long id;
+        Point2D points[3];
+    };
+    
+    // ========================================================================
+    // SECTION 8: EXTENSIBILITY (Appendable, Final, Mutable)
+    // ========================================================================
+    
+    @appendable
+    @topic
+    struct AppendableInt32Topic {
+        @key long id;
+        long value;
+    };
+    
+    @appendable
+    @topic
+    struct AppendableStructTopic {
+        @key long id;
+        Point2D point;
+    };
+    
+    @final
+    @topic
+    struct FinalInt32Topic {
+        @key long id;
+        long value;
+    };
+    
+    @final
+    @topic
+    struct FinalStructTopic {
+        @key long id;
+        Point2D point;
+    };
+    
+    @mutable
+    @topic
+    struct MutableInt32Topic {
+        @key long id;
+        @id(100) long value;
+    };
+    
+    @mutable
+    @topic
+    struct MutableStructTopic {
+        @key long id;
+        @id(200) Point2D point;
+    };
+    
+    // ========================================================================
+    // SECTION 9: COMPOSITE KEYS
+    // ========================================================================
+    
+    @final
+    @topic
+    struct TwoKeyInt32Topic {
+        @key long key1;
+        @key long key2;
+        double value;
+    };
+    
+    @final
+    @topic
+    struct TwoKeyStringTopic {
+        @key string<32> key1;
+        @key string<32> key2;
+        double value;
+    };
+    
+    @final
+    @topic
+    struct ThreeKeyTopic {
+        @key long key1;
+        @key string<32> key2;
+        @key short key3;
+        double value;
+    };
+    
+    @final
+    @topic
+    struct FourKeyTopic {
+        @key long key1;
+        @key long key2;
+        @key long key3;
+        @key long key4;
+        string<64> description;
+    };
+    
+    // ========================================================================
+    // SECTION 10: NESTED KEYS
+    // ========================================================================
+    
+    @final
+    struct Location {
+        @key long building;
+        @key short floor;
+    };
+    
+    @final
+    @topic
+    struct NestedKeyTopic {
+        @key Location loc;
+        double temperature;
+    };
+    
+    @final
+    struct Coordinates {
+        @key double latitude;
+        @key double longitude;
+    };
+    
+    @final
+    @topic
+    struct NestedKeyGeoTopic {
+        @key Coordinates coords;
+        string<128> location_name;
+    };
+    
+    @final
+    struct TripleKey {
+        @key long id1;
+        @key long id2;
+        @key long id3;
+    };
+    
+    @final
+    @topic
+    struct NestedTripleKeyTopic {
+        @key TripleKey keys;
+        string<64> data;
+    };
+    
+    // ========================================================================
+    // SECTION 11: ADVANCED COMBINATIONS (Test After Basics Pass)
+    // ========================================================================
+    
+    // @topic
+    // struct SequenceOfOptionalTopic {
+    //     @key long id;
+    //     sequence<@optional long> opt_values;
+    // };
+    
+    // @topic
+    // struct OptionalSequenceTopic {
+    //     @key long id;
+    //     @optional sequence<long> opt_sequence;
+    // };
+    
+    // @topic
+    // struct NestedSequenceTopic {
+    //     @key long id;
+    //     sequence<sequence<long>> matrix;
+    // };
+    
+    // @topic
+    // struct SequenceOfStructWithSequenceTopic {
+    //     @key long id;
+    //     sequence<Container> containers;
+    // };
+    
+    // @appendable
+    // @topic
+    // struct AppendableWithSequenceTopic {
+    //     @key long id;
+    //     sequence<Point2D> points;
+    //     @optional string<64> description;
+    // };
+    
+    // @topic
+    // struct ArrayOfSequenceTopic {
+    //     @key long id;
+    //     sequence<long>[3] seq_array;
+    // };
+    
+    // @topic
+    // struct ComplexKeyTopic {
+    //     @key long id;
+    //     @key Point2D key_point;
+    //     sequence<double> measurements;
+    // };
+    
+    // ========================================================================
+    // SECTION 12: EDGE CASES
+    // ========================================================================
+    
+    @final
+    @topic
+    struct EmptySequenceTopic {
+        @key long id;
+        sequence<long> empty_seq;  // Will test with zero elements
+    };
+    
+    @final
+    @topic
+    struct LargeSequenceTopic {
+        @key long id;
+        sequence<long> large_seq;  // Will test with 1000+ elements
+    };
+    
+    @final
+    @topic
+    struct LongStringTopic {
+        @key long id;
+        string<4096> long_string;
+    };
+    
+    @final
+    @topic
+    struct UnboundedStringTopic {
+        @key long id;
+        string unbounded;  // Will test with varying sizes
+    };
+    
+    @final
+    @topic
+    struct AllPrimitivesAtomicTopic {
+        @key long id;
+        boolean bool_val;
+        char char_val;
+        octet octet_val;
+        short short_val;
+        unsigned short ushort_val;
+        long long_val;
+        unsigned long ulong_val;
+        long long llong_val;
+        unsigned long long ullong_val;
+        float float_val;
+        double double_val;
+    };
+    
+    // ========================================================================
+    // ROUNDTRIP SPECIFIC APPENDABLE DUPLICATES
+    // ========================================================================
+
+    @appendable
+    @topic
+    struct BooleanTopicAppendable {
+        @key long id;
+        boolean value;
+    };
+
+    @appendable
+    @topic
+    struct Int32TopicAppendable {
+        @key long id;
+        long value;
+    };
+
+    @appendable
+    @topic
+    struct StringBounded32TopicAppendable {
+        @key long id;
+        string<32> value;
+    };
+
+    @appendable
+    @topic
+    struct SequenceInt32TopicAppendable {
+        @key long id;
+        sequence<long> values;
+    };
+
+    @appendable
+    union SimpleUnionAppendable switch(long) {
+        case 1: long int_value;
+        case 2: double double_value;
+        case 3: string string_value;
+    };
+
+    @appendable
+    @topic
+    struct UnionLongDiscTopicAppendable {
+        @key long id;
+        SimpleUnionAppendable data;
+    };
+
+    @appendable
+    @topic
+    struct CharTopicAppendable {
+        @key long id;
+        char value;
+    };
+
+    @appendable
+    @topic
+    struct OctetTopicAppendable {
+        @key long id;
+        octet value;
+    };
+    
+    @appendable
+    @topic
+    struct Int16TopicAppendable {
+        @key long id;
+        short value;
+    };
+    
+    @appendable
+    @topic
+    struct UInt16TopicAppendable {
+        @key long id;
+        unsigned short value;
+    };
+    
+    @appendable
+    @topic
+    struct UInt32TopicAppendable {
+        @key long id;
+        unsigned long value;
+    };
+    
+    @appendable
+    @topic
+    struct Int64TopicAppendable {
+        @key long id;
+        long long value;
+    };
+    
+    @appendable
+    @topic
+    struct UInt64TopicAppendable {
+        @key long id;
+        unsigned long long value;
+    };
+
+    @appendable
+    @topic
+    struct Float32TopicAppendable {
+        @key long id;
+        float value;
+    };
+    
+    @appendable
+    @topic
+    struct Float64TopicAppendable {
+        @key long id;
+        double value;
+    };
+
+    @appendable
+    @topic
+    struct StringUnboundedTopicAppendable {
+        @key long id;
+        string value;
+    };
+    
+    @appendable
+    @topic
+    struct StringBounded256TopicAppendable {
+        @key long id;
+        string<256> value;
+    };
+
+    @appendable
+    @topic
+    struct EnumTopicAppendable {
+        @key long id;
+        SimpleEnum value;
+    };
+
+    @appendable
+    @topic
+    struct ColorEnumTopicAppendable {
+        @key long id;
+        ColorEnum color;
+    };
+
+    @appendable
+    @topic
+    struct ArrayInt32TopicAppendable {
+        @key long id;
+        long values[5];
+    };
+    
+    @appendable
+    @topic
+    struct ArrayFloat64TopicAppendable {
+        @key long id;
+        long dummy_pad;
+        double values[5];
+    };
+    
+    @appendable
+    @topic
+    struct ArrayStringTopicAppendable {
+        @key long id;
+        string<16> names[5];
+    };
+
+    @appendable
+    @topic
+    struct Array2DInt32TopicAppendable {
+        @key long id;
+        long matrix[3][4];
+    };
+
+    @appendable
+    @topic
+    struct Array3DInt32TopicAppendable {
+        @key long id;
+        long cube[2][3][4];
+    };
+
+    @appendable
+    @topic
+    struct ArrayStructTopicAppendable {
+        @key long id;
+        AtomicTests::Point2D points[3];
+    };
+
+    @appendable
+    @topic
+    struct SequenceUnionAppendableTopic {
+        @key long id;
+        sequence<SimpleUnionAppendable> unions;
+    };
+
+    @appendable
+    @topic
+    struct SequenceEnumAppendableTopic {
+        @key long id;
+        sequence<ColorEnum> colors;
+    };
+
+    // ========================================================================
+    // APPENDABLE VARIANTS FOR SEQUENCES (RT-S02 through RT-S11)
+    // ========================================================================
+
+    @appendable
+    @topic
+    struct BoundedSequenceInt32TopicAppendable {
+        @key long id;
+        sequence<long, 10> values;
+    };
+
+    @appendable
+    @topic
+    struct SequenceInt64TopicAppendable {
+        @key long id;
+        sequence<long long> values;
+    };
+
+    @appendable
+    @topic
+    struct SequenceFloat32TopicAppendable {
+        @key long id;
+        sequence<float> values;
+    };
+
+    @appendable
+    @topic
+    struct SequenceFloat64TopicAppendable {
+        @key long id;
+        sequence<double> values;
+    };
+
+    @appendable
+    @topic
+    struct SequenceBooleanTopicAppendable {
+        @key long id;
+        sequence<boolean> values;
+    };
+
+    @appendable
+    @topic
+    struct SequenceOctetTopicAppendable {
+        @key long id;
+        sequence<octet> bytes;
+    };
+
+    @appendable
+    @topic
+    struct SequenceStringTopicAppendable {
+        @key long id;
+        sequence<String32> values;
+    };
+
+    @appendable
+    @topic
+    struct SequenceStructTopicAppendable {
+        @key long id;
+        sequence<Point2D> points;
+    };
+
+    // ========================================================================
+    // APPENDABLE VARIANTS FOR NESTED STRUCTURES (RT-N01 through RT-N04)
+    // ========================================================================
+
+    @appendable
+    struct Point2DAppendable {
+        double x;
+        double y;
+    };
+
+    @appendable
+    @topic
+    struct NestedStructTopicAppendable {
+        @key long id;
+        Point2DAppendable point;
+    };
+
+    @appendable
+    struct Point3DAppendable {
+        double x;
+        double y;
+        double z;
+    };
+
+    @appendable
+    @topic
+    struct Nested3DTopicAppendable {
+        @key long id;
+        Point3DAppendable point;
+    };
+
+    @appendable
+    struct BoxAppendable {
+        Point2DAppendable topLeft;
+        Point2DAppendable bottomRight;
+    };
+
+    @appendable
+    @topic
+    struct DoublyNestedTopicAppendable {
+        @key long id;
+        BoxAppendable box;
+    };
+
+    @appendable
+    struct ContainerAppendable {
+        long count;
+        Point3DAppendable center;
+        double radius;
+    };
+
+    @appendable
+    @topic
+    struct ComplexNestedTopicAppendable {
+        @key long id;
+        ContainerAppendable container;
+    };
+
+    // ========================================================================
+    // APPENDABLE VARIANTS FOR UNIONS (RT-U02 through RT-U04)
+    // ========================================================================
+
+    @appendable
+    union BoolUnionAppendable switch(boolean) {
+        case TRUE: long true_val;
+        case FALSE: double false_val;
+    };
+
+    @appendable
+    @topic
+    struct UnionBoolDiscTopicAppendable {
+        @key long id;
+        BoolUnionAppendable data;
+    };
+
+    @appendable
+    union ColorUnionAppendable switch(ColorEnum) {
+        case RED: long red_data;
+        case GREEN: double green_data;
+        case BLUE: string<32> blue_data;
+        case YELLOW: Point2DAppendable yellow_point;
+    };
+
+    @appendable
+    @topic
+    struct UnionEnumDiscTopicAppendable {
+        @key long id;
+        ColorUnionAppendable data;
+    };
+
+    @appendable
+    union ShortUnionAppendable switch(short) {
+        case 1: octet byte_val;
+        case 2: short short_val;
+        case 3: long long_val;
+        case 4: float float_val;
+    };
+
+    @appendable
+    @topic
+    struct UnionShortDiscTopicAppendable {
+        @key long id;
+        ShortUnionAppendable data;
+    };
+
+    // ========================================================================
+    // APPENDABLE VARIANTS FOR OPTIONAL FIELDS (RT-O01 through RT-O06)
+    // ========================================================================
+
+    @appendable
+    @topic
+    struct OptionalInt32TopicAppendable {
+        @key long id;
+        @optional long opt_value;
+    };
+
+    @appendable
+    @topic
+    struct OptionalFloat64TopicAppendable {
+        @key long id;
+        @optional double opt_value;
+    };
+
+    @appendable
+    @topic
+    struct OptionalStringTopicAppendable {
+        @key long id;
+        @optional string<64> opt_string;
+    };
+
+    @appendable
+    @topic
+    struct OptionalStructTopicAppendable {
+        @key long id;
+        @optional Point2DAppendable opt_point;
+    };
+
+    @appendable
+    @topic
+    struct OptionalEnumTopicAppendable {
+        @key long id;
+        @optional SimpleEnum opt_enum;
+    };
+
+    @appendable
+    @topic
+    struct MultiOptionalTopicAppendable {
+        @key long id;
+        @optional long opt_int;
+        @optional double opt_double;
+        @optional string<32> opt_string;
+    };
+
+    // ========================================================================
+    // APPENDABLE VARIANTS FOR COMPOSITE KEYS (RT-K01 through RT-K04)
+    // ========================================================================
+
+    @appendable
+    @topic
+    struct TwoKeyInt32TopicAppendable {
+        @key long key1;
+        @key long key2;
+        double value;
+    };
+
+    @appendable
+    @topic
+    struct TwoKeyStringTopicAppendable {
+        @key string<32> key1;
+        @key string<32> key2;
+        double value;
+    };
+
+    @appendable
+    @topic
+    struct ThreeKeyTopicAppendable {
+        @key long key1;
+        @key string<32> key2;
+        @key short key3;
+        double value;
+    };
+
+    @appendable
+    @topic
+    struct FourKeyTopicAppendable {
+        @key long key1;
+        @key long key2;
+        @key long key3;
+        @key long key4;
+        string<64> description;
+    };
+
+    // ========================================================================
+    // APPENDABLE VARIANTS FOR NESTED KEYS (RT-NK01 through RT-NK03)
+    // ========================================================================
+
+    @appendable
+    struct LocationAppendable {
+        @key long building;
+        @key short floor;
+    };
+
+    @appendable
+    @topic
+    struct NestedKeyTopicAppendable {
+        @key LocationAppendable loc;
+        double temperature;
+    };
+
+    @appendable
+    struct CoordinatesAppendable {
+        @key double latitude;
+        @key double longitude;
+    };
+
+    @appendable
+    @topic
+    struct NestedKeyGeoTopicAppendable {
+        @key CoordinatesAppendable coords;
+        string<128> location_name;
+    };
+
+    @appendable
+    struct TripleKeyAppendable {
+        @key long id1;
+        @key long id2;
+        @key long id3;
+    };
+
+    @appendable
+    @topic
+    struct NestedTripleKeyTopicAppendable {
+        @key TripleKeyAppendable keys;
+        string<64> data;
+    };
+
+    // ========================================================================
+    // APPENDABLE VARIANTS FOR EDGE CASES (RT-EC01, RT-EC04, RT-EC05)
+    // ========================================================================
+
+    @appendable
+    @topic
+    struct EmptySequenceTopicAppendable {
+        @key long id;
+        sequence<long> empty_seq;
+    };
+
+    @appendable
+    @topic
+    struct UnboundedStringTopicAppendable {
+        @key long id;
+        string unbounded;
+    };
+
+    @appendable
+    @topic
+    struct AllPrimitivesAtomicTopicAppendable {
+        @key long id;
+        boolean bool_val;
+        char char_val;
+        octet octet_val;
+        short short_val;
+        unsigned short ushort_val;
+        long long_val;
+        unsigned long ulong_val;
+        long long llong_val;
+        unsigned long long ullong_val;
+        float float_val;
+        double double_val;
+    };
+
+    // ========================================================================
+    // EDGE CASE TOPICS FOR UNCOVERED SCENARIOS
+    // ========================================================================
+
+    // RT-EC06: Maximum bounded string size
+    @final
+    @topic
+    struct MaxSizeStringTopic {
+        @key long id;
+        string<8192> max_string;  // Test large bounded string
+    };
+
+    @appendable
+    @topic
+    struct MaxSizeStringTopicAppendable {
+        @key long id;
+        string<8192> max_string;
+    };
+
+    // RT-EC07: Maximum bounded sequence length
+    @final
+    @topic
+    struct MaxLengthSequenceTopic {
+        @key long id;
+        sequence<long, 10000> max_seq;  // Test large bounded sequence
+    };
+
+    @appendable
+    @topic
+    struct MaxLengthSequenceTopicAppendable {
+        @key long id;
+        sequence<long, 10000> max_seq;
+    };
+
+    // RT-EC08: Deeply nested structures (5 levels)
+    @final
+    struct Level5 {
+        long value5;
+    };
+
+    @final
+    struct Level4 {
+        long value4;
+        Level5 nested5;
+    };
+
+    @final
+    struct Level3 {
+        long value3;
+        Level4 nested4;
+    };
+
+    @final
+    struct Level2 {
+        long value2;
+        Level3 nested3;
+    };
+
+    @final
+    struct Level1 {
+        long value1;
+        Level2 nested2;
+    };
+
+    @final
+    @topic
+    struct DeepNestedStructTopic {
+        @key long id;
+        Level1 nested1;
+    };
+
+    @appendable
+    struct Level5Appendable {
+        long value5;
+    };
+
+    @appendable
+    struct Level4Appendable {
+        long value4;
+        Level5Appendable nested5;
+    };
+
+    @appendable
+    struct Level3Appendable {
+        long value3;
+        Level4Appendable nested4;
+    };
+
+    @appendable
+    struct Level2Appendable {
+        long value2;
+        Level3Appendable nested3;
+    };
+
+    @appendable
+    struct Level1Appendable {
+        long value1;
+        Level2Appendable nested2;
+    };
+
+    @appendable
+    @topic
+    struct DeepNestedStructTopicAppendable {
+        @key long id;
+        Level1Appendable nested1;
+    };
+
+    // RT-EC09: Union with optional field member
+    @final
+    union UnionWithOptional switch(long) {
+        case 1: long int_val;
+        case 2: string<64> opt_str_val;
+        case 3: double double_val;
+    };
+
+    @final
+    @topic
+    struct UnionWithOptionalTopic {
+        @key long id;
+        UnionWithOptional data;
+    };
+
+    @appendable
+    union UnionWithOptionalAppendable switch(long) {
+        case 1: long int_val;
+        case 2: string<64> opt_str_val;
+        case 3: double double_val;
+    };
+
+    @appendable
+    @topic
+    struct UnionWithOptionalTopicAppendable {
+        @key long id;
+        UnionWithOptionalAppendable data;
+    };
+
+};

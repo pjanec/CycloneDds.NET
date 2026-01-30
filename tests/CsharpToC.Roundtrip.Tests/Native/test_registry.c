@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "test_registry.h"
+#include "dds/cdr/dds_cdrstream.h"
 
 // --- Global State ---
 static dds_entity_t participant = 0;
@@ -299,6 +301,10 @@ EXPORT void Native_Init(uint32_t domain_id) {
         set_error("dds_create_subscriber failed");
         return;
     }
+
+    // Fix for UInt16Topic missing key bug
+    extern void Fix_UInt16_Desc();
+    Fix_UInt16_Desc();
     
     set_error("OK");
 }
@@ -411,4 +417,143 @@ EXPORT int Native_ExpectWithSeed(const char* topic_name, int seed, int timeout_m
     dds_delete(topic);
     
     return result;
+}
+
+// --- Symmetry API ---
+#include "dds/ddsi/ddsi_serdata.h"
+
+EXPORT int Native_GeneratePayload(const char* topic_name, int seed, void** out_buffer) {
+    const topic_handler_t* handler = find_handler(topic_name);
+    if (!handler) {
+        set_error("Topic handler not found");
+        return -1;
+    }
+
+    // Ensure participant exists (lazy init)
+    if (participant == 0) {
+        Native_Init(0);
+        if (participant == 0) return -1;
+    }
+
+    // 1. Setup Entities
+    // We create topic/writer/reader in temporary scope.
+    // Assuming domain is same as Native_Init.
+    
+    dds_entity_t topic = dds_create_topic(participant, handler->descriptor, handler->name, NULL, NULL);
+    if (topic < 0) { 
+        snprintf(last_error, sizeof(last_error), "create_topic failed: %d", topic); 
+        return -1; 
+    }
+    
+    dds_qos_t *qos = dds_create_qos();
+    dds_qset_reliability(qos, DDS_RELIABILITY_RELIABLE, DDS_SECS(1));
+    dds_qset_durability(qos, DDS_DURABILITY_TRANSIENT_LOCAL);
+    dds_qset_history(qos, DDS_HISTORY_KEEP_ALL, 0);
+
+    // Force XCDR2
+    // dds_data_representation_id_t reps[] = { DDS_DATA_REPRESENTATION_XCDR2 };
+    // dds_qset_data_representation(qos, reps, 1);
+    // printf("DEBUG: dds_qset_data_representation call done\n");
+
+    dds_entity_t writer = dds_create_writer(publisher, topic, qos, NULL);
+    if (writer < 0) { 
+        dds_delete(topic); dds_delete_qos(qos); 
+        set_error("create_writer failed"); 
+        return -1; 
+    }
+
+    dds_entity_t reader = dds_create_reader(subscriber, topic, qos, NULL);
+    if (reader < 0) { 
+        dds_delete(writer); dds_delete(topic); dds_delete_qos(qos); 
+        set_error("create_reader failed"); 
+        return -1; 
+    }
+    
+    dds_delete_qos(qos);
+
+    // 2. Wait for Match (In-proc should be nearly instant)
+    dds_sleepfor(DDS_MSECS(50));
+
+    // 3. Write Sample
+    void* sample = malloc(handler->size);
+    memset(sample, 0, handler->size);
+    handler->generate(sample, seed);
+    
+    int rc = dds_write(writer, sample);
+    free(sample);
+    
+    if (rc < 0) {
+        snprintf(last_error, sizeof(last_error), "dds_write failed: %d", rc);
+        dds_delete(reader); dds_delete(writer); dds_delete(topic);
+        return -1;
+    }
+
+    // 4. Read Loopback (Wait for data)
+    dds_attach_t wsresults[1];
+    dds_entity_t ws = dds_create_waitset(participant);
+    dds_entity_t read_cond = dds_create_readcondition(reader, DDS_ANY_STATE);
+    dds_waitset_attach(ws, read_cond, 1);
+    
+    rc = dds_waitset_wait(ws, wsresults, 1, DDS_SECS(2)); // 2 sec timeout
+    
+    void* result_buf = NULL;
+    int result_len = -1;
+
+    if (rc > 0) {
+        struct ddsi_serdata *sd[1];
+        dds_sample_info_t info[1];
+        
+        // Take CDR (Get serialized form directly from middleware)
+        rc = dds_takecdr(reader, sd, 1, info, DDS_ANY_STATE);
+        if (rc > 0 && info[0].valid_data) {
+             struct ddsi_serdata *d = sd[0];
+             uint32_t sz = ddsi_serdata_size(d);
+             
+             // DEBUG PRINT
+             fprintf(stderr, "DEBUG: Topic %s size %u\n", handler->descriptor->m_typename, sz);
+             fflush(stderr);
+
+             result_buf = malloc(sz);
+             if (result_buf) {
+                 ddsi_serdata_to_ser(d, 0, sz, result_buf);
+                 result_len = (int)sz;
+                 
+                 // DEBUG HEX DUMP
+                 unsigned char* p = (unsigned char*)result_buf;
+                 fprintf(stderr, "DEBUG: DATA: ");
+                 for(unsigned int i=0; i<sz; i++) fprintf(stderr, "%02X ", p[i]);
+                 fprintf(stderr, "\n");
+                 fflush(stderr);
+                 
+             } else {
+                 set_error("Out of memory for result buffer");
+             }
+             
+             ddsi_serdata_unref(d);
+        } else {
+             set_error("No valid data in takecdr");
+        }
+    } else {
+        set_error("Timeout waiting for loopback data");
+    }
+
+    // Cleanup
+    dds_waitset_detach(ws, read_cond);
+    dds_delete(ws);
+    dds_delete(read_cond);
+    dds_delete(reader);
+    dds_delete(writer);
+    dds_delete(topic);
+    
+    if (result_len >= 0) {
+        *out_buffer = result_buf;
+        return result_len;
+    } else {
+        if (result_buf) free(result_buf);
+        return -1;
+    }
+}
+
+EXPORT void Native_FreeBuffer(void* buffer) {
+    if (buffer) free(buffer);
 }

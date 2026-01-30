@@ -32,4 +32,8 @@ EXPORT int Native_SendWithSeed(const char* topic_name, int seed);
 EXPORT int Native_ExpectWithSeed(const char* topic_name, int seed, int timeout_ms);
 EXPORT const char* Native_GetLastError();
 
+// Symmetry API
+EXPORT int Native_GeneratePayload(const char* topic_name, int seed, void** buffer);
+EXPORT void Native_FreeBuffer(void* buffer);
+
 #endif // TEST_REGISTRY_H

@@ -113,7 +113,46 @@ static int validate_UInt16Topic(void* data, int seed) {
     if (msg->value != expected) return -1;
     return 0;
 }
-DEFINE_HANDLER(UInt16Topic, uint16_topic);
+
+// FIX FOR MISSING KEYS IN IDLC GENERATION
+static const uint32_t Fixed_AtomicTests_UInt16Topic_ops [] =
+{
+  /* UInt16Topic */
+  DDS_OP_ADR | DDS_OP_FLAG_KEY | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (AtomicTests_UInt16Topic, id),
+  DDS_OP_ADR | DDS_OP_TYPE_2BY, offsetof (AtomicTests_UInt16Topic, value),
+  DDS_OP_RTS,
+  
+  /* key: id */
+  DDS_OP_KOF | 1, 0u /* order: 0 */
+};
+
+static const dds_key_descriptor_t Fixed_AtomicTests_UInt16Topic_keys[1] =
+{
+  { "id", 0, 0 }
+};
+
+dds_topic_descriptor_t Fixed_UInt16Topic_desc;
+
+void Fix_UInt16_Desc() {
+    // Copy the generated descriptor to pick up TypeInfo etc
+    Fixed_UInt16Topic_desc = AtomicTests_UInt16Topic_desc;
+    
+    // Override Ops and Keys
+    Fixed_UInt16Topic_desc.m_ops = Fixed_AtomicTests_UInt16Topic_ops;
+    Fixed_UInt16Topic_desc.m_nops = sizeof(Fixed_AtomicTests_UInt16Topic_ops) / sizeof(uint32_t);
+    
+    Fixed_UInt16Topic_desc.m_keys = Fixed_AtomicTests_UInt16Topic_keys;
+    Fixed_UInt16Topic_desc.m_nkeys = 1;
+}
+
+const topic_handler_t uint16_topic_handler = { \
+    .name = "AtomicTests::UInt16Topic", \
+    .descriptor = &Fixed_UInt16Topic_desc, \
+    .generate = generate_UInt16Topic, \
+    .validate = validate_UInt16Topic, \
+    .size = sizeof(AtomicTests_UInt16Topic) \
+};
+
 
 // --- UInt32Topic ---
 static void generate_UInt32Topic(void* data, int seed) {
@@ -1723,13 +1762,23 @@ DEFINE_HANDLER(SequenceInt64TopicAppendable, sequence_int64_topic_appendable);
 static void generate_SequenceFloat32TopicAppendable(void* data, int seed) {
     AtomicTests_SequenceFloat32TopicAppendable* msg = (AtomicTests_SequenceFloat32TopicAppendable*)data;
     msg->id = seed;
-    msg->values._length = 0;
-    msg->values._maximum = 0;
-    msg->values._release = false;
+    uint32_t len = (seed % 5) + 1;
+    msg->values._maximum = len;
+    msg->values._length = len;
+    msg->values._release = true;
+    msg->values._buffer = dds_alloc(sizeof(float) * len);
+    for (uint32_t i = 0; i < len; i++) {
+        msg->values._buffer[i] = (float)((seed + i) * 1.5f);
+    }
 }
 static int validate_SequenceFloat32TopicAppendable(void* data, int seed) {
     AtomicTests_SequenceFloat32TopicAppendable* msg = (AtomicTests_SequenceFloat32TopicAppendable*)data;
     if (msg->id != seed) return -1;
+    uint32_t len = (seed % 5) + 1;
+    if (msg->values._length != len) return -1;
+    for (uint32_t i = 0; i < len; i++) {
+        if (fabs(msg->values._buffer[i] - (float)((seed + i) * 1.5f)) > 0.001) return -1;
+    }
     return 0;
 }
 DEFINE_HANDLER(SequenceFloat32TopicAppendable, sequence_float32_topic_appendable);
@@ -1738,13 +1787,23 @@ DEFINE_HANDLER(SequenceFloat32TopicAppendable, sequence_float32_topic_appendable
 static void generate_SequenceFloat64TopicAppendable(void* data, int seed) {
     AtomicTests_SequenceFloat64TopicAppendable* msg = (AtomicTests_SequenceFloat64TopicAppendable*)data;
     msg->id = seed;
-    msg->values._length = 0;
-    msg->values._maximum = 0;
-    msg->values._release = false;
+    uint32_t len = (seed % 5) + 1;
+    msg->values._maximum = len;
+    msg->values._length = len;
+    msg->values._release = true;
+    msg->values._buffer = dds_alloc(sizeof(double) * len);
+    for (uint32_t i = 0; i < len; i++) {
+        msg->values._buffer[i] = (double)((seed + i) * 3.14159);
+    }
 }
 static int validate_SequenceFloat64TopicAppendable(void* data, int seed) {
     AtomicTests_SequenceFloat64TopicAppendable* msg = (AtomicTests_SequenceFloat64TopicAppendable*)data;
     if (msg->id != seed) return -1;
+    uint32_t len = (seed % 5) + 1;
+    if (msg->values._length != len) return -1;
+    for (uint32_t i = 0; i < len; i++) {
+        if (fabs(msg->values._buffer[i] - (double)((seed + i) * 3.14159)) > 0.0001) return -1;
+    }
     return 0;
 }
 DEFINE_HANDLER(SequenceFloat64TopicAppendable, sequence_float64_topic_appendable);
@@ -1753,13 +1812,23 @@ DEFINE_HANDLER(SequenceFloat64TopicAppendable, sequence_float64_topic_appendable
 static void generate_SequenceBooleanTopicAppendable(void* data, int seed) {
     AtomicTests_SequenceBooleanTopicAppendable* msg = (AtomicTests_SequenceBooleanTopicAppendable*)data;
     msg->id = seed;
-    msg->values._length = 0;
-    msg->values._maximum = 0;
-    msg->values._release = false;
+    uint32_t len = 3;
+    msg->values._maximum = len;
+    msg->values._length = len;
+    msg->values._release = true;
+    msg->values._buffer = dds_alloc(sizeof(bool) * len);
+    for (uint32_t i = 0; i < len; i++) {
+        msg->values._buffer[i] = ((seed + i) % 2) == 0;
+    }
 }
 static int validate_SequenceBooleanTopicAppendable(void* data, int seed) {
     AtomicTests_SequenceBooleanTopicAppendable* msg = (AtomicTests_SequenceBooleanTopicAppendable*)data;
     if (msg->id != seed) return -1;
+    uint32_t len = 3;
+    if (msg->values._length != len) return -1;
+    for (uint32_t i = 0; i < len; i++) {
+        if (msg->values._buffer[i] != (((seed + i) % 2) == 0)) return -1;
+    }
     return 0;
 }
 DEFINE_HANDLER(SequenceBooleanTopicAppendable, sequence_boolean_topic_appendable);
@@ -1768,13 +1837,23 @@ DEFINE_HANDLER(SequenceBooleanTopicAppendable, sequence_boolean_topic_appendable
 static void generate_SequenceOctetTopicAppendable(void* data, int seed) {
     AtomicTests_SequenceOctetTopicAppendable* msg = (AtomicTests_SequenceOctetTopicAppendable*)data;
     msg->id = seed;
-    msg->bytes._length = 0;
-    msg->bytes._maximum = 0;
-    msg->bytes._release = false;
+    uint32_t len = 4;
+    msg->bytes._maximum = len;
+    msg->bytes._length = len;
+    msg->bytes._release = true;
+    msg->bytes._buffer = dds_alloc(sizeof(uint8_t) * len);
+    for (uint32_t i = 0; i < len; i++) {
+        msg->bytes._buffer[i] = (uint8_t)(seed + i);
+    }
 }
 static int validate_SequenceOctetTopicAppendable(void* data, int seed) {
     AtomicTests_SequenceOctetTopicAppendable* msg = (AtomicTests_SequenceOctetTopicAppendable*)data;
     if (msg->id != seed) return -1;
+    uint32_t len = 4;
+    if (msg->bytes._length != len) return -1;
+    for (uint32_t i = 0; i < len; i++) {
+        if (msg->bytes._buffer[i] != (uint8_t)(seed + i)) return -1;
+    }
     return 0;
 }
 DEFINE_HANDLER(SequenceOctetTopicAppendable, sequence_octet_topic_appendable);
@@ -1783,13 +1862,25 @@ DEFINE_HANDLER(SequenceOctetTopicAppendable, sequence_octet_topic_appendable);
 static void generate_SequenceStringTopicAppendable(void* data, int seed) {
     AtomicTests_SequenceStringTopicAppendable* msg = (AtomicTests_SequenceStringTopicAppendable*)data;
     msg->id = seed;
-    msg->values._length = 0;
-    msg->values._maximum = 0;
-    msg->values._release = false;
+    uint32_t len = 2;
+    msg->values._maximum = len;
+    msg->values._length = len;
+    msg->values._release = true;
+    msg->values._buffer = dds_alloc(sizeof(AtomicTests_String32) * len);
+    for (uint32_t i = 0; i < len; i++) {
+        snprintf(msg->values._buffer[i], 33, "Str-%d-%d", seed, i);
+    }
 }
 static int validate_SequenceStringTopicAppendable(void* data, int seed) {
     AtomicTests_SequenceStringTopicAppendable* msg = (AtomicTests_SequenceStringTopicAppendable*)data;
     if (msg->id != seed) return -1;
+    uint32_t len = 2;
+    if (msg->values._length != len) return -1;
+    for (uint32_t i = 0; i < len; i++) {
+        char buf[33];
+        snprintf(buf, 33, "Str-%d-%d", seed, i);
+        if (strcmp(msg->values._buffer[i], buf) != 0) return -1;
+    }
     return 0;
 }
 DEFINE_HANDLER(SequenceStringTopicAppendable, sequence_string_topic_appendable);
@@ -1798,13 +1889,24 @@ DEFINE_HANDLER(SequenceStringTopicAppendable, sequence_string_topic_appendable);
 static void generate_SequenceStructTopicAppendable(void* data, int seed) {
     AtomicTests_SequenceStructTopicAppendable* msg = (AtomicTests_SequenceStructTopicAppendable*)data;
     msg->id = seed;
-    msg->points._length = 0;
-    msg->points._maximum = 0;
-    msg->points._release = false;
+    uint32_t len = 2;
+    msg->points._maximum = len;
+    msg->points._length = len;
+    msg->points._release = true;
+    msg->points._buffer = dds_alloc(sizeof(AtomicTests_Point2D) * len);
+    for (uint32_t i = 0; i < len; i++) {
+        msg->points._buffer[i].x = (double)(seed + i);
+        msg->points._buffer[i].y = (double)(seed - i);
+    }
 }
 static int validate_SequenceStructTopicAppendable(void* data, int seed) {
     AtomicTests_SequenceStructTopicAppendable* msg = (AtomicTests_SequenceStructTopicAppendable*)data;
     if (msg->id != seed) return -1;
+    if (msg->points._length != 2) return -1;
+    for (uint32_t i = 0; i < 2; i++) {
+        if (msg->points._buffer[i].x != (double)(seed + i)) return -1;
+        if (msg->points._buffer[i].y != (double)(seed - i)) return -1;
+    }
     return 0;
 }
 DEFINE_HANDLER(SequenceStructTopicAppendable, sequence_struct_topic_appendable);
@@ -1813,22 +1915,31 @@ DEFINE_HANDLER(SequenceStructTopicAppendable, sequence_struct_topic_appendable);
 static void generate_NestedStructTopicAppendable(void* data, int seed) {
     AtomicTests_NestedStructTopicAppendable* msg = (AtomicTests_NestedStructTopicAppendable*)data;
     msg->id = seed;
+    msg->point.x = (double)seed;
+    msg->point.y = (double)(seed * 2);
 }
 static int validate_NestedStructTopicAppendable(void* data, int seed) {
     AtomicTests_NestedStructTopicAppendable* msg = (AtomicTests_NestedStructTopicAppendable*)data;
     if (msg->id != seed) return -1;
+    if (msg->point.x != (double)seed) return -1;
+    if (msg->point.y != (double)(seed * 2)) return -1;
     return 0;
 }
 DEFINE_HANDLER(NestedStructTopicAppendable, nested_struct_topic_appendable);
 
 // --- Nested3DTopicAppendable ---
 static void generate_Nested3DTopicAppendable(void* data, int seed) {
-     AtomicTests_Nested3DTopicAppendable* msg = (AtomicTests_Nested3DTopicAppendable*)data;
-     msg->id = seed;
+    AtomicTests_Nested3DTopicAppendable* msg = (AtomicTests_Nested3DTopicAppendable*)data;
+    msg->id = seed;
+    msg->point.x = (double)seed;
+    msg->point.y = (double)(seed + 1);
+    msg->point.z = (double)(seed + 2);
 }
 static int validate_Nested3DTopicAppendable(void* data, int seed) {
     AtomicTests_Nested3DTopicAppendable* msg = (AtomicTests_Nested3DTopicAppendable*)data;
     if (msg->id != seed) return -1;
+    if (msg->point.x != (double)seed) return -1;
+    if (msg->point.z != (double)(seed + 2)) return -1;
     return 0;
 }
 DEFINE_HANDLER(Nested3DTopicAppendable, nested_3d_topic_appendable);
@@ -1837,10 +1948,15 @@ DEFINE_HANDLER(Nested3DTopicAppendable, nested_3d_topic_appendable);
 static void generate_DoublyNestedTopicAppendable(void* data, int seed) {
     AtomicTests_DoublyNestedTopicAppendable* msg = (AtomicTests_DoublyNestedTopicAppendable*)data;
     msg->id = seed;
+    msg->box.topLeft.x = seed;
+    msg->box.topLeft.y = seed;
+    msg->box.bottomRight.x = seed + 10;
+    msg->box.bottomRight.y = seed + 10;
 }
 static int validate_DoublyNestedTopicAppendable(void* data, int seed) {
     AtomicTests_DoublyNestedTopicAppendable* msg = (AtomicTests_DoublyNestedTopicAppendable*)data;
     if (msg->id != seed) return -1;
+    if (msg->box.bottomRight.x != seed + 10) return -1;
     return 0;
 }
 DEFINE_HANDLER(DoublyNestedTopicAppendable, doubly_nested_topic_appendable);
@@ -1849,10 +1965,16 @@ DEFINE_HANDLER(DoublyNestedTopicAppendable, doubly_nested_topic_appendable);
 static void generate_ComplexNestedTopicAppendable(void* data, int seed) {
     AtomicTests_ComplexNestedTopicAppendable* msg = (AtomicTests_ComplexNestedTopicAppendable*)data;
     msg->id = seed;
+    msg->container.count = seed;
+    msg->container.center.x = seed;
+    msg->container.center.y = seed;
+    msg->container.center.z = seed;
+    msg->container.radius = 5.0;
 }
 static int validate_ComplexNestedTopicAppendable(void* data, int seed) {
     AtomicTests_ComplexNestedTopicAppendable* msg = (AtomicTests_ComplexNestedTopicAppendable*)data;
     if (msg->id != seed) return -1;
+    if (msg->container.radius != 5.0) return -1;
     return 0;
 }
 DEFINE_HANDLER(ComplexNestedTopicAppendable, complex_nested_topic_appendable);
@@ -1927,105 +2049,292 @@ static int validate_UnionShortDiscTopicAppendable(void* data, int seed) {
 DEFINE_HANDLER(UnionShortDiscTopicAppendable, union_short_disc_topic_appendable);
 
 // --- Optionals ---
-static void generate_OptionalInt32TopicAppendable(void* data, int seed) { AtomicTests_OptionalInt32TopicAppendable* m = data; m->id = seed; }
-static int validate_OptionalInt32TopicAppendable(void* data, int seed) { AtomicTests_OptionalInt32TopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_OptionalInt32TopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalInt32TopicAppendable* m = (AtomicTests_OptionalInt32TopicAppendable*)data; 
+    m->id = seed;
+    // FORCE ALLOC
+    m->opt_value = dds_alloc(sizeof(int32_t));
+    *m->opt_value = seed * 10;
+}
+static int validate_OptionalInt32TopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalInt32TopicAppendable* m = (AtomicTests_OptionalInt32TopicAppendable*)data; 
+    if (m->id != seed) return -1;
+    return 0; 
+}
 DEFINE_HANDLER(OptionalInt32TopicAppendable, optional_int32_topic_appendable);
 
-static void generate_OptionalFloat64TopicAppendable(void* data, int seed) { AtomicTests_OptionalFloat64TopicAppendable* m = data; m->id = seed; }
-static int validate_OptionalFloat64TopicAppendable(void* data, int seed) { AtomicTests_OptionalFloat64TopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_OptionalFloat64TopicAppendable(void* data, int seed) { 
+    printf("[NATIVE] generate_OptionalFloat64TopicAppendable called with seed %d\n", seed);
+    AtomicTests_OptionalFloat64TopicAppendable* m = (AtomicTests_OptionalFloat64TopicAppendable*)data; 
+    m->id = seed;
+    m->opt_value = dds_alloc(sizeof(double));
+    *m->opt_value = (double)seed * 2.0;
+    printf("[NATIVE] Set opt_value to %f\n", *m->opt_value);
+}
+static int validate_OptionalFloat64TopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalFloat64TopicAppendable* m = (AtomicTests_OptionalFloat64TopicAppendable*)data; 
+    if (m->id != seed) return -1;
+    return 0; 
+}
 DEFINE_HANDLER(OptionalFloat64TopicAppendable, optional_float64_topic_appendable);
 
-static void generate_OptionalStringTopicAppendable(void* data, int seed) { AtomicTests_OptionalStringTopicAppendable* m = data; m->id = seed; }
-static int validate_OptionalStringTopicAppendable(void* data, int seed) { AtomicTests_OptionalStringTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_OptionalStringTopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalStringTopicAppendable* m = (AtomicTests_OptionalStringTopicAppendable*)data; 
+    m->id = seed; 
+    // FORCE ALLOC
+    m->opt_string = dds_alloc(sizeof(*m->opt_string)); 
+    snprintf((char*)(*m->opt_string), 64, "Opt_%d", seed);
+}
+static int validate_OptionalStringTopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalStringTopicAppendable* m = (AtomicTests_OptionalStringTopicAppendable*)data; 
+    if (m->id != seed) return -1;
+    return 0; 
+}
 DEFINE_HANDLER(OptionalStringTopicAppendable, optional_string_topic_appendable);
 
-static void generate_OptionalStructTopicAppendable(void* data, int seed) { AtomicTests_OptionalStructTopicAppendable* m = data; m->id = seed; }
-static int validate_OptionalStructTopicAppendable(void* data, int seed) { AtomicTests_OptionalStructTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_OptionalStructTopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalStructTopicAppendable* m = (AtomicTests_OptionalStructTopicAppendable*)data; 
+    m->id = seed;
+    // FORCE ALLOC
+    m->opt_point = dds_alloc(sizeof(*m->opt_point));
+    m->opt_point->x = (double)seed;
+    m->opt_point->y = (double)seed;
+}
+static int validate_OptionalStructTopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalStructTopicAppendable* m = (AtomicTests_OptionalStructTopicAppendable*)data; 
+    if (m->id != seed) return -1;
+    return 0; 
+}
 DEFINE_HANDLER(OptionalStructTopicAppendable, optional_struct_topic_appendable);
 
-static void generate_OptionalEnumTopicAppendable(void* data, int seed) { AtomicTests_OptionalEnumTopicAppendable* m = data; m->id = seed; }
-static int validate_OptionalEnumTopicAppendable(void* data, int seed) { AtomicTests_OptionalEnumTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_OptionalEnumTopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalEnumTopicAppendable* m = (AtomicTests_OptionalEnumTopicAppendable*)data; 
+    m->id = seed;
+    m->opt_enum = dds_alloc(sizeof(*m->opt_enum));
+    *m->opt_enum = AtomicTests_FIRST;
+}
+static int validate_OptionalEnumTopicAppendable(void* data, int seed) { 
+    AtomicTests_OptionalEnumTopicAppendable* m = (AtomicTests_OptionalEnumTopicAppendable*)data; 
+    if (m->id != seed) return -1;
+    return 0; 
+}
 DEFINE_HANDLER(OptionalEnumTopicAppendable, optional_enum_topic_appendable);
 
-static void generate_MultiOptionalTopicAppendable(void* data, int seed) { AtomicTests_MultiOptionalTopicAppendable* m = data; m->id = seed; }
-static int validate_MultiOptionalTopicAppendable(void* data, int seed) { AtomicTests_MultiOptionalTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_MultiOptionalTopicAppendable(void* data, int seed) { 
+    AtomicTests_MultiOptionalTopicAppendable* m = (AtomicTests_MultiOptionalTopicAppendable*)data; 
+    m->id = seed;
+    
+    m->opt_int = dds_alloc(sizeof(int32_t));
+    *m->opt_int = seed;
+    
+    m->opt_double = dds_alloc(sizeof(double));
+    *m->opt_double = (double)seed;
+    
+    m->opt_string = dds_alloc(sizeof(*m->opt_string));
+    snprintf((char*)(*m->opt_string), 32, "A");
+}
+static int validate_MultiOptionalTopicAppendable(void* data, int seed) { 
+    AtomicTests_MultiOptionalTopicAppendable* m = (AtomicTests_MultiOptionalTopicAppendable*)data; 
+    if (m->id != seed) return -1;
+    return 0; 
+}
 DEFINE_HANDLER(MultiOptionalTopicAppendable, multi_optional_topic_appendable);
 
 // --- Keys with ID ---
 // TwoKeyInt32TopicAppendable has Key1, Key2, Value.
-static void generate_TwoKeyInt32TopicAppendable(void* data, int seed) { AtomicTests_TwoKeyInt32TopicAppendable* m = data; m->key1 = seed; }
-static int validate_TwoKeyInt32TopicAppendable(void* data, int seed) { AtomicTests_TwoKeyInt32TopicAppendable* m = data; return (m->key1 == seed)?0:-1; }
+static void generate_TwoKeyInt32TopicAppendable(void* data, int seed) { 
+    AtomicTests_TwoKeyInt32TopicAppendable* m = (AtomicTests_TwoKeyInt32TopicAppendable*)data; 
+    m->key1 = seed;
+    m->key2 = seed + 1;
+    m->value = seed * 1.1;
+}
+static int validate_TwoKeyInt32TopicAppendable(void* data, int seed) { 
+    AtomicTests_TwoKeyInt32TopicAppendable* m = (AtomicTests_TwoKeyInt32TopicAppendable*)data; 
+    if (m->key1 != seed) return -1;
+    return 0; 
+}
 DEFINE_HANDLER(TwoKeyInt32TopicAppendable, two_key_int32_topic_appendable);
 
 // TwoKeyStringTopicAppendable
 static void generate_TwoKeyStringTopicAppendable(void* data, int seed) { 
-    AtomicTests_TwoKeyStringTopicAppendable* m = data; 
+    AtomicTests_TwoKeyStringTopicAppendable* m = (AtomicTests_TwoKeyStringTopicAppendable*)data; 
     strcpy(m->key1, "K1"); 
     strcpy(m->key2, "K2"); 
+    m->value = (double)seed;
 }
 static int validate_TwoKeyStringTopicAppendable(void* data, int seed) { return 0; }
 DEFINE_HANDLER(TwoKeyStringTopicAppendable, two_key_string_topic_appendable);
 
 // ThreeKey
-static void generate_ThreeKeyTopicAppendable(void* data, int seed) { AtomicTests_ThreeKeyTopicAppendable* m = data; m->key1 = seed; strcpy(m->key2, "K"); }
+static void generate_ThreeKeyTopicAppendable(void* data, int seed) { 
+    AtomicTests_ThreeKeyTopicAppendable* m = (AtomicTests_ThreeKeyTopicAppendable*)data; 
+    m->key1 = seed;
+    strcpy(m->key2, "K"); 
+    m->key3 = (int16_t)seed; 
+    m->value = (double)seed;
+}
 static int validate_ThreeKeyTopicAppendable(void* data, int seed) { return 0; }
 DEFINE_HANDLER(ThreeKeyTopicAppendable, three_key_topic_appendable);
 
 // FourKey
-static void generate_FourKeyTopicAppendable(void* data, int seed) { AtomicTests_FourKeyTopicAppendable* m = data; m->key1 = seed; }
+static void generate_FourKeyTopicAppendable(void* data, int seed) { 
+    AtomicTests_FourKeyTopicAppendable* m = (AtomicTests_FourKeyTopicAppendable*)data; 
+    m->key1 = seed;
+    m->key2 = seed; // Match test
+    m->key3 = seed;
+    m->key4 = seed;
+    snprintf(m->description, 64, "desc_%d", seed);
+}
 static int validate_FourKeyTopicAppendable(void* data, int seed) { return 0; }
 DEFINE_HANDLER(FourKeyTopicAppendable, four_key_topic_appendable);
 
 // NestedKey
-static void generate_NestedKeyTopicAppendable(void* data, int seed) { AtomicTests_NestedKeyTopicAppendable* m = data; m->loc.building = seed; }
+static void generate_NestedKeyTopicAppendable(void* data, int seed) { 
+    AtomicTests_NestedKeyTopicAppendable* m = (AtomicTests_NestedKeyTopicAppendable*)data; 
+    m->loc.building = seed;
+    m->loc.floor = (int16_t)(seed % 10);
+    m->temperature = 25.0; // Match test
+}
 static int validate_NestedKeyTopicAppendable(void* data, int seed) { return 0; }
 DEFINE_HANDLER(NestedKeyTopicAppendable, nested_key_topic_appendable);
 
 // NestedKeyGeo
-static void generate_NestedKeyGeoTopicAppendable(void* data, int seed) { AtomicTests_NestedKeyGeoTopicAppendable* m = data; strcpy(m->location_name, "Loc"); }
+static void generate_NestedKeyGeoTopicAppendable(void* data, int seed) { 
+    AtomicTests_NestedKeyGeoTopicAppendable* m = (AtomicTests_NestedKeyGeoTopicAppendable*)data; 
+    m->coords.latitude = (double)seed;
+    m->coords.longitude = (double)seed;
+    strcpy(m->location_name, "Home");
+}
 static int validate_NestedKeyGeoTopicAppendable(void* data, int seed) { return 0; }
 DEFINE_HANDLER(NestedKeyGeoTopicAppendable, nested_key_geo_topic_appendable);
 
 // NestedTriple
-static void generate_NestedTripleKeyTopicAppendable(void* data, int seed) { AtomicTests_NestedTripleKeyTopicAppendable* m = data; m->keys.id1 = seed; strcpy(m->data, "D"); }
+static void generate_NestedTripleKeyTopicAppendable(void* data, int seed) { 
+    AtomicTests_NestedTripleKeyTopicAppendable* m = (AtomicTests_NestedTripleKeyTopicAppendable*)data; 
+    m->keys.id1 = seed;
+    m->keys.id2 = seed; // Match test
+    m->keys.id3 = seed;
+    strcpy(m->data, "D"); // Ignored?
+}
 static int validate_NestedTripleKeyTopicAppendable(void* data, int seed) { return 0; }
 DEFINE_HANDLER(NestedTripleKeyTopicAppendable, nested_triple_key_topic_appendable);
 
 // --- Edge Cases ---
-static void generate_EmptySequenceTopicAppendable(void* data, int seed) { AtomicTests_EmptySequenceTopicAppendable* m = data; m->id = seed; m->empty_seq._length = 0; m->empty_seq._release = false; }
-static int validate_EmptySequenceTopicAppendable(void* data, int seed) { AtomicTests_EmptySequenceTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_EmptySequenceTopicAppendable(void* data, int seed) { 
+    AtomicTests_EmptySequenceTopicAppendable* m = (AtomicTests_EmptySequenceTopicAppendable*)data; 
+    m->id = seed; 
+    m->empty_seq._length = 0; 
+    m->empty_seq._release = false; 
+    m->empty_seq._buffer = NULL;
+}
+static int validate_EmptySequenceTopicAppendable(void* data, int seed) { 
+    AtomicTests_EmptySequenceTopicAppendable* m = (AtomicTests_EmptySequenceTopicAppendable*)data; 
+    return (m->id == seed)?0:-1; 
+}
 DEFINE_HANDLER(EmptySequenceTopicAppendable, empty_sequence_topic_appendable);
 
-static void generate_UnboundedStringTopicAppendable(void* data, int seed) { AtomicTests_UnboundedStringTopicAppendable* m = data; m->id = seed; m->unbounded = dds_string_dup("S"); }
-static int validate_UnboundedStringTopicAppendable(void* data, int seed) { AtomicTests_UnboundedStringTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_UnboundedStringTopicAppendable(void* data, int seed) { 
+    AtomicTests_UnboundedStringTopicAppendable* m = (AtomicTests_UnboundedStringTopicAppendable*)data; 
+    m->id = seed; 
+    m->unbounded = dds_string_dup("S");
+}
+static int validate_UnboundedStringTopicAppendable(void* data, int seed) { 
+    AtomicTests_UnboundedStringTopicAppendable* m = (AtomicTests_UnboundedStringTopicAppendable*)data; 
+    return (m->id == seed)?0:-1; 
+}
 DEFINE_HANDLER(UnboundedStringTopicAppendable, unbounded_string_topic_appendable);
 
-static void generate_AllPrimitivesAtomicTopicAppendable(void* data, int seed) { AtomicTests_AllPrimitivesAtomicTopicAppendable* m = data; m->id = seed; }
-static int validate_AllPrimitivesAtomicTopicAppendable(void* data, int seed) { AtomicTests_AllPrimitivesAtomicTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_AllPrimitivesAtomicTopicAppendable(void* data, int seed) { 
+    AtomicTests_AllPrimitivesAtomicTopicAppendable* m = (AtomicTests_AllPrimitivesAtomicTopicAppendable*)data; 
+    m->id = seed;
+    m->bool_val = (seed % 2) == 0;
+    m->char_val = 'A' + (seed % 26);
+    m->octet_val = (uint8_t)seed;
+    m->short_val = (int16_t)(seed * 2);
+    m->ushort_val = (uint16_t)(seed * 3);
+    m->long_val = seed * 4;
+    m->ulong_val = (uint32_t)(seed * 5);
+    m->llong_val = (int64_t)(seed * 6);
+    m->ullong_val = (uint64_t)(seed * 7);
+    m->float_val = (float)(seed * 8.0);
+    m->double_val = (double)(seed * 9.0);
+}
+static int validate_AllPrimitivesAtomicTopicAppendable(void* data, int seed) { 
+    AtomicTests_AllPrimitivesAtomicTopicAppendable* m = (AtomicTests_AllPrimitivesAtomicTopicAppendable*)data; 
+    return (m->id == seed)?0:-1; 
+}
 DEFINE_HANDLER(AllPrimitivesAtomicTopicAppendable, all_primitives_atomic_topic_appendable);
 
 // --- New Edge Cases ---
-static void generate_MaxSizeStringTopic(void* data, int seed) { AtomicTests_MaxSizeStringTopic* m = data; m->id = seed; strcpy(m->max_string, "S"); }
-static int validate_MaxSizeStringTopic(void* data, int seed)  { AtomicTests_MaxSizeStringTopic* m = data; return (m->id == seed)?0:-1; }
+static void generate_MaxSizeStringTopic(void* data, int seed) { 
+    AtomicTests_MaxSizeStringTopic* m = (AtomicTests_MaxSizeStringTopic*)data; 
+    m->id = seed; 
+    snprintf(m->max_string, sizeof(m->max_string), "MaxString_%d", seed);
+}
+static int validate_MaxSizeStringTopic(void* data, int seed)  { 
+    AtomicTests_MaxSizeStringTopic* m = (AtomicTests_MaxSizeStringTopic*)data; 
+    return (m->id == seed)?0:-1; 
+}
 DEFINE_HANDLER(MaxSizeStringTopic, max_size_string_topic);
 
-static void generate_MaxSizeStringTopicAppendable(void* data, int seed) { AtomicTests_MaxSizeStringTopicAppendable* m = data; m->id = seed; strcpy(m->max_string, "S"); }
-static int validate_MaxSizeStringTopicAppendable(void* data, int seed)  { AtomicTests_MaxSizeStringTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_MaxSizeStringTopicAppendable(void* data, int seed) { 
+    AtomicTests_MaxSizeStringTopicAppendable* m = (AtomicTests_MaxSizeStringTopicAppendable*)data; 
+    m->id = seed; 
+    snprintf(m->max_string, sizeof(m->max_string), "MaxStringApp_%d", seed);
+}
+static int validate_MaxSizeStringTopicAppendable(void* data, int seed)  { 
+    AtomicTests_MaxSizeStringTopicAppendable* m = (AtomicTests_MaxSizeStringTopicAppendable*)data; 
+    return (m->id == seed)?0:-1; 
+}
 DEFINE_HANDLER(MaxSizeStringTopicAppendable, max_size_string_topic_appendable);
 
-static void generate_MaxLengthSequenceTopic(void* data, int seed) { AtomicTests_MaxLengthSequenceTopic* m = data; m->id = seed; m->max_seq._length = 0; m->max_seq._release = false; }
-static int validate_MaxLengthSequenceTopic(void* data, int seed)  { AtomicTests_MaxLengthSequenceTopic* m = data; return (m->id == seed)?0:-1; }
+static void generate_MaxLengthSequenceTopic(void* data, int seed) { 
+    AtomicTests_MaxLengthSequenceTopic* m = (AtomicTests_MaxLengthSequenceTopic*)data; 
+    m->id = seed; 
+    m->max_seq._length = 2; 
+    m->max_seq._maximum = 2;
+    m->max_seq._release = true;
+    m->max_seq._buffer = dds_alloc(sizeof(int32_t) * 2);
+    m->max_seq._buffer[0] = seed;
+    m->max_seq._buffer[1] = seed + 1;
+}
+static int validate_MaxLengthSequenceTopic(void* data, int seed)  { 
+    AtomicTests_MaxLengthSequenceTopic* m = (AtomicTests_MaxLengthSequenceTopic*)data; 
+    return (m->id == seed)?0:-1; 
+}
 DEFINE_HANDLER(MaxLengthSequenceTopic, max_length_sequence_topic);
 
-static void generate_MaxLengthSequenceTopicAppendable(void* data, int seed) { AtomicTests_MaxLengthSequenceTopicAppendable* m = data; m->id = seed; m->max_seq._length = 0; m->max_seq._release = false; }
-static int validate_MaxLengthSequenceTopicAppendable(void* data, int seed)  { AtomicTests_MaxLengthSequenceTopicAppendable* m = data; return (m->id == seed)?0:-1; }
+static void generate_MaxLengthSequenceTopicAppendable(void* data, int seed) { 
+    AtomicTests_MaxLengthSequenceTopicAppendable* m = (AtomicTests_MaxLengthSequenceTopicAppendable*)data; 
+    m->id = seed; 
+    m->max_seq._length = 2; 
+    m->max_seq._maximum = 2;
+    m->max_seq._release = true;
+    m->max_seq._buffer = dds_alloc(sizeof(int32_t) * 2);
+    m->max_seq._buffer[0] = seed;
+    m->max_seq._buffer[1] = seed + 1;
+}
+static int validate_MaxLengthSequenceTopicAppendable(void* data, int seed)  { 
+    AtomicTests_MaxLengthSequenceTopicAppendable* m = (AtomicTests_MaxLengthSequenceTopicAppendable*)data; 
+    return (m->id == seed)?0:-1; 
+}
 DEFINE_HANDLER(MaxLengthSequenceTopicAppendable, max_length_sequence_topic_appendable);
 
-static void generate_DeepNestedStructTopic(void* data, int seed) { AtomicTests_DeepNestedStructTopic* m = data; m->id = seed; m->nested1.value1 = seed; }
+static void generate_DeepNestedStructTopic(void* data, int seed) { 
+    AtomicTests_DeepNestedStructTopic* m = (AtomicTests_DeepNestedStructTopic*)data; 
+    m->id = seed; 
+    m->nested1.value1 = seed; 
+    m->nested1.nested2.value2 = seed + 1;
+}
 static int validate_DeepNestedStructTopic(void* data, int seed)  { AtomicTests_DeepNestedStructTopic* m = data; return (m->id == seed)?0:-1; }
 DEFINE_HANDLER(DeepNestedStructTopic, deep_nested_struct_topic);
 
-static void generate_DeepNestedStructTopicAppendable(void* data, int seed) { AtomicTests_DeepNestedStructTopicAppendable* m = data; m->id = seed; m->nested1.value1 = seed; }
+static void generate_DeepNestedStructTopicAppendable(void* data, int seed) { 
+    AtomicTests_DeepNestedStructTopicAppendable* m = (AtomicTests_DeepNestedStructTopicAppendable*)data; 
+    m->id = seed; 
+    m->nested1.value1 = seed; 
+    m->nested1.nested2.value2 = seed + 1;
+}
 static int validate_DeepNestedStructTopicAppendable(void* data, int seed)  { AtomicTests_DeepNestedStructTopicAppendable* m = data; return (m->id == seed)?0:-1; }
 DEFINE_HANDLER(DeepNestedStructTopicAppendable, deep_nested_struct_topic_appendable);
 
