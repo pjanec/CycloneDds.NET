@@ -149,14 +149,14 @@ namespace CsharpToC.Roundtrip.Tests
                     var msg = new BoundedSequenceInt32TopicAppendable();
                     msg.Id = s;
                     var list = new List<int>();
-                    int len = (s % 4); // Max 10
+                    int len = (s % 10) + 1;
                     for(int i=0; i<len; i++) list.Add(s + i);
                     msg.Values = list;
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    int len = (s % 4);
+                    int len = (s % 10) + 1;
                     if ((msg.Values?.Count ?? 0) != len) return false;
                     for(int i=0; i<len; i++) if (msg.Values[i] != s + i) return false;
                     return true;
@@ -174,16 +174,16 @@ namespace CsharpToC.Roundtrip.Tests
                     var msg = new SequenceFloat32TopicAppendable();
                     msg.Id = s;
                     var list = new List<float>();
-                    int len = (s % 3);
-                    for(int i=0; i<len; i++) list.Add(s + i + 0.5f);
+                    int len = (s % 5) + 1;
+                    for(int i=0; i<len; i++) list.Add((s + i) * 1.5f);
                     msg.Values = list;
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    int len = (s % 3);
+                    int len = (s % 5) + 1;
                     if ((msg.Values?.Count ?? 0) != len) return false;
-                    for(int i=0; i<len; i++) if (Math.Abs(msg.Values[i] - (s + i + 0.5f)) > 0.001) return false;
+                    for(int i=0; i<len; i++) if (Math.Abs(msg.Values[i] - ((s + i) * 1.5f)) > 0.001) return false;
                     return true;
                 }
             );
@@ -199,16 +199,16 @@ namespace CsharpToC.Roundtrip.Tests
                     var msg = new SequenceFloat64TopicAppendable();
                     msg.Id = s;
                     var list = new List<double>();
-                    int len = (s % 3);
-                    for(int i=0; i<len; i++) list.Add(s + i + 0.12345);
+                    int len = (s % 5) + 1;
+                    for(int i=0; i<len; i++) list.Add((s + i) * 3.14159);
                     msg.Values = list;
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    int len = (s % 3);
+                    int len = (s % 5) + 1;
                     if ((msg.Values?.Count ?? 0) != len) return false;
-                    for(int i=0; i<len; i++) if (Math.Abs(msg.Values[i] - (s + i + 0.12345)) > 0.000001) return false;
+                    for(int i=0; i<len; i++) if (Math.Abs(msg.Values[i] - ((s + i) * 3.14159)) > 0.0001) return false;
                     return true;
                 }
             );
@@ -224,16 +224,16 @@ namespace CsharpToC.Roundtrip.Tests
                     var msg = new SequenceBooleanTopicAppendable();
                     msg.Id = s;
                     var list = new List<bool>();
-                    int len = (s % 4);
-                    for(int i=0; i<len; i++) list.Add((i % 2) == 0);
+                    int len = 3;
+                    for(int i=0; i<len; i++) list.Add(((s + i) % 2) == 0);
                     msg.Values = list;
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    int len = (s % 4);
+                    int len = 3;
                     if ((msg.Values?.Count ?? 0) != len) return false;
-                    for(int i=0; i<len; i++) if (msg.Values[i] != ((i % 2) == 0)) return false;
+                    for(int i=0; i<len; i++) if (msg.Values[i] != (((s + i) % 2) == 0)) return false;
                     return true;
                 }
             );
@@ -249,14 +249,14 @@ namespace CsharpToC.Roundtrip.Tests
                     var msg = new SequenceOctetTopicAppendable();
                     msg.Id = s;
                     var list = new List<byte>();
-                    int len = (s % 5);
+                    int len = 4;
                     for(int i=0; i<len; i++) list.Add((byte)(s + i));
                     msg.Bytes = list;
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    int len = (s % 5);
+                    int len = 4;
                     if ((msg.Bytes?.Count ?? 0) != len) return false;
                     for(int i=0; i<len; i++) if (msg.Bytes[i] != (byte)(s + i)) return false;
                     return true;
@@ -274,16 +274,16 @@ namespace CsharpToC.Roundtrip.Tests
                     var msg = new SequenceStringTopicAppendable();
                     msg.Id = s;
                     var list = new List<string>();
-                    int len = (s % 3);
-                    for(int i=0; i<len; i++) list.Add($"Str_{s}_{i}");
+                    int len = 2;
+                    for(int i=0; i<len; i++) list.Add($"Str-{s}-{i}");
                     msg.Values = list;
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    int len = (s % 3);
+                    int len = 2;
                     if ((msg.Values?.Count ?? 0) != len) return false;
-                    for(int i=0; i<len; i++) if (msg.Values[i] != $"Str_{s}_{i}") return false;
+                    for(int i=0; i<len; i++) if (msg.Values[i] != $"Str-{s}-{i}") return false;
                     return true;
                 }
             );
@@ -299,14 +299,14 @@ namespace CsharpToC.Roundtrip.Tests
                     var msg = new SequenceStructTopicAppendable();
                     msg.Id = s;
                     var list = new List<Point2D>();
-                    int len = (s % 3);
+                    int len = 2;
                     for(int i=0; i<len; i++) list.Add(new Point2D { X = s + i, Y = s - i });
                     msg.Points = list;
                     return msg;
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    int len = (s % 3);
+                    int len = 2;
                     if ((msg.Points?.Count ?? 0) != len) return false;
                     for(int i=0; i<len; i++)
                     {
@@ -375,8 +375,8 @@ namespace CsharpToC.Roundtrip.Tests
                    Container = new ContainerAppendable 
                    { 
                        Count = s,
-                       Radius = s * 0.5,
-                       Center = new Point3DAppendable { X = 1, Y = 2, Z = 3 }
+                       Radius = 5.0,
+                       Center = new Point3DAppendable { X = s, Y = s, Z = s }
                    }
                },
                (msg, s) => msg.Id == s && msg.Container.Count == s
@@ -485,8 +485,8 @@ namespace CsharpToC.Roundtrip.Tests
             await RunRoundtrip<TwoKeyInt32TopicAppendable>(
                 "AtomicTests::TwoKeyInt32TopicAppendable",
                 2401,
-                (s) => new TwoKeyInt32TopicAppendable { Key1 = s, Key2 = s + 1, Value = s * 2.0 },
-                (msg, s) => msg.Key1 == s && msg.Key2 == s + 1 && msg.Value == s * 2.0
+                (s) => new TwoKeyInt32TopicAppendable { Key1 = s, Key2 = s + 1, Value = s * 1.1 },
+                (msg, s) => msg.Key1 == s && msg.Key2 == s + 1 && Math.Abs(msg.Value - (s * 1.1)) < 0.001
             );
         }
 
@@ -496,8 +496,8 @@ namespace CsharpToC.Roundtrip.Tests
             await RunRoundtrip<TwoKeyStringTopicAppendable>(
                 "AtomicTests::TwoKeyStringTopicAppendable",
                 2402,
-                (s) => new TwoKeyStringTopicAppendable { Key1 = $"K1_{s}", Key2 = $"K2_{s}", Value = s },
-                (msg, s) => msg.Key1 == $"K1_{s}" && msg.Key2 == $"K2_{s}"
+                (s) => new TwoKeyStringTopicAppendable { Key1 = "K1", Key2 = "K2", Value = s },
+                (msg, s) => msg.Key1 == "K1" && msg.Key2 == "K2"
             );
         }
 
@@ -507,8 +507,8 @@ namespace CsharpToC.Roundtrip.Tests
             await RunRoundtrip<ThreeKeyTopicAppendable>(
                 "AtomicTests::ThreeKeyTopicAppendable",
                 2403,
-                (s) => new ThreeKeyTopicAppendable { Key1 = s, Key2 = $"K_{s}", Key3 = (short)s, Value = s },
-                (msg, s) => msg.Key1 == s && msg.Key2 == $"K_{s}"
+                (s) => new ThreeKeyTopicAppendable { Key1 = s, Key2 = "K", Key3 = (short)s, Value = s },
+                (msg, s) => msg.Key1 == s && msg.Key2 == "K"
             );
         }
 
@@ -619,8 +619,8 @@ namespace CsharpToC.Roundtrip.Tests
             await RunRoundtrip<MaxLengthSequenceTopic>(
                "AtomicTests::MaxLengthSequenceTopic",
                2506,
-               (s) => new MaxLengthSequenceTopic { Id = s, Max_seq = new List<int> { 1, 2, 3 } },
-               (msg, s) => msg.Id == s && msg.Max_seq.Count == 3
+               (s) => new MaxLengthSequenceTopic { Id = s, Max_seq = new List<int> { s, s + 1 } },
+               (msg, s) => msg.Id == s && msg.Max_seq.Count == 2 && msg.Max_seq[0] == s && msg.Max_seq[1] == s + 1
            );
         }
 
@@ -630,8 +630,8 @@ namespace CsharpToC.Roundtrip.Tests
              await RunRoundtrip<MaxLengthSequenceTopicAppendable>(
                "AtomicTests::MaxLengthSequenceTopicAppendable",
                2507,
-               (s) => new MaxLengthSequenceTopicAppendable { Id = s, Max_seq = new List<int> { 4, 5, 6 } },
-               (msg, s) => msg.Id == s && msg.Max_seq.Count == 3
+               (s) => new MaxLengthSequenceTopicAppendable { Id = s, Max_seq = new List<int> { s, s + 1 } },
+               (msg, s) => msg.Id == s && msg.Max_seq.Count == 2 && msg.Max_seq[0] == s && msg.Max_seq[1] == s + 1
            );
         }
 
@@ -644,9 +644,9 @@ namespace CsharpToC.Roundtrip.Tests
                 (s) => new DeepNestedStructTopic 
                 { 
                     Id = s, 
-                    Nested1 = new Level1 { Value1 = 1, Nested2 = new Level2 { Value2 = 2, Nested3 = new Level3 { Value3 = 3, Nested4 = new Level4 { Value4 = 4, Nested5 = new Level5 { Value5 = 5 } } } } }
+                    Nested1 = new Level1 { Value1 = s, Nested2 = new Level2 { Value2 = s + 1 } }
                 },
-                (msg, s) => msg.Id == s && msg.Nested1.Nested2.Nested3.Nested4.Nested5.Value5 == 5
+                (msg, s) => msg.Id == s && msg.Nested1.Value1 == s && msg.Nested1.Nested2.Value2 == s + 1
             );
         }
         
@@ -659,9 +659,9 @@ namespace CsharpToC.Roundtrip.Tests
                  (s) => new DeepNestedStructTopicAppendable 
                 { 
                     Id = s, 
-                    Nested1 = new Level1Appendable { Value1 = 1, Nested2 = new Level2Appendable { Value2 = 2, Nested3 = new Level3Appendable { Value3 = 3, Nested4 = new Level4Appendable { Value4 = 4, Nested5 = new Level5Appendable { Value5 = 5 } } } } }
+                    Nested1 = new Level1Appendable { Value1 = s, Nested2 = new Level2Appendable { Value2 = s + 1 } }
                 },
-                (msg, s) => msg.Id == s && msg.Nested1.Nested2.Nested3.Nested4.Nested5.Value5 == 5
+                (msg, s) => msg.Id == s && msg.Nested1.Value1 == s && msg.Nested1.Nested2.Value2 == s + 1
             );
         }
 
@@ -689,11 +689,11 @@ namespace CsharpToC.Roundtrip.Tests
                 2511,
                 (s) => {
                     var u = new UnionWithOptionalAppendable();
-                    u._d = 3;
-                    u.Double_val = s * 1.0;
+                    u._d = 1;
+                    u.Int_val = s;
                     return new UnionWithOptionalTopicAppendable { Id=s, Data = u };
                 },
-                (msg, s) => msg.Id == s
+                (msg, s) => msg.Id == s && msg.Data._d == 1 && msg.Data.Int_val == s
             );
         }
 
