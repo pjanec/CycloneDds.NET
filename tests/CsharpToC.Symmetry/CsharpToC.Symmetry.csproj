@@ -47,10 +47,25 @@
     </None>
     
     <!-- Copy native DLL if present -->
-    <None Update="Native\ddsc_test_lib.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>ddsc_test_lib.dll</Link>
-    </None>
+    <!-- Copy native DLL from build output dynamically -->
+    <!-- Removed static reference to Native\ddsc_test_lib.dll -->
+  </ItemGroup>
+
+  <Target Name="CopyNativeTestLib" AfterTargets="Build">
+    <PropertyGroup>
+      <NativeBuildDir>$(MSBuildThisFileDirectory)..\CsharpToC.Roundtrip.Tests\Native\build\$(Configuration)</NativeBuildDir>
+      <NativeDllPath>$(NativeBuildDir)\CsharpToC_Roundtrip_Native.dll</NativeDllPath>
+    </PropertyGroup>
+    <Message Text="[CopyNativeTestLib] Looking for native DLL at: $(NativeDllPath)" Importance="high" />
+    
+    <!-- Warn instead of Error if not found, to allow build to proceed if just analyzing code, but test will fail -->
+    <Warning Condition="!Exists('$(NativeDllPath)')" Text="[CopyNativeTestLib] Native DLL not found at $(NativeDllPath). Tests requiring native code will fail. Please build the native project at $(NativeBuildDir)." />
+    
+    <Copy SourceFiles="$(NativeDllPath)" DestinationFiles="$(TargetDir)ddsc_test_lib.dll" Condition="Exists('$(NativeDllPath)')" />
+    <Message Text="[CopyNativeTestLib] Copied native DLL to $(TargetDir)ddsc_test_lib.dll" Importance="high" Condition="Exists('$(NativeDllPath)')" />
+  </Target>
+
+  <ItemGroup>
     <None Update="Native\ddsc.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>ddsc.dll</Link>

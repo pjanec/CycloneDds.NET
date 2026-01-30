@@ -26,9 +26,15 @@ namespace CsharpToC.Symmetry.Native
                 
                 if (length <= 0)
                 {
+                    string errorMsg = "Unknown native error";
+                    try {
+                        IntPtr errPtr = Native_GetLastError();
+                        if (errPtr != IntPtr.Zero) errorMsg = Marshal.PtrToStringAnsi(errPtr);
+                    } catch {}
+                    
                     throw new InvalidOperationException(
                         $"Native payload generation failed for topic '{topicName}' with seed {seed}. " +
-                        $"Returned length: {length}");
+                        $"Returned length: {length}. Error: {errorMsg}");
                 }
 
                 byte[] result = new byte[length];
@@ -66,12 +72,11 @@ namespace CsharpToC.Symmetry.Native
             int seed,
             out IntPtr buffer);
 
-        /// <summary>
-        /// Frees a buffer allocated by the native library.
-        /// </summary>
-        /// <param name="buffer">Pointer to buffer to free</param>
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Native_FreeBuffer(IntPtr buffer);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        private static extern IntPtr Native_GetLastError();
 
         #endregion
     }

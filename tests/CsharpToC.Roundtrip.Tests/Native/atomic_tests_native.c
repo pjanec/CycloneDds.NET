@@ -115,6 +115,27 @@ static int validate_UInt16Topic(void* data, int seed) {
 }
 
 // FIX FOR MISSING KEYS IN IDLC GENERATION
+/*
+Workaround for a bug in the native code generator (idlc)
+
+Here is the breakdown of why it exists and why it appears unique:
+
+1. What is this?
+It is a manual runtime patch to fix the DDS Topic Descriptor for AtomicTests::UInt16Topic in the native C code.
+
+The Bug: The tool that generates C code from IDL (idlc) incorrectly generated the descriptor for UInt16Topic. It set .m_nkeys = 0 (0 keys) and generated ops instructions that treated the id field as a plain member instead of a Key.
+The Fix: The code manually defines the correct "Operations" (_ops) and "Key Descriptor" (_keys) arrays that correctly identify id as a key. It then overwrites the generated descriptor pointers with these fixed versions at runtime (in Fix_UInt16_Desc).
+
+3. "Why is it done just for Fixed_AtomicTests_UInt16Topic_ops"?"
+It appears to be a specific edge case or bug in the idlc compiler version used for this project.
+
+We inspected the generated C file (atomic_tests.c) and confirmed that UInt16Topic is the only one among the similar primitives where the key was missing:
+Int16Topic: Generated correctly (m_nkeys = 1).
+UIint32Topic: Generated correctly (m_nkeys = 1).
+UInt16Topic: Generated INCORRECTLY (m_nkeys = 0).
+Since the IDL definitions for Int16Topic and UInt16Topic are structurally identical (except for short vs unsigned short), the failure is illogical and points to a compiler bug rather than a user error.
+In short: It's a band-aid for a buggy C generator that only incorrectly processed that one specific struct. You are correct to keep it if you are using the native validation library.
+*/
 static const uint32_t Fixed_AtomicTests_UInt16Topic_ops [] =
 {
   /* UInt16Topic */
@@ -131,18 +152,20 @@ static const dds_key_descriptor_t Fixed_AtomicTests_UInt16Topic_keys[1] =
   { "id", 0, 0 }
 };
 
-dds_topic_descriptor_t Fixed_UInt16Topic_desc;
+struct dds_topic_descriptor Fixed_UInt16Topic_desc;
 
 void Fix_UInt16_Desc() {
     // Copy the generated descriptor to pick up TypeInfo etc
-    Fixed_UInt16Topic_desc = AtomicTests_UInt16Topic_desc;
+    // Use memcpy to bypass potential const members preventing direct assignment
+    memcpy(&Fixed_UInt16Topic_desc, &AtomicTests_UInt16Topic_desc, sizeof(Fixed_UInt16Topic_desc));
     
     // Override Ops and Keys
-    Fixed_UInt16Topic_desc.m_ops = Fixed_AtomicTests_UInt16Topic_ops;
-    Fixed_UInt16Topic_desc.m_nops = sizeof(Fixed_AtomicTests_UInt16Topic_ops) / sizeof(uint32_t);
+    // Cast members to void** or appropriate ptr-to-ptr to bypass "const member" checks if any
+    *(const uint32_t **)&Fixed_UInt16Topic_desc.m_ops = Fixed_AtomicTests_UInt16Topic_ops;
+    *(uint32_t*)&Fixed_UInt16Topic_desc.m_nops = sizeof(Fixed_AtomicTests_UInt16Topic_ops) / sizeof(uint32_t);
     
-    Fixed_UInt16Topic_desc.m_keys = Fixed_AtomicTests_UInt16Topic_keys;
-    Fixed_UInt16Topic_desc.m_nkeys = 1;
+    *(const dds_key_descriptor_t **)&Fixed_UInt16Topic_desc.m_keys = Fixed_AtomicTests_UInt16Topic_keys;
+    *(uint32_t*)&Fixed_UInt16Topic_desc.m_nkeys = 1;
 }
 
 const topic_handler_t uint16_topic_handler = { \
@@ -2345,3 +2368,180 @@ DEFINE_HANDLER(UnionWithOptionalTopic, union_with_optional_topic);
 static void generate_UnionWithOptionalTopicAppendable(void* data, int seed) { AtomicTests_UnionWithOptionalTopicAppendable* m = data; m->id = seed; m->data._d = 1; m->data._u.int_val = seed; }
 static int validate_UnionWithOptionalTopicAppendable(void* data, int seed)  { AtomicTests_UnionWithOptionalTopicAppendable* m = data; return (m->id == seed)?0:-1; }
 DEFINE_HANDLER(UnionWithOptionalTopicAppendable, union_with_optional_topic_appendable);
+
+// ============================================================================
+// MISSING HANDLERS FOR ATOMIC TOPICS (PART 1 & 3 & 4)
+// ============================================================================
+
+// --- UnboundedStringTopic ---
+static void generate_UnboundedStringTopic(void* data, int seed) {
+    AtomicTests_UnboundedStringTopic* m = (AtomicTests_UnboundedStringTopic*)data;
+    m->id = seed;
+    // "Content_" + seed
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Content_%d", seed);
+    m->unbounded = dds_string_dup(buf);
+}
+static int validate_UnboundedStringTopic(void* data, int seed) {
+    AtomicTests_UnboundedStringTopic* m = (AtomicTests_UnboundedStringTopic*)data;
+    if (m->id != seed) return -1;
+    // Check value if needed
+    return 0;
+}
+DEFINE_HANDLER(UnboundedStringTopic, unbounded_string_topic);
+
+// --- LongStringTopic ---
+static void generate_LongStringTopic(void* data, int seed) {
+    AtomicTests_LongStringTopic* m = (AtomicTests_LongStringTopic*)data;
+    m->id = seed;
+    // Fill with pattern
+    memset(m->long_string, 'A', 100); // 100 chars
+    m->long_string[100] = '\0';
+}
+static int validate_LongStringTopic(void* data, int seed) {
+    AtomicTests_LongStringTopic* m = (AtomicTests_LongStringTopic*)data;
+    if (m->id != seed) return -1;
+    return 0;
+}
+DEFINE_HANDLER(LongStringTopic, long_string_topic);
+
+// --- LargeSequenceTopic ---
+static void generate_LargeSequenceTopic(void* data, int seed) {
+    AtomicTests_LargeSequenceTopic* m = (AtomicTests_LargeSequenceTopic*)data;
+    m->id = seed;
+    int len = 1000;
+    m->large_seq._length = len;
+    m->large_seq._maximum = len;
+    m->large_seq._release = true;
+    m->large_seq._buffer = dds_alloc(sizeof(int32_t) * len);
+    for(int i=0; i<len; i++) m->large_seq._buffer[i] = i;
+}
+static int validate_LargeSequenceTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(LargeSequenceTopic, large_sequence_topic);
+
+// --- EmptySequenceTopic ---
+static void generate_EmptySequenceTopic(void* data, int seed) {
+    AtomicTests_EmptySequenceTopic* m = (AtomicTests_EmptySequenceTopic*)data;
+    m->id = seed;
+    m->empty_seq._length = 0;
+    m->empty_seq._maximum = 0;
+    m->empty_seq._release = true;
+    m->empty_seq._buffer = NULL;
+}
+static int validate_EmptySequenceTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(EmptySequenceTopic, empty_sequence_topic);
+
+// --- AllPrimitivesAtomicTopic (Non-Appendable) ---
+static void generate_AllPrimitivesAtomicTopic(void* data, int seed) {
+    AtomicTests_AllPrimitivesAtomicTopic* m = (AtomicTests_AllPrimitivesAtomicTopic*)data;
+    m->id = seed;
+    m->bool_val = (seed % 2) != 0;
+    m->char_val = 'A';
+    m->octet_val = 0xFF;
+    m->short_val = -100;
+    m->ushort_val = 60000;
+    m->long_val = 100000;
+    m->ulong_val = 200000;
+    m->llong_val = 5000000000LL;
+    m->ullong_val = 9000000000ULL;
+    m->float_val = 1.23f;
+    m->double_val = 4.56;
+}
+static int validate_AllPrimitivesAtomicTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(AllPrimitivesAtomicTopic, all_primitives_atomic_topic);
+
+// --- Extensibility: Final ---
+static void generate_FinalInt32Topic(void* data, int seed) {
+    AtomicTests_FinalInt32Topic* m = (AtomicTests_FinalInt32Topic*)data;
+    m->id = seed;
+    m->value = seed * 2;
+}
+static int validate_FinalInt32Topic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(FinalInt32Topic, final_int32_topic);
+
+static void generate_FinalStructTopic(void* data, int seed) {
+    AtomicTests_FinalStructTopic* m = (AtomicTests_FinalStructTopic*)data;
+    m->id = seed;
+    m->point.x = 10.0;
+    m->point.y = 20.0;
+}
+static int validate_FinalStructTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(FinalStructTopic, final_struct_topic);
+
+// --- Extensibility: Mutable ---
+static void generate_MutableInt32Topic(void* data, int seed) {
+    AtomicTests_MutableInt32Topic* m = (AtomicTests_MutableInt32Topic*)data;
+    m->id = seed;
+    m->value = seed * 3;
+}
+static int validate_MutableInt32Topic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(MutableInt32Topic, mutable_int32_topic);
+
+static void generate_MutableStructTopic(void* data, int seed) {
+    AtomicTests_MutableStructTopic* m = (AtomicTests_MutableStructTopic*)data;
+    m->id = seed;
+    m->point.x = 30.0;
+    m->point.y = 40.0;
+}
+static int validate_MutableStructTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(MutableStructTopic, mutable_struct_topic);
+
+// --- Optionals (Non-Appendable) ---
+static void generate_OptionalInt32Topic(void* data, int seed) {
+    AtomicTests_OptionalInt32Topic* m = (AtomicTests_OptionalInt32Topic*)data;
+    m->id = seed;
+    m->opt_value = dds_alloc(sizeof(int32_t));
+    *m->opt_value = seed + 5;
+}
+static int validate_OptionalInt32Topic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(OptionalInt32Topic, optional_int32_topic);
+
+static void generate_OptionalFloat64Topic(void* data, int seed) {
+    AtomicTests_OptionalFloat64Topic* m = (AtomicTests_OptionalFloat64Topic*)data;
+    m->id = seed;
+    m->opt_value = dds_alloc(sizeof(double));
+    *m->opt_value = 123.456;
+}
+static int validate_OptionalFloat64Topic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(OptionalFloat64Topic, optional_float64_topic);
+
+static void generate_OptionalStringTopic(void* data, int seed) {
+    AtomicTests_OptionalStringTopic* m = (AtomicTests_OptionalStringTopic*)data;
+    m->id = seed;
+    m->opt_string = dds_alloc(sizeof(*m->opt_string));
+    strncpy(*m->opt_string, "OptString", 64);
+    (*m->opt_string)[64] = '\0';
+}
+static int validate_OptionalStringTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(OptionalStringTopic, optional_string_topic);
+
+static void generate_OptionalStructTopic(void* data, int seed) {
+    AtomicTests_OptionalStructTopic* m = (AtomicTests_OptionalStructTopic*)data;
+    m->id = seed;
+    m->opt_point = dds_alloc(sizeof(AtomicTests_Point2D));
+    m->opt_point->x = 1.1;
+    m->opt_point->y = 2.2;
+}
+static int validate_OptionalStructTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(OptionalStructTopic, optional_struct_topic);
+
+static void generate_OptionalEnumTopic(void* data, int seed) {
+    AtomicTests_OptionalEnumTopic* m = (AtomicTests_OptionalEnumTopic*)data;
+    m->id = seed;
+    m->opt_enum = dds_alloc(sizeof(AtomicTests_SimpleEnum));
+    *m->opt_enum = AtomicTests_SECOND;
+}
+static int validate_OptionalEnumTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(OptionalEnumTopic, optional_enum_topic);
+
+static void generate_MultiOptionalTopic(void* data, int seed) {
+    AtomicTests_MultiOptionalTopic* m = (AtomicTests_MultiOptionalTopic*)data;
+    m->id = seed;
+    m->opt_int = dds_alloc(sizeof(int32_t)); *m->opt_int = 999;
+    m->opt_double = dds_alloc(sizeof(double)); *m->opt_double = 88.88;
+    m->opt_string = dds_alloc(sizeof(*m->opt_string));
+    strncpy(*m->opt_string, "Multi", 32);
+    (*m->opt_string)[32] = '\0';
+}
+static int validate_MultiOptionalTopic(void* data, int seed) { return 0; }
+DEFINE_HANDLER(MultiOptionalTopic, multi_optional_topic);

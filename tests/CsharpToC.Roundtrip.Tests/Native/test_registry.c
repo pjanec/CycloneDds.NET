@@ -137,7 +137,26 @@ extern const topic_handler_t max_length_sequence_topic_appendable_handler;
 extern const topic_handler_t deep_nested_struct_topic_handler;
 extern const topic_handler_t deep_nested_struct_topic_appendable_handler;
 extern const topic_handler_t union_with_optional_topic_handler;
+extern const topic_handler_t union_with_optional_topic_handler;
 extern const topic_handler_t union_with_optional_topic_appendable_handler;
+
+// --- Part 3 Missing Handlers ---
+extern const topic_handler_t unbounded_string_topic_handler;
+extern const topic_handler_t long_string_topic_handler;
+extern const topic_handler_t large_sequence_topic_handler;
+extern const topic_handler_t empty_sequence_topic_handler;
+extern const topic_handler_t all_primitives_atomic_topic_handler;
+extern const topic_handler_t final_int32_topic_handler;
+extern const topic_handler_t final_struct_topic_handler;
+extern const topic_handler_t mutable_int32_topic_handler;
+extern const topic_handler_t mutable_struct_topic_handler;
+extern const topic_handler_t optional_int32_topic_handler;
+extern const topic_handler_t optional_float64_topic_handler;
+extern const topic_handler_t optional_string_topic_handler;
+extern const topic_handler_t optional_struct_topic_handler;
+extern const topic_handler_t optional_enum_topic_handler;
+extern const topic_handler_t multi_optional_topic_handler;
+
 
 
 static const topic_handler_t* handlers[] = {
@@ -251,7 +270,24 @@ static const topic_handler_t* handlers[] = {
     &deep_nested_struct_topic_handler,
     &deep_nested_struct_topic_appendable_handler,
     &union_with_optional_topic_handler,
+    &union_with_optional_topic_handler,
     &union_with_optional_topic_appendable_handler,
+    // Part 3 Added
+    &unbounded_string_topic_handler,
+    &long_string_topic_handler,
+    &large_sequence_topic_handler,
+    &empty_sequence_topic_handler,
+    &all_primitives_atomic_topic_handler,
+    &final_int32_topic_handler,
+    &final_struct_topic_handler,
+    &mutable_int32_topic_handler,
+    &mutable_struct_topic_handler,
+    &optional_int32_topic_handler,
+    &optional_float64_topic_handler,
+    &optional_string_topic_handler,
+    &optional_struct_topic_handler,
+    &optional_enum_topic_handler,
+    &multi_optional_topic_handler,
     NULL
 };
 

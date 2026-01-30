@@ -50,16 +50,20 @@ namespace CsharpToC.Symmetry.Infrastructure
             T obj;
             try
             {
-                var reader = new CdrReader(goldenBytes, actualEncoding);
-                
                 // HEADER HANDLING: 
-                // Golden data includes 4-byte encapsulation header (via dds_takecdr).
-                // CdrReader does NOT skip header when initialized with explicit encoding.
-                // We must manually skip it.
-                if (reader.Remaining >= 4)
+                // Golden data includes 4-byte encapsulation header.
+                // To ensure the CdrReader treats the *Body* start as aligned index 0,
+                // we must slice the buffer to exclude the header.
+                ReadOnlySpan<byte> bodyBytes = goldenBytes;
+                if (goldenBytes.Length >= 4)
                 {
-                    reader.ReadInt32(); // Consume header
+                    bodyBytes = goldenBytes.AsSpan(4);
                 }
+                
+                var reader = new CdrReader(bodyBytes, actualEncoding, origin: 0);
+                
+                // HEADER SKIPPED MANUALLY BY SLICING
+
 
                 // NOTE: reader is a ref struct, passed by reference.
                 obj = deserializer(ref reader);
@@ -79,12 +83,21 @@ namespace CsharpToC.Symmetry.Infrastructure
             {
                 // Allocate buffer (2x golden size to detect overruns)
                 byte[] buffer = new byte[goldenBytes.Length * 2];
-                var writer = new CdrWriter(buffer, actualEncoding);
-                
                 // HEADER HANDLING:
                 // CdrWriter does NOT automatically write the header.
-                // We must write it manually to match the golden data.
-                // We simply copy the 4 bytes from golden data.
+                // We must write it manually.
+                // CRITICAL: We pass 'origin: 4' to the Writer so that it knows 4 bytes 
+                // are already "virtually" or "physically" preceding the body for alignment purposes 
+                // relative to the stream start? 
+                // WAIT: If we want Position 0 (Body Start) to be aligned to 8, then origin should be 0 
+                // relative to the body span?
+                // If we pass the WHOLE buffer to Writer, and write header first, Position=4.
+                // If we want Position=4 (Body Start) to behave like index 0 for alignment, 
+                // then (Position - Origin) % Align == 0. 
+                // (4 - Origin) % 8 == 0. => Origin=4.
+                
+                var writer = new CdrWriter(buffer, actualEncoding, origin: 4);
+                
                 if (goldenBytes.Length >= 4)
                 {
                     writer.WriteBytes(goldenBytes.AsSpan(0, 4));
