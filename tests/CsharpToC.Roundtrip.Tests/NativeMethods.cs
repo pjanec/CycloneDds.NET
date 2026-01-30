@@ -5,7 +5,7 @@ namespace CsharpToC.Roundtrip.Tests
 {
     internal static class NativeMethods
     {
-        private const string DllName = "CsharpToC_Roundtrip_Native.dll";
+        private const string DllName = "ddsc_test_lib";
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Native_Init(uint domain_id);

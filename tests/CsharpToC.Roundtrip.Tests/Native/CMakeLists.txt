@@ -38,9 +38,10 @@ add_library(CsharpToC_Roundtrip_Native SHARED
 # Link CycloneDDS
 if(WIN32)
     target_link_libraries(CsharpToC_Roundtrip_Native ddsc)
-else()
-    target_link_libraries(CsharpToC_Roundtrip_Native ddsc)
 endif()
+
+# Rename output to ddsc_test_lib to match C# expectations
+set_target_properties(CsharpToC_Roundtrip_Native PROPERTIES OUTPUT_NAME "ddsc_test_lib")
 
 # Export symbols on Windows
 if(WIN32)

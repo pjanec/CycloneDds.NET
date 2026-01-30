@@ -30,10 +30,24 @@
 
   <ItemGroup>
     <!-- Copy native DLL (CsharpToC_Roundtrip_Native.dll) -->
-    <None Include="Native\build\Release\CsharpToC_Roundtrip_Native.dll" 
-          Condition="Exists('Native\build\Release\CsharpToC_Roundtrip_Native.dll')"
-          CopyToOutputDirectory="Always" 
-          Link="CsharpToC_Roundtrip_Native.dll" />
+    <!-- Copy native DLL (ddsc_test_lib.dll) -->
+    <!-- Native DLL copy handled by CopyNativeTestLib target -->
+  </ItemGroup>
+
+  <Target Name="CopyNativeTestLib" AfterTargets="Build">
+    <PropertyGroup>
+      <NativeBuildDir>$(MSBuildThisFileDirectory)Native\build\$(Configuration)</NativeBuildDir>
+      <NativeDllPath>$(NativeBuildDir)\ddsc_test_lib.dll</NativeDllPath>
+    </PropertyGroup>
+    <Message Text="[CopyNativeTestLib] Looking for native DLL at: $(NativeDllPath)" Importance="high" />
+    
+    <Warning Condition="!Exists('$(NativeDllPath)')" Text="[CopyNativeTestLib] Native DLL not found at $(NativeDllPath). Tests requiring native code will fail. Please build 'Native' folder with CMake for configuration '$(Configuration)'." />
+    
+    <Copy SourceFiles="$(NativeDllPath)" DestinationFiles="$(TargetDir)ddsc_test_lib.dll" Condition="Exists('$(NativeDllPath)')" />
+    <Message Text="[CopyNativeTestLib] Copied native DLL to $(TargetDir)ddsc_test_lib.dll" Importance="high" Condition="Exists('$(NativeDllPath)')" />
+  </Target>
+
+  <ItemGroup>
 
     <!-- Copy CycloneDDS DLLs -->
     <None Include="..\..\cyclone-compiled\bin\ddsc.dll" 
