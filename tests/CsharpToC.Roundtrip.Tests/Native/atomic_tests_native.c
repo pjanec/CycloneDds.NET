@@ -114,63 +114,11 @@ static int validate_UInt16Topic(void* data, int seed) {
     return 0;
 }
 
-// FIX FOR MISSING KEYS IN IDLC GENERATION
-/*
-Workaround for a bug in the native code generator (idlc)
-
-Here is the breakdown of why it exists and why it appears unique:
-
-1. What is this?
-It is a manual runtime patch to fix the DDS Topic Descriptor for AtomicTests::UInt16Topic in the native C code.
-
-The Bug: The tool that generates C code from IDL (idlc) incorrectly generated the descriptor for UInt16Topic. It set .m_nkeys = 0 (0 keys) and generated ops instructions that treated the id field as a plain member instead of a Key.
-The Fix: The code manually defines the correct "Operations" (_ops) and "Key Descriptor" (_keys) arrays that correctly identify id as a key. It then overwrites the generated descriptor pointers with these fixed versions at runtime (in Fix_UInt16_Desc).
-
-3. "Why is it done just for Fixed_AtomicTests_UInt16Topic_ops"?"
-It appears to be a specific edge case or bug in the idlc compiler version used for this project.
-
-We inspected the generated C file (atomic_tests.c) and confirmed that UInt16Topic is the only one among the similar primitives where the key was missing:
-Int16Topic: Generated correctly (m_nkeys = 1).
-UIint32Topic: Generated correctly (m_nkeys = 1).
-UInt16Topic: Generated INCORRECTLY (m_nkeys = 0).
-Since the IDL definitions for Int16Topic and UInt16Topic are structurally identical (except for short vs unsigned short), the failure is illogical and points to a compiler bug rather than a user error.
-In short: It's a band-aid for a buggy C generator that only incorrectly processed that one specific struct. You are correct to keep it if you are using the native validation library.
-*/
-static const uint32_t Fixed_AtomicTests_UInt16Topic_ops [] =
-{
-  /* UInt16Topic */
-  DDS_OP_ADR | DDS_OP_FLAG_KEY | DDS_OP_TYPE_4BY | DDS_OP_FLAG_SGN, offsetof (AtomicTests_UInt16Topic, id),
-  DDS_OP_ADR | DDS_OP_TYPE_2BY, offsetof (AtomicTests_UInt16Topic, value),
-  DDS_OP_RTS,
-  
-  /* key: id */
-  DDS_OP_KOF | 1, 0u /* order: 0 */
-};
-
-static const dds_key_descriptor_t Fixed_AtomicTests_UInt16Topic_keys[1] =
-{
-  { "id", 0, 0 }
-};
-
-struct dds_topic_descriptor Fixed_UInt16Topic_desc;
-
-void Fix_UInt16_Desc() {
-    // Copy the generated descriptor to pick up TypeInfo etc
-    // Use memcpy to bypass potential const members preventing direct assignment
-    memcpy(&Fixed_UInt16Topic_desc, &AtomicTests_UInt16Topic_desc, sizeof(Fixed_UInt16Topic_desc));
-    
-    // Override Ops and Keys
-    // Cast members to void** or appropriate ptr-to-ptr to bypass "const member" checks if any
-    *(const uint32_t **)&Fixed_UInt16Topic_desc.m_ops = Fixed_AtomicTests_UInt16Topic_ops;
-    *(uint32_t*)&Fixed_UInt16Topic_desc.m_nops = sizeof(Fixed_AtomicTests_UInt16Topic_ops) / sizeof(uint32_t);
-    
-    *(const dds_key_descriptor_t **)&Fixed_UInt16Topic_desc.m_keys = Fixed_AtomicTests_UInt16Topic_keys;
-    *(uint32_t*)&Fixed_UInt16Topic_desc.m_nkeys = 1;
-}
+// FIX FOR MISSING KEYS IN IDLC GENERATION - REMOVED
 
 const topic_handler_t uint16_topic_handler = { \
     .name = "AtomicTests::UInt16Topic", \
-    .descriptor = &Fixed_UInt16Topic_desc, \
+    .descriptor = &AtomicTests_UInt16Topic_desc, \
     .generate = generate_UInt16Topic, \
     .validate = validate_UInt16Topic, \
     .size = sizeof(AtomicTests_UInt16Topic) \

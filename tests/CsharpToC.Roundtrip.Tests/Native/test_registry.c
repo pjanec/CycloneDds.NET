@@ -338,9 +338,9 @@ EXPORT void Native_Init(uint32_t domain_id) {
         return;
     }
 
-    // Fix for UInt16Topic missing key bug
-    extern void Fix_UInt16_Desc();
-    Fix_UInt16_Desc();
+    // Fix for UInt16Topic missing key bug - REMOVED
+    // extern void Fix_UInt16_Desc();
+    // Fix_UInt16_Desc();
     
     set_error("OK");
 }
