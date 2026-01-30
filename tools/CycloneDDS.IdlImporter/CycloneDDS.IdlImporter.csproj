@@ -17,6 +17,7 @@
   <ItemGroup>
     <!-- Reference to Schema for attribute types -->
     <ProjectReference Include="..\..\src\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
+    <ProjectReference Include="..\CycloneDDS.Compiler.Common\CycloneDDS.Compiler.Common.csproj" />
   </ItemGroup>
 
   <ItemGroup>

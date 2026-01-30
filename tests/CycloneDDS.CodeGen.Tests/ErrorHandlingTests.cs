@@ -5,7 +5,12 @@ using System.Reflection;
 using Xunit;
 using CycloneDDS.CodeGen;
 using CycloneDDS.Core;
-using CycloneDDS.Schema; using System; using System.Text; using System.Linq; using System.Runtime.InteropServices;
+using CycloneDDS.Schema; 
+using System; 
+using System.Text; 
+using System.Linq; 
+using System.Runtime.InteropServices;
+using CycloneDDS.Compiler.Common;
 
 namespace CycloneDDS.CodeGen.Tests
 {

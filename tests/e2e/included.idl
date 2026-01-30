@@ -1,0 +1,6 @@
+module Geom {
+    struct Point {
+        long x;
+        long y;
+    };
+};

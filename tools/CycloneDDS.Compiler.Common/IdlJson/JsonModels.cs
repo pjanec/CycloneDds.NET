@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace CycloneDDS.CodeGen.IdlJson
+namespace CycloneDDS.Compiler.Common.IdlJson
 {
     /// <summary>
     /// Root structure of JSON output from 'idlc -l json'
@@ -170,6 +170,12 @@ namespace CycloneDDS.CodeGen.IdlJson
         /// </summary>
         [JsonPropertyName("Value")]
         public int? Value { get; set; }
+
+        /// <summary>
+        /// Member Offset
+        /// </summary>
+        [JsonPropertyName("Offset")]
+        public int? Offset { get; set; }
 
         /// <summary>
         /// Nested members (for complex types)

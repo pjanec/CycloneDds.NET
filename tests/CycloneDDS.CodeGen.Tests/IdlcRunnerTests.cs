@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Xunit;
 using CycloneDDS.CodeGen;
+using CycloneDDS.Compiler.Common;
 
 namespace CycloneDDS.CodeGen.Tests
 {

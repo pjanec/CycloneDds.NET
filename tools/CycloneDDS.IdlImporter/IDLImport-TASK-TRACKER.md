@@ -29,9 +29,9 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Establish project structure and shared infrastructure  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-001** Project Setup and Shared Infrastructure → [details](./IDLImport-TASK-DETAILS.md#idlimp-001-project-setup-and-shared-infrastructure) 🔵
-- [ ] **IDLIMP-002** IdlcRunner Enhancement for Include Paths → [details](./IDLImport-TASK-DETAILS.md#idlimp-002-idlcrunner-enhancement-for-include-paths) 🔵
-- [ ] **IDLIMP-003** Type Mapper Implementation → [details](./IDLImport-TASK-DETAILS.md#idlimp-003-type-mapper-implementation) 🔵
+- [x] **IDLIMP-001** Project Setup and Shared Infrastructure → [details](./IDLImport-TASK-DETAILS.md#idlimp-001-project-setup-and-shared-infrastructure) ✅
+- [x] **IDLIMP-002** IdlcRunner Enhancement for Include Paths → [details](./IDLImport-TASK-DETAILS.md#idlimp-002-idlcrunner-enhancement-for-include-paths) ✅
+- [x] **IDLIMP-003** Type Mapper Implementation → [details](./IDLImport-TASK-DETAILS.md#idlimp-003-type-mapper-implementation) ✅
 
 **Success Criteria:**
 - ✅ .NET 8 console project builds successfully
@@ -45,8 +45,8 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Implement recursive IDL processing and file structure mirroring  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-004** Importer Core - File Queue and Recursion → [details](./IDLImport-TASK-DETAILS.md#idlimp-004-importer-core---file-queue-and-recursion) 🔵
-- [ ] **IDLIMP-005** JSON Parsing and File Metadata Extraction → [details](./IDLImport-TASK-DETAILS.md#idlimp-005-json-parsing-and-file-metadata-extraction) 🔵
+- [x] **IDLIMP-004** Importer Core - File Queue and Recursion → [details](./IDLImport-TASK-DETAILS.md#idlimp-004-importer-core---file-queue-and-recursion) ✅
+- [x] **IDLIMP-005** JSON Parsing and File Metadata Extraction → [details](./IDLImport-TASK-DETAILS.md#idlimp-005-json-parsing-and-file-metadata-extraction) ✅
 
 **Success Criteria:**
 - ✅ Processes master file and all recursive includes exactly once
@@ -61,9 +61,9 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Implement C# DSL code emission for all IDL type constructs  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-006** CSharpEmitter - Struct and Enum Generation → [details](./IDLImport-TASK-DETAILS.md#idlimp-006-csharpemitter---struct-and-enum-generation) 🔵
-- [ ] **IDLIMP-007** CSharpEmitter - Collection Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-007-csharpemitter---collection-type-support) 🔵
-- [ ] **IDLIMP-008** CSharpEmitter - Union Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-008-csharpemitter---union-type-support) 🔵
+- [x] **IDLIMP-006** CSharpEmitter - Struct and Enum Generation → [details](./IDLImport-TASK-DETAILS.md#idlimp-006-csharpemitter---struct-and-enum-generation) ✅
+- [x] **IDLIMP-007** CSharpEmitter - Collection Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-007-csharpemitter---collection-type-support) ✅
+- [x] **IDLIMP-008** CSharpEmitter - Union Type Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-008-csharpemitter---union-type-support) ✅
 
 **Success Criteria:**
 - ✅ Generates valid C# syntax with proper attributes
@@ -78,8 +78,8 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Complete tool with user-friendly CLI and end-to-end validation  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-009** Command-Line Interface Implementation → [details](./IDLImport-TASK-DETAILS.md#idlimp-009-command-line-interface-implementation) 🔵
-- [ ] **IDLIMP-010** End-to-End Integration with Existing Test IDL → [details](./IDLImport-TASK-DETAILS.md#idlimp-010-end-to-end-integration-with-existing-test-idl) 🔵 **🚨 GATE**
+- [x] **IDLIMP-009** Command-Line Interface Implementation → [details](./IDLImport-TASK-DETAILS.md#idlimp-009-command-line-interface-implementation) ✅
+- [x] **IDLIMP-010** End-to-End Integration with Existing Test IDL → [details](./IDLImport-TASK-DETAILS.md#idlimp-010-end-to-end-integration-with-existing-test-idl) ✅ **🚨 GATE**
 
 **Success Criteria:**
 - ✅ CLI with argument validation and help system
@@ -96,9 +96,9 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 **Goal:** Support advanced IDL features (nested types, optional, member IDs)  
 **Status:** 🔵 NOT STARTED
 
-- [ ] **IDLIMP-011** Nested Struct Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-011-nested-struct-support) 🔵
-- [ ] **IDLIMP-012** Optional Member Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-012-optional-member-support) 🔵
-- [ ] **IDLIMP-013** Member ID (@id) Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-013-member-id-id-support) 🔵
+- [x] **IDLIMP-011** Nested Struct Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-011-nested-struct-support) ✅
+- [x] **IDLIMP-012** Optional Member Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-012-optional-member-support) ✅
+- [x] **IDLIMP-013** Member ID (@id) Support → [details](./IDLImport-TASK-DETAILS.md#idlimp-013-member-id-id-support) ✅
 
 **Success Criteria:**
 - ✅ Nested struct types with proper dependencies
@@ -130,13 +130,13 @@ The IDL Importer Tool enables importing existing IDL files into the C# DSL ecosy
 
 | Phase | Tasks | Status | Estimated Effort |
 |-------|-------|--------|------------------|
-| Phase 1: Foundation | 3 | 🔵 NOT STARTED | 5-8 days |
-| Phase 2: Core Logic | 2 | 🔵 NOT STARTED | 4-6 days |
-| Phase 3: Generation | 4 | 🔵 NOT STARTED | 8-12 days |
-| Phase 4: CLI & Integration | 2 | 🔵 NOT STARTED | 3-5 days |
-| Phase 5: Advanced | 3 | 🔵 NOT STARTED | 5-8 days |
+| Phase 1: Foundation | 3 | ✅ COMPLETE | 5-8 days |
+| Phase 2: Core Logic | 2 | ✅ COMPLETE | 4-6 days |
+| Phase 3: Generation | 4 | ✅ COMPLETE | 8-12 days |
+| Phase 4: CLI & Integration | 2 | ✅ COMPLETE | 3-5 days |
+| Phase 5: Advanced | 3 | ✅ COMPLETE | 5-8 days |
 | Phase 6: Testing | 2 | 🔵 NOT STARTED | 5-8 days |
-| **Total** | **15** | **0/15** | **30-45 days** |
+| **Total** | **15** | **13/15** | **30-45 days** |
 
 ---
 

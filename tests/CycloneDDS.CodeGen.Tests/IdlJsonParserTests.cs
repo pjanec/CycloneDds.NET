@@ -2,7 +2,8 @@ using System;
 using System.IO;
 using Xunit;
 using CycloneDDS.CodeGen;
-using CycloneDDS.CodeGen.IdlJson;
+using CycloneDDS.Compiler.Common;
+using CycloneDDS.Compiler.Common.IdlJson;
 
 namespace CycloneDDS.CodeGen.Tests
 {
