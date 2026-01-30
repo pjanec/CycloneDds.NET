@@ -14,16 +14,16 @@
 
   <Target Name="CycloneDDSCodeGen" BeforeTargets="CoreCompile">
     <PropertyGroup>
-      <CodeGenToolPath Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)bin\Release\net8.0\CycloneDDS.CodeGen.exe</CodeGenToolPath>
-      <CodeGenToolPath Condition="'$(Configuration)' != 'Release'">$(MSBuildThisFileDirectory)bin\Debug\net8.0\CycloneDDS.CodeGen.exe</CodeGenToolPath>
+      <CodeGenAssembly Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)bin\Release\net8.0\CycloneDDS.CodeGen.dll</CodeGenAssembly>
+      <CodeGenAssembly Condition="'$(Configuration)' != 'Release'">$(MSBuildThisFileDirectory)bin\Debug\net8.0\CycloneDDS.CodeGen.dll</CodeGenAssembly>
       
       <SourcePath>$(MSBuildProjectDirectory)</SourcePath>
       <OutputPath>$(MSBuildProjectDirectory)\obj\Generated</OutputPath>
     </PropertyGroup>
     
     <Message Text="Running CycloneDDS Code Generator..." Importance="high" />
-    <Message Text="CodeGenToolPath: $(CodeGenToolPath)" Importance="high" />
-    <Exec Command="&quot;$(CodeGenToolPath)&quot; &quot;$(SourcePath)&quot; &quot;$(OutputPath)&quot; &quot;@(ReferencePath)&quot;" />
+    <Message Text="CodeGenAssembly: $(CodeGenAssembly)" Importance="high" />
+    <Exec Command="dotnet &quot;$(CodeGenAssembly)&quot; &quot;$(SourcePath)&quot; &quot;$(OutputPath)&quot; &quot;@(ReferencePath)&quot;" />
     
     <ItemGroup>
         <Compile Include="$(OutputPath)\**\*.cs" />

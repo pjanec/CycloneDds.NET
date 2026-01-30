@@ -8,7 +8,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 echo [1/4] Building Native Library...
 mkdir tests\CsharpToC.Roundtrip.Tests\Native\build 2>nul
 pushd tests\CsharpToC.Roundtrip.Tests\Native\build
-cmake .. -A x64 -DCYCLONE_INSTALL_DIR=D:/Work/FastCycloneDdsCsharpBindings/cyclone-compiled
+cmake .. -A x64 -DCYCLONE_INSTALL_DIR=%~dp0cyclone-compiled
 if %errorlevel% neq 0 exit /b %errorlevel%
 cmake --build . --config Release
 if %errorlevel% neq 0 exit /b %errorlevel%
@@ -19,7 +19,7 @@ dotnet build tests\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj -c
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 echo [3/3] Deploying Native DLL...
-copy /Y tests\CsharpToC.Roundtrip.Tests\Native\build\Release\CsharpToC_Roundtrip_Native.dll tests\CsharpToC.Roundtrip.Tests\bin\Release\net8.0\
+copy /Y tests\CsharpToC.Roundtrip.Tests\Native\build\Release\ddsc_test_lib.dll tests\CsharpToC.Roundtrip.Tests\bin\Release\net8.0\
 copy /Y cyclone-compiled\bin\ddsc.dll tests\CsharpToC.Roundtrip.Tests\bin\Release\net8.0\
 
 echo Build Complete.

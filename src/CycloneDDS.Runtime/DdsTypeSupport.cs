@@ -57,8 +57,11 @@ namespace CycloneDDS.Runtime
                 if (method == null)
                 {
                     // For backward compatibility or partially generated types, return null func
-                    return () => null;
-                }
+                    //return () => null;
+                    throw new InvalidOperationException(
+                        $"Type '{type.Name}' does not have a public static GetKeyDescriptors() method. " +
+                        "Did you forget to add [DdsTopic] or [DdsStruct] attribute?");
+				}
                 
                 return (Func<DdsKeyDescriptor[]>)Delegate.CreateDelegate(typeof(Func<DdsKeyDescriptor[]>), method);
             });

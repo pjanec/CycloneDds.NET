@@ -145,7 +145,7 @@ namespace CsharpToC.Symmetry.Infrastructure
                 0x00 => CdrEncoding.Xcdr1,
                 0x01 => CdrEncoding.Xcdr1, 
                 0x02 => CdrEncoding.Xcdr2,
-                >= 0x06 and <= 0x0A => CdrEncoding.Xcdr2,
+                >= 0x06 and <= 0x0B => CdrEncoding.Xcdr2,
                 _ => throw new NotSupportedException($"Unknown CDR encoding identifier: 0x{encodingId:X2}")
             };
         }

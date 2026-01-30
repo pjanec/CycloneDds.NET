@@ -1,5 +1,6 @@
 using Xunit;
 using CsharpToC.Symmetry.Infrastructure;
+using System;
 
 namespace CsharpToC.Symmetry.Tests.Infrastructure
 {

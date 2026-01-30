@@ -30,6 +30,9 @@
     
     <!-- Reference CodeGen tool (for code generation only, not at runtime) -->
     <ProjectReference Include="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj" >
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 
   <!-- Import CodeGen MSBuild targets for automatic IDL processing -->
@@ -51,15 +54,32 @@
     <!-- Removed static reference to Native\ddsc_test_lib.dll -->
   </ItemGroup>
 
-  <Target Name="CopyNativeTestLib" AfterTargets="Build">
+  <Target Name="CopyNativeTestLib" BeforeTargets="Build">
     <PropertyGroup>
-      <NativeBuildDir>$(MSBuildThisFileDirectory)..\CsharpToC.Roundtrip.Tests\Native\build\$(Configuration)</NativeBuildDir>
-      <NativeDllPath>$(NativeBuildDir)\ddsc_test_lib.dll</NativeDllPath>
+      <NativeSourceDir>$(MSBuildThisFileDirectory)..\CsharpToC.Roundtrip.Tests\Native</NativeSourceDir>
+      <NativeBuildDir>$(NativeSourceDir)\build</NativeBuildDir>
+      <!-- Ensure we map .NET configuration to CMake configuration -->
+      <CMakeConfiguration Condition="'$(Configuration)' == 'Debug'">Debug</CMakeConfiguration>
+      <CMakeConfiguration Condition="'$(Configuration)' == 'Release'">Release</CMakeConfiguration>
+      <CMakeConfiguration Condition="'$(CMakeConfiguration)' == ''">Release</CMakeConfiguration>
+      
+      <!-- Correct path to the DLL built by CMake -->
+      <NativeDllPath>$(NativeBuildDir)\$(CMakeConfiguration)\ddsc_test_lib.dll</NativeDllPath>
     </PropertyGroup>
+
+    <Message Text="[NativeBuild] Building native library in $(NativeBuildDir) for $(CMakeConfiguration)..." Importance="high" />
+    
+    <MakeDir Directories="$(NativeBuildDir)" />
+    
+    <!-- Run CMake generation if cache doesn't exist -->
+    <Exec Command="cmake .." WorkingDirectory="$(NativeBuildDir)" Condition="!Exists('$(NativeBuildDir)\CMakeCache.txt')" />
+    
+    <!-- Run CMake build -->
+    <Exec Command="cmake --build . --config $(CMakeConfiguration)" WorkingDirectory="$(NativeBuildDir)" />
+    
     <Message Text="[CopyNativeTestLib] Looking for native DLL at: $(NativeDllPath)" Importance="high" />
     
-    <!-- Warn instead of Error if not found, to allow build to proceed if just analyzing code, but test will fail -->
-    <Warning Condition="!Exists('$(NativeDllPath)')" Text="[CopyNativeTestLib] Native DLL not found at $(NativeDllPath). Tests requiring native code will fail. Please build the native project at $(NativeBuildDir)." />
+    <Error Condition="!Exists('$(NativeDllPath)')" Text="[CopyNativeTestLib] Native DLL not found at $(NativeDllPath) after attempting build." />
     
     <Copy SourceFiles="$(NativeDllPath)" DestinationFiles="$(TargetDir)ddsc_test_lib.dll" Condition="Exists('$(NativeDllPath)')" />
     <Message Text="[CopyNativeTestLib] Copied native DLL to $(TargetDir)ddsc_test_lib.dll" Importance="high" Condition="Exists('$(NativeDllPath)')" />

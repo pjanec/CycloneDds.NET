@@ -33,6 +33,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsharpToC.Symmetry", "tests
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CycloneDDS.IdlImporter", "tools\CycloneDDS.IdlImporter\CycloneDDS.IdlImporter.csproj", "{F04D92E3-8392-91C0-D2FE-EC4CB82BC921}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsharpToC.Symmetry.Tests", "tests\CsharpToC.Symmetry.Tests\CsharpToC.Symmetry.Tests.csproj", "{CA285983-8F51-C432-AD74-A043BD0A2617}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -316,6 +318,24 @@ Global
 		{F04D92E3-8392-91C0-D2FE-EC4CB82BC921}.ReleaseDbg|x64.Build.0 = Release|Any CPU
 		{F04D92E3-8392-91C0-D2FE-EC4CB82BC921}.ReleaseDbg|x86.ActiveCfg = Release|Any CPU
 		{F04D92E3-8392-91C0-D2FE-EC4CB82BC921}.ReleaseDbg|x86.Build.0 = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Debug|x64.Build.0 = Debug|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Debug|x86.Build.0 = Debug|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Release|x64.ActiveCfg = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Release|x64.Build.0 = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Release|x86.ActiveCfg = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.Release|x86.Build.0 = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.ReleaseDbg|Any CPU.ActiveCfg = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.ReleaseDbg|Any CPU.Build.0 = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.ReleaseDbg|x64.ActiveCfg = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.ReleaseDbg|x64.Build.0 = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.ReleaseDbg|x86.ActiveCfg = Release|Any CPU
+		{CA285983-8F51-C432-AD74-A043BD0A2617}.ReleaseDbg|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

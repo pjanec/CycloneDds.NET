@@ -104,7 +104,7 @@ namespace CycloneDDS.CodeGen
                     var field = item.Field;
                     if (IsOptional(field))
                     {
-                        EmitOptionalSizer(sb, field, isXcdr2);
+                        EmitOptionalSizer(sb, field, isXcdr2, IsMutable(type));
                     }
                     else
                     {
@@ -222,7 +222,7 @@ namespace CycloneDDS.CodeGen
 
                     if (IsOptional(field))
                     {
-                        EmitOptionalSerializer(sb, field, fieldId, isXcdr2);
+                        EmitOptionalSerializer(sb, field, fieldId, isXcdr2, IsMutable(type));
                     }
                     else
                     {
@@ -236,9 +236,9 @@ namespace CycloneDDS.CodeGen
             {
                 sb.AppendLine("            if (writer.Encoding == CdrEncoding.Xcdr2)");
                 sb.AppendLine("            {");
-                sb.AppendLine("                writer.Align(4);");
                 sb.AppendLine("                int bodyLen = writer.Position - bodyStart;");
                 sb.AppendLine("                writer.WriteUInt32At(dheaderPos, (uint)bodyLen);");
+                sb.AppendLine("                writer.Align(4);");
                 sb.AppendLine("            }");
             }
 
@@ -302,14 +302,26 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("            }");
         }
         
-        private void EmitOptionalSizer(StringBuilder sb, FieldInfo field, bool isXcdr2)
+        private void EmitOptionalSizer(StringBuilder sb, FieldInfo field, bool isXcdr2, bool isMutable)
         {
             string access = $"this.{ToPascalCase(field.Name)}";
-            string check = field.TypeName == "string?" ? $"{access} != null" : $"{access}.HasValue";
+            string check;
+            if (field.TypeName.EndsWith("?") || field.TypeName == "string?")
+                check = field.TypeName == "string?" ? $"{access} != null" : $"{access}.HasValue";
+            else
+                check = "true";
             
             sb.AppendLine($"            if ({check})");
             sb.AppendLine("            {");
-            sb.AppendLine("                sizer.WriteUInt32(0); // EMHEADER");
+            
+            if (isMutable && isXcdr2)
+            {
+                sb.AppendLine("                sizer.WriteUInt32(0); // EMHEADER (Mutable)");
+            }
+            else
+            {
+                sb.AppendLine("                sizer.WriteByte(1); // Present Flag");
+            }
             
             // For optional, we need to size the value as if it was not optional
             var nonOptionalField = new FieldInfo 
@@ -322,24 +334,9 @@ namespace CycloneDDS.CodeGen
             
             // Special handling for ".Value" access if value type
             string baseType = GetBaseType(field.TypeName);
-            if (baseType != "string" && !IsReferenceType(baseType))
+            if (baseType != "string" && !IsReferenceType(baseType) && (field.TypeName.EndsWith("?") || field.TypeName == "string?"))
             {
-                 // We need to trick GetSizerCall to use .Value
-                 // Actually GetSizerCall uses "this.Name", so we might need a modified version or just hack it
-                 // The easiest way is to use a temporary variable or change how GetSizerCall works.
-                 // But proper way since we are inside `if (HasValue)`:
-                 // The field passed to GetSizerCall will generate `this.Name`. 
-                 // If it is nullable int?, `this.Name` refers to Nullable<int>.
-                 // `sizer.WriteInt32(nullable)` might work if overload exists? No.
-                 // We need `sizer.WriteInt32(nullable.Value)`.
-                 
-                 // However, TypeMapper methods usually take the value.
-                 // GetSizerCall generates: `sizer.Method(this.FieldName)`
-                 // We want: `sizer.Method(this.FieldName.Value)`
-                 
-                 // Let's manually constructing the sizer call here for optionals might be cleaner
                  string sizerCall = GetSizerCall(nonOptionalField, isXcdr2);
-                 // Replace `this.Name` with `this.Name.Value` if needed
                  if (!sizerCall.Contains(".Value") && !sizerCall.Contains(".ToString")) 
                     sizerCall = sizerCall.Replace($"this.{ToPascalCase(field.Name)}", $"this.{ToPascalCase(field.Name)}.Value");
                  
@@ -347,25 +344,45 @@ namespace CycloneDDS.CodeGen
             }
             else
             {
-                 // Reference type (string?), just use name
                  string sizerCall = GetSizerCall(nonOptionalField, isXcdr2);
                  sb.AppendLine($"                {sizerCall};");
             }
 
             sb.AppendLine("            }");
+            
+            if (!(isMutable && isXcdr2))
+            {
+                sb.AppendLine("            else");
+                sb.AppendLine("            {");
+                sb.AppendLine("                sizer.WriteByte(0); // Not Present Flag");
+                sb.AppendLine("            }");
+            }
         }
 
-        private void EmitOptionalSerializer(StringBuilder sb, FieldInfo field, int fieldId, bool isXcdr2)
+        private void EmitOptionalSerializer(StringBuilder sb, FieldInfo field, int fieldId, bool isXcdr2, bool isMutable)
         {
             string access = $"this.{ToPascalCase(field.Name)}";
-            string check = field.TypeName == "string?" ? $"{access} != null" : $"{access}.HasValue";
+            string check;
+            if (field.TypeName.EndsWith("?") || field.TypeName == "string?")
+                check = field.TypeName == "string?" ? $"{access} != null" : $"{access}.HasValue";
+            else
+                check = "true";
             
+            bool useEmHeader = isMutable && isXcdr2;
+
             sb.AppendLine($"            if ({check})");
             sb.AppendLine("            {");
             
-            sb.AppendLine("                int emHeaderPos = writer.Position;");
-            sb.AppendLine("                writer.WriteUInt32(0); // Placeholder");
-            sb.AppendLine("                int emBodyStart = writer.Position;");
+            if (useEmHeader)
+            {
+                sb.AppendLine("                int emHeaderPos = writer.Position;");
+                sb.AppendLine("                writer.WriteUInt32(0); // Placeholder");
+                sb.AppendLine("                int emBodyStart = writer.Position;");
+            }
+            else
+            {
+                sb.AppendLine("                writer.WriteByte(1); // Present flag");
+            }
 
             string baseType = GetBaseType(field.TypeName);
             var nonOptionalField = new FieldInfo 
@@ -377,25 +394,40 @@ namespace CycloneDDS.CodeGen
             };
             
             string writerCall = GetWriterCall(nonOptionalField, isXcdr2);
-            if (baseType != "string" && !IsReferenceType(baseType))
+            if (baseType != "string" && !IsReferenceType(baseType) && (field.TypeName.EndsWith("?") || field.TypeName == "string?"))
             {
                  writerCall = writerCall.Replace($"this.{ToPascalCase(field.Name)}", $"this.{ToPascalCase(field.Name)}.Value");
             }
             
             sb.AppendLine($"                {writerCall};");
             
-            sb.AppendLine("                int emBodyLen = writer.Position - emBodyStart;");
-            // XCDR2 EMHEADER format: [M:1bit][Length:28bits][ID:3bits]
-            // M=0 for appendable, Length in bits 30-3, ID in bits 2-0
-            sb.AppendLine($"                uint emHeader = ((uint)emBodyLen << 3) | (uint)({fieldId} & 0x7);");
-            sb.AppendLine("                writer.PatchUInt32(emHeaderPos, emHeader);");
+            if (useEmHeader)
+            {
+                sb.AppendLine("                int emBodyLen = writer.Position - emBodyStart;");
+                // XCDR2 EMHEADER format: [M:1bit][Length:28bits][ID:3bits]
+                sb.AppendLine($"                uint emHeader = ((uint)emBodyLen << 3) | (uint)({fieldId} & 0x7);");
+                sb.AppendLine("                writer.PatchUInt32(emHeaderPos, emHeader);");
+            }
 
             sb.AppendLine("            }");
+            
+            if (!useEmHeader)
+            {
+                sb.AppendLine("            else");
+                sb.AppendLine("            {");
+                sb.AppendLine("                writer.WriteByte(0); // Not present flag");
+                sb.AppendLine("            }");
+            }
         }
 
         private bool IsOptional(FieldInfo field)
         {
-            return field.TypeName.EndsWith("?");
+            return field.TypeName.EndsWith("?") || field.HasAttribute("DdsOptional");
+        }
+
+        private bool IsMutable(TypeInfo type)
+        {
+            return type.Extensibility == DdsExtensibilityKind.Mutable;
         }
 
         private string GetBaseType(string typeName)

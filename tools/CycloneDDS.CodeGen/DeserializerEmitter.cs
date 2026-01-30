@@ -104,7 +104,7 @@ namespace CycloneDDS.CodeGen
                     if (IsOptional(field))
                     {
                         // Optional logic
-                        EmitOptionalReader(sb, type, field, fieldId);
+                        EmitOptionalReader(sb, type, field, fieldId, IsMutable(type));
                     }
                     else
                     {
@@ -145,29 +145,41 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("    }");
         }
 
-        private void EmitOptionalReader(StringBuilder sb, TypeInfo type, FieldInfo field, int fieldId)
+        private void EmitOptionalReader(StringBuilder sb, TypeInfo type, FieldInfo field, int fieldId, bool isMutable)
         {
             string baseType = GetBaseType(field.TypeName);
             var nonOptField = new FieldInfo { Name = field.Name, TypeName = baseType, Attributes = field.Attributes, Type = field.Type };
             
             sb.AppendLine($"            // Optional {field.Name}");
             sb.AppendLine("            {");
-            sb.AppendLine("                int emHeaderPos = reader.Position;");
             sb.AppendLine("                bool isPresent = false;");
-            sb.AppendLine("                if (reader.Remaining >= 4 && reader.Position + 4 <= endPos)");
-            sb.AppendLine("                {");
-            sb.AppendLine("                    uint emHeader = reader.ReadUInt32();");
-            // EMHEADER: (Length << 3) | ID
-            sb.AppendLine("                    ushort id = (ushort)(emHeader & 0x7);");
-            sb.AppendLine($"                    if (id == {fieldId})");
-            sb.AppendLine("                    {");
-            sb.AppendLine("                        isPresent = true;");
-            sb.AppendLine("                    }");
-            sb.AppendLine("                    else");
-            sb.AppendLine("                    {");
-            sb.AppendLine("                        reader.Seek(emHeaderPos);");
-            sb.AppendLine("                    }");
-            sb.AppendLine("                }");
+
+            if (isMutable)
+            {
+                sb.AppendLine("                int emHeaderPos = reader.Position;");
+                sb.AppendLine("                if (reader.Remaining >= 4 && reader.Position + 4 <= endPos)");
+                sb.AppendLine("                {");
+                sb.AppendLine("                    uint emHeader = reader.ReadUInt32();");
+                sb.AppendLine("                    // EMHEADER: (Length << 3) | ID");
+                sb.AppendLine($"                    ushort id = (ushort)(emHeader & 0x7);");
+                sb.AppendLine($"                    if (id == {fieldId})");
+                sb.AppendLine("                    {");
+                sb.AppendLine("                        isPresent = true;");
+                sb.AppendLine("                    }");
+                sb.AppendLine("                    else");
+                sb.AppendLine("                    {");
+                sb.AppendLine("                        reader.Seek(emHeaderPos);");
+                sb.AppendLine("                    }");
+                sb.AppendLine("                }");
+            }
+            else
+            {
+                // Final / Appendable: Optional is a boolean flag
+                sb.AppendLine("                if (reader.Remaining >= 1 && reader.Position + 1 <= endPos)");
+                sb.AppendLine("                {");
+                sb.AppendLine("                    isPresent = reader.ReadBoolean();");
+                sb.AppendLine("                }");
+            }
             
             sb.AppendLine("                if (isPresent)");
             sb.AppendLine("                {");
@@ -175,10 +187,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("                }");
             sb.AppendLine("                else");
             sb.AppendLine("                {");
-            // ToPascalCase added
-            if (IsReferenceType(baseType))
-                sb.AppendLine($"                    view.{ToPascalCase(field.Name)} = null;");
-            else
+            if (IsReferenceType(baseType) || field.TypeName.EndsWith("?") || field.TypeName == "string?")
                 sb.AppendLine($"                    view.{ToPascalCase(field.Name)} = null;");
             sb.AppendLine("                }");
             sb.AppendLine("            }");
@@ -624,7 +633,12 @@ namespace CycloneDDS.CodeGen
 
         private bool IsOptional(FieldInfo field)
         {
-            return field.TypeName.EndsWith("?");
+            return field.TypeName.EndsWith("?") || field.HasAttribute("DdsOptional");
+        }
+
+        private bool IsMutable(TypeInfo type)
+        {
+            return type.Extensibility == DdsExtensibilityKind.Mutable;
         }
 
         private string GetBaseType(string typeName)

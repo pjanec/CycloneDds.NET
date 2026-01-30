@@ -13,6 +13,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
 $ProjectPath = "CsharpToC.Symmetry.csproj"
 $TestConfig = "Debug"
 
@@ -34,6 +35,18 @@ try {
 }
 catch {
     Write-Host "  ✗ Clean failed: $_" -ForegroundColor Red
+    exit 1
+}
+
+# Step 1.5: Build CodeGen Tool (Required for other projects)
+Write-Host "`n[1.5/3] Building CodeGen Tool..." -ForegroundColor Yellow
+try {
+    dotnet build "..\..\tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj" -c $TestConfig -v minimal
+    if ($LASTEXITCODE -ne 0) { throw "CodeGen build failed" }
+    Write-Host "  ✓ CodeGen built" -ForegroundColor Green
+}
+catch {
+    Write-Host "  ✗ CodeGen build failed: $_" -ForegroundColor Red
     exit 1
 }
 

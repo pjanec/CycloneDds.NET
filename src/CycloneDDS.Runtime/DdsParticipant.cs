@@ -280,7 +280,7 @@ namespace CycloneDDS.Runtime
                 var alignMethod = type.GetMethod("GetDescriptorAlign", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (alignMethod != null)
                 {
-                    return (uint)alignMethod.Invoke(null, null);
+                    return (uint)alignMethod.Invoke(null, null)!;
                 }
             } catch {}
 
@@ -301,7 +301,7 @@ namespace CycloneDDS.Runtime
             // Handle keys
             IntPtr keysPtr = IntPtr.Zero;
             uint nkeys = 0;
-            IntPtr[] keyNamePtrs = null;
+            IntPtr[] keyNamePtrs = null!;
 
             // if (false) // Diagnostic: Disable keys to check for crash
             if (keys != null && keys.Length > 0)
@@ -342,13 +342,13 @@ namespace CycloneDDS.Runtime
 
             try {
                 var flagsMethod = typeof(T).GetMethod("GetDescriptorFlagset", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                if (flagsMethod != null) flagset = (uint)flagsMethod.Invoke(null, null);
+                if (flagsMethod != null) flagset = (uint)flagsMethod.Invoke(null, null)!;
 
                 var sizeMethod = typeof(T).GetMethod("GetDescriptorSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                if (sizeMethod != null) sampleSize = (uint)sizeMethod.Invoke(null, null);
+                if (sizeMethod != null) sampleSize = (uint)sizeMethod.Invoke(null, null)!;
 
                 var alignMethod = typeof(T).GetMethod("GetDescriptorAlign", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                if (alignMethod != null) align = (uint)alignMethod.Invoke(null, null);
+                if (alignMethod != null) align = (uint)alignMethod.Invoke(null, null)!;
             } catch {}
 
             // Fallback for Size if not generated (for backward compat)

@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
 $ProjectPath = "CsharpToC.Symmetry.csproj"
 $TestConfig = "Debug"
 $BinPath = "bin\$TestConfig\net8.0"

@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
 $ProjectPath = "CsharpToC.Symmetry.csproj"
 $TestConfig = "Debug"
 $GoldenDataPath = "bin\$TestConfig\net8.0\GoldenData"
@@ -43,6 +44,15 @@ Write-Host ""
 # Step 1: Check if project is built
 if (-not (Test-Path "bin\$TestConfig")) {
     Write-Host "[1/4] Project not built - building first..." -ForegroundColor Yellow
+    
+    # Build CodeGen Tool first
+    try {
+        dotnet build "..\..\tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj" -c $TestConfig -v minimal
+    } catch {
+        Write-Host "  ✗ CodeGen build failed: $_" -ForegroundColor Red
+        exit 1
+    }
+
     try {
         dotnet build $ProjectPath -c $TestConfig -v minimal
         Write-Host "  ✓ Build complete" -ForegroundColor Green
