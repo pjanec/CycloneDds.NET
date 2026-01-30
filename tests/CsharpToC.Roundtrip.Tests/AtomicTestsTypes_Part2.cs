@@ -258,7 +258,7 @@ namespace AtomicTests
         [DdsKey]
         public int Id;
         [DdsOptional]
-        public int Opt_value;
+        public int? Opt_value;
     }
 
     [DdsTopic("OptionalFloat64TopicAppendable")]
@@ -268,7 +268,7 @@ namespace AtomicTests
         [DdsKey]
         public int Id;
         [DdsOptional]
-        public double Opt_value;
+        public double? Opt_value;
     }
 
     [DdsTopic("OptionalStringTopicAppendable")]
@@ -280,7 +280,7 @@ namespace AtomicTests
         [DdsOptional]
         [MaxLength(64)]
         [DdsManaged]
-        public string Opt_string;
+        public string? Opt_string;
     }
 
     [DdsTopic("OptionalStructTopicAppendable")]
@@ -290,7 +290,7 @@ namespace AtomicTests
         [DdsKey]
         public int Id;
         [DdsOptional]
-        public Point2DAppendable Opt_point;
+        public Point2DAppendable? Opt_point;
     }
 
     [DdsTopic("OptionalEnumTopicAppendable")]
@@ -300,7 +300,7 @@ namespace AtomicTests
         [DdsKey]
         public int Id;
         [DdsOptional]
-        public SimpleEnum Opt_enum;
+        public SimpleEnum? Opt_enum;
     }
 
     [DdsTopic("MultiOptionalTopicAppendable")]
@@ -310,13 +310,13 @@ namespace AtomicTests
         [DdsKey]
         public int Id;
         [DdsOptional]
-        public int Opt_int;
+        public int? Opt_int;
         [DdsOptional]
-        public double Opt_double;
+        public double? Opt_double;
         [DdsOptional]
         [MaxLength(32)]
         [DdsManaged]
-        public string Opt_string;
+        public string? Opt_string;
     }
 
     // --- Composite Keys ---

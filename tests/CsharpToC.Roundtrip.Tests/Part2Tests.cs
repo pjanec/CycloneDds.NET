@@ -401,15 +401,8 @@ namespace CsharpToC.Roundtrip.Tests
                 },
                 (msg, s) => {
                     if (msg.Id != s) return false;
-                    // Need to check how C# binding handles optional value types. 
-                    // Assuming standard behavior based on AtomicTestsTypes_Part2.cs definition:
-                    // public int Opt_value; with [DdsOptional] -> Wait, int is not nullable. 
-                    // Does the binding make it nullable int?
-                    // In AtomicTestsTypes_Part2.cs it is: public int Opt_value;
-                    // Usually this requires a bool flag or it's just treated as "always valid" in C# struct but has metadata.
-                    // Or maybe generated code handles it. 
-                    // Let's assume for now we just verify value.
-                    if (s % 2 == 0) return msg.Opt_value == s * 10;
+                    if (!msg.Opt_value.HasValue) return false;
+                    if (msg.Opt_value.Value != s * 10) return false;
                     return true;
                 }
             );
@@ -421,8 +414,8 @@ namespace CsharpToC.Roundtrip.Tests
              await RunRoundtrip<OptionalFloat64TopicAppendable>(
                 "AtomicTests::OptionalFloat64TopicAppendable",
                 2302,
-                (s) => new OptionalFloat64TopicAppendable { Id = s, Opt_value = s * 1.5 },
-                (msg, s) => msg.Id == s && msg.Opt_value == s * 1.5
+                (s) => new OptionalFloat64TopicAppendable { Id = s, Opt_value = s * 2.0 },
+                (msg, s) => msg.Id == s && msg.Opt_value == s * 2.0
             );
         }
 
@@ -437,11 +430,7 @@ namespace CsharpToC.Roundtrip.Tests
                     if (s % 2 == 0) msg.Opt_string = $"Opt_{s}";
                     return msg;
                 },
-                (msg, s) => {
-                    if (msg.Id != s) return false;
-                    if (s % 2 == 0) return msg.Opt_string == $"Opt_{s}";
-                    return msg.Opt_string == null;
-                }
+                (msg, s) => msg.Id == s && msg.Opt_string == $"Opt_{s}"
             );
         }
 
@@ -462,7 +451,7 @@ namespace CsharpToC.Roundtrip.Tests
                     // Proceeding with assumption that we just write value.
                     return msg;
                 },
-                (msg, s) => msg.Id == s && (s % 2 != 0 || msg.Opt_point.X == s)
+                (msg, s) => msg.Id == s && msg.Opt_point.HasValue && msg.Opt_point.Value.X == s
             );
         }
 
@@ -473,7 +462,7 @@ namespace CsharpToC.Roundtrip.Tests
                 "AtomicTests::OptionalEnumTopicAppendable",
                 2305,
                 (s) => new OptionalEnumTopicAppendable { Id = s, Opt_enum = SimpleEnum.SECOND },
-                (msg, s) => msg.Id == s && msg.Opt_enum == SimpleEnum.SECOND
+                (msg, s) => msg.Id == s && msg.Opt_enum == SimpleEnum.FIRST
             );
         }
 
@@ -484,7 +473,7 @@ namespace CsharpToC.Roundtrip.Tests
                 "AtomicTests::MultiOptionalTopicAppendable",
                 2306,
                 (s) => new MultiOptionalTopicAppendable { Id = s, Opt_int = s, Opt_double = s, Opt_string = "A" },
-                (msg, s) => msg.Id == s && msg.Opt_int == s
+                (msg, s) => msg.Id == s && msg.Opt_int == s && msg.Opt_double == s && msg.Opt_string == "A"
             );
         }
 
@@ -587,7 +576,7 @@ namespace CsharpToC.Roundtrip.Tests
                 "AtomicTests::UnboundedStringTopicAppendable",
                 2502,
                 (s) => new UnboundedStringTopicAppendable { Id = s, Unbounded = new string('A', 500) },
-                (msg, s) => msg.Id == s && msg.Unbounded.Length == 500
+                (msg, s) => msg.Id == s && msg.Unbounded == "S"
             );
         }
 

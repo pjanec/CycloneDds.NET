@@ -408,6 +408,15 @@ namespace CycloneDDS.CodeGen
         private (string Type, string Suffix) MapType(FieldInfo field)
         {
             var typeName = field.TypeName;
+            
+            // Handle Nullable
+            if (typeName.EndsWith("?")) typeName = typeName.Substring(0, typeName.Length - 1);
+            else if (typeName.StartsWith("Nullable<") || typeName.StartsWith("System.Nullable<"))
+            {
+                var s = typeName.IndexOf('<') + 1;
+                var e = typeName.LastIndexOf('>');
+                typeName = typeName.Substring(s, e - s);
+            }
 
             // Fixed Strings
             if (typeName.Contains("FixedString32")) return ("char", "[32]");
