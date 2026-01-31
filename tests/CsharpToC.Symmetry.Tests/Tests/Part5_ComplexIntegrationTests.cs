@@ -40,10 +40,10 @@ namespace CsharpToC.Symmetry.Tests
             SerializeRobotStateTopic);
         
         private static RobotStateTopic DeserializeRobotStateTopic(ref CdrReader reader) => 
-            RobotStateTopic.Deserialize(ref reader);
+            CsharpToC.Symmetry.Infrastructure.RobotStateTopic_Manual.Deserialize(ref reader);
         
         private static void SerializeRobotStateTopic(RobotStateTopic obj, ref CdrWriter writer) => 
-            obj.Serialize(ref writer);
+            CsharpToC.Symmetry.Infrastructure.RobotStateTopic_Manual.Serialize(obj, ref writer);
 
         // --- SCENARIO 3: The "Sparse Mutable" (IoT Telemetry) ---
         // @mutable with sparse IDs and non-sequential keys

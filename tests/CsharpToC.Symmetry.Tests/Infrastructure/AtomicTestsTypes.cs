@@ -815,7 +815,7 @@ namespace AtomicTests
         public ushort Ushort_val;
         public int Long_val;
         public uint Ulong_val;
-        public int Llong_val;
+        public long Llong_val;
         public ulong Ullong_val;
         public float Float_val;
         public double Double_val;
@@ -1022,7 +1022,6 @@ namespace AtomicTests
     {
         [DdsKey]
         public int Id;
-        public int DummyPad;
         [ArrayLength(5)]
         [DdsManaged]
         public double[] Values;

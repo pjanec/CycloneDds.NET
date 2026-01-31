@@ -101,9 +101,8 @@ namespace AtomicTests
         public int L1;
 
         [DdsManaged]
-        [ArrayLength(3)]
         public byte[] Blob;
         
-        public int CheckValue;
+        public ulong CheckValue;
     }
 }

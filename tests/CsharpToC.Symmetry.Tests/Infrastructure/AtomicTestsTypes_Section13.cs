@@ -57,8 +57,8 @@ namespace AtomicTests
         public double? BatteryVoltage;
     }
 
-    [DdsTopic("IoTDeviceMutableTopic")]
-    [DdsExtensibility(DdsExtensibilityKind.Mutable)]
+    // [DdsTopic("IoTDeviceMutableTopic")]
+    // [DdsExtensibility(DdsExtensibilityKind.Mutable)]
     public partial struct IoTDeviceMutableTopic
     {
         [DdsKey]
@@ -101,9 +101,9 @@ namespace AtomicTests
         public int L1;
 
         [DdsManaged]
-        [ArrayLength(3)]
+        //[ArrayLength(3)]
         public byte[] Blob;
         
-        public int CheckValue;
+        public long CheckValue;
     }
 }

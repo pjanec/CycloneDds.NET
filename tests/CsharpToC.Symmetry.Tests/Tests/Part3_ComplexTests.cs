@@ -62,8 +62,8 @@ namespace CsharpToC.Symmetry.Tests
         private static void SerializeOptionalStructTopic(OptionalStructTopic obj, ref CdrWriter writer) => obj.Serialize(ref writer);
 
         [Fact] public void TestOptionalEnumTopic() => Verify<OptionalEnumTopic>("AtomicTests::OptionalEnumTopic", DeserializeOptionalEnumTopic, SerializeOptionalEnumTopic);
-        private static OptionalEnumTopic DeserializeOptionalEnumTopic(ref CdrReader reader) => OptionalEnumTopic.Deserialize(ref reader);
-        private static void SerializeOptionalEnumTopic(OptionalEnumTopic obj, ref CdrWriter writer) => obj.Serialize(ref writer);
+        private static OptionalEnumTopic DeserializeOptionalEnumTopic(ref CdrReader reader) => CsharpToC.Symmetry.Infrastructure.OptionalEnumTopic_Manual.Deserialize(ref reader);
+        private static void SerializeOptionalEnumTopic(OptionalEnumTopic obj, ref CdrWriter writer) => CsharpToC.Symmetry.Infrastructure.OptionalEnumTopic_Manual.Serialize(obj, ref writer);
 
         [Fact] public void TestMultiOptionalTopic() => Verify<MultiOptionalTopic>("AtomicTests::MultiOptionalTopic", DeserializeMultiOptionalTopic, SerializeMultiOptionalTopic);
         private static MultiOptionalTopic DeserializeMultiOptionalTopic(ref CdrReader reader) => MultiOptionalTopic.Deserialize(ref reader);

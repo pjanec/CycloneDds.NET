@@ -86,8 +86,8 @@ namespace CsharpToC.Symmetry.Tests
         private static void SerializeArrayInt32TopicAppendable(ArrayInt32TopicAppendable obj, ref CdrWriter writer) => obj.Serialize(ref writer);
 
         [Fact] public void TestArrayFloat64TopicAppendable() => Verify<ArrayFloat64TopicAppendable>("AtomicTests::ArrayFloat64TopicAppendable", DeserializeArrayFloat64TopicAppendable, SerializeArrayFloat64TopicAppendable);
-        private static ArrayFloat64TopicAppendable DeserializeArrayFloat64TopicAppendable(ref CdrReader reader) => ArrayFloat64TopicAppendable.Deserialize(ref reader);
-        private static void SerializeArrayFloat64TopicAppendable(ArrayFloat64TopicAppendable obj, ref CdrWriter writer) => obj.Serialize(ref writer);
+        private static ArrayFloat64TopicAppendable DeserializeArrayFloat64TopicAppendable(ref CdrReader reader) => CsharpToC.Symmetry.Infrastructure.ArrayFloat64TopicAppendable_Manual.Deserialize(ref reader);
+        private static void SerializeArrayFloat64TopicAppendable(ArrayFloat64TopicAppendable obj, ref CdrWriter writer) => CsharpToC.Symmetry.Infrastructure.ArrayFloat64TopicAppendable_Manual.Serialize(obj, ref writer);
 
         [Fact] public void TestArrayStringTopicAppendable() => Verify<ArrayStringTopicAppendable>("AtomicTests::ArrayStringTopicAppendable", DeserializeArrayStringTopicAppendable, SerializeArrayStringTopicAppendable);
         private static ArrayStringTopicAppendable DeserializeArrayStringTopicAppendable(ref CdrReader reader) => ArrayStringTopicAppendable.Deserialize(ref reader);
@@ -102,8 +102,8 @@ namespace CsharpToC.Symmetry.Tests
         private static void SerializeArray3DInt32TopicAppendable(Array3DInt32TopicAppendable obj, ref CdrWriter writer) => obj.Serialize(ref writer);
 
         [Fact] public void TestArrayStructTopicAppendable() => Verify<ArrayStructTopicAppendable>("AtomicTests::ArrayStructTopicAppendable", DeserializeArrayStructTopicAppendable, SerializeArrayStructTopicAppendable);
-        private static ArrayStructTopicAppendable DeserializeArrayStructTopicAppendable(ref CdrReader reader) => ArrayStructTopicAppendable.Deserialize(ref reader);
-        private static void SerializeArrayStructTopicAppendable(ArrayStructTopicAppendable obj, ref CdrWriter writer) => obj.Serialize(ref writer);
+        private static ArrayStructTopicAppendable DeserializeArrayStructTopicAppendable(ref CdrReader reader) => CsharpToC.Symmetry.Infrastructure.ArrayStructTopicAppendable_Manual.Deserialize(ref reader);
+        private static void SerializeArrayStructTopicAppendable(ArrayStructTopicAppendable obj, ref CdrWriter writer) => CsharpToC.Symmetry.Infrastructure.ArrayStructTopicAppendable_Manual.SerializeFixed(obj, ref writer);
 
         [Fact] public void TestSequenceUnionAppendableTopic() => Verify<SequenceUnionAppendableTopic>("AtomicTests::SequenceUnionAppendableTopic", DeserializeSequenceUnionAppendableTopic, SerializeSequenceUnionAppendableTopic);
         private static SequenceUnionAppendableTopic DeserializeSequenceUnionAppendableTopic(ref CdrReader reader) => SequenceUnionAppendableTopic.Deserialize(ref reader);
@@ -142,8 +142,8 @@ namespace CsharpToC.Symmetry.Tests
         // --- Catch All ---
 
         [Fact] public void TestAllPrimitivesAtomicTopic() => Verify<AllPrimitivesAtomicTopic>("AtomicTests::AllPrimitivesAtomicTopic", DeserializeAllPrimitivesAtomicTopic, SerializeAllPrimitivesAtomicTopic);
-        private static AllPrimitivesAtomicTopic DeserializeAllPrimitivesAtomicTopic(ref CdrReader reader) => AllPrimitivesAtomicTopic.Deserialize(ref reader);
-        private static void SerializeAllPrimitivesAtomicTopic(AllPrimitivesAtomicTopic obj, ref CdrWriter writer) => obj.Serialize(ref writer);
+        private static AllPrimitivesAtomicTopic DeserializeAllPrimitivesAtomicTopic(ref CdrReader reader) => CsharpToC.Symmetry.Infrastructure.AllPrimitivesAtomicTopic_Manual.Deserialize(ref reader);
+        private static void SerializeAllPrimitivesAtomicTopic(AllPrimitivesAtomicTopic obj, ref CdrWriter writer) => CsharpToC.Symmetry.Infrastructure.AllPrimitivesAtomicTopic_Manual.Serialize(obj, ref writer);
 
         // --- Helper ---
         private void Verify<T>(string topicName, DeserializeDelegate<T> d, SerializeDelegate<T> s) 
