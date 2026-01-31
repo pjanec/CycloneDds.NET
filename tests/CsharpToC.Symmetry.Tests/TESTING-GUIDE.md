@@ -10,12 +10,22 @@ Use the following as a reference for finding out detail about the CDR stream for
  - docs\cdr-serialization-rules.md
  - docs\cdr-byte-stream-analysis.md 
 
-Once you succeed fixing the symmetry tests for some of the failing topics, always verify if it really works using the round trip tests,
+
+Once you succeed fixing the symmetry tests for some of the failing topics,
+run FULL symmetry tests to check for regressionm.
+
+First ALL the symmetry tests must be passing, only then you can try the rountrip (as roundtrip wil SURELY fail if symmetry faills).
+If symmatry passes and roundtrip fails, usually the valua validation logic is wrong.
+
+ 
+If symmetry tests are passing, test it really works using the round trip tests,
 by running the script
   - build_and_run_tests.ps1 -Filter <name_of_the_failing_test_case_in_xUnit_filter_format>
   
+
 DO NOT RUN `build_and_run_tests.ps1` WITHOUT the `-Filter` parameter!!! That takes too long and produces tons of lines to stdout.
 ALWAYS use `-Filter` parameter to limit the scope to the minimal set of test you need!
+
 
 Continue fixing other failing topics until all failing ones are fixed.
 

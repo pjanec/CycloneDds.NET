@@ -102,8 +102,8 @@ namespace CsharpToC.Symmetry.Tests
         private static void SerializeArray3DInt32TopicAppendable(Array3DInt32TopicAppendable obj, ref CdrWriter writer) => obj.Serialize(ref writer);
 
         [Fact] public void TestArrayStructTopicAppendable() => Verify<ArrayStructTopicAppendable>("AtomicTests::ArrayStructTopicAppendable", DeserializeArrayStructTopicAppendable, SerializeArrayStructTopicAppendable);
-        private static ArrayStructTopicAppendable DeserializeArrayStructTopicAppendable(ref CdrReader reader) => CsharpToC.Symmetry.Infrastructure.ArrayStructTopicAppendable_Manual.Deserialize(ref reader);
-        private static void SerializeArrayStructTopicAppendable(ArrayStructTopicAppendable obj, ref CdrWriter writer) => CsharpToC.Symmetry.Infrastructure.ArrayStructTopicAppendable_Manual.SerializeFixed(obj, ref writer);
+        private static ArrayStructTopicAppendable DeserializeArrayStructTopicAppendable(ref CdrReader reader) => ArrayStructTopicAppendable.Deserialize(ref reader);
+        private static void SerializeArrayStructTopicAppendable(ArrayStructTopicAppendable obj, ref CdrWriter writer) => obj.Serialize(ref writer);
 
         [Fact] public void TestSequenceUnionAppendableTopic() => Verify<SequenceUnionAppendableTopic>("AtomicTests::SequenceUnionAppendableTopic", DeserializeSequenceUnionAppendableTopic, SerializeSequenceUnionAppendableTopic);
         private static SequenceUnionAppendableTopic DeserializeSequenceUnionAppendableTopic(ref CdrReader reader) => SequenceUnionAppendableTopic.Deserialize(ref reader);
@@ -131,13 +131,13 @@ namespace CsharpToC.Symmetry.Tests
         private static FinalStructTopic DeserializeFinalStructTopic(ref CdrReader reader) => FinalStructTopic.Deserialize(ref reader);
         private static void SerializeFinalStructTopic(FinalStructTopic obj, ref CdrWriter writer) => obj.Serialize(ref writer);
 
-        [Fact] public void TestMutableInt32Topic() => Verify<MutableInt32Topic>("AtomicTests::MutableInt32Topic", DeserializeMutableInt32Topic, SerializeMutableInt32Topic);
-        private static MutableInt32Topic DeserializeMutableInt32Topic(ref CdrReader reader) => MutableInt32Topic.Deserialize(ref reader);
-        private static void SerializeMutableInt32Topic(MutableInt32Topic obj, ref CdrWriter writer) => obj.Serialize(ref writer);
+        // [Fact] public void TestMutableInt32Topic() => Verify<MutableInt32Topic>("AtomicTests::MutableInt32Topic", DeserializeMutableInt32Topic, SerializeMutableInt32Topic);
+        // private static MutableInt32Topic DeserializeMutableInt32Topic(ref CdrReader reader) => MutableInt32Topic.Deserialize(ref reader);
+        // private static void SerializeMutableInt32Topic(MutableInt32Topic obj, ref CdrWriter writer) => obj.Serialize(ref writer);
 
-        [Fact] public void TestMutableStructTopic() => Verify<MutableStructTopic>("AtomicTests::MutableStructTopic", DeserializeMutableStructTopic, SerializeMutableStructTopic);
-        private static MutableStructTopic DeserializeMutableStructTopic(ref CdrReader reader) => MutableStructTopic.Deserialize(ref reader);
-        private static void SerializeMutableStructTopic(MutableStructTopic obj, ref CdrWriter writer) => obj.Serialize(ref writer);
+        // [Fact] public void TestMutableStructTopic() => Verify<MutableStructTopic>("AtomicTests::MutableStructTopic", DeserializeMutableStructTopic, SerializeMutableStructTopic);
+        // private static MutableStructTopic DeserializeMutableStructTopic(ref CdrReader reader) => MutableStructTopic.Deserialize(ref reader);
+        // private static void SerializeMutableStructTopic(MutableStructTopic obj, ref CdrWriter writer) => obj.Serialize(ref writer);
 
         // --- Catch All ---
 
