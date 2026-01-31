@@ -161,6 +161,11 @@ extern const topic_handler_t optional_struct_topic_handler;
 extern const topic_handler_t optional_enum_topic_handler;
 extern const topic_handler_t multi_optional_topic_handler;
 
+// --- Section 13: Complex Integration Scenarios ---
+extern const topic_handler_t offset_key_topic_handler;
+extern const topic_handler_t robot_state_topic_handler;
+extern const topic_handler_t iot_device_mutable_topic_handler;
+extern const topic_handler_t alignment_check_topic_handler;
 
 
 static const topic_handler_t* handlers[] = {
@@ -296,6 +301,11 @@ static const topic_handler_t* handlers[] = {
     &optional_struct_topic_handler,
     &optional_enum_topic_handler,
     &multi_optional_topic_handler,
+    // Section 13: Complex Integration Scenarios
+    &offset_key_topic_handler,
+    &robot_state_topic_handler,
+    &iot_device_mutable_topic_handler,
+    &alignment_check_topic_handler,
     NULL
 };
 

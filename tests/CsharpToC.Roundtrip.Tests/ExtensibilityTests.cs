@@ -104,6 +104,26 @@ namespace CsharpToC.Roundtrip.Tests
             );
         }
 
+        [Fact]
+        public async Task TestArrayStructTopicAppendable()
+        {
+            await RunRoundtrip<ArrayStructTopicAppendable>(
+                "AtomicTests::ArrayStructTopicAppendable",
+                3600,
+                (s) => new ArrayStructTopicAppendable
+                {
+                    Id = s,
+                    Points = new Point2D[]
+                    {
+                        new Point2D { X = s * 1.0, Y = s * 2.0 },
+                        new Point2D { X = s * 3.0, Y = s * 4.0 },
+                        new Point2D { X = s * 5.0, Y = s * 6.0 }
+                    }
+                },
+                (msg, s) => msg.Id == s
+            );
+        }
+
         // --- Optional Fields Test (Will likely fail) ---
 
         [Fact]

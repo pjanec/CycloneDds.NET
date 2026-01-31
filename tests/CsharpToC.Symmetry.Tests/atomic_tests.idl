@@ -686,6 +686,134 @@ module AtomicTests {
         double double_val;
     };
     
+
+    // ========================================================================
+    // SECTION 13: COMPLEX INTEGRATION SCENARIOS (REAL WORLD SIMULATION)
+    // ========================================================================
+
+    // ------------------------------------------------------------------------
+    // SCENARIO 1: The "Offset Nightmare"
+    // Tests: Key extraction when keys are NOT at the start and follow dynamic data.
+    // Why: Many implementations assume keys are at fixed offsets. This breaks that 
+    // by placing keys after strings and sequences.
+    // ------------------------------------------------------------------------
+    @final
+    @topic
+    struct OffsetKeyTopic {
+        // Field 1: Variable length string.
+        // This pushes the offset of 'sensor_id'.
+        string<32> group_name; 
+
+        // Key 1: Located at a variable offset depending on 'group_name' length.
+        @key long sensor_id; 
+
+        // Field 2: Dynamic sequence.
+        // This makes the location of the next key even more unpredictable.
+        sequence<float> calibration_data;
+
+        // Key 2: Located after a sequence. 
+        // Deserializer must skip the sequence correctly to find this key.
+        @key short instance_sub_id;
+
+        // Payload: Fixed size struct to verify alignment after variable keys.
+        Point3D final_pos; 
+    };
+
+    // ------------------------------------------------------------------------
+    // SCENARIO 2: The "Kitchen Sink" (Robotics State)
+    // Tests: @appendable extensibility mixed with Arrays, Sequences of Structs, 
+    // Unions, and Optional fields all in one.
+    // ------------------------------------------------------------------------
+    @appendable
+    @topic
+    struct RobotStateTopic {
+        // Standard Key
+        @key string<64> robot_id;
+
+        // 1. Primitive
+        unsigned long long timestamp_ns;
+
+        // 2. Enum
+        SimpleEnum operational_mode;
+
+        // 3. Fixed Array of Primitives (Sensor Matrix)
+        // Tests handling of fixed blocks within appendable structs
+        double transform_matrix[3][3];
+
+        // 4. Sequence of Nested Structs (Path Plan)
+        // Tests serialization of lists of complex objects
+        sequence<Point2D> current_path;
+
+        // 5. Complex Union (Current Action Details)
+        // Tests polymorphism
+        SimpleUnion current_action;
+
+        // 6. Optional Nested Struct
+        // Tests optionality on complex types
+        @optional Container cargo_hold;
+        
+        // 7. Optional Primitive
+        @optional double battery_voltage;
+    };
+
+    // ------------------------------------------------------------------------
+    // SCENARIO 3: The "Sparse Mutable" (IoT Telemetry)
+    // Tests: @mutable extensibility with sparse IDs and non-sequential keys.
+    // Why: Verifies the XTypes parameter ID mapping logic.
+    // ------------------------------------------------------------------------
+    @mutable
+    @topic
+    struct IoTDeviceMutableTopic {
+        // Key with specific ID, not at index 0
+        @key @id(10) long device_serial;
+
+        // A large gap in IDs (10 -> 50)
+        @id(50) float temperature;
+
+        // Optional mutable field
+        @id(60) @optional string<128> location_label;
+
+        // Sequence of Enums (status history)
+        @id(70) sequence<ColorEnum> status_leds;
+
+        // Nested mutable struct inside a mutable topic (if supported) 
+        // or standard struct. Using standard Point3D here.
+        @id(80) Point3D last_ping_geo;
+    };
+
+    // ------------------------------------------------------------------------
+    // SCENARIO 4: The "Alignment Torture Test"
+    // Tests: Mixing 1-byte, 2-byte, 4-byte, and 8-byte types in an order 
+    // that forces aggressive padding checks.
+    // ------------------------------------------------------------------------
+    @final
+    @topic
+    struct AlignmentCheckTopic {
+        @key long id;
+        
+        // 1 byte
+        octet b1; 
+        
+        // 8 bytes (Needs 7 bytes padding if not packed)
+        double d1; 
+        
+        // 2 bytes
+        short s1;
+        
+        // 1 byte
+        char c1;
+        
+        // 4 bytes (Needs padding after char/short combo?)
+        long l1;
+        
+        // Sequence of octets (odd length sequences can misalign subsequent fields)
+        sequence<octet> blob;
+        
+        // 8 byte field following potentially odd-sized sequence
+        unsigned long long check_value;
+    };    
+    
+    
     // ========================================================================
     // ROUNDTRIP SPECIFIC APPENDABLE DUPLICATES
     // ========================================================================

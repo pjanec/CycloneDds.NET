@@ -30,6 +30,7 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(CsharpToC_Roundtrip_Native SHARED
     atomic_tests_native.c
+    atomic_tests_section13.c
     test_registry.c
     ${GEN_C}
     ${GEN_H}
