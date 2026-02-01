@@ -51,7 +51,11 @@ namespace CycloneDDS.Core.Tests
         [Fact]
         public void DdsSequenceNative_ReleaseIsOneByte()
         {
-            Assert.Equal(typeof(byte), typeof(DdsSequenceNative).GetField("Release")!.FieldType);
+            // Release field is a bool, but marshaled as UnmanagedType.I1 (1 byte)
+            Assert.Equal(typeof(bool), typeof(DdsSequenceNative).GetField("Release")!.FieldType);
+            var marshalAs = typeof(DdsSequenceNative).GetField("Release")!.GetCustomAttributes(typeof(MarshalAsAttribute), false);
+            Assert.NotEmpty(marshalAs);
+            Assert.Equal(UnmanagedType.I1, ((MarshalAsAttribute)marshalAs[0]).Value);
         }
     }
 }
