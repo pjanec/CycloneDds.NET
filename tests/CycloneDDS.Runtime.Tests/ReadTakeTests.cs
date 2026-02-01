@@ -9,14 +9,14 @@ namespace CycloneDDS.Runtime.Tests
     {
         private DdsParticipant _participant;
         private DdsWriter<TestMessage> _writer;
-        private DdsReader<TestMessage, TestMessage> _reader;
+        private DdsReader<TestMessage> _reader;
         private const string TopicName = "ReadTakeTopic";
 
         public ReadTakeTests()
         {
             _participant = new DdsParticipant();
             _writer = new DdsWriter<TestMessage>(_participant, TopicName);
-            _reader = new DdsReader<TestMessage, TestMessage>(_participant, TopicName);
+            _reader = new DdsReader<TestMessage>(_participant, TopicName);
         }
 
         public void Dispose()

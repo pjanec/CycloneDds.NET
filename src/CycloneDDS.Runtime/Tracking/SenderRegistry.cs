@@ -24,7 +24,7 @@ namespace CycloneDDS.Runtime.Tracking
         private readonly ConcurrentDictionary<long, DdsGuid> _handleToGuid = new();
 
         // Background reader for identity topic
-        private readonly DdsReader<SenderIdentity, SenderIdentity> _identityReader;
+        private readonly DdsReader<SenderIdentity> _identityReader;
         private readonly CancellationTokenSource _cancellation = new();
         private readonly Task _monitorTask;
         private readonly DdsParticipant _participant;
@@ -39,7 +39,7 @@ namespace CycloneDDS.Runtime.Tracking
             DdsApi.dds_qset_reliability(qos, DdsApi.DDS_RELIABILITY_RELIABLE, 100_000_000);
 
             // Subscribe to identity announcements
-            _identityReader = new DdsReader<SenderIdentity, SenderIdentity>(
+            _identityReader = new DdsReader<SenderIdentity>(
                 participant, "__FcdcSenderIdentity", qos);
             
             DdsApi.dds_delete_qos(qos);

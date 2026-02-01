@@ -44,7 +44,7 @@ namespace CycloneDDS.Runtime.Tests
             
             // Create a reader to verify identity is published from same participant
             // (Loopback should work for TransientLocal if we wait)
-            using var identityReader = new DdsReader<SenderIdentity, SenderIdentity>(participant, "__FcdcSenderIdentity");
+            using var identityReader = new DdsReader<SenderIdentity>(participant, "__FcdcSenderIdentity");
             
             // Create a writer to trigger identity publishing
             using var writer = new DdsWriter<SenderTrackingTestMsg>(participant, TEST_TOPIC);
@@ -139,7 +139,7 @@ namespace CycloneDDS.Runtime.Tests
         public void GetSender_WithoutTrackingEnabled_ReturnsNull()
         {
             using var participant = new DdsParticipant();
-            using var reader = new DdsReader<SenderTrackingTestMsg, SenderTrackingTestMsg>(participant, TEST_TOPIC);
+            using var reader = new DdsReader<SenderTrackingTestMsg>(participant, TEST_TOPIC);
             // No EnableSenderTracking on reader
             
             // We can't really get a sample easily without a writer, but let's assume we could.
@@ -173,7 +173,7 @@ namespace CycloneDDS.Runtime.Tests
              
              using var pReceiver = new DdsParticipant();
              pReceiver.EnableSenderTracking(new SenderIdentityConfig { AppInstanceId = 99 });
-             using var reader = new DdsReader<SenderTrackingTestMsg, SenderTrackingTestMsg>(pReceiver, TEST_TOPIC);
+             using var reader = new DdsReader<SenderTrackingTestMsg>(pReceiver, TEST_TOPIC);
              reader.EnableSenderTracking(pReceiver.SenderRegistry!);
              
              Thread.Sleep(2000); // Discovery can take time

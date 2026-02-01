@@ -34,7 +34,7 @@ namespace CycloneDDS.Runtime.Tests
                  if (e.CurrentCount > 0) tcs.TrySetResult(true);
              };
              
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName);
              
              var task = await Task.WhenAny(tcs.Task, Task.Delay(2000));
              Assert.Equal(tcs.Task, task);
@@ -53,7 +53,7 @@ namespace CycloneDDS.Runtime.Tests
              await Task.Delay(100);
              Assert.False(waitTask.IsCompleted);
              
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName);
              
              var completed = await Task.WhenAny(waitTask, Task.Delay(2000));
              Assert.Same(waitTask, completed);
@@ -64,7 +64,7 @@ namespace CycloneDDS.Runtime.Tests
         public void PublicationMatched_EventFires_OnReaderDispose()
         {
              using var writer = new DdsWriter<TestMessage>(_participant, _topicName);
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName);
              
              // Wait for discovery
              Assert.True(writer.WaitForReaderAsync(TimeSpan.FromSeconds(2)).Result);
@@ -84,7 +84,7 @@ namespace CycloneDDS.Runtime.Tests
         [Fact]
         public void SubscriptionMatched_CurrentCount_Accurate()
         {
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName);
              Assert.Equal(0u, reader.CurrentStatus.CurrentCount);
              
              // Writer 1

@@ -26,7 +26,7 @@ namespace CycloneDDS.Runtime.Tests
         public void LookupInstance_Writer_ReturnsHandle()
         {
             using var writer = new DdsWriter<KeyedTestMessage>(_participant, _topicName);
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(_participant, _topicName);
+            using var reader = new DdsReader<KeyedTestMessage>(_participant, _topicName);
             
             var sample = new KeyedTestMessage { Id = 1, Value = 100, Message = "Msg1" };
             writer.Write(sample);
@@ -39,7 +39,7 @@ namespace CycloneDDS.Runtime.Tests
         public void LookupInstance_Reader_ReturnsHandle()
         {
             using var writer = new DdsWriter<KeyedTestMessage>(_participant, _topicName);
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(_participant, _topicName);
+            using var reader = new DdsReader<KeyedTestMessage>(_participant, _topicName);
             
             var sample = new KeyedTestMessage { Id = 2, Value = 200, Message = "Msg2" };
             writer.Write(sample);
@@ -68,7 +68,7 @@ namespace CycloneDDS.Runtime.Tests
         public void TakeInstance_RetrievesSpecificInstance()
         {
             using var writer = new DdsWriter<KeyedTestMessage>(_participant, _topicName);
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(_participant, _topicName);
+            using var reader = new DdsReader<KeyedTestMessage>(_participant, _topicName);
             
             var s1 = new KeyedTestMessage { Id = 10, Value = 10, Message = "S1" };
             var s2 = new KeyedTestMessage { Id = 20, Value = 20, Message = "S2" };
@@ -90,7 +90,7 @@ namespace CycloneDDS.Runtime.Tests
         public void ReadInstance_DoesNotRemoveData()
         {
             using var writer = new DdsWriter<KeyedTestMessage>(_participant, _topicName);
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(_participant, _topicName);
+            using var reader = new DdsReader<KeyedTestMessage>(_participant, _topicName);
             
             var s1 = new KeyedTestMessage { Id = 11, Value = 11, Message = "S1" };
             writer.Write(s1);
@@ -114,7 +114,7 @@ namespace CycloneDDS.Runtime.Tests
         public void TakeInstance_RemovesData()
         {
             using var writer = new DdsWriter<KeyedTestMessage>(_participant, _topicName);
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(_participant, _topicName);
+            using var reader = new DdsReader<KeyedTestMessage>(_participant, _topicName);
             
             var s1 = new KeyedTestMessage { Id = 12, Value = 12, Message = "S1" };
             writer.Write(s1);
@@ -137,7 +137,7 @@ namespace CycloneDDS.Runtime.Tests
         public void ReadInstance_FiltersCorrectly()
         {
             using var writer = new DdsWriter<KeyedTestMessage>(_participant, _topicName);
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(_participant, _topicName);
+            using var reader = new DdsReader<KeyedTestMessage>(_participant, _topicName);
             
             var s1 = new KeyedTestMessage { Id = 100, Value = 1, Message = "S1" };
             var s2 = new KeyedTestMessage { Id = 200, Value = 2, Message = "S2" };
@@ -161,7 +161,7 @@ namespace CycloneDDS.Runtime.Tests
         public void LookupInstance_UsesOnlyKeyFields()
         {
             using var writer = new DdsWriter<KeyedTestMessage>(_participant, _topicName);
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(_participant, _topicName);
+            using var reader = new DdsReader<KeyedTestMessage>(_participant, _topicName);
             
             var s1 = new KeyedTestMessage { Id = 10, Value = 10, Message = "S1" };
             writer.Write(s1);
@@ -179,7 +179,7 @@ namespace CycloneDDS.Runtime.Tests
         public void LookupInstance_DisposedInstance_ReturnsHandle()
         {
              using var writer = new DdsWriter<KeyedTestMessage>(_participant, _topicName);
-             using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(_participant, _topicName);
+             using var reader = new DdsReader<KeyedTestMessage>(_participant, _topicName);
              
              var s1 = new KeyedTestMessage { Id = 400, Value = 10, Message = "Disposed" };
              writer.Write(s1);

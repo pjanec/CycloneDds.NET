@@ -146,6 +146,7 @@ namespace CycloneDDS.CodeGen
 
         private void EmitModuleHierarchy(StringBuilder sb, string modulePath, IEnumerable<IdlTypeDefinition> types, GlobalTypeRegistry registry)
         {
+            if (modulePath == "<global namespace>") modulePath = "";
             var modules = modulePath.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
             
             // Open modules
@@ -285,6 +286,11 @@ namespace CycloneDDS.CodeGen
             string indent = GetIndent(indentLevel);
             string fieldIndent = GetIndent(indentLevel + 1);
 
+            if (type.IsTopic)
+            {
+                sb.AppendLine($"{indent}@topic");
+            }
+
             switch (type.Extensibility)
             {
                 case DdsExtensibilityKind.Final:
@@ -392,7 +398,7 @@ namespace CycloneDDS.CodeGen
                         sb.AppendLine($"{fieldIndent}case {label}:");
                      }
                 }
-                else if (field.HasAttribute("DdsDefault"))
+                else if (field.HasAttribute("DdsDefault") || field.HasAttribute("DdsDefaultCase"))
                 {
                      sb.AppendLine($"{fieldIndent}default:");
                 }

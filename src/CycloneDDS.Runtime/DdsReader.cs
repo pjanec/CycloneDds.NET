@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Reflection;
-using System.Reflection.Emit;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,22 +14,14 @@ using CycloneDDS.Schema;
 
 namespace CycloneDDS.Runtime
 {
-    public delegate void DeserializeDelegate<TView>(ref CdrReader reader, out TView view);
-
-    public sealed class DdsReader<T, TView> : IDisposable 
-        where TView : struct
+    public sealed class DdsReader<T> : IDisposable 
+        where T : struct
     {
-        // Add field for tracking
         private SenderRegistry? _registry;
-
-        private static readonly byte _encodingKindLE;
-        private static readonly byte _encodingKindBE;
-
         private DdsEntityHandle? _readerHandle;
         private DdsApi.DdsEntity _topicHandle;
         private DdsParticipant? _participant;
 
-        // Async support
         private IntPtr _listener = IntPtr.Zero;
         private GCHandle _paramHandle;
         private volatile TaskCompletionSource<bool>? _waitTaskSource;
@@ -38,10 +29,8 @@ namespace CycloneDDS.Runtime
         private readonly DdsApi.DdsOnSubscriptionMatched _subscriptionMatchedHandler;
         private readonly object _listenerLock = new object();
         
-        // Filtering
-        private volatile Predicate<TView>? _filter;
+        private volatile Predicate<T>? _filter;
         
-        // Events
         private EventHandler<DdsApi.DdsSubscriptionMatchedStatus>? _subscriptionMatched;
         public event EventHandler<DdsApi.DdsSubscriptionMatchedStatus>? SubscriptionMatched
         {
@@ -64,54 +53,33 @@ namespace CycloneDDS.Runtime
         {
             get
             {
-                if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T, TView>));
+                if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
                 DdsApi.dds_get_subscription_matched_status(_readerHandle.NativeHandle.Handle, out var status);
                 return status;
             }
         }
 
-        private delegate void SerializeDelegate(in T sample, ref CdrWriter writer);
-        private delegate int GetSerializedSizeDelegate(in T sample, int currentAlignment, CdrEncoding encoding);
+        private static readonly NativeUnmarshalDelegate<T>? _unmarshaller;
+        private delegate int GetNativeSizeDelegate(in T sample);
+        private delegate void MarshalToNativeDelegate(in T sample, IntPtr target, ref NativeArena arena);
 
-        private static readonly DeserializeDelegate<TView>? _deserializer;
-        private static readonly SerializeDelegate? _serializer;
-        private static readonly GetSerializedSizeDelegate? _sizer;
-        
+        private static readonly GetNativeSizeDelegate? _nativeSizer;
+        private static readonly MarshalToNativeDelegate? _nativeMarshaller;
+        private static readonly int _nativeHeadSize;
+
         static DdsReader()
         {
-            var attr = typeof(T).GetCustomAttribute<DdsExtensibilityAttribute>();
-            var kind = attr?.Kind ?? DdsExtensibilityKind.Appendable;
-
-            switch (kind)
-            {
-                case DdsExtensibilityKind.Final:
-                    _encodingKindLE = 0x07; // CDR2_LE
-                    _encodingKindBE = 0x06; // CDR2_BE
-                    break;
-                case DdsExtensibilityKind.Mutable:
-                    _encodingKindLE = 0x0B; // PL_CDR2_LE
-                    _encodingKindBE = 0x0A; // PL_CDR2_BE
-                    break;
-                case DdsExtensibilityKind.Appendable:
-                default:
-                    _encodingKindLE = 0x09; // D_CDR2_LE
-                    _encodingKindBE = 0x08; // D_CDR2_BE
-                    break;
-            }
-
             try { 
-                _deserializer = CreateDeserializerDelegate(); 
-                _sizer = CreateSizerDelegate();
-                _serializer = CreateSerializerDelegate(); 
+                _unmarshaller = CreateUnmarshallerDelegate();
+
+                var nativeSizeMethod = typeof(T).GetMethod("GetNativeSize", new[] { typeof(T).MakeByRefType() });
+                if (nativeSizeMethod != null) _nativeSizer = (GetNativeSizeDelegate)nativeSizeMethod.CreateDelegate(typeof(GetNativeSizeDelegate));
+
+                var toNativeMethod = typeof(T).GetMethod("MarshalToNative", new[] { typeof(T).MakeByRefType(), typeof(IntPtr), typeof(NativeArena).MakeByRefType() });
+                if (toNativeMethod != null) _nativeMarshaller = (MarshalToNativeDelegate)toNativeMethod.CreateDelegate(typeof(MarshalToNativeDelegate));
                 
-                // Verify Struct Size
-                uint nativeSize = DdsApi.dds_sample_info_size();
-                int managedSize = Marshal.SizeOf<DdsApi.DdsSampleInfo>();
-                if (nativeSize != managedSize)
-                {
-                    Console.WriteLine($"[DdsReader] CRITICAL: DdsSampleInfo size mismatch. Native: {nativeSize}, Managed: {managedSize}");
-                    // throw new InvalidOperationException($"DdsSampleInfo size mismatch. Native: {nativeSize}, Managed: {managedSize}");
-                }
+                var headSizeMethod = typeof(T).GetMethod("GetNativeHeadSize", BindingFlags.Public | BindingFlags.Static);
+                if (headSizeMethod != null) _nativeHeadSize = (int)headSizeMethod.Invoke(null, null);
             }
             catch (Exception ex) { Console.WriteLine($"[DdsReader] Initialization failed: {ex}"); throw; }
         }
@@ -121,12 +89,11 @@ namespace CycloneDDS.Runtime
             _dataAvailableHandler = OnDataAvailable;
             _subscriptionMatchedHandler = OnSubscriptionMatched;
             
-            if (_deserializer == null) 
-                 throw new InvalidOperationException($"Type {typeof(T).Name} missing Deserialize method.");
+            if (_unmarshaller == null) 
+                 throw new InvalidOperationException($"Type {typeof(T).Name} missing MarshalFromNative method.");
 
             _participant = participant;
 
-            // QoS Setup
             IntPtr actualQos = qos;
             bool ownQos = false;
 
@@ -138,34 +105,9 @@ namespace CycloneDDS.Runtime
 
             try
             {
-                // 1. Get or register topic (using default/base QoS)
                 _topicHandle = participant.GetOrRegisterTopic<T>(topicName, actualQos);
 
-                DdsApi.DdsEntity reader = default;
-
-                // Determine required encoding based on Extensibility
-                var attr = typeof(T).GetCustomAttribute<DdsExtensibilityAttribute>();
-                var extensibility = attr?.Kind ?? DdsExtensibilityKind.Appendable;
-
-                short[] reps;
-                if (topicName == "__FcdcSenderIdentity")
-                {
-                    // Internal identity topic usually XCDR1 or defaults
-                    reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR1 };
-                    DdsApi.dds_qset_data_representation(actualQos, (uint)reps.Length, reps);
-                }
-                else if (extensibility == DdsExtensibilityKind.Appendable || extensibility == DdsExtensibilityKind.Mutable)
-                {
-                    // Appendable/Mutable MUST use XCDR2 to support DHEADER
-                    reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR2 };
-                    DdsApi.dds_qset_data_representation(actualQos, (uint)reps.Length, reps);
-                }
-                else
-                {
-                    // Final types: Prefer default
-                }
-
-                reader = DdsApi.dds_create_reader(
+                DdsApi.DdsEntity reader = DdsApi.dds_create_reader(
                     participant.NativeEntity,
                     _topicHandle, 
                     actualQos, 
@@ -185,60 +127,31 @@ namespace CycloneDDS.Runtime
             }
         }
 
-        public void SetFilter(Predicate<TView>? filter)
-        {
-            _filter = filter;
-        }
+        public void SetFilter(Predicate<T>? filter) => _filter = filter;
 
-        public ViewScope<TView> Take(int maxSamples = 32)
-        {
-            return ReadOrTake(maxSamples, 0xFFFFFFFF, true);
-        }
+        public ViewScope<T> Take(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, true);
+        public ViewScope<T> Read(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, false);
 
-        public ViewScope<TView> Read(int maxSamples = 32)
-        {
-            return ReadOrTake(maxSamples, 0xFFFFFFFF, false);
-        }
+        public ViewScope<T> Take(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
+             => ReadOrTake(maxSamples, (uint)sampleState | (uint)viewState | (uint)instanceState, true);
 
-        public ViewScope<TView> Take(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
-        {
-             return ReadOrTake(maxSamples, (uint)sampleState | (uint)viewState | (uint)instanceState, true);
-        }
+        public ViewScope<T> Read(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
+             => ReadOrTake(maxSamples, (uint)sampleState | (uint)viewState | (uint)instanceState, false);
 
-        public ViewScope<TView> Read(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
+        private ViewScope<T> ReadOrTake(int maxSamples, uint mask, bool isTake)
         {
-             return ReadOrTake(maxSamples, (uint)sampleState | (uint)viewState | (uint)instanceState, false);
-        }
-
-        private ViewScope<TView> ReadOrTake(int maxSamples, uint mask, bool isTake)
-        {
-             if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T, TView>));
+             if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
              
              var samples = ArrayPool<IntPtr>.Shared.Rent(maxSamples);
              var infos = ArrayPool<DdsApi.DdsSampleInfo>.Shared.Rent(maxSamples);
              
              Array.Clear(samples, 0, maxSamples);
-             Array.Clear(infos, 0, maxSamples); 
              
              int count;
              if (isTake)
-             {
-                 count = DdsApi.dds_takecdr(
-                     _readerHandle.NativeHandle.Handle,
-                     samples,
-                     (uint)maxSamples,
-                     infos,
-                     mask);
-             }
+                 count = DdsApi.dds_take_mask(_readerHandle.NativeHandle.Handle, samples, infos, (UIntPtr)maxSamples, (uint)maxSamples, mask);
              else
-             {
-                 count = DdsApi.dds_readcdr(
-                     _readerHandle.NativeHandle.Handle,
-                     samples,
-                     (uint)maxSamples,
-                     infos,
-                     mask);
-             }
+                 count = DdsApi.dds_read_mask(_readerHandle.NativeHandle.Handle, samples, infos, (UIntPtr)maxSamples, (uint)maxSamples, mask);
 
              if (count < 0)
              {
@@ -247,12 +160,12 @@ namespace CycloneDDS.Runtime
                  
                  if (count == (int)DdsApi.DdsReturnCode.NoData)
                  {
-                     return new ViewScope<TView>(_readerHandle.NativeHandle, null, null, 0, null, _filter, _registry);
+                     return new ViewScope<T>(_readerHandle.NativeHandle, null, null, 0, 0, null, _filter, _registry);
                  }
-                 throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_{(isTake ? "take" : "read")}cdr failed: {count}");
+                 throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_{(isTake ? "take" : "read")} failed: {count}");
              }
              
-             return new ViewScope<TView>(_readerHandle.NativeHandle, samples, infos, count, _deserializer, _filter, _registry);
+             return new ViewScope<T>(_readerHandle.NativeHandle, samples, infos, count, maxSamples, _unmarshaller!, _filter, _registry);
         }
 
         private bool HasData()
@@ -267,7 +180,7 @@ namespace CycloneDDS.Runtime
 
         public async Task<bool> WaitDataAsync(CancellationToken cancellationToken = default)
         {
-             if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T, TView>));
+             if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
              
              EnsureListenerAttached();
              
@@ -278,8 +191,6 @@ namespace CycloneDDS.Runtime
                  _waitTaskSource = tcs;
              }
              
-             // Check if data is already available (Race Condition fix)
-             // Note: This effectively 'peeks' at the data and may mark it as Read.
              if (HasData()) return true;
 
              using (cancellationToken.Register(() => tcs.TrySetCanceled()))
@@ -322,7 +233,7 @@ namespace CycloneDDS.Runtime
              try
              {
                  var handle = GCHandle.FromIntPtr(arg);
-                 if (handle.IsAllocated && handle.Target is DdsReader<T, TView> self)
+                 if (handle.IsAllocated && handle.Target is DdsReader<T> self)
                  {
                      self._subscriptionMatched?.Invoke(self, status);
                  }
@@ -336,7 +247,7 @@ namespace CycloneDDS.Runtime
              try
              {
                  var handle = GCHandle.FromIntPtr(arg);
-                 if (handle.IsAllocated && handle.Target is DdsReader<T, TView> self)
+                 if (handle.IsAllocated && handle.Target is DdsReader<T> self)
                  {
                      self._waitTaskSource?.TrySetResult(true);
                  }
@@ -344,23 +255,23 @@ namespace CycloneDDS.Runtime
              catch { }
         }
 
-        private TView[] TakeBatch()
+        private T[] TakeBatch()
         {
             using var scope = Take();
-            if (scope.Count == 0) return Array.Empty<TView>();
-            var batch = new TView[scope.Count];
-            for (int i = 0; i < scope.Count; i++)
+            if (scope.Count == 0) return Array.Empty<T>();
+            var batch = new T[scope.Count];
+            int i = 0;
+            foreach (var item in scope)
             {
-                batch[i] = scope[i];
+                batch[i++] = item;
             }
             return batch;
         }
 
-        public async IAsyncEnumerable<TView> StreamAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<T> StreamAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                // Check for data before waiting to handle pre-existing samples
                 var batch = TakeBatch();
                 if (batch.Length > 0)
                 {
@@ -370,7 +281,6 @@ namespace CycloneDDS.Runtime
 
                 await WaitDataAsync(cancellationToken);
                 
-                // After wait, try take again
                 batch = TakeBatch();
                  foreach (var item in batch) yield return item;
             }
@@ -380,11 +290,6 @@ namespace CycloneDDS.Runtime
         {
             if (_listener != IntPtr.Zero)
             {
-                // Unset listener from reader first? 
-                if (_readerHandle != null)
-                {
-                     // dds_reader_set_listener(_readerHandle.NativeHandle, IntPtr.Zero); // Optional based on impl
-                }
                 DdsApi.dds_delete_listener(_listener);
                 _listener = IntPtr.Zero;
             }
@@ -398,120 +303,72 @@ namespace CycloneDDS.Runtime
         
         public DdsInstanceHandle LookupInstance(in T keySample)
         {
-            if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T, TView>));
+            if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
 
-            // Use XCDR2 for lookup serdata creation
-            CdrEncoding encoding = CdrEncoding.Xcdr2;
-
-            // Use _sizer to calculate size. Start at offset 4 for header
-            int size = _sizer!(keySample, 4, encoding);
-            byte[] buffer = Arena.Rent(size + 4);
-
-            try
+            if (_nativeMarshaller != null && _nativeSizer != null)
             {
-                var span = buffer.AsSpan(0, size + 4);
-                var cdr = new CdrWriter(span, encoding);
-                
-                // Write Header
-                if (BitConverter.IsLittleEndian) { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindLE); }
-                else { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindBE); }
-                cdr.WriteByte(0x00); cdr.WriteByte(0x00);
-
-                _serializer!(keySample, ref cdr);
-                
-                unsafe
+                int size = _nativeSizer(in keySample);
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(size);
+                try
                 {
-                    fixed (byte* p = buffer)
+                    unsafe
                     {
-                        // 2. Create Serdata (Kind=1 for SDK_KEY) 
-                        IntPtr serdata = DdsApi.dds_create_serdata_from_cdr(
-                            _topicHandle, (IntPtr)p, (uint)(size + 4), 1);
-                            
-                        if (serdata == IntPtr.Zero) return DdsInstanceHandle.Nil;
-
-                        try
+                        fixed (byte* ptr = buffer)
                         {
-                            long handle = DdsApi.dds_lookup_instance_serdata(_readerHandle.NativeHandle.Handle, serdata);
+                            NativeArena arena = new NativeArena(new Span<byte>(buffer, 0, size), (IntPtr)ptr, _nativeHeadSize);
+                            _nativeMarshaller(in keySample, (IntPtr)ptr, ref arena);
+                            long handle = DdsApi.dds_lookup_instance(_readerHandle.NativeHandle.Handle, (IntPtr)ptr);
                             return new DdsInstanceHandle(handle);
-                        }
-                        finally
-                        {
-                            DdsApi.ddsi_serdata_unref(serdata);
                         }
                     }
                 }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
-            finally
-            {
-                Arena.Return(buffer);
-            }
+
+            throw new NotSupportedException("Native marshaling delegates missing for this type.");
         }
 
-        public ViewScope<TView> TakeInstance(DdsInstanceHandle handle, int maxSamples = 1)
+        public ViewScope<T> TakeInstance(DdsInstanceHandle handle, int maxSamples = 1)
         {
-            return ReadOrTakeInstance(handle, maxSamples, 0xFFFFFFFF, true);
-        }
-
-        public ViewScope<TView> ReadInstance(DdsInstanceHandle handle, int maxSamples = 1)
-        {
-            return ReadOrTakeInstance(handle, maxSamples, 0xFFFFFFFF, false);
-        }
-
-        private ViewScope<TView> ReadOrTakeInstance(DdsInstanceHandle handle, int maxSamples, uint mask, bool isTake)
-        {
-             if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T, TView>));
-             
+             if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
              var samples = ArrayPool<IntPtr>.Shared.Rent(maxSamples);
              var infos = ArrayPool<DdsApi.DdsSampleInfo>.Shared.Rent(maxSamples);
-             
              Array.Clear(samples, 0, maxSamples);
-             Array.Clear(infos, 0, maxSamples); 
              
-             int count;
-             if (isTake)
-             {
-                 count = DdsApi.dds_takecdr_instance(
-                     _readerHandle.NativeHandle.Handle,
-                     samples,
-                     (uint)maxSamples,
-                     infos,
-                     handle.Value,
-                     mask);
-             }
-             else
-             {
-                 count = DdsApi.dds_readcdr_instance(
-                     _readerHandle.NativeHandle.Handle,
-                     samples,
-                     (uint)maxSamples,
-                     infos,
-                     handle.Value,
-                     mask);
-             }
-
+             int count = DdsApi.dds_take_instance(_readerHandle.NativeHandle.Handle, samples, infos, (UIntPtr)maxSamples, (uint)maxSamples, handle.Value);
+             
              if (count < 0)
              {
                  ArrayPool<IntPtr>.Shared.Return(samples);
                  ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(infos);
-                 
-                 if (count == (int)DdsApi.DdsReturnCode.BadParameter)
-                     throw new ArgumentException("Invalid instance handle");
-                 
-                 // Handle NoData or other errors by returning empty view
-                 // If it's pure error we might want to throw, but standard Read returns empty on NoData
-                 if (count == (int)DdsApi.DdsReturnCode.NoData)
-                     return new ViewScope<TView>(_readerHandle.NativeHandle, null, null, 0, null, _filter, _registry);
-
-                 throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_{(isTake ? "take" : "read")}cdr_instance failed: {count}");
+                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new ViewScope<T>(_readerHandle.NativeHandle, null, null, 0, 0, null, _filter, _registry);
+                 throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_take_instance failed: {count}");
              }
-             
-             return new ViewScope<TView>(_readerHandle.NativeHandle, samples, infos, count, _deserializer, _filter, _registry);
+             return new ViewScope<T>(_readerHandle.NativeHandle, samples, infos, count, maxSamples, _unmarshaller!, _filter, _registry);
         }
 
-        /// <summary>
-        /// Enable sender tracking for this reader.
-        /// After this, ViewScope.GetSender(index) will return sender information.
-        /// </summary>
+        public ViewScope<T> ReadInstance(DdsInstanceHandle handle, int maxSamples = 1)
+        {
+             if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
+             var samples = ArrayPool<IntPtr>.Shared.Rent(maxSamples);
+             var infos = ArrayPool<DdsApi.DdsSampleInfo>.Shared.Rent(maxSamples);
+             Array.Clear(samples, 0, maxSamples);
+             
+             int count = DdsApi.dds_read_instance(_readerHandle.NativeHandle.Handle, samples, infos, (UIntPtr)maxSamples, (uint)maxSamples, handle.Value);
+             
+             if (count < 0)
+             {
+                 ArrayPool<IntPtr>.Shared.Return(samples);
+                 ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(infos);
+                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new ViewScope<T>(_readerHandle.NativeHandle, null, null, 0, 0, null, _filter, _registry);
+                 throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_read_instance failed: {count}");
+             }
+             return new ViewScope<T>(_readerHandle.NativeHandle, samples, infos, count, maxSamples, _unmarshaller!, _filter, _registry);
+        }
+
         public void EnableSenderTracking(SenderRegistry registry)
         {
             _registry = registry;
@@ -522,29 +379,19 @@ namespace CycloneDDS.Runtime
         {
             if (e.CurrentCountChange > 0 && _registry != null)
             {
-                // New writer(s) connected - register them
-                try
-                {
-                    var handles = GetMatchedPublicationHandles();
-                    foreach (var handle in handles)
-                    {
-                        var writerGuid = GetMatchedPublicationGuid(handle);
-                        _registry.RegisterRemoteWriter(handle, writerGuid);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[DdsReader] Failed to register matched publications: {ex}");
-                }
+                 var handles = GetMatchedPublicationHandles();
+                 foreach (var handle in handles)
+                 {
+                     var writerGuid = GetMatchedPublicationGuid(handle);
+                     _registry.RegisterRemoteWriter(handle, writerGuid);
+                 }
             }
         }
 
         private long[] GetMatchedPublicationHandles()
         {
             if (_readerHandle == null) return Array.Empty<long>();
-
-            // Query Cyclone DDS for matched publication count
-            var handles = new long[64]; // Reasonable max
+            var handles = new long[64];
             int count = DdsApi.dds_get_matched_publications(
                 _readerHandle.NativeHandle.Handle,
                 handles,
@@ -568,7 +415,6 @@ namespace CycloneDDS.Runtime
                 Array.Copy(handles, result, count);
                 return result;
             }
-
             return Array.Empty<long>();
         }
 
@@ -592,110 +438,42 @@ namespace CycloneDDS.Runtime
                     DdsApi.dds_builtintopic_free_endpoint(ptr);
                 }
             }
-            else
-            {
-                 // Console.WriteLine($"[DdsReader] dds_get_matched_publication_data returned NULL.");
-            }
-            
             return default;
         }
 
-
-        private static GetSerializedSizeDelegate CreateSizerDelegate()
+        private static NativeUnmarshalDelegate<T> CreateUnmarshallerDelegate()
         {
-            var method = typeof(T).GetMethod("GetSerializedSize", new[] { typeof(int), typeof(CdrEncoding) });
-            if (method == null) throw new MissingMethodException(typeof(T).Name, "GetSerializedSize(int, CdrEncoding)");
-
-            var dm = new DynamicMethod(
-                "GetSerializedSizeThunk",
-                typeof(int),
-                new[] { typeof(T).MakeByRefType(), typeof(int), typeof(CdrEncoding) },
-                typeof(DdsReader<T, TView>).Module);
-
-            var il = dm.GetILGenerator();
-            il.Emit(OpCodes.Ldarg_0); // sample (ref)
-            if (!typeof(T).IsValueType)
-            {
-                 il.Emit(OpCodes.Ldind_Ref); 
-            }
-            
-            il.Emit(OpCodes.Ldarg_1); // offset
-            il.Emit(OpCodes.Ldarg_2); // encoding
-            il.Emit(OpCodes.Call, method); 
-            il.Emit(OpCodes.Ret);
-
-            return (GetSerializedSizeDelegate)dm.CreateDelegate(typeof(GetSerializedSizeDelegate));
-        }
-
-         private static SerializeDelegate CreateSerializerDelegate()
-        {
-            var method = typeof(T).GetMethod("Serialize", new[] { typeof(CdrWriter).MakeByRefType() });
-            if (method == null) throw new MissingMethodException(typeof(T).Name, "Serialize");
-
-            var dm = new DynamicMethod(
-                "SerializeThunk",
-                typeof(void),
-                new[] { typeof(T).MakeByRefType(), typeof(CdrWriter).MakeByRefType() },
-                typeof(DdsReader<T, TView>).Module);
-
-            var il = dm.GetILGenerator();
-            il.Emit(OpCodes.Ldarg_0); // sample (ref)
-            if (!typeof(T).IsValueType)
-            {
-                il.Emit(OpCodes.Ldind_Ref);
-            }
-            il.Emit(OpCodes.Ldarg_1); // writer (ref)
-            il.Emit(OpCodes.Call, method);
-            il.Emit(OpCodes.Ret);
-
-            return (SerializeDelegate)dm.CreateDelegate(typeof(SerializeDelegate));
-        }
-
-        private static DeserializeDelegate<TView> CreateDeserializerDelegate()
-        {
-             var method = typeof(T).GetMethod("Deserialize", new[] { typeof(CdrReader).MakeByRefType() });
-             if (method == null) throw new MissingMethodException(typeof(T).Name, "Deserialize");
-             
-             var dm = new DynamicMethod("DeserializeThunk", typeof(void), new[] { typeof(CdrReader).MakeByRefType(), typeof(TView).MakeByRefType() }, typeof(DdsReader<T,TView>).Module);
-             var il = dm.GetILGenerator();
-             // IL Stack: [out view], [ref reader] -> call -> [out view], [result] -> stobj -> []
-             il.Emit(OpCodes.Ldarg_1); // out view
-             il.Emit(OpCodes.Ldarg_0); // ref reader
-             il.Emit(OpCodes.Call, method); // returns TView (stack)
-             il.Emit(OpCodes.Stobj, typeof(TView));
-             il.Emit(OpCodes.Ret);
-             
-             return (DeserializeDelegate<TView>)dm.CreateDelegate(typeof(DeserializeDelegate<TView>));
+             var method = typeof(T).GetMethod("MarshalFromNative", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[] { typeof(IntPtr), typeof(T).MakeByRefType() }, null);
+             if (method == null) return null!;
+             return (NativeUnmarshalDelegate<T>)method.CreateDelegate(typeof(NativeUnmarshalDelegate<T>));
         }
     }
 
-    public ref struct ViewScope<TView> where TView : struct
+    public ref struct ViewScope<T> where T : struct
     {
         private DdsApi.DdsEntity _reader;
         private IntPtr[]? _samples;
         private DdsApi.DdsSampleInfo[]? _infos;
         private int _count;
-        private DeserializeDelegate<TView>? _deserializer;
-        private Predicate<TView>? _filter;
+        private int _loanSize;
+        private NativeUnmarshalDelegate<T>? _unmarshaller;
+        private Predicate<T>? _filter;
         private SenderRegistry? _registry;
         
         public ReadOnlySpan<DdsApi.DdsSampleInfo> Infos => _infos != null ? _infos.AsSpan(0, _count) : ReadOnlySpan<DdsApi.DdsSampleInfo>.Empty;
 
-        internal ViewScope(DdsApi.DdsEntity reader, IntPtr[]? samples, DdsApi.DdsSampleInfo[]? infos, int count, DeserializeDelegate<TView>? deserializer, Predicate<TView>? filter, SenderRegistry? registry)
+        internal ViewScope(DdsApi.DdsEntity reader, IntPtr[]? samples, DdsApi.DdsSampleInfo[]? infos, int count, int loanSize, NativeUnmarshalDelegate<T>? unmarshaller, Predicate<T>? filter, SenderRegistry? registry)
         {
             _reader = reader;
             _samples = samples;
             _infos = infos;
             _count = count;
-            _deserializer = deserializer;
+            _loanSize = loanSize;
+            _unmarshaller = unmarshaller;
             _filter = filter;
             _registry = registry;
         }
 
-        /// <summary>
-        /// Get sender identity for the sample at given index.
-        /// Returns null if tracking disabled or identity unknown.
-        /// </summary>
         public SenderIdentity? GetSender(int index)
         {
             if (_registry == null) return null;
@@ -710,50 +488,18 @@ namespace CycloneDDS.Runtime
             return null;
         }
 
-        public byte[]? GetRawCdrBytes(int index)
-        {
-            if (index < 0 || index >= _count) throw new IndexOutOfRangeException();
-            if (_infos == null || _samples == null) throw new ObjectDisposedException("ViewScope");
-            
-            // If invalid data, return null
-            if (_infos[index].ValidData == 0) return null;
-            
-            IntPtr serdata = _samples[index];
-            if (serdata == IntPtr.Zero) return null;
-
-            uint size = DdsApi.ddsi_serdata_size(serdata);
-            if (size == 0) return Array.Empty<byte>();
-
-            // FIX: Allocate extra padding to prevent AccessViolation if native writes alignment bytes
-            byte[] buffer = new byte[size + 4096]; 
-            
-            unsafe
-            {
-                fixed (byte* p = buffer)
-                {
-                    // This copies data into 'buffer'
-                    DdsApi.ddsi_serdata_to_ser(serdata, UIntPtr.Zero, (UIntPtr)size, (IntPtr)p);
-                }
-            }
-
-            // Return only the valid data part
-            byte[] result = new byte[size];
-            Array.Copy(buffer, result, size);
-            return result;
-        }
-
         public int Count => _count;
 
         public Enumerator GetEnumerator() => new Enumerator(this, _filter);
 
         public ref struct Enumerator
         {
-             private ViewScope<TView> _scope;
-             private Predicate<TView>? _filter;
+             private ViewScope<T> _scope;
+             private Predicate<T>? _filter;
              private int _index;
-             private TView _current;
+             private T _current;
 
-             internal Enumerator(ViewScope<TView> scope, Predicate<TView>? filter)
+             internal Enumerator(ViewScope<T> scope, Predicate<T>? filter)
              {
                  _scope = scope;
                  _filter = filter;
@@ -765,122 +511,62 @@ namespace CycloneDDS.Runtime
              {
                  while (++_index < _scope.Count)
                  {
-                     TView item = _scope[_index];
-                     if (_filter == null || _filter(item))
+                     if (_scope.HasData(_index, out T item))
                      {
-                         _current = item;
-                         return true;
+                         if (_filter == null || _filter(item))
+                         {
+                             _current = item;
+                             return true;
+                         }
                      }
                  }
                  return false;
              }
              
-             public TView Current => _current;
+             public T Current => _current;
+        }
+        
+        internal bool HasData(int index, out T data)
+        {
+             data = default;
+             if (_infos == null || _samples == null) return false; 
+             
+             if (_infos[index].ValidData == 0) return true; // Return default
+             
+             _unmarshaller!(_samples[index], out data);
+             return true; 
         }
 
-        public TView this[int index]
+        public T this[int index]
         {
             get
             {
                 if (index < 0 || index >= _count) throw new IndexOutOfRangeException();
                 if (_infos == null || _samples == null) throw new ObjectDisposedException("ViewScope");
                 
-                // If invalid data, return default
                 if (_infos[index].ValidData == 0) return default;
                 
-                IntPtr serdata = _samples[index];
-                if (serdata == IntPtr.Zero) return default;
-
-                // Lazy Deserialization from Serdata
-                uint size = DdsApi.ddsi_serdata_size(serdata);
-                
-                if (size == 0) return default;
-                
-                byte[] buffer = Arena.Rent((int)size);
-                
-                try
-                {
-                    unsafe
-                    {
-                        fixed (byte* p = buffer)
-                        {
-                            DdsApi.ddsi_serdata_to_ser(serdata, UIntPtr.Zero, (UIntPtr)size, (IntPtr)p);
-                            
-                            // Deserialize
-                            var span = new ReadOnlySpan<byte>(p, (int)size);
-                            
-                            // Check XCDR2 (Byte 1 >= 6). 
-                            // Encapsulation Header: Byte 0, Byte 1 (ID), Byte 2, Byte 3 (Options)
-                            // ID 0x0006 - 0x000D are XCDR2. 
-                            // Byte 1 stores the specific ID value in standard encodings.
-                            CdrEncoding encoding = CdrEncoding.Xcdr1;
-                            if (size >= 2)
-                            {
-                                if (p[1] >= 6) encoding = CdrEncoding.Xcdr2;
-                                // System.Console.WriteLine($"[DdsReader] Byte1={p[1]} Encoding={encoding}");
-                            }
-
-                            // FIX: XCDR2 = relative to Stream (0). XCDR1 = relative to Body (4).
-                            int origin = encoding == CdrEncoding.Xcdr2 ? 0 : 4;
-                            var reader = new CdrReader(span, encoding, origin: origin);
-                            
-                            // Cyclone DDS provides the 4-byte encapsulation header in the serdata.
-                            // We must skip it so that CdrReader is aligned to the start of the payload
-                            // and reads the correct data.
-                            if (reader.Remaining >= 4)
-                            {
-                                // FIX: For XCDR1, alignment is relative to Stream Start (0). 
-                                // Skipping 4 bytes here keeps Position=4. 
-                                // Since Origin=0, Position=4 is 4-byte aligned (relative to stream).
-                                // If next item is double (align 8), Position 4 is NOT 8-byte aligned. Padding will be added to 8.
-                                // This is CORRECT for XCDR1.
-                                // CdrReader should consume these 4 bytes.
-                                reader.ReadInt32(); // Advance 4 bytes
-                            }
-                            
-                            try 
-                            {
-                                System.Console.WriteLine("[DdsReader] Invoke Deserializer...");
-                                _deserializer!(ref reader, out TView view);
-                                System.Console.WriteLine("[DdsReader] Deserialization Done.");
-                                return view;
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"[DdsReader] Deserialization Exception: {ex}");
-                                throw;
-                            }
-                        }
-                    }
-                }
-                finally
-                {
-                    Arena.Return(buffer);
-                }
+                _unmarshaller!(_samples[index], out T data);
+                return data;
             }
         }
         
         public void Dispose()
         {
-            // Release references to serdata
-            if (_count > 0 && _samples != null)
+            if (_loanSize > 0 && _samples != null)
             {
-                for (int i = 0; i < _count; i++)
-                {
-                    if (_samples[i] != IntPtr.Zero)
-                    {
-                        DdsApi.ddsi_serdata_unref(_samples[i]);
-                    }
-                }
+                // Return LOAN to DDS
+                DdsApi.dds_return_loan(_reader.Handle, _samples, _loanSize);
             }
             
             if (_samples != null) ArrayPool<IntPtr>.Shared.Return(_samples);
             if (_infos != null) ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(_infos);
             
             _count = 0;
+            _loanSize = 0;
             _samples = null;
             _infos = null;
-            _deserializer = null;
+            _unmarshaller = null;
         }
     }
 }

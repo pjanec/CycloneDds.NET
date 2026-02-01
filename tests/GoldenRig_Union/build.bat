@@ -1,3 +1,0 @@
-call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64
-cd /d "D:\Work\FastCycloneDdsCsharpBindings\tests\GoldenRig_Union"
-cl.exe /nologo /MD /I "D:\Work\FastCycloneDdsCsharpBindings\cyclonedds\src\core\cdr\include" /I "D:\Work\FastCycloneDdsCsharpBindings\cyclonedds\src\core\ddsc\include" /I "D:\Work\FastCycloneDdsCsharpBindings\cyclonedds\src\ddsrt\include" /I "D:\Work\FastCycloneDdsCsharpBindings\tests\GoldenRig\include" /I . test_union_basic.c UnionTest.c "D:\Work\FastCycloneDdsCsharpBindings\cyclone-bin\Release\ddsc.lib" /link /out:test_union_basic.exe

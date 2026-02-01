@@ -1,0 +1,13 @@
+module Probe {
+    struct SequenceProbe {
+        long P1;                  
+        sequence<long> Seq;       
+        long P2;                  
+    };
+    
+    struct StringProbe {
+        long P1;
+        string<32> Str;
+        long P2;
+    };
+};

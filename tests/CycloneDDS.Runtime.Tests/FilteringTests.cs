@@ -30,7 +30,7 @@ namespace CycloneDDS.Runtime.Tests
              var qos = DdsApi.dds_create_qos();
              DdsApi.dds_qset_history(qos, DdsApi.DDS_HISTORY_KEEP_ALL, 0);
 
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName, qos);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName, qos);
              using var writer = new DdsWriter<TestMessage>(_participant, _topicName, qos);
              DdsApi.dds_delete_qos(qos);
 
@@ -66,7 +66,7 @@ namespace CycloneDDS.Runtime.Tests
              var qos = DdsApi.dds_create_qos();
              DdsApi.dds_qset_history(qos, DdsApi.DDS_HISTORY_KEEP_ALL, 0);
 
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName, qos);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName, qos);
              using var writer = new DdsWriter<TestMessage>(_participant, _topicName, qos);
              DdsApi.dds_delete_qos(qos);
 
@@ -111,7 +111,7 @@ namespace CycloneDDS.Runtime.Tests
              var qos = DdsApi.dds_create_qos();
              DdsApi.dds_qset_history(qos, DdsApi.DDS_HISTORY_KEEP_ALL, 0);
 
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName, qos);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName, qos);
              using var writer = new DdsWriter<TestMessage>(_participant, _topicName, qos);
              DdsApi.dds_delete_qos(qos);
 

@@ -17,7 +17,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"SingleKeyTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<SingleKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<SingleKeyMessage, SingleKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<SingleKeyMessage>(participant, topicName);
             
             var sample = new SingleKeyMessage
             {
@@ -48,7 +48,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"SingleKeyTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<SingleKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<SingleKeyMessage, SingleKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<SingleKeyMessage>(participant, topicName);
             
             // Act - Write 3 different instances (different DeviceIds)
             writer.Write(new SingleKeyMessage { DeviceId = 1, Value = 100 });
@@ -81,7 +81,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"SingleKeyTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<SingleKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<SingleKeyMessage, SingleKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<SingleKeyMessage>(participant, topicName);
             
             // Wait for discovery
             for (int i = 0; i < 20; i++)
@@ -113,7 +113,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"CompositeTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<CompositeKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<CompositeKeyMessage, CompositeKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<CompositeKeyMessage>(participant, topicName);
             
             var sample = new CompositeKeyMessage
             {
@@ -141,7 +141,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"CompositeTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<CompositeKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<CompositeKeyMessage, CompositeKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<CompositeKeyMessage>(participant, topicName);
             
             // Write 4 samples - 4 distinct instances because composite key (SensorId, LocationId)
             writer.Write(new CompositeKeyMessage { SensorId = 1, LocationId = 1, Temperature = 10.0 });
@@ -170,7 +170,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"CompositeTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<CompositeKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<CompositeKeyMessage, CompositeKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<CompositeKeyMessage>(participant, topicName);
             
             // Write same instance (1, 1) twice with different data
             writer.Write(new CompositeKeyMessage { SensorId = 1, LocationId = 1, Temperature = 10.0 });
@@ -193,7 +193,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"NestedTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<NestedKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<NestedKeyMessage, NestedKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<NestedKeyMessage>(participant, topicName);
             
             var sample = new NestedKeyMessage
             {
@@ -219,7 +219,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"NestedTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<NestedKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<NestedKeyMessage, NestedKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<NestedKeyMessage>(participant, topicName);
             
             // Instance 1
             writer.Write(new NestedKeyMessage { 
@@ -252,7 +252,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = $"NestedTopic_{Guid.NewGuid()}";
             
             using var writer = new DdsWriter<NestedKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<NestedKeyMessage, NestedKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<NestedKeyMessage>(participant, topicName);
             
             // Write, then Update
             writer.Write(new NestedKeyMessage { InnerId = 99, Data = "Initial" });
@@ -275,7 +275,7 @@ Assert.Equal("Updated", scope[0].Data);
             string topicName = $"StringKeyTopic_{Guid.NewGuid()}";
 
             using var writer = new DdsWriter<StringKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<StringKeyMessage, StringKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<StringKeyMessage>(participant, topicName);
 
             var sample = new StringKeyMessage
             {
@@ -301,7 +301,7 @@ Assert.Equal("Updated", scope[0].Data);
             string topicName = $"StringKeyTopic_{Guid.NewGuid()}";
 
             using var writer = new DdsWriter<StringKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<StringKeyMessage, StringKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<StringKeyMessage>(participant, topicName);
 
             writer.Write(new StringKeyMessage { KeyId = "Id_1", Message = "Msg1" });
             writer.Write(new StringKeyMessage { KeyId = "Id_2", Message = "Msg2" });
@@ -318,7 +318,7 @@ Assert.Equal("Updated", scope[0].Data);
             string topicName = $"MixedKeyTopic_{Guid.NewGuid()}";
 
             using var writer = new DdsWriter<MixedKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<MixedKeyMessage, MixedKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<MixedKeyMessage>(participant, topicName);
 
             var sample = new MixedKeyMessage
             {
@@ -346,7 +346,7 @@ Assert.Equal("Updated", scope[0].Data);
             string topicName = $"MixedKeyTopic_{Guid.NewGuid()}";
 
             using var writer = new DdsWriter<MixedKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<MixedKeyMessage, MixedKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<MixedKeyMessage>(participant, topicName);
 
             // Same Id, different Name => Different Instance
             writer.Write(new MixedKeyMessage { Id = 10, Name = "A", Data = "D1" });
@@ -368,7 +368,7 @@ Assert.Equal("Updated", scope[0].Data);
             string topicName = $"KeyLastTopic_{Guid.NewGuid()}";
 
             using var writer = new DdsWriter<KeyLastMessage>(participant, topicName);
-            using var reader = new DdsReader<KeyLastMessage, KeyLastMessage>(participant, topicName);
+            using var reader = new DdsReader<KeyLastMessage>(participant, topicName);
 
             var sample = new KeyLastMessage
             {
@@ -394,7 +394,7 @@ Assert.Equal("Updated", scope[0].Data);
             string topicName = $"NestedStructKeyTopic_{Guid.NewGuid()}";
 
             using var writer = new DdsWriter<NestedStructKeyMessage>(participant, topicName);
-            using var reader = new DdsReader<NestedStructKeyMessage, NestedStructKeyMessage>(participant, topicName);
+            using var reader = new DdsReader<NestedStructKeyMessage>(participant, topicName);
 
             // 1. Write Sample A
             var sampleA = new NestedStructKeyMessage
@@ -445,3 +445,4 @@ Assert.Equal("Updated", scope[0].Data);
         }
     }
 }
+

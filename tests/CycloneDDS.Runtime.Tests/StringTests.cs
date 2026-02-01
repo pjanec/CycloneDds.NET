@@ -17,7 +17,7 @@ namespace CycloneDDS.Runtime.Tests
             string topicName = "StringRoundtripTopic";
 
             using var writer = new DdsWriter<StringMessage>(participant, topicName);
-            using var reader = new DdsReader<StringMessage, StringMessage>(participant, topicName);
+            using var reader = new DdsReader<StringMessage>(participant, topicName);
             
             // Wait for discovery (match)
             Thread.Sleep(2000);

@@ -16,7 +16,7 @@ namespace CycloneDDS.Runtime.Tests
             
             using var writer = new DdsWriter<TestMessage>(
                 participant, "RoundtripTopic");
-            using var reader = new DdsReader<TestMessage, TestMessage>(
+            using var reader = new DdsReader<TestMessage>(
                 participant, "RoundtripTopic");
             
             // Write sample
@@ -77,7 +77,7 @@ namespace CycloneDDS.Runtime.Tests
             // Let's assert it is very low (e.g. < 100 bytes total or 0 per message).
             
             // Allow reasonable overhead for 1000 writes
-            // Core hot path (Arena + CdrWriter + Serializer) is zero-alloc
+            // Native marshaling hot path (NativeArena + MarshalToNative) is zero-alloc
             // Small overhead from JIT warmup, ArrayPool metadata acceptable
             Assert.True(diff < 55_000,
                 $"Expected < 55 KB for 1000 writes (allows warmup/metadata), got {diff} bytes ({diff/1000.0:F1} bytes/write)");
@@ -91,7 +91,7 @@ namespace CycloneDDS.Runtime.Tests
             
             using var writer = new DdsWriter<TestMessage>(
                 participant, "LazyTopic");
-            using var reader = new DdsReader<TestMessage, TestMessage>(
+            using var reader = new DdsReader<TestMessage>(
                 participant, "LazyTopic");
 
             // Default QoS has History=1, so we might only get the last one if we burst write.
@@ -119,7 +119,7 @@ namespace CycloneDDS.Runtime.Tests
             
              using var writer = new DdsWriter<TestMessage>(
                 participant, "LargeTopic");
-            using var reader = new DdsReader<TestMessage, TestMessage>(
+            using var reader = new DdsReader<TestMessage>(
                 participant, "LargeTopic");
             
             var msg = new TestMessage { Id = 999, Value = 987654 };
@@ -164,7 +164,7 @@ namespace CycloneDDS.Runtime.Tests
         }
 
         [Fact]
-        public void Write_UsingDdsWrite_Success()
+        public void Write_Standard_Success()
         {
             using var participant = new DdsParticipant(0);
             
@@ -172,7 +172,7 @@ namespace CycloneDDS.Runtime.Tests
                 participant, "WriteTopic");
             
             var msg = new TestMessage { Id = 1, Value = 123 };
-            writer.WriteViaDdsWrite(msg);
+            writer.Write(msg);
         }
 
         [Fact]
@@ -192,7 +192,7 @@ namespace CycloneDDS.Runtime.Tests
         {
             using var participant = new DdsParticipant(0);
             
-            var reader = new DdsReader<TestMessage, TestMessage>(
+            var reader = new DdsReader<TestMessage>(
                 participant, "DisposeTopic2");
             reader.Dispose();
             
@@ -220,7 +220,7 @@ namespace CycloneDDS.Runtime.Tests
         {
             using var participant = new DdsParticipant(0);
             
-            using var reader = new DdsReader<TestMessage, TestMessage>(
+            using var reader = new DdsReader<TestMessage>(
                 participant, "EmptyTopic");
             
             using var scope = reader.Take();
@@ -235,7 +235,7 @@ namespace CycloneDDS.Runtime.Tests
             
             using var writer = new DdsWriter<TestMessage>(
                 participant, "IdempotentTopic");
-            using var reader = new DdsReader<TestMessage, TestMessage>(
+            using var reader = new DdsReader<TestMessage>(
                 participant, "IdempotentTopic");
             
             writer.Write(new TestMessage { Id = 1 });
@@ -253,7 +253,7 @@ namespace CycloneDDS.Runtime.Tests
             
             using var writer = new DdsWriter<TestMessage>(
                 participant, "MultiMsgTopic");
-            using var reader = new DdsReader<TestMessage, TestMessage>(
+            using var reader = new DdsReader<TestMessage>(
                 participant, "MultiMsgTopic");
             
             // Write multiple messages in a ping-pong fashion to ensure we receive them all
@@ -291,9 +291,9 @@ namespace CycloneDDS.Runtime.Tests
             using var writer2 = new DdsWriter<TestMessage>(
                 participant, "Topic2");
             
-            using var reader1 = new DdsReader<TestMessage, TestMessage>(
+            using var reader1 = new DdsReader<TestMessage>(
                 participant, "Topic1");
-            using var reader2 = new DdsReader<TestMessage, TestMessage>(
+            using var reader2 = new DdsReader<TestMessage>(
                 participant, "Topic2");
             
             writer1.Write(new TestMessage { Id = 1, Value = 111 });
@@ -322,7 +322,7 @@ namespace CycloneDDS.Runtime.Tests
             
             using var writer = new DdsWriter<TestMessage>(
                 participant, "BoundsTopic");
-            using var reader = new DdsReader<TestMessage, TestMessage>(
+            using var reader = new DdsReader<TestMessage>(
                 participant, "BoundsTopic");
             
             writer.Write(new TestMessage { Id = 1 });
@@ -348,7 +348,7 @@ namespace CycloneDDS.Runtime.Tests
             
             using var writer = new DdsWriter<TestMessage>(
                 participant1, "SharedTopic");
-            using var reader = new DdsReader<TestMessage, TestMessage>(
+            using var reader = new DdsReader<TestMessage>(
                 participant2, "SharedTopic");
             
             writer.Write(new TestMessage { Id = 99, Value = 999 });
@@ -369,7 +369,7 @@ namespace CycloneDDS.Runtime.Tests
             
             using var writer = new DdsWriter<KeyedTestMessage>(
                 participant, "DisposeTopic");
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(
+            using var reader = new DdsReader<KeyedTestMessage>(
                 participant, "DisposeTopic");
             
             var msg = new KeyedTestMessage { Id = 100, Value = 100 };
@@ -405,7 +405,7 @@ namespace CycloneDDS.Runtime.Tests
             
             using var writer = new DdsWriter<KeyedTestMessage>(
                 participant, "UnregisterTopic");
-            using var reader = new DdsReader<KeyedTestMessage, KeyedTestMessage>(
+            using var reader = new DdsReader<KeyedTestMessage>(
                 participant, "UnregisterTopic");
             
             var msg = new KeyedTestMessage { Id = 200, Value = 200 };

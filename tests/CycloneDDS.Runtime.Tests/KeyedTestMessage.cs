@@ -12,10 +12,5 @@ namespace CycloneDDS.Runtime.Tests
         [DdsKey] public int Id;
         public double Value;
         [DdsManaged] public string? Message;
-
-        public void SerializeKey(ref CdrWriter writer)
-        {
-            writer.WriteInt32(Id);
-        }
     }
 }

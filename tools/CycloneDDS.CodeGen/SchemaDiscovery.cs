@@ -96,7 +96,7 @@ namespace CycloneDDS.CodeGen
                         var typeInfo = new TypeInfo 
                         { 
                             Name = typeSymbol.Name,
-                            Namespace = typeSymbol.ContainingNamespace?.ToDisplayString() ?? string.Empty,
+                            Namespace = (typeSymbol.ContainingNamespace?.ToDisplayString() ?? string.Empty).Replace("<global namespace>", "").Trim('.'),
                             SourceFile = tree.FilePath,
                             IsTopic = isTopic,
                             IsStruct = isStruct,

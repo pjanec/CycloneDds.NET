@@ -142,6 +142,21 @@ namespace CycloneDDS.Runtime.Interop
             DdsEntity writer,
             IntPtr serdata);
 
+        [DllImport(DLL_NAME)]
+        public static extern int dds_write(
+            DdsEntity writer,
+            IntPtr data);
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_dispose(
+            DdsEntity writer,
+            IntPtr data);
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_unregister_instance(
+            DdsEntity writer,
+            IntPtr data);
+
 
         [DllImport(DLL_NAME)]
         public static extern int dds_readcdr(
@@ -161,6 +176,9 @@ namespace CycloneDDS.Runtime.Interop
 
         [DllImport(DLL_NAME)]
         public static extern long dds_lookup_instance_serdata(int entity, IntPtr serdata);
+
+        [DllImport(DLL_NAME)]
+        public static extern long dds_lookup_instance(int reader, IntPtr key);
 
         [DllImport(DLL_NAME)]
         public static extern int dds_takecdr_instance(
@@ -259,17 +277,63 @@ namespace CycloneDDS.Runtime.Interop
             IntPtr data);
 
         [DllImport(DLL_NAME)]
+        public static extern int dds_read(
+            int reader,
+            [In, Out] IntPtr[] samples, 
+            [In, Out] DdsSampleInfo[] infos,
+            UIntPtr bufsz,
+            uint maxs);
+
+        [DllImport(DLL_NAME)]
         public static extern int dds_take(
             int reader, // Changed to int to match others
             [In, Out] IntPtr[] samples, 
             [In, Out] DdsSampleInfo[] infos,
             UIntPtr bufsz,
             uint maxs);
+            
+        [DllImport(DLL_NAME)]
+        public static extern int dds_read_mask(
+            int reader,
+            [In, Out] IntPtr[] samples, 
+            [In, Out] DdsSampleInfo[] infos,
+            UIntPtr bufsz,
+            uint maxs,
+            uint mask);
+
+        // dds_lookup_instance already defined above
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_read_instance(
+            int reader,
+            [In, Out] IntPtr[] samples, 
+            [In, Out] DdsSampleInfo[] infos,
+            UIntPtr bufsz,
+            uint maxs,
+            long handle);
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_take_instance(
+            int reader, 
+            [In, Out] IntPtr[] samples, 
+            [In, Out] DdsSampleInfo[] infos,
+            UIntPtr bufsz,
+            uint maxs,
+            long handle);
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_take_mask(
+            int reader, 
+            [In, Out] IntPtr[] samples, 
+            [In, Out] DdsSampleInfo[] infos,
+            UIntPtr bufsz,
+            uint maxs,
+            uint mask);
 
         // Return loan
         [DllImport(DLL_NAME)]
         public static extern int dds_return_loan(
-            DdsEntity reader,
+            int reader,
             [In, Out] IntPtr[] samples,
             int count);
 

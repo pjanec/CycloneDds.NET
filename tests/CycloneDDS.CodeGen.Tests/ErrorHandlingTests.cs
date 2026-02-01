@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Xunit;
 using CycloneDDS.CodeGen;
-using CycloneDDS.Core;
+using CycloneDDS.Core; using CycloneDDS.Runtime; using System.Runtime.CompilerServices;
 using CycloneDDS.Schema; 
 using System; 
 using System.Text; 

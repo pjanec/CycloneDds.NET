@@ -28,7 +28,7 @@ namespace CycloneDDS.Runtime.Tests
         [Fact]
         public async Task WaitDataAsync_CompletesWhenDataArrives()
         {
-            using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName);
+            using var reader = new DdsReader<TestMessage>(_participant, _topicName);
             using var writer = new DdsWriter<TestMessage>(_participant, _topicName);
 
             // Start waiting
@@ -48,7 +48,7 @@ namespace CycloneDDS.Runtime.Tests
             VerifySingleSample(reader);
         }
 
-        private void VerifySingleSample(DdsReader<TestMessage, TestMessage> reader)
+        private void VerifySingleSample(DdsReader<TestMessage> reader)
         {
             using var scope = reader.Take();
             Assert.Equal(1, scope.Count);
@@ -57,7 +57,7 @@ namespace CycloneDDS.Runtime.Tests
         [Fact]
         public async Task WaitDataAsync_RespectsCancellation()
         {
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName);
              using var cts = new CancellationTokenSource(200);
              
              await Assert.ThrowsAsync<TaskCanceledException>(async () => 
@@ -67,10 +67,10 @@ namespace CycloneDDS.Runtime.Tests
         [Fact]
         public void Polling_NoListener_NoOverhead()
         {
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName);
              
              // Use reflection to check _listener field
-             var field = typeof(DdsReader<TestMessage, TestMessage>)
+             var field = typeof(DdsReader<TestMessage>)
                  .GetField("_listener", BindingFlags.NonPublic | BindingFlags.Instance);
              
              IntPtr listener = (IntPtr)field.GetValue(reader);
@@ -80,7 +80,7 @@ namespace CycloneDDS.Runtime.Tests
         [Fact]
         public async Task DisposeWithListener_NoLeaks()
         {
-             using (var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName))
+             using (var reader = new DdsReader<TestMessage>(_participant, _topicName))
              {
                  var t = reader.WaitDataAsync(); 
                  // It created listener
@@ -95,7 +95,7 @@ namespace CycloneDDS.Runtime.Tests
              var qos = DdsApi.dds_create_qos();
              DdsApi.dds_qset_history(qos, DdsApi.DDS_HISTORY_KEEP_ALL, 0);
 
-             using var reader = new DdsReader<TestMessage, TestMessage>(_participant, _topicName, qos);
+             using var reader = new DdsReader<TestMessage>(_participant, _topicName, qos);
              using var writer = new DdsWriter<TestMessage>(_participant, _topicName, qos);
              DdsApi.dds_delete_qos(qos);
              

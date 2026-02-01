@@ -1,0 +1,541 @@
+{
+  "File":
+    [
+      {
+        "Name": "D:\\Work\\FastCycloneDdsCsharpBindings\\tests\\CycloneDDS.Runtime.Tests\\Generated\\AdvancedTypes\\AdvancedTypes.idl",
+        "_eof": 0
+      }
+    ],
+  "Types":
+    [
+      {
+        "Name": "AdvancedTypes_DiscriminatorEnum",
+        "Kind": "enum",
+        "Extensibility": "final",
+        "Align": 4,
+        "Size": 4,
+        "Members":
+        [
+          {
+            "Name": "AdvancedtypesDiscOne",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "AdvancedtypesDiscTwo",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 1,
+            "_eof": 0
+          },
+          {
+            "Name": "AdvancedtypesDiscThree",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 2,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::IntUnion",
+        "Kind": "union",
+        "Extensibility": "appendable",
+        "Discriminator": "int32_t",
+        "Align": 8,
+        "Size": 16,
+        "TopicDescriptor": {
+          "Size": 16,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::IntUnion",
+          "Keys": [
+          ],
+          "Ops": [
+            67108864, 17367822, 0, 3, 1048580, 134414336, 1, 8, 
+            0, 134545408, 2, 8, 0, 135135232, 0, 8, 
+            0, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "primitiveValue",
+            "Type": "int32_t",
+            "Offset": 8,
+            "Labels": [
+              "1"
+            ],
+            "_eof": 0
+          },
+          {
+            "Name": "stringValue",
+            "Type": "string",
+            "Offset": 8,
+            "Labels": [
+              "2"
+            ],
+            "_eof": 0
+          },
+          {
+            "Name": "boolValue",
+            "Type": "bool",
+            "Offset": 8,
+            "Labels": [
+              "default"
+            ],
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::BoolUnion",
+        "Kind": "union",
+        "Extensibility": "appendable",
+        "Discriminator": "bool",
+        "Align": 8,
+        "Size": 16,
+        "TopicDescriptor": {
+          "Size": 16,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::BoolUnion",
+          "Keys": [
+          ],
+          "Ops": [
+            67108864, 17370632, 0, 2, 786436, 134479872, 1, 8, 
+            0, 134414336, 0, 8, 0, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "doubleValue",
+            "Type": "double",
+            "Offset": 8,
+            "Labels": [
+              "1"
+            ],
+            "_eof": 0
+          },
+          {
+            "Name": "longValue",
+            "Type": "int32_t",
+            "Offset": 8,
+            "Labels": [
+              "0"
+            ],
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::EnumUnion",
+        "Kind": "union",
+        "Extensibility": "appendable",
+        "Discriminator": "AdvancedTypes_DiscriminatorEnum",
+        "Align": 8,
+        "Size": 48,
+        "TopicDescriptor": {
+          "Size": 48,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::EnumUnion",
+          "Keys": [
+          ],
+          "Ops": [
+            67108864, 17370250, 0, 3, 1572869, 2, 134414336, 0, 
+            8, 0, 134610952, 1, 8, 0, 134676488, 0, 
+            8, 0, 17170432, 0, 33, 0, 17236224, 0, 
+            0, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "floatValue",
+            "Type": "float",
+            "Offset": 8,
+            "Labels": [
+              "0"
+            ],
+            "_eof": 0
+          },
+          {
+            "Name": "smallString",
+            "Type": "string",
+            "Bound": 32,
+            "Offset": 8,
+            "Labels": [
+              "1"
+            ],
+            "_eof": 0
+          },
+          {
+            "Name": "bytesValue",
+            "Kind": "sequence",
+            "Type": "dds_sequence_octet",
+            "Offset": 8,
+            "CollectionType": "sequence",
+            "Labels": [
+              "default"
+            ],
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::InnerInnerStruct",
+        "Kind": "struct",
+        "Extensibility": "final",
+        "Align": 8,
+        "Size": 16,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 16,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::InnerInnerStruct",
+          "Keys": [
+          ],
+          "Ops": [
+            16973828, 0, 17104896, 8, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "id",
+            "Type": "int32_t",
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "message",
+            "Type": "string",
+            "Offset": 8,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::InnerStruct",
+        "Kind": "struct",
+        "Extensibility": "final",
+        "Align": 8,
+        "Size": 40,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 40,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::InnerStruct",
+          "Keys": [
+          ],
+          "Ops": [
+            17629184, 0, 196614, 17236994, 16, 0, 16973828, 0, 
+            17104896, 8, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "deepStruct",
+            "Type": "AdvancedTypes_InnerInnerStruct",
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "numbers",
+            "Kind": "sequence",
+            "Type": "dds_sequence_double",
+            "Offset": 16,
+            "CollectionType": "sequence",
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::NestedStruct",
+        "Kind": "struct",
+        "Extensibility": "final",
+        "Align": 8,
+        "Size": 48,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 48,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::NestedStruct",
+          "Keys": [
+          ],
+          "Ops": [
+            17629184, 0, 196614, 16973828, 40, 0, 17629184, 0, 
+            196614, 17236994, 16, 0, 16973828, 0, 17104896, 8, 
+            0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "inner",
+            "Type": "AdvancedTypes_InnerStruct",
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "level",
+            "Type": "int32_t",
+            "Offset": 40,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::OptionalStruct",
+        "Kind": "struct",
+        "Extensibility": "final",
+        "Align": 4,
+        "Size": 4,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 4,
+          "Align": 4,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::OptionalStruct",
+          "Keys": [
+          ],
+          "Ops": [
+            16973828, 0, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "mandatoryVal",
+            "Type": "int32_t",
+            "Offset": 0,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::OptionalInner",
+        "Kind": "struct",
+        "Extensibility": "final",
+        "Align": 4,
+        "Size": 4,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 4,
+          "Align": 4,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::OptionalInner",
+          "Keys": [
+          ],
+          "Ops": [
+            16973828, 0, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "optInt",
+            "Type": "int32_t",
+            "Offset": 0,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::LongSeq",
+        "Kind": "struct",
+        "Extensibility": "final",
+        "Align": 8,
+        "Size": 24,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 24,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::LongSeq",
+          "Keys": [
+          ],
+          "Ops": [
+            17236740, 0, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "value",
+            "Kind": "sequence",
+            "Type": "dds_sequence_int32",
+            "Offset": 0,
+            "CollectionType": "sequence",
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::ComplexStruct",
+        "Kind": "struct",
+        "Extensibility": "final",
+        "Align": 8,
+        "Size": 104,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 104,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::ComplexStruct",
+          "Keys": [
+          ],
+          "Ops": [
+            17238528, 0, 24, 262160, 17170432, 24, 33, 17236740, 
+            64, 25362468, 88, 26017824, 96, 262152, 48, 0, 
+            17236740, 0, 0, 17629184, 0, 196614, 16973828, 40, 
+            0, 17629184, 0, 196614, 17236994, 16, 0, 16973828, 
+            0, 17104896, 8, 0, 150994953, 3, 150994955, 4, 
+            0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "matrix",
+            "Kind": "sequence",
+            "Type": "dds_sequence_AdvancedTypes_LongSeq",
+            "Offset": 0,
+            "CollectionType": "sequence",
+            "_eof": 0
+          },
+          {
+            "Name": "fixedString",
+            "Type": "string",
+            "Bound": 32,
+            "Offset": 24,
+            "_eof": 0
+          },
+          {
+            "Name": "boundedSeq",
+            "Kind": "sequence",
+            "Type": "dds_sequence_int32",
+            "Offset": 64,
+            "CollectionType": "sequence",
+            "_eof": 0
+          },
+          {
+            "Name": "optLong",
+            "Type": "int32_t",
+            "IsOptional": true,
+            "Offset": 88,
+            "_eof": 0
+          },
+          {
+            "Name": "optStruct",
+            "Type": "AdvancedTypes_NestedStruct",
+            "IsOptional": true,
+            "Offset": 96,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "AdvancedTypes::AllTypes",
+        "Kind": "struct",
+        "Extensibility": "final",
+        "Align": 8,
+        "Size": 232,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 232,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "AdvancedTypes::AllTypes",
+          "Keys": [
+          ],
+          "Ops": [
+            17629184, 0, 196624, 17629184, 104, 196657, 17629184, 120, 
+            196672, 17629184, 136, 196683, 17629184, 184, 196631, 0, 
+            17238528, 0, 24, 262160, 17170432, 24, 33, 17236740, 
+            64, 25362468, 88, 26017824, 96, 262152, 48, 0, 
+            17236740, 0, 0, 17629184, 0, 196614, 16973828, 40, 
+            0, 17629184, 0, 196614, 17236994, 16, 0, 16973828, 
+            0, 17104896, 8, 0, 67108864, 17367822, 0, 3, 
+            1048580, 134414336, 1, 8, 0, 134545408, 2, 8, 
+            0, 135135232, 0, 8, 0, 0, 67108864, 17370632, 
+            0, 2, 786436, 134479872, 1, 8, 0, 134414336, 
+            0, 8, 0, 0, 67108864, 17370250, 0, 3, 
+            1572869, 2, 134414336, 0, 8, 0, 134610952, 1, 
+            8, 0, 134676488, 0, 8, 0, 17170432, 0, 
+            33, 0, 17236224, 0, 0, 0, 150994969, 3, 
+            150994971, 4, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "complex",
+            "Type": "AdvancedTypes_ComplexStruct",
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "uInt",
+            "Type": "AdvancedTypes_IntUnion",
+            "Offset": 104,
+            "_eof": 0
+          },
+          {
+            "Name": "uBool",
+            "Type": "AdvancedTypes_BoolUnion",
+            "Offset": 120,
+            "_eof": 0
+          },
+          {
+            "Name": "uEnum",
+            "Type": "AdvancedTypes_EnumUnion",
+            "Offset": 136,
+            "_eof": 0
+          },
+          {
+            "Name": "nested",
+            "Type": "AdvancedTypes_NestedStruct",
+            "Offset": 184,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      }
+    ]
+}

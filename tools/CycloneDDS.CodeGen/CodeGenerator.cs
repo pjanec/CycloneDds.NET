@@ -89,11 +89,17 @@ namespace CycloneDDS.CodeGen
             {
                 if (topic.IsTopic || topic.IsStruct || topic.IsUnion)
                 {
+                    Console.WriteLine($"Processing {topic.FullName}...");
                     var serializerCode = _serializerEmitter.EmitSerializer(topic, registry);
-                    File.WriteAllText(Path.Combine(outputDir, $"{topic.FullName}.Serializer.cs"), serializerCode);
+                    
+                    var safeName = topic.FullName;
+                    if (safeName.StartsWith("<global namespace>.")) safeName = safeName.Replace("<global namespace>.", "");
+                    safeName = safeName.Replace("<", "_").Replace(">", "_");
+
+                    File.WriteAllText(Path.Combine(outputDir, $"{safeName}.Serializer.cs"), serializerCode);
 
                     var deserializerCode = _deserializerEmitter.EmitDeserializer(topic, registry);
-                    File.WriteAllText(Path.Combine(outputDir, $"{topic.FullName}.Deserializer.cs"), deserializerCode);
+                    File.WriteAllText(Path.Combine(outputDir, $"{safeName}.Deserializer.cs"), deserializerCode);
                     Console.WriteLine($"    Generated Serializers for {topic.Name}");
                 }
             }

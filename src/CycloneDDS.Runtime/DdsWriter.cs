@@ -16,9 +16,6 @@ namespace CycloneDDS.Runtime
 {
     public sealed class DdsWriter<T> : IDisposable
     {
-        private static readonly byte _encodingKindLE;
-        private static readonly byte _encodingKindBE;
-
         // Cached delegates to prevent allocation per call
         private static readonly Func<DdsApi.DdsEntity, IntPtr, int> _writeOperation = DdsApi.dds_writecdr;
         private static readonly Func<DdsApi.DdsEntity, IntPtr, int> _disposeOperation = DdsApi.dds_dispose_serdata;
@@ -38,13 +35,18 @@ namespace CycloneDDS.Runtime
         private volatile TaskCompletionSource<bool>? _waitForReaderTaskSource;
         private EventHandler<DdsApi.DdsPublicationMatchedStatus>? _publicationMatched;
 
-        // Delegates for high-performance invocation
-        private delegate void SerializeDelegate(in T sample, ref CdrWriter writer);
-        private delegate int GetSerializedSizeDelegate(in T sample, int currentAlignment, CdrEncoding encoding);
+        // Native Marshaling Delegates
+        private delegate int GetNativeSizeDelegate(in T sample);
+        private delegate void MarshalToNativeDelegate(in T sample, IntPtr target, ref NativeArena arena);
 
-        private static readonly SerializeDelegate? _serializer;
-        private static readonly SerializeDelegate? _keySerializer;
-        private static readonly GetSerializedSizeDelegate? _sizer;
+        private static readonly GetNativeSizeDelegate? _nativeSizer;
+        private static readonly MarshalToNativeDelegate? _nativeMarshaller;
+        private static readonly GetNativeSizeDelegate? _keyNativeSizer;
+        private static readonly MarshalToNativeDelegate? _keyNativeMarshaller;
+
+        private static readonly int _nativeHeadSize;
+        private static readonly int _keyNativeHeadSize;
+
         private static readonly DdsExtensibilityKind _extensibilityKind;
 
         static DdsWriter()
@@ -52,35 +54,25 @@ namespace CycloneDDS.Runtime
             var attr = typeof(T).GetCustomAttribute<DdsExtensibilityAttribute>();
             _extensibilityKind = attr?.Kind ?? DdsExtensibilityKind.Appendable;
 
-            switch (_extensibilityKind)
-            {
-                case DdsExtensibilityKind.Final:
-                    _encodingKindLE = 0x07; // CDR2_LE
-                    _encodingKindBE = 0x06; // CDR2_BE
-                    break;
-                case DdsExtensibilityKind.Mutable:
-                    _encodingKindLE = 0x0B; // PL_CDR2_LE
-                    _encodingKindBE = 0x0A; // PL_CDR2_BE
-                    break;
-                case DdsExtensibilityKind.Appendable:
-                default:
-                    _encodingKindLE = 0x09; // D_CDR2_LE
-                    _encodingKindBE = 0x08; // D_CDR2_BE
-                    break;
-            }
-
             try
             {
-                _sizer = CreateSizerDelegate();
-                _serializer = CreateSerializerDelegate();
-                _keySerializer = CreateKeySerializerDelegate();
+                // Native Marshaling
+                _nativeSizer = CreateNativeSizerDelegate("GetNativeSize");
+                _nativeMarshaller = CreateNativeMarshallerDelegate("MarshalToNative");
+                var headSizeMethod = typeof(T).GetMethod("GetNativeHeadSize", BindingFlags.Public | BindingFlags.Static);
+                if (headSizeMethod != null) _nativeHeadSize = (int)headSizeMethod.Invoke(null, null);
+                
+                // Native Key Marshaling
+                _keyNativeSizer = CreateNativeSizerDelegate("GetKeyNativeSize");
+                _keyNativeMarshaller = CreateNativeMarshallerDelegate("MarshalKeyToNative");
+                var keyHeadSizeMethod = typeof(T).GetMethod("GetKeyNativeHeadSize", BindingFlags.Public | BindingFlags.Static);
+                if (keyHeadSizeMethod != null) _keyNativeHeadSize = (int)keyHeadSizeMethod.Invoke(null, null);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[DdsWriter<{typeof(T).Name}>] Failed to create delegates: {ex.Message}");
             }
         }
-        private readonly CdrEncoding _encoding;
 
         public DdsWriter(DdsParticipant participant, string topicName, IntPtr qos = default)
         {
@@ -88,10 +80,11 @@ namespace CycloneDDS.Runtime
             _topicName = topicName;
             _publicationMatchedHandler = OnPublicationMatched;
 
-            if (_sizer == null || _serializer == null)
+            if (_nativeSizer == null || _nativeMarshaller == null)
             {
-                throw new InvalidOperationException($"Type {typeof(T).Name} does not exhibit expected DDS generated methods (Serialize, GetSerializedSize).");
+                throw new InvalidOperationException($"Type {typeof(T).Name} does not exhibit expected DDS generated native methods (GetNativeSize, MarshalToNative).");
             }
+
 
             // QoS Setup
             IntPtr actualQos = qos;
@@ -122,13 +115,11 @@ namespace CycloneDDS.Runtime
                 {
                     // Force XCDR2 for XTypes
                     reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR2 };
-                    _encoding = CdrEncoding.Xcdr2;
                     DdsApi.dds_qset_data_representation(actualQos, (uint)reps.Length, reps);
                 }
                 else
                 {
                     // Default/Final uses defaults (don't force XCDR1)
-                    _encoding = CdrEncoding.Xcdr1;
                 }
 
                 writer = DdsApi.dds_create_writer(
@@ -155,131 +146,16 @@ namespace CycloneDDS.Runtime
             }
         }
 
-        public void WriteViaDdsWrite(in T sample)
-        {
-             if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
-             #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type ('T')
-             unsafe
-             {
-                 fixed (void* p = &sample)
-                 {
-                     int ret = DdsApi.dds_write(_writerHandle.NativeHandle.Handle, (IntPtr)p);
-                     if (ret < 0) throw new DdsException((DdsApi.DdsReturnCode)ret, $"dds_write failed: {ret}");
-                 }
-             }
-             #pragma warning restore CS8500
-        }
-
-        private void PerformOperation(in T sample, Func<DdsApi.DdsEntity, IntPtr, int> operation, int serdataKind = 2)
-        {
-            if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
-            if (!_topicHandle.IsValid) throw new ObjectDisposedException(nameof(DdsWriter<T>));
-
-            // FIX: XCDR2 alignment is relative to stream start (0).
-            // XCDR1 alignment is relative to body start (after 4-byte header) -> origin 4.
-            int origin = _encoding == CdrEncoding.Xcdr2 ? 0 : 4;
-
-            // 1. Get Size (no alloc)
-            // Start at offset 4 (Header) + origin to ensure padding is calculated correctly
-            int startPos = 4 + origin;
-            int payloadSize = _sizer!(sample, startPos, _encoding); 
-            int totalSize = payloadSize + 4;
-
-            // 2. Rent Buffer (no alloc - pooled)
-            byte[] buffer = Arena.Rent(totalSize);
-            
-            try
-            {
-                // 3. Serialize (ZERO ALLOC via new Span overload)
-                var span = buffer.AsSpan(0, totalSize);
-                var cdr = new CdrWriter(span, _encoding, origin: origin); 
-                
-                // Write CDR Header
-                if (_encoding == CdrEncoding.Xcdr2)
-                {
-                    if (BitConverter.IsLittleEndian)
-                    {
-                        // Little Endian
-                        cdr.WriteByte(0x00);
-                        cdr.WriteByte(_encodingKindLE);
-                    }
-                    else
-                    {
-                        // Big Endian
-                        cdr.WriteByte(0x00);
-                        cdr.WriteByte(_encodingKindBE);
-                    }
-                }
-                else
-                {
-                    // XCDR1
-                     if (BitConverter.IsLittleEndian)
-                    {
-                        cdr.WriteByte(0x00);
-                        cdr.WriteByte(0x01); // CDR_LE
-                    }
-                    else
-                    {
-                        cdr.WriteByte(0x00);
-                        cdr.WriteByte(0x00); // CDR_BE
-                    }
-                }
-                
-                // Options (2 bytes)
-                cdr.WriteByte(0x00);
-                cdr.WriteByte(0x00);
-                
-                if (serdataKind == 1 && _keySerializer != null)
-                {
-                    _keySerializer(sample, ref cdr);
-                }
-                else
-                {
-                    _serializer!(sample, ref cdr);
-                }
-                cdr.Complete();
-                
-                int actualSize = cdr.Position;
-                
-                if (_topicName.Contains("UnionBoolDisc"))
-                    Console.WriteLine($"[DdsWriter] Sent {actualSize} bytes: {BitConverter.ToString(buffer, 0, actualSize)}");
-
-                // 4. Write to DDS via Serdata
-                unsafe
-                {
-                    fixed (byte* p = buffer)
-                    {
-                        IntPtr dataPtr = (IntPtr)p;
-                        
-                        IntPtr serdata = DdsApi.dds_create_serdata_from_cdr(
-                            _topicHandle,
-                            dataPtr,
-                            (uint)actualSize,
-                            serdataKind);
-
-                        if (serdata == IntPtr.Zero)
-                        {
-                             throw new DdsException(DdsApi.DdsReturnCode.Error, "dds_create_serdata_from_cdr failed");
-                        }
-                            
-                        // Operation consumes ref
-                        int ret = operation(_writerHandle.NativeHandle, serdata);
-                        if (ret < 0)
-                        {
-                            throw new DdsException((DdsApi.DdsReturnCode)ret, $"DDS operation failed: {ret}");
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                Arena.Return(buffer);
-            }
-        }
-
         public void Write(in T sample)
         {
-            PerformOperation(sample, _writeOperation);
+            if (_nativeSizer != null && _nativeMarshaller != null)
+            {
+                PerformNativeOperation(sample, DdsApi.dds_write, false);
+            }
+            else
+            {
+                 throw new InvalidOperationException("Native delegates missing.");
+            }
         }
 
         /// <summary>
@@ -294,7 +170,14 @@ namespace CycloneDDS.Runtime
         /// </remarks>
         public void DisposeInstance(in T sample)
         {
-            PerformOperation(sample, _disposeOperation, 1); // SDK_KEY
+            if (_keyNativeSizer != null && _keyNativeMarshaller != null)
+            {
+                PerformNativeOperation(sample, DdsApi.dds_dispose, true);
+            }
+            else
+            {
+                 throw new InvalidOperationException("Native Key delegates missing.");
+            }
         }
 
         /// <summary>
@@ -311,8 +194,56 @@ namespace CycloneDDS.Runtime
         /// </remarks>
         public void UnregisterInstance(in T sample)
         {
-            PerformOperation(sample, _unregisterOperation, 1); // SDK_KEY
+            if (_keyNativeSizer != null && _keyNativeMarshaller != null)
+            {
+                PerformNativeOperation(sample, DdsApi.dds_unregister_instance, true);
+            }
+            else
+            {
+                 throw new InvalidOperationException("Native Key delegates missing.");
+            }
         }
+
+        private void PerformNativeOperation(in T sample, Func<DdsApi.DdsEntity, IntPtr, int> operation, bool isKey)
+        {
+             if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+             
+             var sizer = isKey ? _keyNativeSizer : _nativeSizer;
+             var marshaller = isKey ? _keyNativeMarshaller : _nativeMarshaller;
+             var headSize = isKey ? _keyNativeHeadSize : _nativeHeadSize;
+             
+             // Safety check - should be guaranteed by caller
+             if (sizer == null || marshaller == null) return; 
+
+             int totalSize = sizer(sample);
+             byte[] buffer = Arena.Rent(totalSize);
+             
+             try
+             {
+                 unsafe
+                 {
+                     fixed (byte* p = buffer)
+                     {
+                         IntPtr ptr = (IntPtr)p;
+                         
+                         if (headSize == 0) headSize = totalSize;
+                         
+                         var span = buffer.AsSpan(0, totalSize);
+                         var arena = new NativeArena(span, ptr, headSize);
+                         
+                         marshaller(sample, ptr, ref arena);
+                         
+                         int ret = operation(_writerHandle.NativeHandle, ptr);
+                         if (ret < 0) throw new DdsException((DdsApi.DdsReturnCode)ret, $"Native operation failed: {ret}");
+                     }
+                 }
+             }
+             finally
+             {
+                 Arena.Return(buffer);
+             }
+        }
+
         
         public event EventHandler<DdsApi.DdsPublicationMatchedStatus>? PublicationMatched
         {
@@ -408,57 +339,36 @@ namespace CycloneDDS.Runtime
         {
             if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
 
-            // Use _sizer to calculate size. Start at offset 4 for header
-            int size = _sizer!(keySample, 4, _encoding);
-            byte[] buffer = Arena.Rent(size + 4);
-
-            try
+            if (_keyNativeSizer != null && _keyNativeMarshaller != null)
             {
-                var span = buffer.AsSpan(0, size + 4);
-                var cdr = new CdrWriter(span, _encoding);
-                
-                // Write Header
-                if (_encoding == CdrEncoding.Xcdr2)
-                {
-                    if (BitConverter.IsLittleEndian) { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindLE); }
-                    else { cdr.WriteByte(0x00); cdr.WriteByte(_encodingKindBE); }
-                }
-                else
-                {
-                    if (BitConverter.IsLittleEndian) { cdr.WriteByte(0x00); cdr.WriteByte(0x01); }
-                    else { cdr.WriteByte(0x00); cdr.WriteByte(0x00); }
-                }
-
-                cdr.WriteByte(0x00); cdr.WriteByte(0x00);
-
-                _serializer!(keySample, ref cdr);
-                
-                unsafe
-                {
-                    fixed (byte* p = buffer)
-                    {
-                        // 2. Create Serdata (Kind=1 for SDK_KEY)
-                        IntPtr serdata = DdsApi.dds_create_serdata_from_cdr(
-                            _topicHandle, (IntPtr)p, (uint)(size + 4), 1);
-                            
-                        if (serdata == IntPtr.Zero) return DdsInstanceHandle.Nil;
-
-                        try
-                        {
-                            long handle = DdsApi.dds_lookup_instance_serdata(_writerHandle.NativeHandle.Handle, serdata);
-                            return new DdsInstanceHandle(handle);
-                        }
-                        finally
-                        {
-                            DdsApi.ddsi_serdata_unref(serdata);
-                        }
-                    }
-                }
+                 int size = _keyNativeSizer(keySample);
+                 byte[] buffer = Arena.Rent(size);
+                 try
+                 {
+                     unsafe
+                     {
+                         fixed (byte* p = buffer)
+                         {
+                             int headSize = _keyNativeHeadSize;
+                             if (headSize == 0) headSize = size;
+                             
+                             IntPtr ptr = (IntPtr)p;
+                             var span = buffer.AsSpan(0, size);
+                             var arena = new NativeArena(span, ptr, headSize);
+                             
+                             _keyNativeMarshaller(keySample, ptr, ref arena);
+                             
+                             long handle = DdsApi.dds_lookup_instance(_writerHandle.NativeHandle.Handle, ptr);
+                             return new DdsInstanceHandle(handle);
+                         }
+                     }
+                 }
+                 finally
+                 {
+                     Arena.Return(buffer);
+                 }
             }
-            finally
-            {
-                Arena.Return(buffer);
-            }
+            throw new InvalidOperationException("Native Key delegates missing.");
         }
 
         public void Dispose()
@@ -484,87 +394,21 @@ namespace CycloneDDS.Runtime
         }
 
         // --- Delegate Generators ---
-        private static GetSerializedSizeDelegate CreateSizerDelegate()
+        
+        private static GetNativeSizeDelegate? CreateNativeSizerDelegate(string methodName)
         {
-            var method = typeof(T).GetMethod("GetSerializedSize", new[] { typeof(int), typeof(CdrEncoding) });
-            if (method == null)
-            {
-                Console.WriteLine($"[DdsWriter<{typeof(T).Name}>] Method 'GetSerializedSize(int, CdrEncoding)' not found. Available methods:");
-                foreach (var m in typeof(T).GetMethods())
-                {
-                     Console.WriteLine($"  - {m.Name}({string.Join(", ", m.GetParameters().Select(p => p.ParameterType.Name))})");
-                }
-                throw new MissingMethodException(typeof(T).Name, "GetSerializedSize(int, CdrEncoding)");
-            }
-
-            var dm = new DynamicMethod(
-                "GetSerializedSizeThunk",
-                typeof(int),
-                new[] { typeof(T).MakeByRefType(), typeof(int), typeof(CdrEncoding) },
-                typeof(DdsWriter<T>).Module);
-
-            var il = dm.GetILGenerator();
-            il.Emit(OpCodes.Ldarg_0); // sample (ref)
-            if (!typeof(T).IsValueType)
-            {
-                 il.Emit(OpCodes.Ldind_Ref); 
-            }
+            var method = typeof(T).GetMethod(methodName, BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(T).MakeByRefType() }, null);
+            if (method == null) return null;
             
-            il.Emit(OpCodes.Ldarg_1); // offset
-            il.Emit(OpCodes.Ldarg_2); // encoding
-            il.Emit(OpCodes.Call, method); 
-            il.Emit(OpCodes.Ret);
-
-            return (GetSerializedSizeDelegate)dm.CreateDelegate(typeof(GetSerializedSizeDelegate));
+            return (GetNativeSizeDelegate)Delegate.CreateDelegate(typeof(GetNativeSizeDelegate), method);
         }
 
-         private static SerializeDelegate CreateSerializerDelegate()
+        private static MarshalToNativeDelegate? CreateNativeMarshallerDelegate(string methodName)
         {
-            var method = typeof(T).GetMethod("Serialize", new[] { typeof(CdrWriter).MakeByRefType() });
-            if (method == null) throw new MissingMethodException(typeof(T).Name, "Serialize");
-
-            var dm = new DynamicMethod(
-                "SerializeThunk",
-                typeof(void),
-                new[] { typeof(T).MakeByRefType(), typeof(CdrWriter).MakeByRefType() },
-                typeof(DdsWriter<T>).Module);
-
-            var il = dm.GetILGenerator();
-            il.Emit(OpCodes.Ldarg_0); // sample (ref)
-            if (!typeof(T).IsValueType)
-            {
-                il.Emit(OpCodes.Ldind_Ref);
-            }
-            il.Emit(OpCodes.Ldarg_1); // writer (ref)
-            il.Emit(OpCodes.Call, method);
-            il.Emit(OpCodes.Ret);
-
-            return (SerializeDelegate)dm.CreateDelegate(typeof(SerializeDelegate));
-        }
-
-        private static SerializeDelegate? CreateKeySerializerDelegate()
-        {
-            var method = typeof(T).GetMethod("SerializeKey", new[] { typeof(CdrWriter).MakeByRefType() });
-            Console.WriteLine($"[DEBUG] Type {typeof(T).Name} SerializeKey found: {method != null}");
+            var method = typeof(T).GetMethod(methodName, BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(T).MakeByRefType(), typeof(IntPtr), typeof(NativeArena).MakeByRefType() }, null);
             if (method == null) return null;
 
-            var dm = new DynamicMethod(
-                "SerializeKeyThunk",
-                typeof(void),
-                new[] { typeof(T).MakeByRefType(), typeof(CdrWriter).MakeByRefType() },
-                typeof(DdsWriter<T>).Module);
-
-            var il = dm.GetILGenerator();
-            il.Emit(OpCodes.Ldarg_0); // sample (ref)
-            if (!typeof(T).IsValueType)
-            {
-                il.Emit(OpCodes.Ldind_Ref);
-            }
-            il.Emit(OpCodes.Ldarg_1); // writer (ref)
-            il.Emit(OpCodes.Call, method);
-            il.Emit(OpCodes.Ret);
-
-            return (SerializeDelegate)dm.CreateDelegate(typeof(SerializeDelegate));
+            return (MarshalToNativeDelegate)Delegate.CreateDelegate(typeof(MarshalToNativeDelegate), method);
         }
     }
 

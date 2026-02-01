@@ -20,8 +20,11 @@ namespace CycloneDDS.CodeGen
             // Using directives
             if (generateUsings)
             {
+                sb.AppendLine("using System;");
                 sb.AppendLine("using CycloneDDS.Core;");
+                sb.AppendLine("using CycloneDDS.Runtime;");
                 sb.AppendLine("using System.Runtime.InteropServices;"); // Just in case
+                sb.AppendLine("using System.Runtime.CompilerServices;");
                 sb.AppendLine("using System.Text;");
                 sb.AppendLine();
             }
@@ -37,14 +40,21 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine($"    public partial struct {type.Name}");
             sb.AppendLine("    {");
             
-            // GetSerializedSize method
-            EmitGetSerializedSize(sb, type);
+            EmitNativeSizer(sb, type);
+            EmitMarshaller(sb, type);
+            EmitUnmarshalFromNative(sb, type);
+            EmitNativeToManaged(sb, type);
             
-            // Serialize method
-            EmitSerialize(sb, type);
+            if (type.Fields.Any(f => f.HasAttribute("DdsKey")))
+            {
+                EmitKeyNativeSizer(sb, type);
+                EmitKeyMarshaller(sb, type);
+            }
             
             // Close class
             sb.AppendLine("    }");
+
+            EmitGhostStruct(sb, type);
             
             // Close namespace
             if (!string.IsNullOrEmpty(type.Namespace))
@@ -60,365 +70,11 @@ namespace CycloneDDS.CodeGen
              return type.Extensibility == DdsExtensibilityKind.Appendable || type.Extensibility == DdsExtensibilityKind.Mutable;
         }
 
-        private void EmitGetSerializedSize(StringBuilder sb, TypeInfo type)
-        {
-            sb.AppendLine("        public int GetSerializedSize(int currentOffset)");
-            sb.AppendLine("        {");
-            var defaultEncoding = IsAppendable(type) ? "CdrEncoding.Xcdr2" : "CdrEncoding.Xcdr1";
-            sb.AppendLine($"            return GetSerializedSize(currentOffset, {defaultEncoding});");
-            sb.AppendLine("        }");
-            sb.AppendLine();
-            
-            sb.AppendLine("        public int GetSerializedSize(int currentOffset, CdrEncoding encoding)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var sizer = new CdrSizer(currentOffset, encoding);");
-            sb.AppendLine("            bool isXcdr2 = encoding == CdrEncoding.Xcdr2;");
-            sb.AppendLine();
-            
-            bool isAppendable = IsAppendable(type);
-            bool isXcdr2 = isAppendable; // Used as dummy for helper calls
-            
-            if (isAppendable)
-            {
-                sb.AppendLine("            // DHEADER");
-                sb.AppendLine("            if (encoding == CdrEncoding.Xcdr2)");
-                sb.AppendLine("            {");
-                sb.AppendLine("                sizer.Align(4);");
-                sb.AppendLine("                sizer.WriteUInt32(0);");
-                sb.AppendLine("            }");
-                sb.AppendLine();
-            }
-
-            if (type.HasAttribute("DdsUnion"))
-            {
-                EmitUnionGetSerializedSizeBody(sb, type, isXcdr2);
-            }
-            else
-            {
-                sb.AppendLine("            // Struct body");
-                
-                var fieldsWithIds = type.Fields.Select((f, i) => new { Field = f, Id = GetFieldId(f, i) }).OrderBy(x => x.Id).ToList();
-
-                foreach (var item in fieldsWithIds)
-                {
-                    var field = item.Field;
-                    if (IsOptional(field))
-                    {
-                        EmitOptionalSizer(sb, field, isXcdr2, IsMutable(type));
-                    }
-                    else
-                    {
-                        string sizerCall = GetSizerCall(field, isXcdr2, isAppendable);
-                        sb.AppendLine($"            {sizerCall}; // {field.Name}");
-                    }
-                }
-            }
-            
-            if (isAppendable)
-            {
-               // sb.AppendLine("            if (isXcdr2) sizer.Align(4);");
-            }
-            
-            sb.AppendLine();
-            
-            sb.AppendLine("            int size = sizer.GetSizeDelta(currentOffset);");
-            sb.AppendLine("            return size;");
-            sb.AppendLine("        }");
-            sb.AppendLine();
-        }
-        
-        private void EmitUnionGetSerializedSizeBody(StringBuilder sb, TypeInfo type, bool isXcdr2)
-        {
-            var discriminator = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
-            if (discriminator == null) throw new Exception($"Union {type.Name} missing [DdsDiscriminator] field");
-
-            string discSizer = GetSizerCall(discriminator, isXcdr2);
-            sb.AppendLine($"            {discSizer}; // Discriminator {discriminator.Name}");
-            
-            string castType = GetDiscriminatorCastType(discriminator.TypeName);
-            string castExpr = castType == "bool" ? "" : $"({castType})";
-            sb.AppendLine($"            switch ({castExpr}this.{ToPascalCase(discriminator.Name)})");
-            sb.AppendLine("            {");
-
-            foreach (var field in type.Fields)
-            {
-                var caseAttr = field.GetAttribute("DdsCase");
-                if (caseAttr != null)
-                {
-                    foreach (var val in caseAttr.CaseValues)
-                    {
-                        string caseLabel = val!.ToString()!;
-                        if (val is bool b) caseLabel = b ? "true" : "false";
-                        sb.AppendLine($"                case {caseLabel}:");
-                    }
-                    sb.AppendLine($"                    {GetSizerCall(field, isXcdr2)};");
-                    sb.AppendLine("                    break;");
-                }
-            }
-            
-            var defaultField = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDefaultCase"));
-            if (defaultField != null)
-            {
-                sb.AppendLine("                default:");
-                sb.AppendLine($"                    {GetSizerCall(defaultField, isXcdr2)};");
-                sb.AppendLine("                    break;");
-            }
-            else
-            {
-               // If no default case, and unknown discriminator value, nothing extra is written?
-               // But usually we should at least break.
-               sb.AppendLine("                default:");
-               sb.AppendLine("                    break;");
-            }
-
-            sb.AppendLine("            }");
-        }
-
         private string GetDiscriminatorCastType(string typeName)
         {
-             if (typeName == "bool" || typeName == "System.Boolean") return "bool";
-             // If enum simplify to int, assuming 32-bit discriminator for now as per instructions (Write int32)
-             // But if it's long, we might need long.
-             // Instructions: "Discriminator: Write int32."
-             return "int";
+             return typeName;
         }
         
-        private void EmitSerialize(StringBuilder sb, TypeInfo type)
-        {
-            sb.AppendLine("        public void Serialize(ref CdrWriter writer)");
-            sb.AppendLine("        {");
-            
-            bool isAppendable = IsAppendable(type);
-            bool isXcdr2 = isAppendable;
-
-            if (isAppendable)
-            {
-                sb.AppendLine("            // DHEADER");
-                sb.AppendLine("            int dheaderPos = 0;");
-                sb.AppendLine("            int bodyStart = 0;");
-                sb.AppendLine("            if (writer.Encoding == CdrEncoding.Xcdr2)");
-                sb.AppendLine("            {");
-                sb.AppendLine("                writer.Align(4);");
-                sb.AppendLine("                dheaderPos = writer.Position;");
-                sb.AppendLine("                writer.WriteUInt32(0);");
-                sb.AppendLine("                bodyStart = writer.Position;");
-                sb.AppendLine("            }");
-            }
-
-            if (type.HasAttribute("DdsUnion"))
-            {
-                EmitUnionSerializeBody(sb, type, isXcdr2);
-            }
-            else
-            {
-                sb.AppendLine("            // Struct body");
-                
-                var fieldsWithIds = type.Fields.Select((f, i) => new { Field = f, Id = GetFieldId(f, i) }).OrderBy(x => x.Id).ToList();
-
-                foreach (var item in fieldsWithIds)
-                {
-                    var field = item.Field;
-                    int fieldId = item.Id;
-
-                    if (IsOptional(field))
-                    {
-                        EmitOptionalSerializer(sb, field, fieldId, isXcdr2, IsMutable(type));
-                    }
-                    else
-                    {
-                        string writerCall = GetWriterCall(field, isXcdr2, isAppendable);
-                        sb.AppendLine($"            {writerCall}; // {field.Name}");
-                    }
-                }
-            }
- 
-            if (isAppendable)
-            {
-                sb.AppendLine("            if (writer.Encoding == CdrEncoding.Xcdr2)");
-                sb.AppendLine("            {");
-                sb.AppendLine("                int bodyLen = writer.Position - bodyStart;");
-                sb.AppendLine("                writer.WriteUInt32At(dheaderPos, (uint)bodyLen);");
-                sb.AppendLine("            }");
-            }
-
-            sb.AppendLine("        }");
-        }
-
-        private void EmitUnionSerializeBody(StringBuilder sb, TypeInfo type, bool isXcdr2)
-        {
-            var discriminator = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
-            if (discriminator == null) throw new Exception($"Union {type.Name} missing [DdsDiscriminator] field");
-
-            string discWriter = GetWriterCall(discriminator, isXcdr2);
-            sb.AppendLine($"            {discWriter}; // Discriminator {discriminator.Name}");
-            
-            sb.AppendLine($"            switch (this.{ToPascalCase(discriminator.Name)})");
-            sb.AppendLine("            {");
-
-            foreach (var field in type.Fields)
-            {
-                var caseAttr = field.GetAttribute("DdsCase");
-                if (caseAttr != null)
-                {
-                    foreach (var val in caseAttr.CaseValues)
-                    {
-                        string caseLabel;
-                        if (val is bool b)
-                        {
-                            caseLabel = b ? "true" : "false";
-                        }
-                        else
-                        {
-                             if (!TypeMapper.IsPrimitive(discriminator.TypeName) && discriminator.TypeName != "string")
-                             {
-                                 caseLabel = $"({discriminator.TypeName}){val}"; 
-                             }
-                             else
-                             {
-                                 caseLabel = val!.ToString()!;
-                             }
-                        }
-                        sb.AppendLine($"                case {caseLabel}:");
-                    }
-                    sb.AppendLine($"                    {GetWriterCall(field, isXcdr2)};");
-                    sb.AppendLine("                    break;");
-                }
-            }
-            
-            var defaultField = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDefaultCase"));
-            if (defaultField != null)
-            {
-                sb.AppendLine("                default:");
-                sb.AppendLine($"                    {GetWriterCall(defaultField, isXcdr2)};");
-                sb.AppendLine("                    break;");
-            }
-            else
-            {
-                sb.AppendLine("                default:");
-                sb.AppendLine("                    break;");
-            }
-
-            sb.AppendLine("            }");
-        }
-        
-        private void EmitOptionalSizer(StringBuilder sb, FieldInfo field, bool isXcdr2, bool isMutable)
-        {
-            string access = $"this.{ToPascalCase(field.Name)}";
-            string check;
-            if (field.TypeName.EndsWith("?") || field.TypeName == "string?")
-                check = field.TypeName == "string?" ? $"{access} != null" : $"{access}.HasValue";
-            else
-                check = "true";
-            
-            sb.AppendLine($"            if ({check})");
-            sb.AppendLine("            {");
-            
-            if (isMutable && isXcdr2)
-            {
-                sb.AppendLine("                sizer.WriteUInt32(0); // EMHEADER (Mutable)");
-            }
-            else
-            {
-                sb.AppendLine("                sizer.WriteByte(1); // Present Flag");
-            }
-            
-            // For optional, we need to size the value as if it was not optional
-            var nonOptionalField = new FieldInfo 
-            { 
-                Name = field.Name, 
-                TypeName = GetBaseType(field.TypeName),
-                Attributes = field.Attributes,
-                Type = field.Type 
-            };
-            
-            // Special handling for ".Value" access if value type
-            string baseType = GetBaseType(field.TypeName);
-            if (baseType != "string" && !IsReferenceType(baseType) && (field.TypeName.EndsWith("?") || field.TypeName == "string?"))
-            {
-                 string sizerCall = GetSizerCall(nonOptionalField, isXcdr2);
-                 if (!sizerCall.Contains(".Value") && !sizerCall.Contains(".ToString")) 
-                    sizerCall = sizerCall.Replace($"this.{ToPascalCase(field.Name)}", $"this.{ToPascalCase(field.Name)}.Value");
-                 
-                 sb.AppendLine($"                {sizerCall};");
-            }
-            else
-            {
-                 string sizerCall = GetSizerCall(nonOptionalField, isXcdr2);
-                 sb.AppendLine($"                {sizerCall};");
-            }
-
-            sb.AppendLine("            }");
-            
-            if (!(isMutable && isXcdr2))
-            {
-                sb.AppendLine("            else");
-                sb.AppendLine("            {");
-                sb.AppendLine("                sizer.WriteByte(0); // Not Present Flag");
-                sb.AppendLine("            }");
-            }
-        }
-
-        private void EmitOptionalSerializer(StringBuilder sb, FieldInfo field, int fieldId, bool isXcdr2, bool isMutable)
-        {
-            string access = $"this.{ToPascalCase(field.Name)}";
-            string check;
-            if (field.TypeName.EndsWith("?") || field.TypeName == "string?")
-                check = field.TypeName == "string?" ? $"{access} != null" : $"{access}.HasValue";
-            else
-                check = "true";
-            
-            bool useEmHeader = isMutable && isXcdr2;
-
-            sb.AppendLine($"            if ({check})");
-            sb.AppendLine("            {");
-            
-            if (useEmHeader)
-            {
-                sb.AppendLine("                int emHeaderPos = writer.Position;");
-                sb.AppendLine("                writer.WriteUInt32(0); // Placeholder");
-                sb.AppendLine("                int emBodyStart = writer.Position;");
-            }
-            else
-            {
-                sb.AppendLine("                writer.WriteByte(1); // Present flag");
-            }
-
-            string baseType = GetBaseType(field.TypeName);
-            var nonOptionalField = new FieldInfo 
-            { 
-                Name = field.Name, 
-                TypeName = baseType,
-                Attributes = field.Attributes,
-                Type = field.Type 
-            };
-            
-            string writerCall = GetWriterCall(nonOptionalField, isXcdr2);
-            if (baseType != "string" && !IsReferenceType(baseType) && (field.TypeName.EndsWith("?") || field.TypeName == "string?"))
-            {
-                 writerCall = writerCall.Replace($"this.{ToPascalCase(field.Name)}", $"this.{ToPascalCase(field.Name)}.Value");
-            }
-            
-            sb.AppendLine($"                {writerCall};");
-            
-            if (useEmHeader)
-            {
-                sb.AppendLine("                int emBodyLen = writer.Position - emBodyStart;");
-                // XCDR2 EMHEADER format: [M:1bit][Length:28bits][ID:3bits]
-                sb.AppendLine($"                uint emHeader = ((uint)emBodyLen << 3) | (uint)({fieldId} & 0x7);");
-                sb.AppendLine("                writer.PatchUInt32(emHeaderPos, emHeader);");
-            }
-
-            sb.AppendLine("            }");
-            
-            if (!useEmHeader)
-            {
-                sb.AppendLine("            else");
-                sb.AppendLine("            {");
-                sb.AppendLine("                writer.WriteByte(0); // Not present flag");
-                sb.AppendLine("            }");
-            }
-        }
-
         private bool IsOptional(FieldInfo field)
         {
             return field.TypeName.EndsWith("?") || field.HasAttribute("DdsOptional");
@@ -451,727 +107,976 @@ namespace CycloneDDS.CodeGen
                 "long" or "int64" or "ulong" or "uint64" or "double";
         }
         
-        private int GetAlignment(string typeName)
-        {
-            // Primitives
-            string t = typeName;
-            if (t.StartsWith("System.")) t = t.Substring(7);
-            t = t.ToLowerInvariant();
-            
-            switch(t)
-            {
-                case "byte": case "uint8": case "sbyte": case "int8": case "bool": case "boolean": return 1;
-                case "short": case "int16": case "ushort": case "uint16": return 2;
-                case "int": case "int32": case "uint": case "uint32": case "float": case "single": return 4;
-                case "vector2": case "numerics.vector2": return 4;
-                case "vector3": case "numerics.vector3": return 4;
-                case "vector4": case "numerics.vector4": return 4;
-                case "quaternion": case "numerics.quaternion": return 4;
-                case "matrix4x4": case "numerics.matrix4x4": return 4;
-                
-                case "long": case "int64": case "ulong": case "uint64": case "double": return 8;
-                case "datetime": case "timespan": case "datetimeoffset": return 8;
-                case "guid": return 1;
-            }
-
-            if (typeName == "string") return 4;
-            if (typeName.Contains("FixedString")) return 1;
-
-            // Arrays / Sequences / Lists
-            if (typeName.EndsWith("[]") || typeName.StartsWith("List") || typeName.StartsWith("System.Collections.Generic.List") || typeName.StartsWith("BoundedSeq"))
-            {
-                 // NATIVE BEHAVIOR HACK: Propagate alignment of elements
-                 string elementType = ExtractElementType(typeName);
-                 return GetAlignment(elementType);
-            }
-
-            // Registry Lookup
-            if (_registry != null)
-            {
-                if (_registry.TryGetDefinition(typeName, out var def) && def!.TypeInfo != null)
-                    return GetTypeAlignment(def.TypeInfo);
-                
-                // Try replacing dots with colons for scoped lookup
-                if (_registry.TryGetDefinition(typeName.Replace(".", "::"), out var def2) && def2!.TypeInfo != null)
-                    return GetTypeAlignment(def2.TypeInfo);
-            }
-
-            // Fallback
-            return 1;
-        }
-
-        private string ExtractElementType(string typeName)
-        {
-            if (typeName.EndsWith("[]")) return typeName.Substring(0, typeName.Length - 2);
-            int start = typeName.IndexOf('<');
-            int end = typeName.LastIndexOf('>');
-            if (start > 0 && end > start) return typeName.Substring(start + 1, end - start - 1);
-            return "int"; // fallback
-        }
-
-        private int GetTypeAlignment(TypeInfo type)
-        {
-            if (type.IsUnion) 
-            {
-                 // XCDR Standard: The alignment of the union is the alignment of its discriminator.
-                 var discriminator = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
-                 if (discriminator != null)
-                     return GetAlignment(discriminator.TypeName);
-                 return 1;
-            }
-
-            int maxAlign = 1;
-
-            // Simple recursion protection by name check? 
-            // We assume DAG for now as we don't pass visited list.
-            
-            foreach(var field in type.Fields)
-            {
-                // We must be careful not to recurse indefinitely if a type contains a List of itself.
-                // Since GetAlignment for List calls GetAlignment for Element (Type).
-                // However, standard says List alignment is 4. We Changd it to Propagate.
-                // If A contains List<A>. GetAl(A) -> GetAl(List<A>) -> GetAl(A). Loop.
-                
-                if (field.TypeName.Contains(type.Name)) continue; // Skip recursive fields
-
-                int fa = GetAlignment(field.TypeName);
-                if (fa > maxAlign) maxAlign = fa;
-            }
-            return maxAlign;
-        }
-
-
-        private string GetSizerCall(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
-        {
-            // 1. Strings (Variable)
-            if (field.TypeName == "string")
-            {
-                 return $"sizer.Align(4); sizer.WriteString(this.{ToPascalCase(field.Name)}, isXcdr2)";
-            }
-
-            // Handle List<T>
-            if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
-            {
-                 return EmitListSizer(field, isXcdr2, isAppendableStruct);
-            }
-
-            // 2. Sequences
-            if (field.TypeName.StartsWith("BoundedSeq") || field.TypeName.Contains("BoundedSeq<"))
-            {
-                 return EmitSequenceSizer(field, isXcdr2, isAppendableStruct);
-            }
-
-            if (field.TypeName.EndsWith("[]"))
-            {
-                 return EmitArraySizer(field, isXcdr2, isAppendableStruct);
-            }
-
-            // 3. Fixed Strings
-            if (field.TypeName.Contains("FixedString"))
-            {
-                 var size = new string(field.TypeName.Where(char.IsDigit).ToArray());
-                 if (string.IsNullOrEmpty(size)) size = "32"; 
-                 return $"sizer.Align(1); sizer.WriteFixedString((string)null, {size})";
-            }
-
-            string? method = TypeMapper.GetSizerMethod(field.TypeName);
-            if (method != null)
-            {
-                string dummy = "0";
-                if (method == "WriteBool") dummy = "false";
-                int align = GetAlignment(field.TypeName); 
-                string alignCall;
-                if (align > 4)
-                    alignCall = $"if (encoding == CdrEncoding.Xcdr2) sizer.Align(4); else sizer.Align({align});";
-                else
-                    alignCall = $"sizer.Align({align});";
-                return $"{alignCall} sizer.{method}({dummy})";
-            }
-
-            if (_registry != null && _registry.TryGetDefinition(field.TypeName, out var def) && def!.TypeInfo != null && def.TypeInfo.IsEnum)
-            {
-                 return $"sizer.Align(4); sizer.WriteInt32(0)";
-            }
-
-            else
-            {
-                // Nested struct
-                // Use actual instance for variable sizing logic
-                int align = GetAlignment(field.TypeName);
-                return $"sizer.Skip(this.{ToPascalCase(field.Name)}.GetSerializedSize(sizer.Position, encoding))"; // Pass encoding
-            }
-        }
-        
-        private string GetWriterCall(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
-        {
-            string fieldAccess = $"this.{ToPascalCase(field.Name)}";
-            
-            // 1. Strings (Variable)
-            if (field.TypeName == "string")
-            {
-                 return $"writer.Align(4); writer.WriteString({fieldAccess}, writer.IsXcdr2)";
-            }
-
-            // Handle List<T>
-            if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
-            {
-                 return EmitListWriter(field, isXcdr2, isAppendableStruct);
-            }
-
-            // 2. Sequences
-            if (field.TypeName.StartsWith("BoundedSeq") || field.TypeName.Contains("BoundedSeq<"))
-            {
-                 return EmitSequenceWriter(field, isXcdr2, isAppendableStruct);
-            }
-
-            if (field.TypeName.EndsWith("[]"))
-            {
-                 return EmitArrayWriter(field, isXcdr2, isAppendableStruct);
-            }
-
-            if (field.TypeName.Contains("FixedString"))
-            {
-                 var size = new string(field.TypeName.Where(char.IsDigit).ToArray());
-                 if (string.IsNullOrEmpty(size)) size = "32"; 
-                 return $"writer.Align(1); writer.WriteFixedString({fieldAccess}, {size})";
-            }
-
-            string? method = TypeMapper.GetWriterMethod(field.TypeName);
-            if (method != null)
-            {
-                int align = GetAlignment(field.TypeName);
-                string alignCall;
-                if (align > 4)
-                    alignCall = $"if (writer.IsXcdr2) writer.Align(4); else writer.Align({align});";
-                else
-                    alignCall = $"writer.Align({align});";
-                return $"{alignCall} writer.{method}({fieldAccess})";
-            }
-            
-            if (_registry != null && _registry.TryGetDefinition(field.TypeName, out var def) && def!.TypeInfo != null && def.TypeInfo.IsEnum)
-            {
-                 return $"writer.Align(4); writer.WriteInt32((int){fieldAccess})";
-            }
-            
-            else
-            {
-                return $"{fieldAccess}.Serialize(ref writer)";
-            }
-        }
-
-        private string EmitArraySizer(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
-        {
-            string fieldAccess = $"this.{ToPascalCase(field.Name)}";
-            string elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
-            bool isFixed = field.HasAttribute("ArrayLength") || field.HasAttribute("ArrayLengthAttribute");
-            string lengthWrite = isFixed ? "" : "sizer.Align(4); sizer.WriteUInt32(0); // Length";
-
-            if (TypeMapper.IsBlittable(elementType))
-            {
-                int align = GetAlignment(elementType); string alignA = align.ToString();
-                int size = TypeMapper.GetSize(elementType);
-                
-                return $@"{lengthWrite}
-            if ({fieldAccess}.Length > 0)
-            {{
-                sizer.Align({align});
-                sizer.Skip({fieldAccess}.Length * {size});
-            }}";
-            }
-            
-            // Loop code similar to sequence
-            if (elementType == "string" || elementType == "String" || elementType == "System.String") 
-            {
-                string headerWrite = "";
-                if (isAppendableStruct)
-                    headerWrite = "if (encoding == CdrEncoding.Xcdr2) { sizer.Align(4); sizer.WriteUInt32(0); } // XCDR2 Array Header\r\n            ";
-
-                return $@"{lengthWrite}
-            {headerWrite}for (int i = 0; i < {fieldAccess}.Length; i++)
-            {{
-                sizer.Align(4); sizer.WriteString({fieldAccess}[i], isXcdr2);
-            }}";
-            }
-
-            string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
-            if (sizerMethod != null)
-            {
-                string dummy = "0";
-                if (sizerMethod == "WriteBool") dummy = "false";
-                int align = GetAlignment(elementType); string alignA = align.ToString();
-                return $@"{lengthWrite}
-                for (int i = 0; i < {fieldAccess}.Length; i++)
-                {{
-                    sizer.Align({align}); sizer.{sizerMethod}({dummy});
-                }}";
-            }
-             
-            // Nested structs
-            return $@"{lengthWrite}
-            for (int i = 0; i < {fieldAccess}.Length; i++)
-            {{
-                sizer.Skip({fieldAccess}[i].GetSerializedSize(sizer.Position, encoding));
-            }}";
-        }
-        
-        private string EmitArrayWriter(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
-        {
-            string fieldAccess = $"this.{ToPascalCase(field.Name)}";
-            string elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
-            bool isFixed = field.HasAttribute("ArrayLength") || field.HasAttribute("ArrayLengthAttribute");
-            string lengthWrite = isFixed ? "" : $@"writer.Align(4);
-            writer.WriteUInt32((uint){fieldAccess}.Length);";
-
-            if (TypeMapper.IsBlittable(elementType))
-            {
-                int align = GetAlignment(elementType);
-                string alignA = align == 8 ? "8" : align.ToString();
-                return $@"{lengthWrite}
-            if ({fieldAccess}.Length > 0)
-            {{
-                writer.Align({alignA});
-                var span = new System.ReadOnlySpan<{elementType}>({fieldAccess});
-                var byteSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(span);
-                writer.WriteBytes(byteSpan);
-            }}";
-            }
-            
-            // Loop fallback
-            string? writerMethod = TypeMapper.GetWriterMethod(elementType);
-            int alignEl = GetAlignment(elementType); string alignElA = alignEl == 8 ? "8" : alignEl.ToString();
-            string loopBody;
-
-            if (elementType == "string" || elementType == "String" || elementType == "System.String")
-            { 
-                loopBody = $"writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);";
-                if (isAppendableStruct)
-                {
-                    return $@"{lengthWrite}
-            int arrayHeaderPos{field.Name} = 0;
-            int arrayBodyStart{field.Name} = 0;
-            if (writer.IsXcdr2)
-            {{
-
-                writer.Align(4);
-                arrayHeaderPos{field.Name} = writer.Position;
-                writer.WriteInt32(0); // Placeholder
-                arrayBodyStart{field.Name} = writer.Position;
-            }}
-            for (int i = 0; i < {fieldAccess}.Length; i++)
-            {{
-                {loopBody}
-            }}
-            if (writer.IsXcdr2)
-            {{
-                int arrayBodyEnd{field.Name} = writer.Position;
-                writer.WriteUInt32At(arrayHeaderPos{field.Name}, (uint)(arrayBodyEnd{field.Name} - arrayBodyStart{field.Name}));
-
-            }}";
-                }
-            }
-            else if (writerMethod != null)
-                loopBody = $"writer.Align({alignElA}); writer.{writerMethod}({fieldAccess}[i]);";
-            else
-                loopBody = $"var item = {fieldAccess}[i]; item.Serialize(ref writer);";
-
-            return $@"{lengthWrite}
-            for (int i = 0; i < {fieldAccess}.Length; i++)
-            {{
-                {loopBody}
-            }}";
-        }
-
-        private string EmitSequenceSizer(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
-        {
-            string fieldAccess = $"this.{ToPascalCase(field.Name)}";
-            string elementType = ExtractSequenceElementType(field.TypeName);
-            
-            string headerSizer = "";
-            bool isPrimitive = IsPrimitive(elementType);
-            
-            // In XCDR2, Sequences in Appendable structs:
-            // - Primitive: NO Member Header.
-            // - Complex (Enum, Union, Struct): YES Member Header.
-            if (isAppendableStruct && !isPrimitive)
-            {
-                 headerSizer = "if (encoding == CdrEncoding.Xcdr2) { sizer.Align(4); sizer.WriteInt32(0); } ";
-            }
-            
-            // For primitive sequences, we can loop calling WritePrimitive(0)
-            // This handles alignment correctly via CdrSizer methods.
-            
-            // If element is string
-            if (elementType == "string" || elementType == "String" || elementType == "System.String") 
-            {
-                // Writer writes header for string too. 
-                // Writer uses headerStart/End. 
-                // Sizer block for string:
-                return $@"{headerSizer}sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
-            for (int i = 0; i < {fieldAccess}.Count; i++)
-            {{
-                sizer.Align(4); sizer.WriteString({fieldAccess}[i], isXcdr2);
-            }}";
-            }
-
-            string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
-            
-            if (sizerMethod != null)
-            {
-                string dummy = "0";
-                if (sizerMethod == "WriteBool") dummy = "false";
-                int align = GetAlignment(elementType); 
-                
-                string alignCall;
-                if (align > 4) alignCall = $"if (encoding == CdrEncoding.Xcdr2) sizer.Align(4); else sizer.Align({align});";
-                else alignCall = $"sizer.Align({align});";
-
-                return $@"{headerSizer}sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
-            for (int i = 0; i < {fieldAccess}.Count; i++)
-            {{
-                {alignCall} sizer.{sizerMethod}({dummy});
-            }}";
-            }
-             
-            // Nested structs
-            return $@"{headerSizer}sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
-            for (int i = 0; i < {fieldAccess}.Count; i++)
-            {{
-                sizer.Skip({fieldAccess}[i].GetSerializedSize(sizer.Position, encoding));
-            }}";
-        }
-
-        private string EmitSequenceWriter(FieldInfo field, bool isXcdr2, bool isAppendableStruct = false)
-        {
-            string fieldAccess = $"this.{ToPascalCase(field.Name)}";
-            string elementType = ExtractSequenceElementType(field.TypeName);
-            
-            string headerStart = "";
-            string headerEnd = "";
-            
-            // In XCDR2, Sequences in Appendable structs:
-            // - Primitive: NO Member Header.
-            // - Complex (Enum, Union, Struct): YES Member Header.
-            if (isAppendableStruct && isXcdr2 && !IsPrimitive(elementType))
-            {
-                headerStart = $@"int seqHeadPos{ToPascalCase(field.Name)} = 0; int seqBodyStart{ToPascalCase(field.Name)} = 0; 
-            if (writer.IsXcdr2) {{ writer.Align(4); seqHeadPos{ToPascalCase(field.Name)} = writer.Position; writer.WriteInt32(0); seqBodyStart{ToPascalCase(field.Name)} = writer.Position; }}";
-                headerEnd = $@"if (writer.IsXcdr2) {{ int seqBodyEnd{ToPascalCase(field.Name)} = writer.Position; writer.WriteUInt32At(seqHeadPos{ToPascalCase(field.Name)}, (uint)(seqBodyEnd{ToPascalCase(field.Name)} - seqBodyStart{ToPascalCase(field.Name)})); }}";
-            }
-            
-            if (elementType == "string" || elementType == "String" || elementType == "System.String")
-            {
-                return $@"{headerStart}
-            writer.Align(4); 
-            writer.WriteUInt32((uint){fieldAccess}.Count);
-            for (int i = 0; i < {fieldAccess}.Count; i++)
-            {{
-                writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);
-            }}
-            {headerEnd}";
-            }
-            
-            // OPTIMIZATION for BoundedSeq primitives
-            if (TypeMapper.IsBlittable(elementType))
-            {
-                 int alignP = GetAlignment(elementType);
-                 string alignAP = alignP == 8 ? "8" : alignP.ToString();
-                 // BoundedSeq exposes AsSpan() which internally uses CollectionsMarshal
-                 return $@"{headerStart}
-            writer.Align(4); 
-            writer.WriteUInt32((uint){fieldAccess}.Count);
-            if ({fieldAccess}.Count > 0)
-            {{
-                writer.Align({alignAP});
-                var span = {fieldAccess}.AsSpan();
-                var byteSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(span);
-                writer.WriteBytes(byteSpan);
-            }}
-            {headerEnd}";
-            }
-            
-            string? writerMethod = TypeMapper.GetWriterMethod(elementType);
-            int align = GetAlignment(elementType);
-            string alignA = align == 8 ? "8" : align.ToString();
-            
-            string loopBody;
-
-            if (writerMethod != null)
-            {
-                loopBody = $"writer.Align({alignA}); writer.{writerMethod}({fieldAccess}[i]);";
-            }
-            else if (elementType == "string")
-            {
-                loopBody = $"writer.Align(4); writer.WriteString({fieldAccess}[i], writer.IsXcdr2);";
-            }
-            else
-            {
-                // Nested struct - need to handle ref writer if needed, but struct array access returns value.
-                // We need to call Serialize on the element.
-                // If it takes `ref writer`, we can pass it.
-                // But `this.Prop[i]` returns a copy if it's a struct and using indexer?
-                // `BoundedSeq` indexer returns T. T is struct. It returns a copy.
-                // `Serialize` modifies writer. Passing `ref writer` is fine.
-                // BUT calling method on r-value copy?
-                // `GetSerializedSize` is fine.
-                // `Serialize` logic:
-                // var item = this.Prop[i];
-                // item.Serialize(ref writer);
-                loopBody = $@"var item = {fieldAccess}[i];
-                item.Serialize(ref writer);";
-            }
-
-            return $@"{headerStart}
-            writer.Align(4); writer.WriteUInt32((uint){fieldAccess}.Count);
-            for (int i = 0; i < {fieldAccess}.Count; i++)
-            {{
-                {loopBody}
-            }}
-            {headerEnd}";
-        }
-
-
-
-        private string ExtractSequenceElementType(string typeName)
-        {
-            // Format: BoundedSeq<Type> or BoundedSeq<Type, 100> (if that exists)
-            // Or fully qualified.
-            int open = typeName.IndexOf('<');
-            int close = typeName.LastIndexOf('>');
-            if (open != -1 && close != -1)
-            {
-                string content = typeName.Substring(open + 1, close - open - 1);
-                // If there is comma, take first part
-                int comma = content.IndexOf(',');
-                if (comma != -1)
-                {
-                    return content.Substring(0, comma).Trim();
-                }
-                return content.Trim();
-            }
-            return "int"; // Fallback
-        }
-
-        private bool IsVariableType(TypeInfo parent, FieldInfo field)
-        {
-            if (field.TypeName == "string")
-            {
-                if (ShouldUseManagedSerialization(parent, field)) return true;
-                // Validation ensures string is always managed, so technically this is always true if valid
-            }
-            
-            if (field.TypeName.StartsWith("BoundedSeq") || field.TypeName.Contains("BoundedSeq<"))
-                return true;
-            
-            // Checks for List<T> (Managed)
-            if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
-                return true;
-
-            // Check if nested struct is variable
-            if (field.Type != null && HasVariableFields(field.Type))
-                return true;
-            
-            return false;
-        }
-        
-        private bool ShouldUseManagedSerialization(TypeInfo type, FieldInfo field)
-        {
-            return type.HasAttribute("DdsManaged") || field.HasAttribute("DdsManaged");
-        }
-
-        private bool HasVariableFields(TypeInfo type)
-        {
-            return type.Fields.Any(f => IsVariableType(type, f));
-        }
-
-        private int GetFieldId(FieldInfo field, int defaultId)
-        {
-            var idAttr = field.GetAttribute("DdsId");
-            if (idAttr != null && idAttr.Arguments.Count > 0)
-            {
-                 if (idAttr.Arguments[0] is int id) return id;
-                 if (idAttr.Arguments[0] is string s && int.TryParse(s, out int sid)) return sid;
-            }
-            return defaultId;
-        }
-
         private string ExtractGenericType(string typeName)
         {
             int start = typeName.IndexOf('<') + 1;
             int end = typeName.LastIndexOf('>');
-            return typeName.Substring(start, end - start).Trim();
+            if (start > 0 && end > start)
+                return typeName.Substring(start, end - start).Trim();
+            return typeName;
         }
 
-        private string EmitListWriter(FieldInfo field, bool isXcdr2, bool isAppendableStruct)
+        private void EmitMarshaller(StringBuilder sb, TypeInfo type)
         {
-             string fieldAccess = $"this.{ToPascalCase(field.Name)}";
-             string elementType = ExtractGenericType(field.TypeName);
+            sb.AppendLine($"        public static unsafe void MarshalToNative(in {type.Name} source, IntPtr targetPtr, ref NativeArena arena)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            ref var target = ref Unsafe.AsRef<{type.Name}_Native>((void*)targetPtr);");
+            sb.AppendLine($"            target = default;");
+            sb.AppendLine("            MarshalToNative(source, ref target, ref arena);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine($"        internal static unsafe void MarshalToNative(in {type.Name} source, ref {type.Name}_Native target, ref NativeArena arena)");
+            sb.AppendLine("        {");
+
+            if (type.HasAttribute("DdsUnion"))
+            {
+               EmitUnionMarshallerBody(sb, type);
+            }
+            else
+            {
+                foreach (var field in type.Fields)
+                {
+                    EmitFieldMarshal(sb, field, type, "target", "source");
+                }
+            }
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
+
+        private void EmitUnionMarshallerBody(StringBuilder sb, TypeInfo type)
+        {
+             var discriminator = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
+             if (discriminator == null) return;
              
-             // OPTIMIZATION: Block copy for primitives
-             /*
-             if (IsPrimitive(elementType))
+             if (discriminator.TypeName == "bool" || discriminator.TypeName == "Boolean" || discriminator.TypeName == "System.Boolean")
              {
-                 int alignP = GetAlignment(elementType);
-                 string alignAP = alignP == 8 ? "8" : alignP.ToString();
-                 
-                 string dheaderStartP = "";
-                 string dheaderEndP = "";
-
-                 // No Header for Primitives in Appendable
-
-                 return $@"{dheaderStartP}writer.Align(4); 
-            writer.WriteUInt32((uint){fieldAccess}.Count);
-            if ({fieldAccess}.Count > 0)
-            {{
-                writer.Align({alignAP});
-                var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan({fieldAccess});
-                var byteSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(span);
-                writer.WriteBytes(byteSpan);
-            }}{dheaderEndP}";
-             }
-             */
-             
-             string? writerMethod = TypeMapper.GetWriterMethod(elementType);
-             int align = GetAlignment(elementType);
-
-             // XCDR2: If element is Appendable/Mutable, we used to force alignment to 4.
-             // BUT, if the body needs 8-byte alignment, forcing 4 misaligns the body (Length 4 + DHEADER 4 = 8 offset).
-             // So we should respect natural alignment.
-
-
-             string alignA = align == 8 ? "8" : align.ToString();
-             string lengthAlign = "4";
-             
-             string dheaderStart = "";
-             string dheaderEnd = "";
-             
-             // XCDR2: Lists/Sequences in Appendable Structs generally DO NOT have Member Headers for primitives (e.g. List<int>).
-             // However, List<Union> or List<Complex> DOES have a Member Header.
-             // See TestSequenceInt32Appendable (No Header) vs TestSequenceUnionAppendable (Header).
-             if (isAppendableStruct && isXcdr2 && !IsPrimitive(elementType))
-             {
-                 dheaderStart = $@"int listHeadPos{ToPascalCase(field.Name)} = 0; int listBodyStart{ToPascalCase(field.Name)} = 0; 
-            if (writer.IsXcdr2) {{ writer.Align(4); listHeadPos{ToPascalCase(field.Name)} = writer.Position; writer.WriteInt32(0); listBodyStart{ToPascalCase(field.Name)} = writer.Position; }}";
-                 dheaderEnd = $@"if (writer.IsXcdr2) {{ int listBodyEnd{ToPascalCase(field.Name)} = writer.Position; writer.WriteUInt32At(listHeadPos{ToPascalCase(field.Name)}, (uint)(listBodyEnd{ToPascalCase(field.Name)} - listBodyStart{ToPascalCase(field.Name)})); }}";
-             }
-             
-             bool isEnum = false;
-             if (_registry != null && _registry.TryGetDefinition(elementType, out var def))
-             {
-                if (def!.TypeInfo != null && def.TypeInfo.IsEnum) isEnum = true;
-             }
-
-             string loopBody;
-             if (writerMethod != null)
-             {
-                 loopBody = $"writer.Align({alignA}); writer.{writerMethod}(item);";
-             }
-             else if (elementType == "string" || elementType == "System.String")
-             {
-                 loopBody = $"writer.Align(4); writer.WriteString(item, writer.IsXcdr2);";
-             }
-             else if (isEnum)
-             {
-                 loopBody = $"writer.Align(4); writer.WriteInt32((int)item);";
+                 sb.AppendLine($"            target._d = source.{ToPascalCase(discriminator.Name)} ? (byte)1 : (byte)0;");
              }
              else
              {
-                 loopBody = "item.Serialize(ref writer);";
+                 string castType = GetDiscriminatorCastType(discriminator.TypeName);
+                 string castExpr = castType == "bool" ? "" : $"({castType})";
+                 sb.AppendLine($"            target._d = {castExpr}source.{ToPascalCase(discriminator.Name)};");
              }
              
-             return $@"{dheaderStart}writer.Align({lengthAlign}); writer.WriteUInt32((uint){fieldAccess}.Count);
-            foreach (var item in {fieldAccess})
-            {{
-                {loopBody}
-            }}{dheaderEnd}";
+             sb.AppendLine($"            switch (source.{ToPascalCase(discriminator.Name)})");
+             sb.AppendLine("            {");
+
+             foreach (var field in type.Fields)
+             {
+                var caseAttr = field.GetAttribute("DdsCase");
+                if (caseAttr != null)
+                {
+                    foreach (var val in caseAttr.CaseValues)
+                    {
+                        string caseLabel = val!.ToString()!;
+                        if (val is bool b) caseLabel = b ? "true" : "false";
+                         else if (!IsPrimitive(discriminator.TypeName) && discriminator.TypeName != "string")
+                         {
+                              caseLabel = $"({discriminator.TypeName}){val}"; 
+                         }
+                        sb.AppendLine($"                case {caseLabel}:");
+                    }
+                    sb.AppendLine("                {");
+                    EmitFieldMarshal(sb, field, type, "target._u", "source");
+                    sb.AppendLine("                    break;");
+                    sb.AppendLine("                }");
+                }
+             }
+             
+             var defaultField = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDefaultCase"));
+             if (defaultField != null)
+             {
+                 sb.AppendLine("                default:");
+                 sb.AppendLine("                {");
+                 EmitFieldMarshal(sb, defaultField, type, "target._u", "source");
+                 sb.AppendLine("                    break;");
+                 sb.AppendLine("                }");
+             }
+             else
+             {
+                  sb.AppendLine("                default: break;");
+             }
+
+             sb.AppendLine("            }");
         }
 
-        private string EmitListSizer(FieldInfo field, bool isXcdr2, bool isAppendableStruct)
+        private void EmitFieldMarshal(StringBuilder sb, FieldInfo field, TypeInfo parentType, string targetPrefix, string sourcePrefix)
         {
-            string fieldAccess = $"this.{ToPascalCase(field.Name)}";
-            string elementType = ExtractGenericType(field.TypeName);
-            
-            string? sizerMethod = TypeMapper.GetSizerMethod(elementType);
+             string sourceAccess = $"{sourcePrefix}.{ToPascalCase(field.Name)}";
+             string targetAccess = $"{targetPrefix}.{field.Name}";
 
-            bool isEnum = false;
-            if (_registry != null && _registry.TryGetDefinition(elementType, out var def))
+             if (IsOptional(field))
+             {
+                 string baseType = GetBaseType(field.TypeName);
+                 string check = field.TypeName == "string?" ? $"{sourceAccess} != null" : $"{sourceAccess}.HasValue";
+                 string valAccess = (field.TypeName == "string?" || IsReferenceType(baseType)) ? sourceAccess : $"{sourceAccess}.Value";
+                 
+                 sb.AppendLine($"            if ({check})");
+                 sb.AppendLine("            {");
+                 
+                 if (IsPrimitive(baseType) || baseType == "bool")
+                 {
+                      bool isBool = baseType == "bool" || baseType == "Boolean" || baseType == "System.Boolean";
+                      string nativeType = isBool ? "byte" : baseType;
+                      string valExpr = isBool ? $"({valAccess} ? (byte)1 : (byte)0)" : valAccess;
+                      
+                      sb.AppendLine($"                var __span = arena.AllocateArray<{nativeType}>(1);");
+                      sb.AppendLine($"                __span[0] = {valExpr};");
+                      sb.AppendLine($"                {targetAccess} = (IntPtr)Unsafe.AsPointer(ref __span[0]);");
+                 }
+                 else if (baseType == "string" || baseType == "System.String")
+                 {
+                     sb.AppendLine($"                {targetAccess} = arena.CreateString({valAccess});");
+                 }
+                 else if (baseType.EndsWith("[]") || baseType.StartsWith("List") || baseType.StartsWith("BoundedSeq")) 
+                 {
+                      // Optional Sequence fall through
+                 }
+                 else
+                 {
+                     string nativeType = $"{baseType}_Native";
+                     sb.AppendLine($"                var __span = arena.AllocateArray<{nativeType}>(1);");
+                     sb.AppendLine($"                var __valTemp = {valAccess};");
+                     sb.AppendLine($"                {baseType}.MarshalToNative(in __valTemp, ref __span[0], ref arena);");
+                     sb.AppendLine($"                {targetAccess} = (IntPtr)Unsafe.AsPointer(ref __span[0]);");
+                 }
+                 
+                 sb.AppendLine("            }");
+                 sb.AppendLine("            else");
+                 sb.AppendLine("            {");
+                 sb.AppendLine($"                {targetAccess} = IntPtr.Zero;");
+                 sb.AppendLine("            }");
+                 
+                 return;
+             }
+             
+
+             // Resolve TypeInfo if missing
+             TypeInfo? fieldType = field.Type;
+             if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
+             {
+                 fieldType = def.TypeInfo;
+             }
+
+             if (field.TypeName == "string" || field.TypeName == "System.String")
+             {
+                 int? maxLen = GetMaxLength(field);
+                 if (maxLen.HasValue)
+                 {
+                     sb.AppendLine($"            if (!string.IsNullOrEmpty({sourceAccess}))");
+                     sb.AppendLine("            {");
+                     sb.AppendLine($"                var __bytes = System.Text.Encoding.UTF8.GetBytes({sourceAccess});");
+                     sb.AppendLine($"                if (__bytes.Length > {maxLen.Value}) throw new InvalidOperationException(\"String exceeds MaxLength {maxLen.Value}\");");
+                     sb.AppendLine($"                fixed (byte* __dest = {targetAccess})"); 
+                     sb.AppendLine($"                {{");
+                     sb.AppendLine($"                    System.Runtime.InteropServices.Marshal.Copy(__bytes, 0, (IntPtr)__dest, __bytes.Length);");
+                     sb.AppendLine($"                    __dest[__bytes.Length] = 0;");
+                     sb.AppendLine($"                }}");
+                     sb.AppendLine("            }");
+                     sb.AppendLine("            else");
+                     sb.AppendLine("            {");
+                     sb.AppendLine($"                fixed (byte* __dest = {targetAccess}) __dest[0] = 0;");
+                     sb.AppendLine("            }");
+                 }
+                 else
+                 {
+                     sb.AppendLine($"            {targetAccess} = arena.CreateString({sourceAccess});");
+                 }
+             }
+             else if (field.TypeName == "bool" || field.TypeName == "Boolean" || field.TypeName == "System.Boolean")
+             {
+                 sb.AppendLine($"            {targetAccess} = {sourceAccess} ? (byte)1 : (byte)0;");
+             }
+             else if (fieldType != null && fieldType.IsEnum)
+             {
+                 sb.AppendLine($"            {targetAccess} = (int){sourceAccess};");
+             }
+             else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
+             {
+                 EmitSequenceMarshal(sb, field, sourceAccess, targetAccess);
+             }
+             else if (fieldType != null && (fieldType.IsStruct || fieldType.IsUnion || fieldType.IsTopic) && !fieldType.IsEnum)
+             {
+                 string typeName = field.TypeName;
+                 sb.AppendLine($"            var __{field.Name}_temp = {sourceAccess};");
+                 sb.AppendLine($"            {typeName}.MarshalToNative(in __{field.Name}_temp, ref {targetAccess}, ref arena);");
+             }
+             else 
+             {
+                 sb.AppendLine($"            {targetAccess} = {sourceAccess};");
+             }
+        }
+
+        private void EmitSequenceMarshal(StringBuilder sb, FieldInfo field, string sourceAccess, string targetAccess)
+        {
+             string elementType = ExtractGenericType(field.TypeName);
+             if (field.TypeName.EndsWith("[]")) elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
+             string countProp = field.TypeName.EndsWith("[]") ? "Length" : "Count";
+             
+             string nullCheck = field.TypeName.StartsWith("BoundedSeq") ? "" : $"{sourceAccess} != null && ";
+
+             if (IsPrimitive(elementType))
+             {
+                  string pType = elementType == "bool" ? "byte" : elementType;
+                  
+                  if (elementType == "bool")
+                  {
+                       sb.AppendLine($"            if ({nullCheck}{sourceAccess}.{countProp} > 0)");
+                       sb.AppendLine($"            {{");
+                       sb.AppendLine($"                var __span = arena.AllocateArray<byte>({sourceAccess}.{countProp});");
+                       sb.AppendLine($"                for(int i=0; i<{sourceAccess}.{countProp}; ++i) __span[i] = {sourceAccess}[i] ? (byte)1 : (byte)0;");
+                       sb.AppendLine($"                {targetAccess} = new DdsSequenceNative {{ Maximum = (uint){sourceAccess}.{countProp}, Length = (uint){sourceAccess}.{countProp}, Buffer = (IntPtr)Unsafe.AsPointer(ref __span[0]) }};");
+                       sb.AppendLine($"            }}");
+                       sb.AppendLine($"            else");
+                       sb.AppendLine($"            {{");
+                       sb.AppendLine($"                {targetAccess} = new DdsSequenceNative();");
+                       sb.AppendLine($"            }}");
+                  }
+                  else
+                  {
+                       string spanExpr;
+                       if (field.TypeName.EndsWith("[]")) spanExpr = $"{sourceAccess}.AsSpan()";
+                       else if (field.TypeName.StartsWith("BoundedSeq")) spanExpr = $"{sourceAccess}.AsSpan()";
+                       else spanExpr = $"System.Runtime.InteropServices.CollectionsMarshal.AsSpan({sourceAccess})";
+
+                       sb.AppendLine($"            if ({nullCheck}{sourceAccess}.{countProp} > 0)");
+                       sb.AppendLine($"            {{");
+                       sb.AppendLine($"                {targetAccess} = arena.CreateSequence<{pType}>({spanExpr});");
+                       sb.AppendLine($"            }}");
+                       sb.AppendLine($"            else");
+                       sb.AppendLine($"            {{");
+                       sb.AppendLine($"                {targetAccess} = new DdsSequenceNative();");
+                       sb.AppendLine($"            }}");
+                  }
+             }
+             else if (elementType == "string" || elementType == "System.String")
+             {
+                  sb.AppendLine($"            if ({nullCheck}{sourceAccess}.{countProp} > 0)");
+                  sb.AppendLine($"            {{");
+                  sb.AppendLine($"                var __span = arena.AllocateArray<IntPtr>({sourceAccess}.{countProp});");
+                  sb.AppendLine($"                for (int i = 0; i < {sourceAccess}.{countProp}; i++)");
+                  sb.AppendLine($"                {{");
+                  sb.AppendLine($"                    __span[i] = arena.CreateString({sourceAccess}[i]);");
+                  sb.AppendLine($"                }}");
+                  sb.AppendLine($"                {targetAccess} = new DdsSequenceNative {{ Maximum = (uint){sourceAccess}.{countProp}, Length = (uint){sourceAccess}.{countProp}, Buffer = (IntPtr)Unsafe.AsPointer(ref __span[0]) }};");
+                  sb.AppendLine($"            }}");
+                  sb.AppendLine($"            else");
+                  sb.AppendLine($"            {{");
+                  sb.AppendLine($"                {targetAccess} = new DdsSequenceNative();");
+                  sb.AppendLine($"            }}");
+             }
+             else
+             {
+                  string nativeEl = $"{elementType}_Native";
+
+                  sb.AppendLine($"            if ({nullCheck}{sourceAccess}.{countProp} > 0)");
+                  sb.AppendLine($"            {{");
+                  // sb.AppendLine($"                System.Console.WriteLine(\"Marshalling Sequence {field.Name} Count: \" + {sourceAccess}.{countProp});");
+                  sb.AppendLine($"                var __span = arena.AllocateArray<{nativeEl}>({sourceAccess}.{countProp});");
+                  sb.AppendLine($"                for (int i = 0; i < {sourceAccess}.{countProp}; i++)");
+                  sb.AppendLine($"                {{");
+                  sb.AppendLine($"                    var __item = {sourceAccess}[i];");
+                  sb.AppendLine($"                    {elementType}.MarshalToNative(in __item, ref __span[i], ref arena);");
+                  sb.AppendLine($"                }}");
+                  sb.AppendLine($"                {targetAccess} = new DdsSequenceNative {{ Maximum = (uint){sourceAccess}.{countProp}, Length = (uint){sourceAccess}.{countProp}, Buffer = (IntPtr)Unsafe.AsPointer(ref __span[0]) }};");
+                  sb.AppendLine($"            }}");
+                  sb.AppendLine($"            else");
+                  sb.AppendLine($"            {{");
+                  sb.AppendLine($"                {targetAccess} = new DdsSequenceNative();");
+                  sb.AppendLine($"            }}");
+             }
+        }
+        
+        private void EmitKeyMarshaller(StringBuilder sb, TypeInfo type)
+        {
+            sb.AppendLine($"        public static unsafe void MarshalKeyToNative(in {type.Name} source, IntPtr targetPtr, ref NativeArena arena)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            ref var target = ref Unsafe.AsRef<{type.Name}_Native>((void*)targetPtr);");
+            sb.AppendLine("            MarshalKeyToNative(source, ref target, ref arena);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine($"        internal static unsafe void MarshalKeyToNative(in {type.Name} source, ref {type.Name}_Native target, ref NativeArena arena)");
+            sb.AppendLine("        {");
+            if (type.HasAttribute("DdsUnion"))
             {
-                if (def!.TypeInfo != null && def.TypeInfo.IsEnum) isEnum = true;
+               EmitUnionMarshallerBody(sb, type);
+            }
+            else
+            {
+                foreach (var field in type.Fields)
+                {
+                    if (field.HasAttribute("DdsKey"))
+                    {
+                        EmitFieldMarshal(sb, field, type, "target", "source");
+                    }
+                }
+            }
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
+
+        private void EmitNativeToManaged(StringBuilder sb, TypeInfo type)
+        {
+            sb.AppendLine($"        public static unsafe {type.Name} FromNative(IntPtr nativePtr)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (nativePtr == IntPtr.Zero) return default;");
+            
+            if (type.HasAttribute("DdsTopic"))
+            {
+                foreach(var field in type.Fields)
+                {
+                     sb.AppendLine($"            System.Console.WriteLine(\"Offset {field.Name}: \" + System.Runtime.InteropServices.Marshal.OffsetOf(typeof({type.Name}_Native), \"{field.Name}\"));");
+                }
+                sb.AppendLine($"            System.Console.WriteLine(\"Size {type.Name}_Native: \" + System.Runtime.CompilerServices.Unsafe.SizeOf<{type.Name}_Native>());");
+            }
+            sb.AppendLine($"            var native = *({type.Name}_Native*)nativePtr;");
+            sb.AppendLine($"            var managed = new {type.Name}();");
+            sb.AppendLine($"            MarshalFromNative(ref managed, in native);");
+            sb.AppendLine("            return managed;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
+
+        private void EmitUnmarshalFromNative(StringBuilder sb, TypeInfo type)
+        {
+            sb.AppendLine($"        internal static unsafe void MarshalFromNative(IntPtr nativeData, out {type.Name} managedData)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            managedData = default;");
+            sb.AppendLine($"            MarshalFromNative(ref managedData, in System.Runtime.CompilerServices.Unsafe.AsRef<{type.Name}_Native>((void*)nativeData));");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            sb.AppendLine($"        internal static unsafe void MarshalFromNative(ref {type.Name} target, in {type.Name}_Native source)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            System.Console.WriteLine(\"MarshalFromNative {type.Name}\");");
+
+            if (type.HasAttribute("DdsUnion"))
+            {
+               EmitUnionUnmarshalBody(sb, type);
+            }
+            else
+            {
+                foreach (var field in type.Fields)
+                {
+                     EmitFieldUnmarshal(sb, field, type, "target", "source");
+                }
+            }
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
+
+        private void EmitUnionUnmarshalBody(StringBuilder sb, TypeInfo type)
+        {
+             var discriminator = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
+             if (discriminator == null) return;
+             
+             if (discriminator.TypeName == "bool" || discriminator.TypeName == "Boolean" || discriminator.TypeName == "System.Boolean")
+             {
+                 sb.AppendLine($"            target.{ToPascalCase(discriminator.Name)} = source._d != 0;");
+             }
+             else
+             {
+                 string castType = GetDiscriminatorCastType(discriminator.TypeName);
+                 string castExpr = castType == "bool" ? "" : $"({castType})";
+                 sb.AppendLine($"            target.{ToPascalCase(discriminator.Name)} = {castExpr}source._d;");
+             }
+             
+             sb.AppendLine($"            switch (target.{ToPascalCase(discriminator.Name)})");
+             sb.AppendLine("            {");
+
+             foreach (var field in type.Fields)
+             {
+                var caseAttr = field.GetAttribute("DdsCase");
+                if (caseAttr != null)
+                {
+                    foreach (var val in caseAttr.CaseValues)
+                    {
+                        string caseLabel = val!.ToString()!;
+                        if (val is bool b) caseLabel = b ? "true" : "false";
+                         else if (!IsPrimitive(discriminator.TypeName) && discriminator.TypeName != "string")
+                         {
+                              caseLabel = $"({discriminator.TypeName}){val}"; 
+                         }
+                        sb.AppendLine($"                case {caseLabel}:");
+                    }
+                    sb.AppendLine("                {");
+                    EmitFieldUnmarshal(sb, field, type, "target", "source._u");
+                    sb.AppendLine("                    break;");
+                    sb.AppendLine("                }");
+                }
+             }
+             
+             var defaultField = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDefaultCase"));
+             if (defaultField != null)
+             {
+                 sb.AppendLine("                default:");
+                 sb.AppendLine("                {");
+                 EmitFieldUnmarshal(sb, defaultField, type, "target", "source._u");
+                 sb.AppendLine("                    break;");
+                 sb.AppendLine("                }");
+             }
+             else
+             {
+                  sb.AppendLine("                default: break;");
+             }
+
+             sb.AppendLine("            }");
+        }
+
+        private void EmitFieldUnmarshal(StringBuilder sb, FieldInfo field, TypeInfo parentType, string targetPrefix, string sourcePrefix)
+        {
+             string sourceAccess = $"{sourcePrefix}.{field.Name}";
+             string targetAccess = $"{targetPrefix}.{ToPascalCase(field.Name)}";
+
+             // Resolve TypeInfo if missing
+             TypeInfo? fieldType = field.Type;
+             if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
+             {
+                 fieldType = def.TypeInfo;
+             }
+
+             if (IsOptional(field))
+             {
+                 string baseType = GetBaseType(field.TypeName);
+                 
+                 sb.AppendLine($"            if ({sourceAccess} != IntPtr.Zero)");
+                 sb.AppendLine("            {");
+                 
+                 if (IsPrimitive(baseType) || baseType == "bool")
+                 {
+                      string nativeType = (baseType == "bool" || baseType == "Boolean" || baseType == "System.Boolean") ? "byte" : baseType;
+                      
+                      sb.AppendLine($"                var __ptr = ({nativeType}*){sourceAccess};");
+                      if (baseType == "bool" || baseType == "Boolean" || baseType == "System.Boolean")
+                           sb.AppendLine($"                {targetAccess} = *__ptr != 0;");
+                      else
+                           sb.AppendLine($"                {targetAccess} = *__ptr;");
+                 }
+                 else if (baseType == "string" || baseType == "System.String")
+                 {
+                     sb.AppendLine($"                {targetAccess} = DdsTextEncoding.FromNativeUtf8({sourceAccess});");
+                 }
+                 else if (baseType.EndsWith("[]") || baseType.StartsWith("List<") || baseType.StartsWith("System.Collections.Generic.List<") || baseType.StartsWith("BoundedSeq")) 
+                 {
+                      sb.AppendLine($"                var __seqPtr = (DdsSequenceNative*){sourceAccess};");
+                      EmitSequenceUnmarshal(sb, field, "(*__seqPtr)", targetAccess);
+                 }
+                 else
+                 {
+                      sb.AppendLine($"                var __native = *({baseType}_Native*){sourceAccess};");
+                      sb.AppendLine($"                {baseType} __managed = new {baseType}();");
+                      sb.AppendLine($"                {baseType}.MarshalFromNative(ref __managed, in __native);");
+                      sb.AppendLine($"                {targetAccess} = __managed;");
+                 }
+                 
+                 sb.AppendLine("            }");
+                 sb.AppendLine("            else");
+                 sb.AppendLine("            {");
+                 sb.AppendLine($"                {targetAccess} = default;");
+                 sb.AppendLine("            }");
+                 return;
+             }
+             
+             if (field.TypeName == "string" || field.TypeName == "System.String")
+             {
+                 int? maxLen = GetMaxLength(field);
+                 if (maxLen.HasValue)
+                 {
+                     sb.AppendLine($"            fixed (byte* __ptr = {sourceAccess})");
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                {targetAccess} = DdsTextEncoding.FromNativeUtf8((IntPtr)__ptr);");
+                     sb.AppendLine($"            }}");
+                 }
+                 else
+                 {
+                     sb.AppendLine($"            {targetAccess} = DdsTextEncoding.FromNativeUtf8({sourceAccess});");
+                 }
+             }
+             else if (field.TypeName == "bool" || field.TypeName == "Boolean" || field.TypeName == "System.Boolean")
+             {
+                 sb.AppendLine($"            {targetAccess} = {sourceAccess} != 0;");
+             }
+             else if (fieldType != null && fieldType.IsEnum)
+             {
+                 sb.AppendLine($"            {targetAccess} = ({field.TypeName}){sourceAccess};");
+             }
+             else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
+             {
+                 EmitSequenceUnmarshal(sb, field, sourceAccess, targetAccess);
+             }
+             else if (fieldType != null && (fieldType.IsStruct || fieldType.IsUnion || fieldType.IsTopic) && !fieldType.IsEnum)
+             {
+                 string typeName = field.TypeName;
+                 sb.AppendLine($"            var __{field.Name}_target = new {typeName}();");
+                 sb.AppendLine($"            {typeName}.MarshalFromNative(ref __{field.Name}_target, in {sourceAccess});");
+                 sb.AppendLine($"            {targetAccess} = __{field.Name}_target;");
+             }
+             else 
+             {
+                 sb.AppendLine($"            {targetAccess} = {sourceAccess};");
+             }
+        }
+        
+        private void EmitSequenceUnmarshal(StringBuilder sb, FieldInfo field, string sourceAccess, string targetAccess)
+        {
+             string elementType = ExtractGenericType(field.TypeName);
+             if (field.TypeName.EndsWith("[]")) elementType = field.TypeName.Substring(0, field.TypeName.Length - 2);
+             
+             sb.AppendLine($"            {{");
+             sb.AppendLine($"                var __seq = {sourceAccess};");
+             sb.AppendLine($"                System.Console.WriteLine($\"Sequence {field.Name} Length: {{__seq.Length}} Max: {{__seq.Maximum}} Buffer: {{__seq.Buffer}}\");");
+
+             if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
+             {
+                 sb.AppendLine($"                {targetAccess} = new System.Collections.Generic.List<{elementType}>((int)__seq.Length);");
+                 EmitSequenceUnmarshalLoop(sb, elementType, targetAccess, "__seq", true);
+             }
+             else if (field.TypeName.EndsWith("[]"))
+             {
+                 sb.AppendLine($"                {targetAccess} = new {elementType}[(int)__seq.Length];");
+                  EmitSequenceUnmarshalLoop(sb, elementType, targetAccess, "__seq", false);
+             }
+             else if (field.TypeName.StartsWith("BoundedSeq"))
+             {
+                  sb.AppendLine($"                {targetAccess} = new {field.TypeName}((int)__seq.Maximum);");
+                  EmitSequenceUnmarshalLoop(sb, elementType, targetAccess, "__seq", true, true);
+             }
+
+             sb.AppendLine($"            }}");
+        }
+
+        private void EmitSequenceUnmarshalLoop(StringBuilder sb, string elementType, string targetAccess, string seqVar, bool isList, bool isBoundedSeq = false)
+        {
+             sb.AppendLine($"                System.Console.WriteLine(\"Unmarshal Seq {elementType} Len: \" + {seqVar}.Length + \" Max: \" + {seqVar}.Maximum + \" Buf: \" + {seqVar}.Buffer);");
+
+             if (IsPrimitive(elementType))
+             {
+                  string pType = elementType == "bool" ? "byte" : elementType;
+                  
+                  sb.AppendLine($"                var __span = new Span<{pType}>((void*){seqVar}.Buffer, (int){seqVar}.Length);");
+                  sb.AppendLine($"                for (int i = 0; i < (int){seqVar}.Length; i++)");
+                  sb.AppendLine("                {");
+                  string valExpr = elementType == "bool" ? "(__span[i] != 0)" : $"__span[i]";
+                  
+                  if (isList || isBoundedSeq)
+                        sb.AppendLine($"                    {targetAccess}.Add({valExpr});");
+                  else
+                        sb.AppendLine($"                    {targetAccess}[i] = {valExpr};");
+                        
+                  sb.AppendLine("                }");
+             }
+             else if (elementType == "string" || elementType == "System.String")
+             {
+                  sb.AppendLine($"                var __span = new Span<IntPtr>((void*){seqVar}.Buffer, (int){seqVar}.Length);");
+                  sb.AppendLine($"                for (int i = 0; i < (int){seqVar}.Length; i++)");
+                  sb.AppendLine("                {");
+                  // Use FromNativeUtf8 instead of GetString
+                  sb.AppendLine($"                    var __str = DdsTextEncoding.FromNativeUtf8(__span[i]);");
+                  if (isList || isBoundedSeq)
+                        sb.AppendLine($"                    {targetAccess}.Add(__str);");
+                  else
+                        sb.AppendLine($"                    {targetAccess}[i] = __str;");
+                  sb.AppendLine("                }");
+             }
+             else
+             {
+                  string nativeEl = $"{elementType}_Native";
+                  sb.AppendLine($"                var __span = new Span<{nativeEl}>((void*){seqVar}.Buffer, (int){seqVar}.Length);");
+                  sb.AppendLine($"                for (int i = 0; i < (int){seqVar}.Length; i++)");
+                  sb.AppendLine("                {");
+                  sb.AppendLine($"                    {elementType} __item = new {elementType}();");
+                  sb.AppendLine($"                    {elementType}.MarshalFromNative(ref __item, in __span[i]);");
+                  if (isList || isBoundedSeq)
+                        sb.AppendLine($"                    {targetAccess}.Add(__item);");
+                  else
+                        sb.AppendLine($"                    {targetAccess}[i] = __item;");
+                  sb.AppendLine("                }");
+             }
+        }
+
+        private void EmitKeyNativeSizer(StringBuilder sb, TypeInfo type)
+        {
+            sb.AppendLine($"        public static int GetKeyNativeSize(in {type.Name} source)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            int currentOffset = Unsafe.SizeOf<{type.Name}_Native>();"); 
+            
+            bool hasDynamic = false;
+            foreach (var field in type.Fields)
+            {
+                if (field.HasAttribute("DdsKey") && IsDynamic(field)) hasDynamic = true;
+            }
+            
+            if (hasDynamic)
+            {
+                 foreach(var field in type.Fields)
+                 {
+                      if (field.HasAttribute("DdsKey") && IsDynamic(field))
+                      {
+                          EmitFieldDynamicSize(sb, field);
+                      }
+                 }
             }
 
-            int align = GetAlignment(elementType);
+            sb.AppendLine("            return currentOffset;");
+            sb.AppendLine("        }");
             
-            // XCDR2: If element is Appendable/Mutable, we used to force alignment to 4.
-            // BUT, if the body needs 8-byte alignment, forcing 4 misaligns the body (Length 4 + DHEADER 4 = 8 offset).
-            // So we should respect natural alignment.
+            sb.AppendLine($"        public static int GetKeyNativeHeadSize()");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            return Unsafe.SizeOf<{type.Name}_Native>();");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
 
-
-            string lengthAlign = "4";
+        private void EmitNativeSizer(StringBuilder sb, TypeInfo type)
+        {
+            sb.AppendLine($"        public static int GetNativeSize(in {type.Name} source)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            int size = Unsafe.SizeOf<{type.Name}_Native>();");
             
-            string dheader = "";
-            bool isPrimitive = IsPrimitive(elementType);
-            // Appendable structs do NOT use Member Headers (DHEADER) for Primitives in XCDR2
-            // But Complex Types (Seq<Enum>, Seq<Union>) DO use them.
-            if (isAppendableStruct && !isPrimitive)
+            bool hasDynamic = false;
+            foreach(var field in type.Fields) 
             {
-               dheader = "if (encoding == CdrEncoding.Xcdr2) { sizer.Align(4); sizer.WriteUInt32(0); } ";
+                 if (IsDynamic(field)) hasDynamic = true;
             }
 
-
-
-
-            if (sizerMethod != null)
+            if (hasDynamic)
             {
-                string dummy = "0";
-                if (sizerMethod == "WriteBool") dummy = "false";
+                 sb.AppendLine("            size += GetDynamicSize(source);");
+            }
+
+            sb.AppendLine("            return size;");
+            sb.AppendLine("        }");
+            
+            sb.AppendLine($"        public static int GetNativeHeadSize()");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            return Unsafe.SizeOf<{type.Name}_Native>();");
+            sb.AppendLine("        }");
+            
+            if (hasDynamic)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"        private static int GetDynamicSize(in {type.Name} source)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            int currentOffset = Unsafe.SizeOf<{type.Name}_Native>();");
+                sb.AppendLine($"            int startOffset = currentOffset;");
+                 
+                foreach (var field in type.Fields)
+                {
+                   if (IsDynamic(field))
+                   {
+                       EmitFieldDynamicSize(sb, field);
+                   }
+                }
                 
-                return $@"{dheader}sizer.Align({lengthAlign}); sizer.WriteUInt32(0); // Sequence Length
-            foreach (var item in {fieldAccess})
-            {{
-                sizer.Align({align}); sizer.{sizerMethod}({dummy});
-            }}";
+                sb.AppendLine($"            return currentOffset - startOffset;");
+                sb.AppendLine("        }");
             }
-            
-            if (elementType == "string" || elementType == "System.String")
-            {
-                return $@"{dheader}sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
-            foreach (var item in {fieldAccess})
-            {{
-                sizer.Align(4); sizer.WriteString(item, isXcdr2);
-            }}";
-            }
-
-            if (isEnum)
-            {
-                return $@"{dheader}sizer.Align(4); sizer.WriteUInt32(0); // Sequence Length
-            foreach (var item in {fieldAccess})
-            {{
-                sizer.Align(4); sizer.WriteInt32(0);
-            }}";
-            }
-            
-            return $@"{dheader}sizer.Align({lengthAlign}); sizer.WriteUInt32(0); // Sequence Length
-            foreach (var item in {fieldAccess})
-            {{
-                int sz_{field.Name} = item.GetSerializedSize(sizer.Position, encoding);
-                sizer.Skip(sz_{field.Name});
-            }}";
         }
 
-        private int GetMaxLength(FieldInfo field)
+        private bool IsDynamic(FieldInfo field)
         {
-            var attr = field.GetAttribute("MaxLength");
-            if (attr != null && attr.CaseValues != null && attr.CaseValues.Count > 0)
+            if (field.TypeName == "string" || field.TypeName == "System.String") return true;
+            if (field.TypeName.StartsWith("List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("System.Collections.Generic.List<")) return true;
+            
+            TypeInfo? fieldType = field.Type;
+            if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
             {
-                 if (attr.CaseValues[0] is int val) return val;
-                 if (attr.CaseValues[0] is string s && int.TryParse(s, out int i)) return i;
+                fieldType = def.TypeInfo;
             }
-            return -1;
+
+            if (fieldType != null && fieldType.IsStruct && !fieldType.IsEnum) return true;
+            if (fieldType != null && fieldType.IsUnion) return true;
+            if (fieldType != null && fieldType.IsTopic) return true;
+            if (IsOptional(field)) return true;
+            return false;
+        }
+
+        private void EmitFieldDynamicSize(StringBuilder sb, FieldInfo field)
+        {
+             string typeName = field.TypeName;
+             
+             // Resolve TypeInfo if missing
+             TypeInfo? fieldType = field.Type;
+             if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
+             {
+                 fieldType = def.TypeInfo;
+             }
+             
+             if (typeName == "string" || typeName == "System.String")
+             {
+                 sb.AppendLine($"            if (source.{field.Name} != null)"); 
+                 sb.AppendLine($"            {{");
+                 sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
+                 sb.AppendLine($"                currentOffset += DdsTextEncoding.GetUtf8Size(source.{field.Name});");
+                 sb.AppendLine($"            }}");
+             }
+             else if (typeName.StartsWith("List<") || typeName.EndsWith("[]") || typeName.StartsWith("System.Collections.Generic.List<"))
+             {
+                 sb.AppendLine($"            if (source.{field.Name} != null && source.{field.Name}.Count > 0)");
+                 sb.AppendLine($"            {{");
+                 sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
+                 
+                 string elementType = ExtractGenericType(typeName);
+                 if (IsPrimitive(elementType))
+                 {
+                      string nativeType = elementType;
+                      if (nativeType == "bool") nativeType = "byte";
+                      if (nativeType == "string" || nativeType == "System.String") nativeType = "IntPtr"; 
+                      
+                      sb.AppendLine($"                currentOffset += source.{field.Name}.Count * Unsafe.SizeOf<{nativeType}>();");
+                 }
+                 else
+                 {
+                      string nativeElem = GetNativeTypeForSequenceElement(field);
+                      
+                      sb.AppendLine($"                currentOffset += source.{field.Name}.Count * Unsafe.SizeOf<{nativeElem}>();");
+                      sb.AppendLine($"                foreach(var item in source.{field.Name})");
+                      sb.AppendLine("                {");
+                      string managedType = ExtractGenericType(typeName); 
+                      
+                      if (managedType == "string" || managedType == "System.String")
+                      {
+                           sb.AppendLine($"                    currentOffset = (currentOffset + 7) & ~7;");
+                           sb.AppendLine($"                    currentOffset += DdsTextEncoding.GetUtf8Size(item);");
+                      }
+                      else
+                      {
+                           sb.AppendLine($"                    currentOffset = (currentOffset + 7) & ~7;");
+                           sb.AppendLine($"                    currentOffset += {managedType}.GetNativeSize(item) - Unsafe.SizeOf<{nativeElem}>();");
+                      }
+                      sb.AppendLine("                }");
+                 }
+                 sb.AppendLine($"            }}");
+             }
+             else if (fieldType != null && (fieldType.IsStruct || fieldType.IsUnion || fieldType.IsTopic) && !fieldType.IsEnum)
+             {
+                 // Nested Struct or Union
+                 string fullTypeName = fieldType.FullName;
+                 if (IsOptional(field))
+                 {
+                     sb.AppendLine($"            if (source.{field.Name} != null)");
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
+                     sb.AppendLine($"                currentOffset += {fullTypeName}.GetNativeSize(source.{field.Name}.Value);");
+                     sb.AppendLine($"            }}");
+                 }
+                 else
+                 {
+                     sb.AppendLine($"            var __{field.Name}_dyn = {fullTypeName}.GetNativeSize(source.{field.Name}) - Unsafe.SizeOf<{fullTypeName}_Native>();");
+                     sb.AppendLine($"            if (__{field.Name}_dyn > 0)");
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
+                     sb.AppendLine($"                currentOffset += __{field.Name}_dyn;");
+                     sb.AppendLine($"            }}");
+                 }
+             }
+             else if (IsOptional(field))
+             {
+                 string baseType = field.TypeName.TrimEnd('?');
+                 if (baseType == "bool" || baseType == "Boolean" || baseType == "System.Boolean") baseType = "byte";
+
+                 sb.AppendLine($"            if (source.{field.Name}.HasValue)");
+                 sb.AppendLine($"            {{");
+                 sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
+                 sb.AppendLine($"                currentOffset += Unsafe.SizeOf<{baseType}>();");
+                 sb.AppendLine($"            }}");
+             }
+        }
+        
+        private string GetNativeTypeForSequenceElement(FieldInfo field)
+        {
+             string elementType = ExtractGenericType(field.TypeName);
+             if (IsPrimitive(elementType))
+             {
+                 if (elementType == "bool" || elementType == "Boolean" || elementType == "System.Boolean") return "byte";
+                 return elementType;
+             }
+             // For strings? List<string>.
+             if (elementType == "string") return "IntPtr";
+             
+             // User type
+             return elementType + "_Native";
         }
 
         private string ToPascalCase(string name)
         {
             if (string.IsNullOrEmpty(name)) return name;
             return char.ToUpper(name[0]) + name.Substring(1);
+        }
+
+        private int? GetMaxLength(FieldInfo field)
+        {
+            var attr = field.GetAttribute("MaxLength");
+            if (attr != null && attr.Arguments.Count > 0)
+            {
+                if (attr.Arguments[0] is int i) return i;
+            }
+            return null;
+        }
+
+        private int GetAlignment(FieldInfo field)
+        {
+             if (IsOptional(field)) return 8;
+
+             // Bounded strings are inline arrays (char[N]), alignment 1
+             if ((field.TypeName == "string" || field.TypeName == "System.String") && GetMaxLength(field).HasValue)
+             {
+                 return 1;
+             }
+
+             string name = field.TypeName;
+             if (name.StartsWith("System.")) name = name.Substring(7);
+             
+             // Arrays/Lists/Strings -> 8 bytes (pointers/structs with pointers)
+             if (name == "string" || name == "String" || name == "IntPtr" || 
+                 name.StartsWith("List<") || name.EndsWith("[]") || name.StartsWith("BoundedSeq") || name.StartsWith("System.Collections.Generic.List<")) 
+                 return 8;
+
+             // Primitive checks
+             var lower = name.ToLower();
+             if (lower == "double" || lower == "long" || lower == "int64" || lower == "ulong" || lower == "uint64") return 8;
+             if (lower == "int" || lower == "int32" || lower == "uint" || lower == "uint32" || lower == "float" || lower == "single") return 4;
+             if (lower == "short" || lower == "int16" || lower == "ushort" || lower == "uint16" || lower == "char") return 2;
+             if (lower == "byte" || lower == "sbyte" || lower == "bool" || lower == "boolean" || lower == "uint8" || lower == "int8") return 1;
+
+             // Complex types
+             TypeInfo? fieldType = field.Type;
+             if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
+             {
+                 fieldType = def.TypeInfo;
+             }
+             
+             if (fieldType != null)
+             {
+                 if (fieldType.IsEnum) return 4; 
+                 if (fieldType.IsStruct || fieldType.IsUnion)
+                 {
+                     int max = 1;
+                     foreach(var f in fieldType.Fields)
+                     {
+                         int a = GetAlignment(f);
+                         if (a > max) max = a;
+                     }
+                     return max;
+                 }
+             }
+             
+             return 1;
+        }
+
+        private void EmitGhostStruct(StringBuilder sb, TypeInfo type)
+        {
+            sb.AppendLine("    /// <summary>");
+            sb.AppendLine($"    /// Native C-compatible struct for {type.Name}.");
+            sb.AppendLine("    /// </summary>");
+            
+            if (type.HasAttribute("DdsUnion"))
+            {
+                // Explicit layout for Unions (Wrapper)
+                sb.AppendLine("    [StructLayout(LayoutKind.Explicit)]");
+                sb.AppendLine($"    internal unsafe struct {type.Name}_Native");
+                sb.AppendLine("    {");
+
+                var discriminator = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
+                string discType = "int";
+                int discSize = 4;
+                
+                if (discriminator != null)
+                {
+                     discType = GetNativeType(discriminator);
+                     if (discType == "byte") discSize = 1;
+                     else if (discType == "short" || discType == "ushort") discSize = 2;
+                }
+
+                sb.AppendLine($"        [FieldOffset(0)]");
+                sb.AppendLine($"        public {discType} _d;");
+
+                // Calculate max alignment of members
+                int maxAlign = 1;
+                foreach(var field in type.Fields)
+                {
+                    if (field == discriminator) continue;
+                    int a = GetAlignment(field);
+                    if (a > maxAlign) maxAlign = a;
+                }
+                
+                // Align offset
+                int offset = (discSize + (maxAlign - 1)) & ~(maxAlign - 1);
+                
+                sb.AppendLine($"        [FieldOffset({offset})]");
+                sb.AppendLine($"        public {type.Name}_Union_Native _u;");
+                sb.AppendLine("    }");
+
+                // Union Payload (Explicit, all 0)
+                sb.AppendLine();
+                sb.AppendLine("    [StructLayout(LayoutKind.Explicit)]");
+                sb.AppendLine($"    internal unsafe struct {type.Name}_Union_Native");
+                sb.AppendLine("    {");
+                foreach (var field in type.Fields)
+                {
+                    if (field.HasAttribute("DdsDiscriminator")) continue;
+
+                    int? maxLen = GetMaxLength(field);
+                    if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                    {
+                        sb.AppendLine($"        [FieldOffset(0)]");
+                        sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                    }
+                    else
+                    {
+                        string nativeType = GetNativeType(field);
+                        sb.AppendLine($"        [FieldOffset(0)]");
+                        sb.AppendLine($"        public {nativeType} {field.Name};");
+                    }
+                }
+                sb.AppendLine("    }");
+            }
+            else
+            {
+                sb.AppendLine("    [StructLayout(LayoutKind.Sequential)]");
+                sb.AppendLine($"    internal unsafe struct {type.Name}_Native");
+                sb.AppendLine("    {");
+                foreach (var field in type.Fields)
+                {
+                    int? maxLen = GetMaxLength(field);
+                    if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                    {
+                        sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                    }
+                    else
+                    {
+                        string nativeType = GetNativeType(field);
+                        sb.AppendLine($"        public {nativeType} {field.Name};");
+                    }
+                }
+                sb.AppendLine("    }");
+            }
+        }
+
+        private string GetNativeType(FieldInfo field)
+        {
+            string baseType = GetBaseType(field.TypeName);
+            if (IsOptional(field)) return "IntPtr";
+            
+            if (field.TypeName == "bool" || field.TypeName == "Boolean" || field.TypeName == "System.Boolean") return "byte";
+            if (baseType == "string" || baseType == "System.String") return "IntPtr";
+            
+            if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
+            {
+                return "DdsSequenceNative";
+            }
+            
+            if (field.Type != null)
+            {
+                if (field.Type.IsEnum) return field.TypeName;
+                return $"{field.Type.FullName}_Native";
+            }
+            
+            // Primitives
+            return field.TypeName;
         }
     }
 }

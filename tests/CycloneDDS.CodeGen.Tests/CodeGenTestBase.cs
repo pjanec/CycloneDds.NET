@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using CycloneDDS.CodeGen;
-using CycloneDDS.Core;
+using CycloneDDS.Core; using CycloneDDS.Runtime; using System.Runtime.CompilerServices;
 using System.Buffers;
 
 namespace CycloneDDS.CodeGen.Tests
@@ -24,7 +24,7 @@ namespace CycloneDDS.CodeGen.Tests
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(System.Runtime.AssemblyTargetedPatchBandAttribute).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(CycloneDDS.Core.CdrWriter).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(CycloneDDS.Core.NativeArena).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(CycloneDDS.Runtime.DdsParticipant).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(CycloneDDS.Schema.BoundedSeq<>).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(IBufferWriter<>).Assembly.Location), // System.Memory
@@ -36,7 +36,7 @@ namespace CycloneDDS.CodeGen.Tests
             };
 
             var compilation = CSharpCompilation.Create(assemblyName)
-                .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+                .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true))
                 .AddReferences(references)
                 .AddSyntaxTrees(trees);
 
@@ -99,38 +99,7 @@ namespace CycloneDDS.CodeGen.Tests
             return code.Substring(start, end - start);
         }
 
-        protected string GenerateTestHelper(string namespaceName, string typeName)
-        {
-             return $@"
-namespace {namespaceName}
-{{
-    public static class TestHelper
-    {{
-        public static void SerializeWithBuffer(object instance, System.Buffers.IBufferWriter<byte> buffer)
-        {{
-            var typedInstance = ({typeName})instance;
-            var writer = new CycloneDDS.Core.CdrWriter(buffer);
-            typedInstance.Serialize(ref writer);
-            writer.Complete();
-        }}
 
-        public static object DeserializeFromBuffer(System.ReadOnlyMemory<byte> buffer)
-        {{
-            // For tests, we simply alias to ToOwned because generated Views might be ref structs (which can't be boxed to object)
-            return DeserializeFrombufferToOwned(buffer);
-        }}
-        
-        public static object DeserializeFrombufferToOwned(System.ReadOnlyMemory<byte> buffer)
-        {{
-             // Force Xcdr1 because CdrReader auto-detect might misinterpret raw payload as Xcdr2 if it starts with bytes that look like XCDR2 header
-             var reader = new CycloneDDS.Core.CdrReader(buffer.Span, CycloneDDS.Core.CdrEncoding.Xcdr1);
-             var val = {typeName}.Deserialize(ref reader);
-             return val.ToOwned();
-        }}
-    }}
-}}
-";
-        }
     }
 }
 

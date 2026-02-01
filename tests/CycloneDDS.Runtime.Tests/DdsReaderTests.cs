@@ -10,7 +10,7 @@ namespace CycloneDDS.Runtime.Tests
         public void CreateReader_Success()
         {
             using var participant = new DdsParticipant(0);
-            using var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique1");
+            using var reader = new DdsReader<TestMessage>(participant, "TestTopic_Unique1");
             
             Assert.NotNull(reader);
         }
@@ -19,7 +19,7 @@ namespace CycloneDDS.Runtime.Tests
         public void Take_NoData_ReturnsEmptyScope()
         {
             using var participant = new DdsParticipant(0);
-            using var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique2");
+            using var reader = new DdsReader<TestMessage>(participant, "TestTopic_Unique2");
             
             using var scope = reader.Take();
             
@@ -30,7 +30,7 @@ namespace CycloneDDS.Runtime.Tests
         public void Dispose_Idempotent()
         {
             using var participant = new DdsParticipant(0);
-            var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique3");
+            var reader = new DdsReader<TestMessage>(participant, "TestTopic_Unique3");
             
             reader.Dispose();
             reader.Dispose();
@@ -40,7 +40,7 @@ namespace CycloneDDS.Runtime.Tests
         public void Take_AfterDispose_Throws()
         {
             using var participant = new DdsParticipant(0);
-            var reader = new DdsReader<TestMessage, TestMessage>(participant, "TestTopic_Unique4");
+            var reader = new DdsReader<TestMessage>(participant, "TestTopic_Unique4");
             
             reader.Dispose();
             

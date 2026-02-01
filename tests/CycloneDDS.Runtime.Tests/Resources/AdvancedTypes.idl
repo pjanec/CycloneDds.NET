@@ -1,0 +1,70 @@
+module AdvancedTypes {
+
+  enum DiscriminatorEnum {
+    DISC_ONE,
+    DISC_TWO,
+    DISC_THREE
+  };
+
+  union IntUnion switch (long) {
+    case 1: long primitive_value;
+    case 2: string string_value;
+    default: boolean bool_value;
+  };
+
+  union BoolUnion switch (boolean) {
+    case TRUE: double double_value;
+    case FALSE: long long_value;
+  };
+
+  union EnumUnion switch (DiscriminatorEnum) {
+    case DISC_ONE: float float_value;
+    case DISC_TWO: string<32> small_string;
+    default: sequence<octet> bytes_value;
+  };
+
+  struct InnerInnerStruct {
+    long id;
+    string message;
+  };
+
+  struct InnerStruct {
+    InnerInnerStruct deep_struct;
+    sequence<double> numbers;
+  };
+
+  struct NestedStruct {
+    InnerStruct inner;
+    long level;
+  };
+
+  struct OptionalStruct {
+     long mandatory_val;
+  };
+
+  struct OptionalInner {
+     long opt_int;
+  };
+  
+  typedef sequence<long> LongSeq;
+
+  struct ComplexStruct {
+    sequence<LongSeq> matrix; // Jagged array
+    string<32> fixed_string;
+    sequence<long, 10> bounded_seq;
+    
+    @optional long opt_long;
+    @optional NestedStruct opt_struct;
+  };
+  
+  struct AllTypes {
+    ComplexStruct complex;
+    IntUnion u_int;
+    BoolUnion u_bool;
+    EnumUnion u_enum;
+    NestedStruct nested;
+  };
+
+};
+
+

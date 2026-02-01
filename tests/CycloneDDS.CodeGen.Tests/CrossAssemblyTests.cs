@@ -55,7 +55,7 @@ namespace CycloneDDS.CodeGen.Tests
             {
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(DdsTopicAttribute).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(CycloneDDS.Core.CdrReader).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(CycloneDDS.Core.NativeArena).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(CycloneDDS.Runtime.DdsParticipant).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
                 MetadataReference.CreateFromFile(Assembly.Load("System.Runtime").Location),
@@ -71,7 +71,7 @@ namespace CycloneDDS.CodeGen.Tests
                 refs.AddRange(references.Select(r => MetadataReference.CreateFromFile(r)));
 
             var compilation = CSharpCompilation.Create(projectName)
-                .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+                .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary).WithAllowUnsafe(true))
                 .AddReferences(refs)
                 .AddSyntaxTrees(trees);
 
@@ -349,4 +349,3 @@ namespace LibC {
         }
     }
 }
-
