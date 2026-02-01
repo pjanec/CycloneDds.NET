@@ -1,32 +1,44 @@
 param(
+    [string]$Configuration = "Release",
     [string]$Filter = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "1. Building CodeGen (Release) - Crucial for applying SerializerEmitter changes..." -ForegroundColor Cyan
-dotnet build tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj -c Release
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "  CycloneDDS C# Bindings: Build & Test ($Configuration)" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+
+# 1. Build CodeGen (Critical Dependency - Must be built before projects that use it)
+Write-Host "`n[1/3] Building CodeGen Tool..." -ForegroundColor Yellow
+dotnet build tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj -c $Configuration
 if ($LASTEXITCODE -ne 0) { Write-Error "CodeGen build failed"; exit 1 }
 
-Write-Host "2. Cleaning Test Project..." -ForegroundColor Cyan
-dotnet clean tests\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj
+# 2. Build Entire Solution
+Write-Host "`n[2/3] Building Solution..." -ForegroundColor Yellow
+dotnet build FastCycloneDdsCsharpBindings.sln -c $Configuration
+if ($LASTEXITCODE -ne 0) { Write-Error "Solution build failed"; exit 1 }
 
-Write-Host "3. Building Test Project (Release)..." -ForegroundColor Cyan
-# This will trigger the CodeGen target using the updated Debug CodeGen.exe
-dotnet build tests\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj -c Release
-if ($LASTEXITCODE -ne 0) { Write-Error "Test Project build failed"; exit 1 }
+# 3. Run All Tests
+Write-Host "`n[3/3] Executing Test Suite (All Projects)..." -ForegroundColor Yellow
 
-Write-Host "4. Rebuilding Native Lib (via bat script but only the native part if possible, or just run the bat)..." -ForegroundColor Cyan
-# To be safe, run the bat, but we already built C# so it's redundant but safe.
-.\rebuild_all_csharp_to_c.bat
-if ($LASTEXITCODE -ne 0) { Write-Error "Bat script failed"; exit 1 }
+# Construct Test Args
+# Note: We use the SLN file to target all test projects contained within it.
+$TestArgs = @("test", "FastCycloneDdsCsharpBindings.sln", "-c", $Configuration, "--no-build", "--logger", "console;verbosity=normal")
 
-Write-Host "5. Running CsharpToC Tests..." -ForegroundColor Cyan
-if ([string]::IsNullOrWhiteSpace($Filter)) {
-    dotnet test tests\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj -c Release --logger "console;verbosity=normal"
-}
-else {
-    Write-Host "Applying Filter: $Filter" -ForegroundColor Yellow
-    dotnet test tests\CsharpToC.Roundtrip.Tests\CsharpToC.Roundtrip.Tests.csproj -c Release --logger "console;verbosity=normal" --filter $Filter
+if (![string]::IsNullOrWhiteSpace($Filter)) {
+    $TestArgs += "--filter"
+    $TestArgs += $Filter
+    Write-Host "Filter Applied: $Filter" -ForegroundColor Magenta
 }
 
+Write-Host "Running: dotnet $TestArgs" -ForegroundColor DarkGray
+& dotnet $TestArgs
+
+if ($LASTEXITCODE -ne 0) { 
+    Write-Error "Tests FAILED."
+    exit 1 
+}
+
+Write-Host "`n✅ All Tests Passed Successfully!" -ForegroundColor Green
+exit 0

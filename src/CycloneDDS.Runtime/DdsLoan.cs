@@ -82,7 +82,7 @@ namespace CycloneDDS.Runtime
                 if (_index >= _loan._length) return false;
 
                 var info = _loan._infos[_index];
-                T data = default;
+                T data = default!;
                 
                 if (info.ValidData != 0)
                 {
@@ -90,7 +90,7 @@ namespace CycloneDDS.Runtime
                     _loan._unmarshaller(_loan._samples[_index], out data);
                 }
                 
-                _current = new DdsSample<T>(data, info);
+                _current = new DdsSample<T>(data!, info);
                 return true;
             }
 

@@ -60,13 +60,13 @@ namespace CycloneDDS.Runtime
                 _nativeSizer = CreateNativeSizerDelegate("GetNativeSize");
                 _nativeMarshaller = CreateNativeMarshallerDelegate("MarshalToNative");
                 var headSizeMethod = typeof(T).GetMethod("GetNativeHeadSize", BindingFlags.Public | BindingFlags.Static);
-                if (headSizeMethod != null) _nativeHeadSize = (int)headSizeMethod.Invoke(null, null);
+                if (headSizeMethod != null) _nativeHeadSize = (int)(headSizeMethod.Invoke(null, null) ?? 0);
                 
                 // Native Key Marshaling
                 _keyNativeSizer = CreateNativeSizerDelegate("GetKeyNativeSize");
                 _keyNativeMarshaller = CreateNativeMarshallerDelegate("MarshalKeyToNative");
                 var keyHeadSizeMethod = typeof(T).GetMethod("GetKeyNativeHeadSize", BindingFlags.Public | BindingFlags.Static);
-                if (keyHeadSizeMethod != null) _keyNativeHeadSize = (int)keyHeadSizeMethod.Invoke(null, null);
+                if (keyHeadSizeMethod != null) _keyNativeHeadSize = (int)(keyHeadSizeMethod.Invoke(null, null) ?? 0);
             }
             catch (Exception ex)
             {

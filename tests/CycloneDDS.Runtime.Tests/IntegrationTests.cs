@@ -141,27 +141,7 @@ namespace CycloneDDS.Runtime.Tests
             }
             Assert.True(found);
         }
-        [Fact(Skip = "dds_get_topic_sertype is not in standard CycloneDDS")]
-        public void GetTopicSertype_ReturnsValidPointer()
-        {
-            using var participant = new DdsParticipant(0);
-            using var desc = new DescriptorContainer(
-                TestMessage.GetDescriptorOps(), 8, 4, 16, "SertypeTopic");
-            
-            var topic = DdsApi.dds_create_topic(
-                participant.NativeEntity,
-                desc.Ptr,
-                "SertypeTopic",
-                IntPtr.Zero,
-                IntPtr.Zero);
-                
-            Assert.True(topic.IsValid);
-            
-            IntPtr sertype = DdsApi.dds_get_topic_sertype(topic);
-            Assert.NotEqual(IntPtr.Zero, sertype);
-            
-            DdsApi.dds_delete(topic);
-        }
+
 
         [Fact]
         public void Write_Standard_Success()

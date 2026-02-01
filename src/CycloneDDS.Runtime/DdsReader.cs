@@ -79,7 +79,7 @@ namespace CycloneDDS.Runtime
                 if (toNativeMethod != null) _nativeMarshaller = (MarshalToNativeDelegate)toNativeMethod.CreateDelegate(typeof(MarshalToNativeDelegate));
                 
                 var headSizeMethod = typeof(T).GetMethod("GetNativeHeadSize", BindingFlags.Public | BindingFlags.Static);
-                if (headSizeMethod != null) _nativeHeadSize = (int)headSizeMethod.Invoke(null, null);
+                if (headSizeMethod != null) _nativeHeadSize = (int)(headSizeMethod.Invoke(null, null) ?? 0);
             }
             catch (Exception ex) { Console.WriteLine($"[DdsReader] Initialization failed: {ex}"); throw; }
         }

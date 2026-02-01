@@ -257,7 +257,7 @@ namespace CycloneDDS.CodeGen
              TypeInfo? fieldType = field.Type;
              if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
              {
-                 fieldType = def.TypeInfo;
+                 fieldType = def?.TypeInfo;
              }
 
              if (field.TypeName == "string" || field.TypeName == "System.String")
@@ -535,7 +535,7 @@ namespace CycloneDDS.CodeGen
              TypeInfo? fieldType = field.Type;
              if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
              {
-                 fieldType = def.TypeInfo;
+                 fieldType = def?.TypeInfo;
              }
 
              if (IsOptional(field))
@@ -784,7 +784,7 @@ namespace CycloneDDS.CodeGen
             TypeInfo? fieldType = field.Type;
             if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
             {
-                fieldType = def.TypeInfo;
+                fieldType = def?.TypeInfo;
             }
 
             if (fieldType != null && fieldType.IsStruct && !fieldType.IsEnum) return true;
@@ -802,7 +802,7 @@ namespace CycloneDDS.CodeGen
              TypeInfo? fieldType = field.Type;
              if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
              {
-                 fieldType = def.TypeInfo;
+                 fieldType = def?.TypeInfo;
              }
              
              if (typeName == "string" || typeName == "System.String")
@@ -946,7 +946,7 @@ namespace CycloneDDS.CodeGen
              TypeInfo? fieldType = field.Type;
              if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
              {
-                 fieldType = def.TypeInfo;
+                 fieldType = def?.TypeInfo;
              }
              
              if (fieldType != null)
