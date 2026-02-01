@@ -110,11 +110,11 @@ namespace CycloneDDS.CodeGen
                         if (extAttr != null && extAttr.ConstructorArguments.Length > 0)
                         {
                             var val = extAttr.ConstructorArguments[0].Value;
-                            Console.WriteLine($"[DEBUG-SCHEMA] Type {typeSymbol.Name} has Extensibility Attr. ValType={val?.GetType().Name} Val={val}");
+                            //Console.WriteLine($"[DEBUG-SCHEMA] Type {typeSymbol.Name} has Extensibility Attr. ValType={val?.GetType().Name} Val={val}");
                             if (val is int intVal)
                             {
                                 typeInfo.Extensibility = (DdsExtensibilityKind)intVal;
-                                Console.WriteLine($"[DEBUG-SCHEMA]   -> Set to {typeInfo.Extensibility}");
+                                //Console.WriteLine($"[DEBUG-SCHEMA]   -> Set to {typeInfo.Extensibility}");
                             }
                             else
                             {
