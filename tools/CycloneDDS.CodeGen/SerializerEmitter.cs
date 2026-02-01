@@ -157,6 +157,7 @@ namespace CycloneDDS.CodeGen
              {
                  string castType = GetDiscriminatorCastType(discriminator.TypeName);
                  string castExpr = castType == "bool" ? "" : $"({castType})";
+                 if (discriminator.Type != null && discriminator.Type.IsEnum) castExpr = "(int)";
                  sb.AppendLine($"            target._d = {castExpr}source.{ToPascalCase(discriminator.Name)};");
              }
              
@@ -1070,7 +1071,7 @@ namespace CycloneDDS.CodeGen
             
             if (field.Type != null)
             {
-                if (field.Type.IsEnum) return field.TypeName;
+                if (field.Type.IsEnum) return "int";
                 return $"{field.Type.FullName}_Native";
             }
             
