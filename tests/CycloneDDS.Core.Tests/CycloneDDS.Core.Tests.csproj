@@ -25,4 +25,12 @@
     <ProjectReference Include="..\..\src\CycloneDDS.Core\CycloneDDS.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- CycloneDDS Native Binaries -->
+    <None Include="..\..\cyclone-compiled\bin\*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
 </Project>

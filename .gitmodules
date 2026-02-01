@@ -1,7 +1,7 @@
 [submodule "cyclonedds"]
 	path = cyclonedds
 	url = https://github.com/pjanec/cyclonedds.git
-	branch = pj/exposing-serdata-api
+	branch = pj/idlcjson
 [submodule "cyclonedds-cxx"]
 	path = cyclonedds-cxx
 	url = https://github.com/eclipse-cyclonedds/cyclonedds-cxx.git

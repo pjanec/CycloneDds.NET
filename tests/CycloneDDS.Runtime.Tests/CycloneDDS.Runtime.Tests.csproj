@@ -28,13 +28,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\cyclone-compiled\bin\ddsc.dll">
-      <Link>ddsc.dll</Link>
+    <!-- CycloneDDS Native Binaries -->
+    <None Include="..\..\cyclone-compiled\bin\*.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="..\..\cyclone-compiled\bin\cycloneddsidl.dll">
-      <Link>cycloneddsidl.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>%(Filename)%(Extension)</Link>
     </None>
   </ItemGroup>
 
