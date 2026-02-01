@@ -66,7 +66,6 @@ namespace CycloneDDS.Core
             _tail += size;
             
             IntPtr ptr = _baseAddress + offset;
-            Console.WriteLine($"CreateString: '{text}' at {ptr} (Offset {offset})");
             return ptr;
         }
 

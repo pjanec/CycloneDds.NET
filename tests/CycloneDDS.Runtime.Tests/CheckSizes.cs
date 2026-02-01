@@ -9,14 +9,14 @@ namespace CycloneDDS.Runtime.Tests
 {
     public class CheckSizes
     {
-        [Fact]
-        public void PrintSizes()
-        {
-            Console.WriteLine($"SizeOf DdsSequenceNative: {Unsafe.SizeOf<DdsSequenceNative>()}");
-            Console.WriteLine($"SizeOf ComplexStruct_Native: {Unsafe.SizeOf<ComplexStruct_Native>()}");
-            Console.WriteLine($"SizeOf AdvancedTypes_LongSeq_Native: {Unsafe.SizeOf<AdvancedTypes_LongSeq_Native>()}");
+        //[Fact]
+        //public void PrintSizes()
+        //{
+        //    Console.WriteLine($"SizeOf DdsSequenceNative: {Unsafe.SizeOf<DdsSequenceNative>()}");
+        //    Console.WriteLine($"SizeOf ComplexStruct_Native: {Unsafe.SizeOf<ComplexStruct_Native>()}");
+        //    Console.WriteLine($"SizeOf AdvancedTypes_LongSeq_Native: {Unsafe.SizeOf<AdvancedTypes_LongSeq_Native>()}");
             
-            Assert.True(true);
-        }
+        //    Assert.True(true);
+        //}
     }
 }

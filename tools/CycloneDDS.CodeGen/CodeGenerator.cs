@@ -18,9 +18,9 @@ namespace CycloneDDS.CodeGen
 
         public void Generate(string sourceDir, string outputDir, IEnumerable<string>? referencePaths = null)
         {
-            Console.WriteLine($"Discovering types in: {sourceDir}");
+            //Console.WriteLine($"Discovering types in: {sourceDir}");
             var types = _discovery.DiscoverTopics(sourceDir, referencePaths);
-            Console.WriteLine($"Found {types.Count} type(s)");
+            //Console.WriteLine($"Found {types.Count} type(s)");
             
             // Validate ALL types with strict checking
             var validator = new SchemaValidator(types, _discovery.ValidExternalTypes);
@@ -89,7 +89,7 @@ namespace CycloneDDS.CodeGen
             {
                 if (topic.IsTopic || topic.IsStruct || topic.IsUnion)
                 {
-                    Console.WriteLine($"Processing {topic.FullName}...");
+                    Console.WriteLine($"CodeGen: topic: {topic.FullName}");
                     var serializerCode = _serializerEmitter.EmitSerializer(topic, registry);
                     
                     var safeName = topic.FullName;
@@ -100,7 +100,7 @@ namespace CycloneDDS.CodeGen
 
                     var deserializerCode = _deserializerEmitter.EmitDeserializer(topic, registry);
                     File.WriteAllText(Path.Combine(outputDir, $"{safeName}.Deserializer.cs"), deserializerCode);
-                    Console.WriteLine($"    Generated Serializers for {topic.Name}");
+                    //Console.WriteLine($"    Generated Serializers for {topic.Name}");
                 }
             }
             
@@ -111,12 +111,12 @@ namespace CycloneDDS.CodeGen
             EmitAssemblyMetadata(registry, outputDir);
             
             // Generate Descriptors (Runtime Support)
-            Console.WriteLine($"[DEBUG] LocalTypes count: {registry.LocalTypes.Count()}");
-            foreach(var t in registry.LocalTypes) Console.WriteLine($"[DEBUG] LocalType: {t.CSharpFullName} -> {t.TargetIdlFile}");
+            //Console.WriteLine($"[DEBUG] LocalTypes count: {registry.LocalTypes.Count()}");
+            //foreach(var t in registry.LocalTypes) Console.WriteLine($"[DEBUG] LocalType: {t.CSharpFullName} -> {t.TargetIdlFile}");
 
             GenerateDescriptors(registry, outputDir);
 
-            Console.WriteLine($"Output will go to: {outputDir}");
+            //Console.WriteLine($"Output will go to: {outputDir}");
         }
 
         private void ResolveExternalDependencies(GlobalTypeRegistry registry, List<TypeInfo> types)
@@ -214,8 +214,8 @@ namespace CycloneDDS.CodeGen
             var jsonParser = new IdlJsonParser();
             var processedIdlFiles = new HashSet<string>();
             var localFileGroups = fileGroups.ToList();
-            Console.WriteLine($"[DEBUG] Found {localFileGroups.Count} file groups");
-            foreach(var g in localFileGroups) Console.WriteLine($"[DEBUG] Group: {g.Key}");
+            //Console.WriteLine($"[DEBUG] Found {localFileGroups.Count} file groups");
+            //foreach(var g in localFileGroups) Console.WriteLine($"[DEBUG] Group: {g.Key}");
 
             // Phase 4a: Compile to JSON (ALL IDL files)
             string tempJsonDir = Path.Combine(outputDir, "temp_json");
@@ -228,11 +228,11 @@ namespace CycloneDDS.CodeGen
                 
                 if (!processedIdlFiles.Contains(idlFileName))
                 {
-                    Console.WriteLine($"[DEBUG] Running IDLC -l json for {idlFileName} at {idlPath}");
-                    var result = idlcRunner.RunIdlc(idlPath, tempJsonDir);
+                    //Console.WriteLine($"[DEBUG] Running IDLC -l json for {idlFileName} at {idlPath}");
+                    var result = idlcRunner.RunIdlc(idlPath, tempJsonDir, outputDir);
                     if (result.ExitCode != 0)
                     {
-                         Console.Error.WriteLine($"    idlc failed for {idlFileName}: {result.StandardError}");
+                         Console.Error.WriteLine($"    `idlc -l json {idlFileName}` failed for: {result.StandardError}");
                          continue; 
                     }
                     processedIdlFiles.Add(idlFileName);
@@ -250,7 +250,7 @@ namespace CycloneDDS.CodeGen
                     try
                     {
                         var jsonTypes = jsonParser.Parse(jsonFile);
-                        Console.WriteLine($"[DEBUG] Parsed {jsonTypes.Count} types from {jsonFile}");
+                        //Console.WriteLine($"[DEBUG] Parsed {jsonTypes.Count} types from {jsonFile}");
                         
                         foreach(var topic in group)
                         {
@@ -271,7 +271,7 @@ namespace CycloneDDS.CodeGen
                                     // Generate descriptor code from JSON metadata
                                     var descCode = GenerateDescriptorCodeFromJson(topic.TypeInfo, jsonDef.TopicDescriptor);
                                     File.WriteAllText(Path.Combine(outputDir, $"{topic.TypeInfo.FullName}.Descriptor.cs"), descCode);
-                                    Console.WriteLine($"    Generated {topic.TypeInfo.Name}.Descriptor.cs");
+                                    //Console.WriteLine($"    Generated {topic.TypeInfo.Name}.Descriptor.cs");
                                 }
                                 else
                                 {

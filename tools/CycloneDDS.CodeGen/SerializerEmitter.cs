@@ -451,7 +451,6 @@ namespace CycloneDDS.CodeGen
 
             sb.AppendLine($"        internal static unsafe void MarshalFromNative(ref {type.Name} target, in {type.Name}_Native source)");
             sb.AppendLine("        {");
-            sb.AppendLine($"            System.Console.WriteLine(\"MarshalFromNative {type.Name}\");");
 
             if (type.HasAttribute("DdsUnion"))
             {
@@ -627,7 +626,7 @@ namespace CycloneDDS.CodeGen
              
              sb.AppendLine($"            {{");
              sb.AppendLine($"                var __seq = {sourceAccess};");
-             sb.AppendLine($"                System.Console.WriteLine($\"Sequence {field.Name} Length: {{__seq.Length}} Max: {{__seq.Maximum}} Buffer: {{__seq.Buffer}}\");");
+
 
              if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<"))
              {
@@ -650,7 +649,7 @@ namespace CycloneDDS.CodeGen
 
         private void EmitSequenceUnmarshalLoop(StringBuilder sb, string elementType, string targetAccess, string seqVar, bool isList, bool isBoundedSeq = false)
         {
-             sb.AppendLine($"                System.Console.WriteLine(\"Unmarshal Seq {elementType} Len: \" + {seqVar}.Length + \" Max: \" + {seqVar}.Maximum + \" Buf: \" + {seqVar}.Buffer);");
+
 
              if (IsPrimitive(elementType))
              {

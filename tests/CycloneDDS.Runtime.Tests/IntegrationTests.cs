@@ -363,11 +363,11 @@ namespace CycloneDDS.Runtime.Tests
 
             using var scope = reader.Take();
             bool foundDispose = false;
-            Console.WriteLine($"[DisposeInstance] Scope Count: {scope.Count}");
+            //Console.WriteLine($"[DisposeInstance] Scope Count: {scope.Count}");
             for(int i=0; i<scope.Count; i++)
             {
                 var info = scope.Infos[i];
-                Console.WriteLine($"[DisposeInstance] Sample {i}: Valid={info.ValidData}, InstanceState={info.InstanceState}");
+                //Console.WriteLine($"[DisposeInstance] Sample {i}: Valid={info.ValidData}, InstanceState={info.InstanceState}");
                 // Relaxed check: Accept Disposed state regardless of ValidData flag (which might be set if key is transmitted as data)
                 if (scope.Infos[i].InstanceState == DdsInstanceState.NotAliveDisposed)
                 {
@@ -399,11 +399,11 @@ namespace CycloneDDS.Runtime.Tests
 
             using var scope = reader.Take();
             bool foundUnregister = false;
-            Console.WriteLine($"[UnregisterInstance] Scope Count: {scope.Count}");
+            //Console.WriteLine($"[UnregisterInstance] Scope Count: {scope.Count}");
             for(int i=0; i<scope.Count; i++)
             {
                 var info = scope.Infos[i];
-                Console.WriteLine($"[UnregisterInstance] Sample {i}: Valid={info.ValidData}, InstanceState={info.InstanceState}");
+                //Console.WriteLine($"[UnregisterInstance] Sample {i}: Valid={info.ValidData}, InstanceState={info.InstanceState}");
                 // Relaxed: Unregister might trigger Dispose if autodispose QoS is set
                 if (scope.Infos[i].InstanceState == DdsInstanceState.NotAliveNoWriters ||
                     scope.Infos[i].InstanceState == DdsInstanceState.NotAliveDisposed)
