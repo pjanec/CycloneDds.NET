@@ -14,6 +14,9 @@
   <ItemGroup>
     <ProjectReference Include="..\CycloneDDS.Core\CycloneDDS.Core.csproj" />
     <ProjectReference Include="..\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
+    <ProjectReference Include="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 
   <Import Project="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
