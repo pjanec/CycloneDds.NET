@@ -126,7 +126,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("        }");
             sb.AppendLine();
 
-            sb.AppendLine($"        internal static unsafe void MarshalToNative(in {type.Name} source, ref {type.Name}_Native target, ref NativeArena arena)");
+            sb.AppendLine($"        public static unsafe void MarshalToNative(in {type.Name} source, ref {type.Name}_Native target, ref NativeArena arena)");
             sb.AppendLine("        {");
 
             if (type.HasAttribute("DdsUnion"))
@@ -399,7 +399,7 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("        }");
             sb.AppendLine();
 
-            sb.AppendLine($"        internal static unsafe void MarshalKeyToNative(in {type.Name} source, ref {type.Name}_Native target, ref NativeArena arena)");
+            sb.AppendLine($"        public static unsafe void MarshalKeyToNative(in {type.Name} source, ref {type.Name}_Native target, ref NativeArena arena)");
             sb.AppendLine("        {");
             if (type.HasAttribute("DdsUnion"))
             {
@@ -443,14 +443,14 @@ namespace CycloneDDS.CodeGen
 
         private void EmitUnmarshalFromNative(StringBuilder sb, TypeInfo type)
         {
-            sb.AppendLine($"        internal static unsafe void MarshalFromNative(IntPtr nativeData, out {type.Name} managedData)");
+            sb.AppendLine($"        public static unsafe void MarshalFromNative(IntPtr nativeData, out {type.Name} managedData)");
             sb.AppendLine("        {");
             sb.AppendLine($"            managedData = default;");
             sb.AppendLine($"            MarshalFromNative(ref managedData, in System.Runtime.CompilerServices.Unsafe.AsRef<{type.Name}_Native>((void*)nativeData));");
             sb.AppendLine("        }");
             sb.AppendLine();
 
-            sb.AppendLine($"        internal static unsafe void MarshalFromNative(ref {type.Name} target, in {type.Name}_Native source)");
+            sb.AppendLine($"        public static unsafe void MarshalFromNative(ref {type.Name} target, in {type.Name}_Native source)");
             sb.AppendLine("        {");
 
             if (type.HasAttribute("DdsUnion"))
@@ -977,7 +977,7 @@ namespace CycloneDDS.CodeGen
             {
                 // Explicit layout for Unions (Wrapper)
                 sb.AppendLine("    [StructLayout(LayoutKind.Explicit)]");
-                sb.AppendLine($"    internal unsafe struct {type.Name}_Native");
+                sb.AppendLine($"    public unsafe struct {type.Name}_Native");
                 sb.AppendLine("    {");
 
                 var discriminator = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
@@ -1013,7 +1013,7 @@ namespace CycloneDDS.CodeGen
                 // Union Payload (Explicit, all 0)
                 sb.AppendLine();
                 sb.AppendLine("    [StructLayout(LayoutKind.Explicit)]");
-                sb.AppendLine($"    internal unsafe struct {type.Name}_Union_Native");
+                sb.AppendLine($"    public unsafe struct {type.Name}_Union_Native");
                 sb.AppendLine("    {");
                 foreach (var field in type.Fields)
                 {
@@ -1037,7 +1037,7 @@ namespace CycloneDDS.CodeGen
             else
             {
                 sb.AppendLine("    [StructLayout(LayoutKind.Sequential)]");
-                sb.AppendLine($"    internal unsafe struct {type.Name}_Native");
+                sb.AppendLine($"    public unsafe struct {type.Name}_Native");
                 sb.AppendLine("    {");
                 foreach (var field in type.Fields)
                 {
@@ -1069,10 +1069,16 @@ namespace CycloneDDS.CodeGen
                 return "DdsSequenceNative";
             }
             
-            if (field.Type != null)
+            TypeInfo? fieldType = field.Type;
+            if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
             {
-                if (field.Type.IsEnum) return "int";
-                return $"{field.Type.FullName}_Native";
+                fieldType = def?.TypeInfo;
+            }
+
+            if (fieldType != null)
+            {
+                if (fieldType.IsEnum) return "int";
+                return $"{fieldType.FullName}_Native";
             }
             
             // Primitives

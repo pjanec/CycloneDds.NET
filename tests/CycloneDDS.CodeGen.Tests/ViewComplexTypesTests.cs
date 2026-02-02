@@ -114,8 +114,8 @@ namespace CycloneDDS.CodeGen.Tests
             var code = _emitter.EmitViewStruct(type, registry);
 
             Assert.Contains("public unsafe int MyUKind", code);
-            Assert.Contains("public int? MyUAsInt_val", code);
-            Assert.Contains("public double? MyUAsDbl_val", code);
+            Assert.Contains("public unsafe int? MyUAsInt_val", code);
+            Assert.Contains("public unsafe double? MyUAsDbl_val", code);
             Assert.Contains("public TestType ToManaged()", code);
             Assert.Contains("target.MyU = this.MyU.ToManaged();", code);
         }

@@ -146,7 +146,7 @@ namespace CycloneDDS.CodeGen
                     {
                         if (!registry.TryGetDefinition(extDef.CSharpFullName, out _))
                         {
-                            registry.RegisterExternal(extDef.CSharpFullName, extDef.TargetIdlFile, extDef.TargetModule);
+                            registry.RegisterExternal(extDef.CSharpFullName, extDef.TargetIdlFile, extDef.TargetModule, extDef.TypeInfo);
                             resolvedCache.Add(fieldTypeName);
                         }
                     }
@@ -181,12 +181,29 @@ namespace CycloneDDS.CodeGen
                              
                              if (idlFile != null && idlModule != null)
                              {
+                                 var typeInfo = new TypeInfo
+                                 {
+                                     Name = symbol.Name,
+                                     Namespace = (symbol.ContainingNamespace?.ToDisplayString() ?? "").Replace("<global namespace>", "").Trim('.')
+                                 };
+                                 
+                                 var symAttrs = symbol.GetAttributes();
+                                 if (symAttrs.Any(a => a.AttributeClass?.Name == "DdsStructAttribute" || a.AttributeClass?.Name == "DdsStruct"))
+                                     typeInfo.IsStruct = true;
+                                 if (symAttrs.Any(a => a.AttributeClass?.Name == "DdsUnionAttribute" || a.AttributeClass?.Name == "DdsUnion"))
+                                     typeInfo.IsUnion = true;
+                                 if (symAttrs.Any(a => a.AttributeClass?.Name == "DdsTopicAttribute" || a.AttributeClass?.Name == "DdsTopic"))
+                                     typeInfo.IsTopic = true;
+                                 if (symbol.TypeKind == TypeKind.Enum)
+                                     typeInfo.IsEnum = true;
+                                 
                                  return new IdlTypeDefinition
                                  {
                                      CSharpFullName = fullTypeName,
                                      TargetIdlFile = idlFile,
                                      TargetModule = idlModule,
-                                     IsExternal = true
+                                     IsExternal = true,
+                                     TypeInfo = typeInfo
                                  };
                              }
                          }

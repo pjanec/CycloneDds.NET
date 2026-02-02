@@ -24,14 +24,15 @@ namespace CycloneDDS.CodeGen
             _types[type.FullName] = def;
         }
 
-        public void RegisterExternal(string fullName, string idlFile, string idlModule)
+        public void RegisterExternal(string fullName, string idlFile, string idlModule, TypeInfo? typeInfo = null)
         {
             var def = new IdlTypeDefinition
             {
                 CSharpFullName = fullName,
                 TargetIdlFile = idlFile,
                 TargetModule = idlModule,
-                IsExternal = true
+                IsExternal = true,
+                TypeInfo = typeInfo
             };
             
             // For external types, we replace if exists (last one wins or merge?)

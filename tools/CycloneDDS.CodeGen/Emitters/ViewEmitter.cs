@@ -38,7 +38,7 @@ namespace CycloneDDS.CodeGen.Emitters
             sb.AppendLine();
 
             // Constructor
-            sb.AppendLine($"{indent}    internal unsafe {type.Name}View({type.Name}_Native* ptr)");
+            sb.AppendLine($"{indent}    public unsafe {type.Name}View({type.Name}_Native* ptr)");
             sb.AppendLine($"{indent}    {{");
             sb.AppendLine($"{indent}        _ptr = ptr;");
             sb.AppendLine($"{indent}    }}");
