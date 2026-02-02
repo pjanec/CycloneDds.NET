@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Xunit;
+using CycloneDDS.Core;
 using CycloneDDS.Runtime;
 
 namespace CycloneDDS.Runtime.Tests

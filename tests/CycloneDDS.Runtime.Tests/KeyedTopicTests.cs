@@ -62,7 +62,7 @@ namespace CycloneDDS.Runtime.Tests
             
             // Verify distinct instances (distinct DeviceIds)
             var samples = new System.Collections.Generic.List<SingleKeyMessage>();
-            foreach(var s in scope) samples.Add(s);
+            foreach(var s in scope) samples.Add(s.Data);
             
             var deviceIds = samples.Select(s => s.DeviceId).OrderBy(x => x).ToArray();
             Assert.Equal(new[] { 1, 2, 3 }, deviceIds);
@@ -100,7 +100,7 @@ namespace CycloneDDS.Runtime.Tests
             Assert.Equal(1, scope.Count);
             
             var samples = new System.Collections.Generic.List<SingleKeyMessage>();
-            foreach(var s in scope) samples.Add(s);
+            foreach(var s in scope) samples.Add(s.Data);
 
             Assert.All(samples, s => Assert.Equal(5, s.DeviceId));
             Assert.Equal(200, samples[0].Value);
@@ -154,7 +154,7 @@ namespace CycloneDDS.Runtime.Tests
             Assert.Equal(4, scope.Count); // 4 distinct instances
             
             var samples = new System.Collections.Generic.List<CompositeKeyMessage>();
-            foreach(var s in scope) samples.Add(s);
+            foreach(var s in scope) samples.Add(s.Data);
             
             // Verify all 4 combinations present
             Assert.Contains(samples, s => s.SensorId == 1 && s.LocationId == 1 && s.Temperature == 10.0);
@@ -239,7 +239,7 @@ namespace CycloneDDS.Runtime.Tests
             Assert.Equal(2, scope.Count);
             
             var samples = new System.Collections.Generic.List<NestedKeyMessage>();
-            foreach(var s in scope) samples.Add(s);
+            foreach(var s in scope) samples.Add(s.Data);
              
             Assert.Contains(samples, s => s.InnerId == 1);
             Assert.Contains(samples, s => s.InnerId == 2);
@@ -430,7 +430,7 @@ Assert.Equal("Updated", scope[0].Data);
             Assert.Equal(2, scope.Count);
 
             var instances = new System.Collections.Generic.List<NestedStructKeyMessage>();
-            foreach (var s in scope) instances.Add(s);
+            foreach (var s in scope) instances.Add(s.Data);
 
             // Check for Instance B
             var instB = instances.FirstOrDefault(s => s.ProcessAddr.StationId == "StationB");

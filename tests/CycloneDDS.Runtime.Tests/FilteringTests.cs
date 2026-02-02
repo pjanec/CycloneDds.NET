@@ -55,7 +55,7 @@ namespace CycloneDDS.Runtime.Tests
              foreach (var item in scope)
              {
                  count++;
-                 Assert.True(item.Value > 3);
+                 Assert.True(item.Data.Value > 3);
              }
              Assert.Equal(2, count);
         }
@@ -81,7 +81,7 @@ namespace CycloneDDS.Runtime.Tests
              using (var scope = reader.Take())
              {
                  int c = 0;
-                 foreach(var x in scope) { c++; Assert.Equal(10, x.Value); }
+                 foreach(var x in scope) { c++; Assert.Equal(10, x.Data.Value); }
                  Assert.Equal(1, c);
              }
 
@@ -99,7 +99,7 @@ namespace CycloneDDS.Runtime.Tests
                  foreach(var x in scope) 
                  { 
                      c++; 
-                     Assert.True(x.Value < 8);
+                     Assert.True(x.Data.Value < 8);
                  }
                  Assert.Equal(2, c);
              }

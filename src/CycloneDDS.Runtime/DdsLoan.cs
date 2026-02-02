@@ -1,48 +1,63 @@
 using System;
 using System.Buffers;
 using CycloneDDS.Runtime.Interop;
+using CycloneDDS.Runtime.Tracking;
 
 namespace CycloneDDS.Runtime
 {
-    public delegate void NativeUnmarshalDelegate<T>(IntPtr nativeData, out T managedData);
-
-    public readonly ref struct DdsSample<T>
-    {
-        public readonly T Data;
-        public readonly DdsApi.DdsSampleInfo Info;
-
-        public DdsSample(T data, DdsApi.DdsSampleInfo info)
-        {
-            Data = data;
-            Info = info;
-        }
-    }
-
     public ref struct DdsLoan<T>
     {
         private readonly DdsEntityHandle _reader;
         private readonly IntPtr[] _samples; // Rented from ArrayPool
         private readonly DdsApi.DdsSampleInfo[] _infos; // Rented from ArrayPool
         private readonly int _length;
-        private readonly NativeUnmarshalDelegate<T> _unmarshaller;
+        private readonly SenderRegistry? _registry;
+        internal readonly Predicate<T>? _filter;
         private bool _disposed;
 
         public DdsLoan(
             DdsEntityHandle reader, 
             IntPtr[] samples, 
             DdsApi.DdsSampleInfo[] infos, 
-            int length, 
-            NativeUnmarshalDelegate<T> unmarshaller)
+            int length,
+            SenderRegistry? registry = null,
+            Predicate<T>? filter = null)
         {
             _reader = reader;
             _samples = samples;
             _infos = infos;
             _length = length;
-            _unmarshaller = unmarshaller;
+            _registry = registry;
+            _filter = filter;
             _disposed = false;
         }
 
         public int Length => _length;
+        public int Count => _length;
+        
+        public ReadOnlySpan<DdsApi.DdsSampleInfo> Infos => new ReadOnlySpan<DdsApi.DdsSampleInfo>(_infos, 0, _length);
+
+        public SenderIdentity? GetSender(int index)
+        {
+            if (_registry == null) return null;
+            if ((uint)index >= (uint)_length) throw new IndexOutOfRangeException();
+            
+            long handle = _infos[index].PublicationHandle;
+            if (_registry.TryGetIdentity(handle, out var identity))
+            {
+                return identity;
+            }
+            return null;
+        }
+
+        public T this[int index]
+        {
+            get
+            {
+                if ((uint)index >= (uint)_length) throw new IndexOutOfRangeException();
+                return DdsTypeSupport.FromNative<T>(_samples[index]);
+            }
+        }
 
         public void Dispose()
         {
@@ -57,8 +72,8 @@ namespace CycloneDDS.Runtime
             }
             
             // Return arrays to pool
-            ArrayPool<IntPtr>.Shared.Return(_samples);
-            ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(_infos);
+            if (_samples != null) ArrayPool<IntPtr>.Shared.Return(_samples);
+            if (_infos != null) ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(_infos);
         }
 
         public Enumerator GetEnumerator() => new Enumerator(this);
@@ -67,34 +82,28 @@ namespace CycloneDDS.Runtime
         {
             private readonly DdsLoan<T> _loan;
             private int _index;
-            private DdsSample<T> _current;
 
             public Enumerator(DdsLoan<T> loan)
             {
                 _loan = loan;
                 _index = -1;
-                _current = default;
             }
 
             public bool MoveNext()
             {
-                _index++;
-                if (_index >= _loan._length) return false;
-
-                var info = _loan._infos[_index];
-                T data = default!;
-                
-                if (info.ValidData != 0)
+                while (++_index < _loan._length)
                 {
-                    // Marshall from native
-                    _loan._unmarshaller(_loan._samples[_index], out data);
+                    if (_loan._filter == null) return true;
+                    
+                    if (_loan._infos[_index].ValidData == 0) return true;
+
+                    var sample = new DdsSample<T>(_loan._samples[_index], in _loan._infos[_index]);
+                    if (_loan._filter(sample.Data)) return true;
                 }
-                
-                _current = new DdsSample<T>(data!, info);
-                return true;
+                return false;
             }
 
-            public DdsSample<T> Current => _current;
+            public DdsSample<T> Current => new DdsSample<T>(_loan._samples[_index], in _loan._infos[_index]);
         }
     }
 }

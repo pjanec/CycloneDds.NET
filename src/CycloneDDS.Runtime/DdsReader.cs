@@ -59,7 +59,6 @@ namespace CycloneDDS.Runtime
             }
         }
 
-        private static readonly NativeUnmarshalDelegate<T>? _unmarshaller;
         private delegate int GetNativeSizeDelegate(in T sample);
         private delegate void MarshalToNativeDelegate(in T sample, IntPtr target, ref NativeArena arena);
 
@@ -70,8 +69,6 @@ namespace CycloneDDS.Runtime
         static DdsReader()
         {
             try { 
-                _unmarshaller = CreateUnmarshallerDelegate();
-
                 var nativeSizeMethod = typeof(T).GetMethod("GetNativeSize", new[] { typeof(T).MakeByRefType() });
                 if (nativeSizeMethod != null) _nativeSizer = (GetNativeSizeDelegate)nativeSizeMethod.CreateDelegate(typeof(GetNativeSizeDelegate));
 
@@ -89,9 +86,6 @@ namespace CycloneDDS.Runtime
             _dataAvailableHandler = OnDataAvailable;
             _subscriptionMatchedHandler = OnSubscriptionMatched;
             
-            if (_unmarshaller == null) 
-                 throw new InvalidOperationException($"Type {typeof(T).Name} missing MarshalFromNative method.");
-
             _participant = participant;
 
             IntPtr actualQos = qos;
@@ -129,16 +123,16 @@ namespace CycloneDDS.Runtime
 
         public void SetFilter(Predicate<T>? filter) => _filter = filter;
 
-        public ViewScope<T> Take(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, true);
-        public ViewScope<T> Read(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, false);
+        public DdsLoan<T> Take(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, true);
+        public DdsLoan<T> Read(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, false);
 
-        public ViewScope<T> Take(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
+        public DdsLoan<T> Take(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
              => ReadOrTake(maxSamples, (uint)sampleState | (uint)viewState | (uint)instanceState, true);
 
-        public ViewScope<T> Read(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
+        public DdsLoan<T> Read(int maxSamples, DdsSampleState sampleState, DdsViewState viewState, DdsInstanceState instanceState)
              => ReadOrTake(maxSamples, (uint)sampleState | (uint)viewState | (uint)instanceState, false);
 
-        private ViewScope<T> ReadOrTake(int maxSamples, uint mask, bool isTake)
+        private DdsLoan<T> ReadOrTake(int maxSamples, uint mask, bool isTake)
         {
              if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
              
@@ -160,12 +154,12 @@ namespace CycloneDDS.Runtime
                  
                  if (count == (int)DdsApi.DdsReturnCode.NoData)
                  {
-                     return new ViewScope<T>(_readerHandle.NativeHandle, null, null, 0, 0, null, _filter, _registry);
+                     return new DdsLoan<T>(_readerHandle, null, null, 0, _registry, _filter);
                  }
                  throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_{(isTake ? "take" : "read")} failed: {count}");
              }
              
-             return new ViewScope<T>(_readerHandle.NativeHandle, samples, infos, count, maxSamples, _unmarshaller!, _filter, _registry);
+             return new DdsLoan<T>(_readerHandle, samples, infos, count, _registry, _filter);
         }
 
         private bool HasData()
@@ -263,7 +257,10 @@ namespace CycloneDDS.Runtime
             int i = 0;
             foreach (var item in scope)
             {
-                batch[i++] = item;
+                 if (item.IsValid)
+                     batch[i++] = item.Data;
+                 else
+                     batch[i++] = default;
             }
             return batch;
         }
@@ -331,7 +328,7 @@ namespace CycloneDDS.Runtime
             throw new NotSupportedException("Native marshaling delegates missing for this type.");
         }
 
-        public ViewScope<T> TakeInstance(DdsInstanceHandle handle, int maxSamples = 1)
+        public DdsLoan<T> TakeInstance(DdsInstanceHandle handle, int maxSamples = 1)
         {
              if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
              var samples = ArrayPool<IntPtr>.Shared.Rent(maxSamples);
@@ -344,13 +341,13 @@ namespace CycloneDDS.Runtime
              {
                  ArrayPool<IntPtr>.Shared.Return(samples);
                  ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(infos);
-                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new ViewScope<T>(_readerHandle.NativeHandle, null, null, 0, 0, null, _filter, _registry);
+                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new DdsLoan<T>(_readerHandle, null, null, 0, _registry, _filter);
                  throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_take_instance failed: {count}");
              }
-             return new ViewScope<T>(_readerHandle.NativeHandle, samples, infos, count, maxSamples, _unmarshaller!, _filter, _registry);
+             return new DdsLoan<T>(_readerHandle, samples, infos, count, _registry, _filter);
         }
 
-        public ViewScope<T> ReadInstance(DdsInstanceHandle handle, int maxSamples = 1)
+        public DdsLoan<T> ReadInstance(DdsInstanceHandle handle, int maxSamples = 1)
         {
              if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
              var samples = ArrayPool<IntPtr>.Shared.Rent(maxSamples);
@@ -363,10 +360,10 @@ namespace CycloneDDS.Runtime
              {
                  ArrayPool<IntPtr>.Shared.Return(samples);
                  ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(infos);
-                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new ViewScope<T>(_readerHandle.NativeHandle, null, null, 0, 0, null, _filter, _registry);
+                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new DdsLoan<T>(_readerHandle, null, null, 0, _registry, _filter);
                  throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_read_instance failed: {count}");
              }
-             return new ViewScope<T>(_readerHandle.NativeHandle, samples, infos, count, maxSamples, _unmarshaller!, _filter, _registry);
+             return new DdsLoan<T>(_readerHandle, samples, infos, count, _registry, _filter);
         }
 
         public void EnableSenderTracking(SenderRegistry registry)
@@ -441,132 +438,8 @@ namespace CycloneDDS.Runtime
             return default;
         }
 
-        private static NativeUnmarshalDelegate<T> CreateUnmarshallerDelegate()
-        {
-             var method = typeof(T).GetMethod("MarshalFromNative", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[] { typeof(IntPtr), typeof(T).MakeByRefType() }, null);
-             if (method == null) return null!;
-             return (NativeUnmarshalDelegate<T>)method.CreateDelegate(typeof(NativeUnmarshalDelegate<T>));
-        }
+
     }
 
-    public ref struct ViewScope<T> where T : struct
-    {
-        private DdsApi.DdsEntity _reader;
-        private IntPtr[]? _samples;
-        private DdsApi.DdsSampleInfo[]? _infos;
-        private int _count;
-        private int _loanSize;
-        private NativeUnmarshalDelegate<T>? _unmarshaller;
-        private Predicate<T>? _filter;
-        private SenderRegistry? _registry;
-        
-        public ReadOnlySpan<DdsApi.DdsSampleInfo> Infos => _infos != null ? _infos.AsSpan(0, _count) : ReadOnlySpan<DdsApi.DdsSampleInfo>.Empty;
 
-        internal ViewScope(DdsApi.DdsEntity reader, IntPtr[]? samples, DdsApi.DdsSampleInfo[]? infos, int count, int loanSize, NativeUnmarshalDelegate<T>? unmarshaller, Predicate<T>? filter, SenderRegistry? registry)
-        {
-            _reader = reader;
-            _samples = samples;
-            _infos = infos;
-            _count = count;
-            _loanSize = loanSize;
-            _unmarshaller = unmarshaller;
-            _filter = filter;
-            _registry = registry;
-        }
-
-        public SenderIdentity? GetSender(int index)
-        {
-            if (_registry == null) return null;
-            if (index < 0 || index >= _count) throw new IndexOutOfRangeException();
-            if (_infos == null) return null;
-            
-            long handle = _infos[index].PublicationHandle;
-            if (_registry.TryGetIdentity(handle, out var identity))
-            {
-                return identity;
-            }
-            return null;
-        }
-
-        public int Count => _count;
-
-        public Enumerator GetEnumerator() => new Enumerator(this, _filter);
-
-        public ref struct Enumerator
-        {
-             private ViewScope<T> _scope;
-             private Predicate<T>? _filter;
-             private int _index;
-             private T _current;
-
-             internal Enumerator(ViewScope<T> scope, Predicate<T>? filter)
-             {
-                 _scope = scope;
-                 _filter = filter;
-                 _index = -1;
-                 _current = default;
-             }
-             
-             public bool MoveNext()
-             {
-                 while (++_index < _scope.Count)
-                 {
-                     if (_scope.HasData(_index, out T item))
-                     {
-                         if (_filter == null || _filter(item))
-                         {
-                             _current = item;
-                             return true;
-                         }
-                     }
-                 }
-                 return false;
-             }
-             
-             public T Current => _current;
-        }
-        
-        internal bool HasData(int index, out T data)
-        {
-             data = default;
-             if (_infos == null || _samples == null) return false; 
-             
-             if (_infos[index].ValidData == 0) return true; // Return default
-             
-             _unmarshaller!(_samples[index], out data);
-             return true; 
-        }
-
-        public T this[int index]
-        {
-            get
-            {
-                if (index < 0 || index >= _count) throw new IndexOutOfRangeException();
-                if (_infos == null || _samples == null) throw new ObjectDisposedException("ViewScope");
-                
-                if (_infos[index].ValidData == 0) return default;
-                
-                _unmarshaller!(_samples[index], out T data);
-                return data;
-            }
-        }
-        
-        public void Dispose()
-        {
-            if (_loanSize > 0 && _samples != null)
-            {
-                // Return LOAN to DDS
-                DdsApi.dds_return_loan(_reader.Handle, _samples, _loanSize);
-            }
-            
-            if (_samples != null) ArrayPool<IntPtr>.Shared.Return(_samples);
-            if (_infos != null) ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(_infos);
-            
-            _count = 0;
-            _loanSize = 0;
-            _samples = null;
-            _infos = null;
-            _unmarshaller = null;
-        }
-    }
 }

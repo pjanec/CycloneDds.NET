@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace CycloneDDS.Runtime
+namespace CycloneDDS.Core
 {
     /// <summary>
     /// Utilities for efficient UTF-8 string encoding and decoding.

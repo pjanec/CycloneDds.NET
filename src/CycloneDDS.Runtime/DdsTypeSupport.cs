@@ -4,6 +4,8 @@ using System.Reflection;
 
 namespace CycloneDDS.Runtime
 {
+    public delegate void NativeUnmarshalDelegate<T>(IntPtr nativeData, out T managedData);
+
     /// <summary>
     /// Internal helper for extracting type metadata via reflection.
     /// Caches delegates to amortize reflection overhead.
@@ -78,6 +80,33 @@ namespace CycloneDDS.Runtime
             if (string.IsNullOrEmpty(name))
                 return typeof(T).Name;
             return name.Replace(".", "::");
+        }
+
+        private static readonly ConcurrentDictionary<Type, Delegate> _unmarshallerCache = new();
+
+        public static T FromNative<T>(IntPtr nativePtr)
+        {
+             var unmarshaller = (NativeUnmarshalDelegate<T>)_unmarshallerCache.GetOrAdd(typeof(T), t =>
+             {
+                 var method = t.GetMethod("MarshalFromNative", 
+                     BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, 
+                     null,
+                     new[] { typeof(IntPtr), typeof(T).MakeByRefType() },
+                     null);
+                 
+                 if (method == null)
+                 {
+                    throw new InvalidOperationException(
+                        $"Type '{t.Name}' does not have a public MarshalFromNative(IntPtr, out T) method. " +
+                        "Did you forget to add [DdsTopic] or [DdsStruct] attribute?");
+                 }
+
+                 return (NativeUnmarshalDelegate<T>)Delegate.CreateDelegate(typeof(NativeUnmarshalDelegate<T>), method);
+             });
+             
+             T managedData;
+             unmarshaller(nativePtr, out managedData);
+             return managedData;
         }
     }
 }

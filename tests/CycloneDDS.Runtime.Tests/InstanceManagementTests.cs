@@ -153,7 +153,7 @@ namespace CycloneDDS.Runtime.Tests
             // Should only see s1
             foreach(var item in scope)
             {
-                Assert.Equal(100, item.Id);
+                Assert.Equal(100, item.Data.Id);
             }
         }
 

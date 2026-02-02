@@ -1,9 +1,9 @@
 using System;
 using System.Runtime.InteropServices;
 using Xunit;
-using CycloneDDS.Runtime;
+using CycloneDDS.Core;
 
-namespace CycloneDDS.Native.Verify
+namespace CycloneDDS.Core.Tests
 {
     public class DdsTextEncodingTests
     {
