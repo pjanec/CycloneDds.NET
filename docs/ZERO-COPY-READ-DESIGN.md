@@ -249,40 +249,44 @@ public class DdsReader<T, TView> // ERROR: TView cannot be ref struct!
 graph LR
     A[DdsReader.Read] --> B[dds_take]
     B --> C[IntPtr[] samples]
-    C --> D[Return DdsLoan]
-    D --> E[Enumerate DdsSampleRef]
-    E --> F[Call .AsView]
-    F --> G[Return TView ref struct]
-    G --> H[Access via Pointers]
+    C --> D[Return DdsLoan<T>]
+    D --> E[Enumerate DdsSample<T>]
+    E --> F1[Access .Data]
+    E --> F2[Call .AsView]
+    F1 --> G1[Unmarshal to T]
+    F2 --> G2[Return TView ref struct]
+    G2 --> H[Access via Pointers]
 ```
 
-**Key Difference:** No unmarshalling happens. The loan returns raw pointers wrapped in lightweight structs.
+**Key Feature:** User chooses between managed (`.Data`) and zero-copy (`.AsView()`) at access time, not read time.
 
 ### 3.2 Core Architectural Shift
 
-| Layer | Old (Allocating) | New (Zero-Copy) |
+| Layer | Old (Allocating) | New (Unified API) |
 |-------|------------------|-----------------|
-| **Reader Return** | `DdsLoan<T>` with unmarshaller | `DdsLoan` (non-generic or marker) |
-| **Enumerator** | Yields `DdsSample<T>` | Yields `DdsSampleRef` (ref struct) |
-| **Type Casting** | Automatic (generic) | Explicit (`.AsView()` extension) |
-| **Data Access** | Managed object properties | `ref struct` pointer properties |
+| **Reader Return** | `DdsLoan<T>` with unmarshaller | `DdsLoan<T>` (smart wrapper) |
+| **Enumerator** | Yields `T` (immediate unmarshal) | Yields `DdsSample<T>` (ref struct) |
+| **Type Casting** | Automatic (generic) | Lazy: `.Data` or `.AsView()` |
+| **Data Access** | Managed object properties | Both managed and pointer access |
 | **Lifetime** | GC managed | Loan scope (`using` required) |
 
-### 3.3 The "Extension Method Pattern"
+### 3.3 The "Smart Wrapper Pattern"
 
-Since we cannot use `TView` as a generic parameter, we decouple it:
+The `DdsSample<T>` wrapper provides both API surfaces:
 
 ```csharp
-// 1. Reader returns type-agnostic handle
-var loan = reader.Read(); // Returns DdsLoan
+// 1. Reader returns typed loan
+var loan = reader.Read(); // Returns DdsLoan<CameraImage>
 
-// 2. Foreach yields raw pointer wrapper
-foreach (var sample in loan) // sample is DdsSampleRef
+// 2. Foreach yields smart wrapper
+foreach (var sample in loan) // sample is DdsSample<CameraImage>
 {
-    // 3. Extension method performs type-specific cast
-    var view = sample.AsView(); // Invokes generated extension (zero-cost)
+    // 3a. Simple path: Lazy unmarshal
+    var managed = sample.Data; // Allocates, returns CameraImage
+    Console.WriteLine(managed.Id);
     
-    // 4. Access native data
+    // 3b. Fast path: Zero-copy view
+    var view = sample.AsView(); // Extension method (zero-cost cast)
     Console.WriteLine(view.Id); // Pointer dereference
 }
 ```
@@ -297,35 +301,35 @@ foreach (var sample in loan) // sample is DdsSampleRef
 
 ## 4. Core Components
 
-### 4.1 `DdsSampleRef` (Runtime - New)
+### 4.1 `DdsSample<T>` (Runtime - New)
 
-**Purpose:** Lightweight handle to a single native sample.
+**Purpose:** Smart wrapper combining native pointer, metadata, and type information. Provides both simple (managed) and fast (zero-copy) access paths.
 
-**File:** `src/CycloneDDS.Runtime/DdsSampleRef.cs`
+**File:** `src/CycloneDDS.Runtime/DdsSample.cs`
 
 ```csharp
 namespace CycloneDDS.Runtime
 {
     /// <summary>
     /// A transient reference to a DDS sample in native memory.
-    /// Acts as the bridge between the generic Loan and the typed View.
+    /// Provides both managed (.Data) and zero-copy (.AsView()) access.
     /// Must be stack-allocated (ref struct) to prevent escaping the loan scope.
     /// </summary>
-    public readonly ref struct DdsSampleRef
+    public readonly ref struct DdsSample<T> where T : struct
     {
         /// <summary>
         /// Pointer to the native C struct (populated by dds_take).
         /// </summary>
-        public readonly IntPtr DataPtr;
+        public readonly IntPtr NativePtr;
 
         /// <summary>
         /// Sample metadata (timestamp, instance state, validity, etc).
         /// </summary>
         public readonly ref readonly DdsApi.DdsSampleInfo Info;
 
-        public DdsSampleRef(IntPtr dataPtr, ref DdsApi.DdsSampleInfo info)
+        public DdsSample(IntPtr nativePtr, ref DdsApi.DdsSampleInfo info)
         {
-            DataPtr = dataPtr;
+            NativePtr = nativePtr;
             Info = ref info;
         }
 
@@ -333,23 +337,43 @@ namespace CycloneDDS.Runtime
         /// True if this sample contains valid data (vs metadata-only like DISPOSE).
         /// </summary>
         public bool IsValid => Info.ValidData != 0;
+        
+        /// <summary>
+        /// Lazy accessor for managed data. Triggers deep-copy unmarshal.
+        /// Throws InvalidOperationException if !IsValid.
+        /// Use .AsView() extension for zero-copy access.
+        /// </summary>
+        public T Data
+        {
+            get
+            {
+                if (!IsValid)
+                    throw new InvalidOperationException(
+                        \"Cannot access Data on invalid sample (lifecycle event). Check IsValid first.\");
+                return DdsTypeSupport.FromNative<T>(NativePtr);
+            }
+        }
     }
 }
 ```
 
 **Key Properties:**
+- Generic `<T>` → Provides type-safe `.Data` property
 - `ref struct` → Cannot be boxed, stored in heap, or used in async
-- Holds raw `IntPtr` → No interpretation yet
+- Holds raw `IntPtr` → Minimal wrapper cost
 - References `DdsSampleInfo` by `ref` → Avoids copy of 160-byte struct
+- `.Data` property → Lazy unmarshal to managed object (allocating)
+- `.AsView()` extension → Zero-copy cast to View (generated per type)
 
-### 4.2 `DdsLoan` (Runtime - Modified)
+### 4.2 `DdsLoan<T>` (Runtime - Modified)
 
-**Purpose:** Manages the lifecycle of native samples rented from Cyclone DDS.
+**Purpose:** Manages the lifecycle of native samples rented from Cyclone DDS. Provides type-safe iteration while storing only raw pointers.
 
 **Changes:**
-1. Remove generic type parameter `<T>`
-2. Remove `NativeUnmarshalDelegate`
-3. Enumerator yields `DdsSampleRef` instead of `DdsSample<T>`
+1. **Keep** generic type parameter `<T>` for API surface
+2. Remove `NativeUnmarshalDelegate` instance field
+3. Enumerator yields `DdsSample<T>` instead of `T`
+4. Add indexer for array-style access
 
 **File:** `src/CycloneDDS.Runtime/DdsLoan.cs`
 
@@ -360,16 +384,16 @@ namespace CycloneDDS.Runtime
     /// Represents a "loan" of native memory from CycloneDDS.
     /// MUST be disposed (use 'using' statement) to return memory to DDS.
     /// </summary>
-    public ref struct DdsLoan
+    public sealed class DdsLoan<T> : IDisposable where T : struct
     {
-        private readonly DdsEntityHandle _reader;
-        private readonly IntPtr[] _samples;
-        private readonly DdsApi.DdsSampleInfo[] _infos;
-        private readonly int _length;
+        private readonly DdsReaderHandle _reader;
+        private IntPtr[] _samples;
+        private DdsApi.DdsSampleInfo[] _infos;
+        private int _length;
         private bool _disposed;
 
-        public DdsLoan(
-            DdsEntityHandle reader,
+        internal DdsLoan(
+            DdsReaderHandle reader,
             IntPtr[] samples,
             DdsApi.DdsSampleInfo[] infos,
             int length)
@@ -378,10 +402,23 @@ namespace CycloneDDS.Runtime
             _samples = samples;
             _infos = infos;
             _length = length;
-            _disposed = false;
         }
 
         public int Length => _length;
+        
+        // Indexer for array-style access (allocating)
+        public T this[int index]
+        {
+            get
+            {
+                if (index >= _length) throw new IndexOutOfRangeException();
+                return DdsTypeSupport.FromNative<T>(_samples[index]);
+            }
+        }
+        
+        // Direct metadata access
+        public ReadOnlySpan<DdsApi.DdsSampleInfo> Infos => 
+            new ReadOnlySpan<DdsApi.DdsSampleInfo>(_infos, 0, _length);
 
         public void Dispose()
         {
@@ -390,7 +427,7 @@ namespace CycloneDDS.Runtime
 
             if (_length > 0)
             {
-                DdsApi.dds_return_loan(_reader.NativeHandle.Handle, _samples, _length);
+                DdsApi.dds_return_loan(_reader.Handle, _samples, _length);
             }
 
             ArrayPool<IntPtr>.Shared.Return(_samples);
@@ -404,10 +441,10 @@ namespace CycloneDDS.Runtime
         /// </summary>
         public ref struct LoanEnumerator
         {
-            private readonly DdsLoan _loan;
+            private readonly DdsLoan<T> _loan;
             private int _index;
 
-            public LoanEnumerator(DdsLoan loan)
+            public LoanEnumerator(DdsLoan<T> loan)
             {
                 _loan = loan;
                 _index = -1;
@@ -419,11 +456,12 @@ namespace CycloneDDS.Runtime
                 return _index < _loan._length;
             }
 
-            public DdsSampleRef Current
+            // Smart wrapper combines pointer + metadata + type
+            public DdsSample<T> Current
             {
                 get
                 {
-                    return new DdsSampleRef(
+                    return new DdsSample<T>(
                         _loan._samples[_index],
                         ref _loan._infos[_index]
                     );
@@ -435,17 +473,19 @@ namespace CycloneDDS.Runtime
 ```
 
 **Key Changes:**
-- Non-generic → Can return `ref struct` enumerator
-- Enumerator returns `DdsSampleRef` → Zero interpretation cost
+- **Generic `<T>`** → Type-safe indexer and enumerator
+- **No unmarshaller field** → Uses `DdsTypeSupport.FromNative<T>()` when needed
+- **Enumerator returns `DdsSample<T>`** → Smart wrapper providing both `.Data` and `.AsView()`
+- **Indexer** → `loan[i]` returns managed `T` (allocating)
 - Duck-typed enumerator → Avoids `IEnumerator<T>` boxing
 
 ### 4.3 `DdsReader<T>` (Runtime - Modified)
 
-**Purpose:** DDS reader endpoint. Returns loans without unmarshalling.
+**Purpose:** DDS reader endpoint. Returns typed loans enabling both managed and zero-copy access.
 
 **Changes:**
 1. Remove `_unmarshaller` delegate
-2. Return `DdsLoan` (non-generic)
+2. Return `DdsLoan<T>` (generic)
 3. Remove unnecessary reflection setup
 
 **File:** `src/CycloneDDS.Runtime/DdsReader.cs`
@@ -463,7 +503,7 @@ public sealed class DdsReader<T> : IDisposable where T : struct
         // Keep: _nativeSizer, _nativeMarshaller for write operations (if needed)
     }
 
-    public DdsLoan Read(int maxSamples = 32)
+    public DdsLoan<T> Read(int maxSamples = 32)
     {
         if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
 
@@ -471,10 +511,10 @@ public sealed class DdsReader<T> : IDisposable where T : struct
         var infos = ArrayPool<DdsApi.DdsSampleInfo>.Shared.Rent(maxSamples);
 
         int count = DdsApi.dds_take(
-            _readerHandle.NativeHandle.Handle,
+            _readerHandle.Handle,
             samples,
             infos,
-            (uint)maxSamples,
+            (UIntPtr)maxSamples,
             (uint)maxSamples
         );
 
@@ -482,10 +522,14 @@ public sealed class DdsReader<T> : IDisposable where T : struct
         {
             ArrayPool<IntPtr>.Shared.Return(samples);
             ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(infos);
+            
+            if (count == (int)DdsApi.DdsReturnCode.NoData)
+                return DdsLoan<T>.Empty;
+            
             throw new DdsException($"dds_take failed: {count}");
         }
 
-        return new DdsLoan(_readerHandle, samples, infos, count);
+        return new DdsLoan<T>(_readerHandle, samples, infos, count);
     }
 
     // ... rest of class ...
@@ -493,8 +537,9 @@ public sealed class DdsReader<T> : IDisposable where T : struct
 ```
 
 **Key Changes:**
-- Returns `DdsLoan` (no generic type param on return value)
-- No unmarshalling → just wraps raw pointers
+- Returns `DdsLoan<T>` (typed loan)
+- Type parameter `T` flows through to loan for smart wrapper pattern
+- No unmarshalling delegate passed → Loan handles deserialization lazily
 - Maintains existing functionality (waitsets, filters, etc.)
 
 ---
@@ -1287,7 +1332,139 @@ This provides a safety net during development while avoiding overhead in release
 
 ---
 
-## 9. Performance Analysis
+### 8.6 Nested Anonymous Sequences (Aliases)
+
+**Problem:** IDL allows nested sequences without explicit type aliases:
+
+```idl
+struct Trajectory {
+    sequence<sequence<double>> waypoints;  // Anonymous nested sequence
+};
+```
+
+**C# Code-Gen Challenge:** The current code generator cannot emit properly nested View types for anonymous sequences because:
+1. The inner `sequence<double>` has no named type to reference
+2. Each nesting level needs its own View struct (e.g., `SequenceView<SequenceView<double>>`)
+3. Without a typedef, there's no natural type name for the inner sequence view
+
+**Required IDL Pattern:**
+```idl
+typedef sequence<double> DoubleSeq;      // Named type
+typedef sequence<DoubleSeq> Trajectory;  // Nested sequence with named inner type
+
+struct Path {
+    Trajectory waypoints;  // Now referenceable
+};
+```
+
+**Implementation Strategy:**
+
+1. **IdlImporter Enhancement** (Task FCDC-ZC018A):
+   - Parse `typedef` declarations from IDL files
+   - Store type aliases in schema alongside struct/union definitions
+   - Emit C# code-gen attributes for aliased types
+
+2. **Code Generator Support**:
+   - Recognize aliased sequence types during View struct generation
+   - Generate proper nested View types: `TrajectoryView` wrapping `SequenceView<DoubleSeqView>`
+   - Ensure correct pointer arithmetic for nested indirection
+
+3. **Validation**:
+   - Reject anonymous nested sequences at code-gen time with clear error message
+   - Suggest typedef workaround in error text
+   - Verify that all sequence<sequence<T>> patterns have corresponding typedefs
+
+**Why This Matters:**
+
+Nested sequences are common in robotics/simulation domains (trajectories, sensor arrays, time-series data). Without alias support, users would be forced to either:
+- Fall back to deep-copy deserialization (defeating the purpose)
+- Manually wrap sequences in dummy structs (verbose, non-idiomatic)
+
+**Timeline:** Alias support is scheduled for **Phase 5** (FCDC-ZC018A, 6 hours).
+
+---
+
+## 9. Performance Justification
+
+### 9.0 Is Zero-Copy Worth the Complexity?
+
+**Short Answer:** Yes, for real-time systems. The difference isn't just "10% faster"—it's often the difference between smooth operation and stuttering/crashes.
+
+**Scenario Breakdown:**
+
+#### Case 1: High-Frequency Small Structs
+
+**Data:** 10,000 samples/sec, each with `string` (20 chars) + `List<double>` (100 elements)
+
+| Metric | Deep Copy | Zero-Copy |
+|--------|-----------|----------|
+| Allocations/sample | 3 objects (struct, string, List backing array) | 0 |
+| Memory traffic | ~8 MB/sec garbage | 0 bytes |
+| GC behavior | Gen0 collections every 2-3s, 5-50ms pauses | No GC activity |
+
+**Verdict:** For 24/7 systems, 8MB/sec garbage creates constant GC pressure. Zero-copy eliminates this entirely.
+
+#### Case 2: Large Blobs (Images, Point Clouds)
+
+**Data:** 1080p image (6MB) or LiDAR scan
+
+| Metric | Deep Copy | Zero-Copy |
+|--------|-----------|----------|
+| Operation | Allocate 6MB + memcpy 6MB | Create stack pointer |
+| CPU time | 2-5ms (memory bandwidth bound) | <1 nanosecond |
+| Cache impact | Burns CPU cache, saturates memory bus | No impact |
+
+**Verdict:** For large payloads, deep copy is disastrous. Zero-copy processes data where it sits.
+
+#### Case 3: Lazy Evaluation (Filtering)
+
+**Scenario:** Subscribe to topic, only process messages where `id == 5`
+
+- **Deep Copy:** Deserialize **everything** (strings, arrays, nested structs), then check `id` and discard
+- **Zero-Copy:** Read `view.Id` (one pointer dereference), skip if not 5, never decode rest
+
+**Verdict:** Zero-copy enables O(1) filtering. Deep copy forces O(N) deserialization.
+
+#### Case 4: POD-Only Topics
+
+**Data:** `struct Point { double x, y, z; }` (12 bytes, no strings/sequences)
+
+| Metric | Deep Copy | Zero-Copy |
+|--------|-----------|----------|
+| Allocations | 0 (struct is value type) | 0 |
+| CPU cost | 1-2 cycles (memcpy to stack/registers) | 1-2 cycles (pointer dereference) |
+
+**Verdict:** **Tie.** For tiny POD structs, copying is often faster (CPU registers vs cache).
+
+**However:** If the topic contains `sequence<Point>` (even POD), the **container** allocates:
+- Deep copy: `new List<Point>()` + backing array = heap allocation
+- Zero-copy: `ReadOnlySpan<Point>` = zero allocation
+
+**Winner:** Zero-copy wins for sequences even of PODs.
+
+### When is Zero-Copy NOT Worth It?
+
+If your application:
+1. Receives <100 messages/sec
+2. Messages are small (<1KB, no sequences/strings)
+3. You immediately store every message in database/GUI (requires copy anyway)
+
+→ Use `sample.Data` (managed path). Fast enough and more convenient.
+
+### Library Design Philosophy
+
+**You are building general-purpose middleware.** You don't know if users will send:
+- 1 `int` per second
+- 1,000,000 `int`s per second
+
+Providing zero-copy infrastructure:
+- ✅ Removes performance ceiling for power users
+- ✅ Enables use cases: HFT, robotics, autonomous vehicles
+- ✅ Still supports simple cases via `sample.Data`
+
+Without zero-copy, you limit what users can build. With it, your library becomes a **high-performance system component**, not just a "convenient C# wrapper."
+
+## 10. Performance Analysis
 
 ### 9.1 Allocation Comparison
 
@@ -1909,6 +2086,65 @@ public void View_AfterLoanDispose_DoesNotCompile()
 ---
 
 ## 13. Migration Path
+
+### 13.0 API Evolution from src_7
+
+**Context:** The current codebase (src_7) uses `DdsReader<T, TView>` with direct iteration over deserialized data. The new architecture simplifies this while adding zero-copy capability.
+
+#### API Changes Summary
+
+| Feature | Old API (src_7) | New API (Zero-Copy) |
+|---------|-----------------|---------------------|
+| **Reader Type** | `DdsReader<T, TView>` | `DdsReader<T>` |
+| **Read Return** | `ViewScope<TView>` | `DdsLoan<T>` |
+| **Foreach Variable** | `TView` (the data) | `DdsSample<T>` (wrapper) |
+| **Data Access** | `msg.Id` | `sample.Data.Id` (managed)<br>`sample.AsView().Id` (zero-copy) |
+| **Metadata** | `scope.Infos[i]` | `sample.Info` |
+| **Invalid Data** | Returns `default(T)` | `sample.IsValid` check required |
+
+#### Migration Examples
+
+**Before (src_7):**
+```csharp
+var reader = new DdsReader<SensorData, SensorData>(participant, \"SensorData\");
+
+using var scope = reader.Take();
+foreach (SensorData msg in scope)
+{
+    Console.WriteLine(msg.Id);
+    // How do I get SampleInfo? Need for-loop with index
+}
+```
+
+**After (Zero-Copy):**
+```csharp
+var reader = new DdsReader<SensorData>(participant, \"SensorData\");
+
+using var loan = reader.Take();
+foreach (var sample in loan)
+{
+    // Metadata easily accessible
+    if (!sample.IsValid) continue;
+    
+    // Simple path (allocating)
+    Console.WriteLine(sample.Data.Id);
+    
+    // Or fast path (zero-copy)
+    var view = sample.AsView();
+    Console.WriteLine(view.Id);
+}
+```
+
+#### Breaking Changes
+
+| Change | Impact | Mitigation |
+|--------|--------|------------|
+| Generic signature | `<T, TView>` → `<T>` | Update all `DdsReader` declarations |
+| Iteration variable | Direct data → Wrapper | Add `.Data` or `.AsView()` |
+| Metadata access | `scope.Infos[i]` → `sample.Info` | Update metadata checks |
+| Invalid data | `default(T)` → Exception | Add `if (!sample.IsValid)` checks |
+
+**Recommendation:** Release as major version (v2.0) with migration guide highlighting these changes.
 
 ### 13.1 Backwards Compatibility
 

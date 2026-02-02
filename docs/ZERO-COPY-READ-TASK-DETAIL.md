@@ -142,6 +142,7 @@ using (var loan = reader.Read())
 - [FCDC-ZC018](#fcdc-zc018-implement-readcopied-extension) - Implement ReadCopied Extension
 
 ### Phase 5: Edge Cases & Fixes
+- [FCDC-ZC018A](#fcdc-zc018a-add-alias-typedef-support-to-idlimporter) - Add Alias/Typedef Support to IdlImporter
 - [FCDC-ZC019](#fcdc-zc019-fix-multidimensional-array-flattening) - Fix Multi-Dimensional Array Flattening
 - [FCDC-ZC020](#fcdc-zc020-implement-sequence-of-strings) - Implement Sequence-of-Strings Handling
 - [FCDC-ZC021](#fcdc-zc021-implement-boolean-sequence-safety) - Implement Boolean Sequence Safety
@@ -163,15 +164,15 @@ using (var loan = reader.Read())
 
 ## Phase 1: Runtime Infrastructure
 
-### FCDC-ZC001: Create DdsSampleRef Struct
+### FCDC-ZC001: Create DdsSample<T> Struct
 
 **Description:**  
-Create a new `ref struct` that serves as a lightweight, type-agnostic handle to a single DDS sample in native memory. This struct holds a raw pointer and metadata reference without interpreting the data type.
+Create a new generic `ref struct` that serves as a smart wrapper combining native pointer, metadata, and type-safe access. This struct provides both simple (managed) and fast (zero-copy) access paths through a unified API.
 
-**Reference:** [ZERO-COPY-READ-DESIGN.md § 4.1](ZERO-COPY-READ-DESIGN.md#41-ddssampleref-runtime---new)
+**Reference:** [ZERO-COPY-READ-DESIGN.md § 4.0](ZERO-COPY-READ-DESIGN.md#40-the-unified-api-ddssamplet-wrapper)
 
 **Files to Create:**
-- `src/CycloneDDS.Runtime/DdsSampleRef.cs`
+- `src/CycloneDDS.Runtime/DdsSample.cs`
 
 **Implementation Details:**
 
@@ -180,15 +181,15 @@ namespace CycloneDDS.Runtime
 {
     /// <summary>
     /// A transient reference to a DDS sample in native memory.
-    /// Acts as the bridge between the generic Loan and the typed View.
+    /// Provides both managed (allocating) and zero-copy (view) access paths.
     /// Must be stack-allocated (ref struct) to prevent escaping the loan scope.
     /// </summary>
-    public readonly ref struct DdsSampleRef
+    public readonly ref struct DdsSample<T> where T : struct
     {
         /// <summary>
         /// Pointer to the native C struct (populated by dds_take).
         /// </summary>
-        public readonly IntPtr DataPtr;
+        public readonly IntPtr NativePtr;
 
         /// <summary>
         /// Sample metadata (timestamp, instance state, validity, etc).
@@ -196,9 +197,9 @@ namespace CycloneDDS.Runtime
         /// </summary>
         public readonly ref readonly DdsApi.DdsSampleInfo Info;
 
-        public DdsSampleRef(IntPtr dataPtr, ref DdsApi.DdsSampleInfo info)
+        public DdsSample(IntPtr nativePtr, ref DdsApi.DdsSampleInfo info)
         {
-            DataPtr = dataPtr;
+            NativePtr = nativePtr;
             Info = ref info;
         }
 
@@ -731,6 +732,8 @@ namespace CycloneDDS.Core
 **Effort:** 2 hours  
 **Priority:** P1 (High)  
 **Dependencies:** None
+
+**Note:** Requires `DdsTypeSupport.FromNative<T>(IntPtr)` helper method that uses cached delegate or reflection to call `T.MarshalFromNative(IntPtr)`. This allows `sample.Data` property to work without storing unmarshaller in loan.
 
 ---
 
@@ -2292,6 +2295,193 @@ namespace CycloneDDS.Runtime.Extensions
 ---
 
 ## Phase 5: Edge Cases & Fixes
+
+### FCDC-ZC018A: Add Alias/Typedef Support to IdlImporter
+
+**Description:**  
+Add support for IDL `alias` (typedef) definitions to handle nested anonymous sequences like `sequence<sequence<int>>`. The IDL compiler generates intermediate typedefs for these, which must be parsed and either unrolled (for DSL) or preserved (for Views).
+
+**Reference:** [ZERO-COPY-READ-DESIGN.md § 8.6](ZERO-COPY-READ-DESIGN.md#86-nested-anonymous-sequences-aliases)
+
+**Context:** When `idlc` encounters `sequence<sequence<T>>`, it generates:
+```json
+[
+  {"Name": "Type_field_seq", "Kind": "alias", "Type": "T", "CollectionType": "sequence"},
+  {"Name": "Type", "Members": [{"Name": "field", "Type": "Type_field_seq", "CollectionType": "sequence"}]}
+]
+```
+
+**Files to Modify:**
+- `tools/CycloneDDS.IdlImporter/TypeMapper.cs`
+- `tools/CycloneDDS.IdlImporter/CSharpEmitter.cs`
+
+**Implementation:**
+
+**Part 1: Store Alias Definitions**
+```csharp
+// TypeMapper.cs
+public class TypeMapper
+{
+    private Dictionary<string, JsonTypeDefinition> _knownTypes = new();
+    
+    public void LoadTypes(List<JsonTypeDefinition> types)
+    {
+        _knownTypes = types.ToDictionary(t => t.Name);
+    }
+    
+    // Recursively resolve aliases
+    private string MapPrimitiveOrUserType(string idlType)
+    {
+        // 1. Check primitives
+        if (_primitiveMapping.TryGetValue(idlType, out var csPrim))
+            return csPrim;
+        
+        // 2. Check aliases (NEW)
+        if (_knownTypes.TryGetValue(idlType, out var def) && def.Kind == "alias")
+        {
+            // Recursive resolution
+            if (def.CollectionType == "sequence")
+            {
+                var inner = MapPrimitiveOrUserType(def.Type);
+                return $"System.Collections.Generic.List<{inner}>";
+            }
+            else if (def.CollectionType == "array")
+            {
+                var inner = MapPrimitiveOrUserType(def.Type);
+                return $"{inner}[]";
+            }
+            else
+            {
+                return MapPrimitiveOrUserType(def.Type);
+            }
+        }
+        
+        // 3. User type
+        return GetCSharpNamespace(idlType);
+    }
+}
+```
+
+**Part 2: Generate Views for Aliases (CodeGen)**
+```csharp
+// ViewEmitter.cs
+public void EmitViewsForAliases(StringBuilder sb, List<JsonTypeDefinition> types, string ns)
+{
+    foreach (var type in types.Where(t => t.Kind == "alias" && t.CollectionType == "sequence"))
+    {
+        string viewName = $"{type.Name}_View";
+        string elementType = type.Type;
+        
+        // Determine if element is primitive or struct
+        bool isPrimitive = IsPrimitive(elementType);
+        
+        sb.AppendLine($"    public ref struct {viewName}");
+        sb.AppendLine("    {");
+        sb.AppendLine("        private unsafe readonly DdsSequenceNative* _ptr;");
+        sb.AppendLine($"        internal unsafe {viewName}(DdsSequenceNative* ptr) => _ptr = ptr;");
+        sb.AppendLine();
+        
+        if (isPrimitive)
+        {
+            // Primitive sequence -> Span
+            string csType = MapToCSharpType(elementType);
+            sb.AppendLine($"        public ReadOnlySpan<{csType}> Data =>");
+            sb.AppendLine("        {");
+            sb.AppendLine("            get");
+            sb.AppendLine("            {");
+            sb.AppendLine("                unsafe");
+            sb.AppendLine("                {");
+            sb.AppendLine($"                    return new ReadOnlySpan<{csType}>(");
+            sb.AppendLine("                        (void*)_ptr->Buffer,");
+            sb.AppendLine("                        (int)_ptr->Length);");
+            sb.AppendLine("                }");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+        }
+        else
+        {
+            // Complex sequence -> Indexer
+            string elementView = $"{elementType}_View";
+            sb.AppendLine("        public int Count => (int)_ptr->Length;");
+            sb.AppendLine();
+            sb.AppendLine($"        public {elementView} GetItem(int index)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            unsafe");
+            sb.AppendLine("            {");
+            // Determine native type (could be another sequence or a struct)
+            if (_knownTypes[elementType].Kind == "alias")
+            {
+                sb.AppendLine("                var arr = (DdsSequenceNative*)_ptr->Buffer;");
+                sb.AppendLine($"                return new {elementView}(&arr[index]);");
+            }
+            else
+            {
+                string nativeType = $"{elementType}_Native";
+                sb.AppendLine($"                var arr = ({nativeType}*)_ptr->Buffer;");
+                sb.AppendLine($"                return new {elementView}(&arr[index]);");
+            }
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+        }
+        
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+}
+```
+
+**Success Criteria:**
+
+1. **Nested Sequence Test:**
+   ```csharp
+   [TestMethod]
+   public void IdlImporter_NestedSequences_GeneratesIntermediateTypes()
+   {
+       // IDL: struct Matrix { sequence<sequence<int>> data; };
+       var types = ParseIdlJson(jsonWithAliases);
+       
+       // DSL should have List<List<int>>
+       var dslCode = GenerateDslCode(types);
+       Assert.IsTrue(dslCode.Contains("List<List<int>>"));
+       
+       // Views should have alias views
+       var viewCode = GenerateViewCode(types);
+       Assert.IsTrue(viewCode.Contains("Matrix_data_seq_View"));
+   }
+   ```
+
+2. **Triple Nesting Test:**
+   ```csharp
+   [TestMethod]
+   public void ViewAccessor_TripleNestedSequence_AllowsChainedAccess()
+   {
+       // sequence<sequence<sequence<int>>>
+       var view = CreateTestView();
+       
+       int value = view.GetData(0)
+                       .GetItem(1)
+                       .Data[2];
+       
+       Assert.AreEqual(42, value);
+   }
+   ```
+
+3. **Compilation Test:**
+   ```csharp
+   [TestMethod]
+   public void GeneratedCode_WithNestedSequences_Compiles()
+   {
+       var generated = GenerateAllCode(typesWithNestedSeq);
+       var compilation = CompileCode(generated);
+       Assert.AreEqual(0, compilation.Errors.Count);
+   }
+   ```
+
+**Effort:** 6 hours  
+**Priority:** P1 (High)  
+**Dependencies:** None
+
+---
 
 ### FCDC-ZC019: Fix Multi-Dimensional Array Flattening
 

@@ -126,18 +126,20 @@
 **Goal:** Handle complex scenarios and fix existing bugs  
 **Status:** 🔴 **Not Started** (BATCH-ZC06)  
 **Duration:** 1-2 weeks  
-**Deliverables:** All edge cases working, multi-dim arrays fixed
+**Deliverables:** All edge cases working, multi-dim arrays fixed, nested sequences supported
 
 | Task ID | Task Title | Status | Owner | Priority | Effort |
 |---------|------------|--------|-------|----------|--------|
+| [FCDC-ZC018A](ZERO-COPY-READ-TASK-DETAIL.md#fcdc-zc018a-add-alias-typedef-support-to-idlimporter) | Add Alias/Typedef Support to IdlImporter | 🔴 | - | P1 | 6h |
 | [FCDC-ZC019](ZERO-COPY-READ-TASK-DETAIL.md#fcdc-zc019-fix-multidimensional-array-flattening) | Fix Multi-Dimensional Array Flattening | 🔴 | - | P0 | 2h |
 | [FCDC-ZC020](ZERO-COPY-READ-TASK-DETAIL.md#fcdc-zc020-implement-sequence-of-strings) | Implement Sequence-of-Strings Handling | 🔴 | - | P1 | 4h |
 | [FCDC-ZC021](ZERO-COPY-READ-TASK-DETAIL.md#fcdc-zc021-implement-boolean-sequence-safety) | Implement Boolean Sequence Safety | 🔴 | - | P1 | 3h |
 | [FCDC-ZC022](ZERO-COPY-READ-TASK-DETAIL.md#fcdc-zc022-handle-keyed-topics) | Handle Keyed Topics & Lifecycle Events | 🔴 | - | P1 | 3h |
 
-**Phase 5 Totals:** 4 tasks, ~12 hours, 0% complete
+**Phase 5 Totals:** 5 tasks, ~18 hours, 0% complete
 
 **Success Gate:** GATE-ZC5 (Edge Case Validation)
+- ❌ Nested sequences (alias/typedef) work correctly
 - ❌ Multi-dimensional arrays work correctly
 - ❌ Sequence-of-strings round-trip successful
 - ❌ Boolean sequences safe and correct
@@ -207,25 +209,25 @@
 | **Phase 2: View CodeGen** | 9 | 0 | 0 | 9 | 0% |
 | **Phase 3: Extensions** | 2 | 0 | 0 | 2 | 0% |
 | **Phase 4: ToManaged** | 2 | 0 | 0 | 2 | 0% |
-| **Phase 5: Edge Cases** | 4 | 0 | 0 | 4 | 0% |
+| **Phase 5: Edge Cases** | 5 | 0 | 0 | 5 | 0% |
 | **Phase 6: Testing** | 5 | 0 | 0 | 5 | 0% |
 | **Phase 7: Documentation** | 3 | 0 | 0 | 3 | 0% |
-| **Total** | **30** | **0** | **0** | **30** | **0%** |
+| **Total** | **31** | **0** | **0** | **31** | **0%** |
 
 ### By Priority
 
 | Priority | Count | Complete | Remaining |
 |----------|-------|----------|-----------|
 | **P0 (Critical)** | 16 | 0 | 16 |
-| **P1 (High)** | 14 | 0 | 14 |
+| **P1 (High)** | 15 | 0 | 15 |
 
 ### Effort Summary
 
 | Category | Hours | Days (8h) |
 |----------|-------|-----------|
-| **Total Estimated Effort** | ~170h | ~21 days |
+| **Total Estimated Effort** | ~176h | ~22 days |
 | **Completed** | 0h | 0 days |
-| **Remaining** | ~170h | ~21 days |
+| **Remaining** | ~176h | ~22 days |
 
 **Note:** Estimates are conservative and include testing time. Actual duration may vary based on:
 - Complexity discoveries during implementation
