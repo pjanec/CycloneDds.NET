@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis;
 using CycloneDDS.Schema;
 using CycloneDDS.Compiler.Common;
 using CycloneDDS.Compiler.Common.IdlJson;
+using CycloneDDS.CodeGen.Emitters;
 
 namespace CycloneDDS.CodeGen
 {
@@ -15,6 +16,8 @@ namespace CycloneDDS.CodeGen
         private readonly IdlEmitter _idlEmitter = new IdlEmitter();
         private readonly SerializerEmitter _serializerEmitter = new SerializerEmitter();
         private readonly DeserializerEmitter _deserializerEmitter = new DeserializerEmitter();
+        private readonly ViewEmitter _viewEmitter = new ViewEmitter();
+        private readonly ViewExtensionsEmitter _viewExtensionsEmitter = new ViewExtensionsEmitter();
 
         public void Generate(string sourceDir, string outputDir, IEnumerable<string>? referencePaths = null)
         {
@@ -100,6 +103,12 @@ namespace CycloneDDS.CodeGen
 
                     var deserializerCode = _deserializerEmitter.EmitDeserializer(topic, registry);
                     File.WriteAllText(Path.Combine(outputDir, $"{safeName}.Deserializer.cs"), deserializerCode);
+
+                    var viewCode = _viewEmitter.EmitViewStruct(topic, registry);
+                    File.WriteAllText(Path.Combine(outputDir, $"{safeName}.View.cs"), viewCode);
+
+                    var extCode = _viewExtensionsEmitter.EmitExtensions(topic, registry);
+                    File.WriteAllText(Path.Combine(outputDir, $"{safeName}.ViewExtensions.cs"), extCode);
                     //Console.WriteLine($"    Generated Serializers for {topic.Name}");
                 }
             }
