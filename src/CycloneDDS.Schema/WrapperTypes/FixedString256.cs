@@ -5,17 +5,17 @@ using System.Text;
 namespace CycloneDDS.Schema;
 
 /// <summary>
-/// A fixed-size string with a maximum capacity of 128 bytes (UTF-8 encoded, NUL-terminated).
+/// A fixed-size string with a maximum capacity of 256 bytes (UTF-8 encoded, NUL-terminated).
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public unsafe struct FixedString128
+public unsafe struct FixedString256
 {
-    private fixed byte _buffer[128];
+    private fixed byte _buffer[256];
 
     /// <summary>
-    /// Gets the maximum capacity in bytes (128).
+    /// Gets the maximum capacity in bytes (256).
     /// </summary>
-    public const int Capacity = 128;
+    public const int Capacity = 256;
 
     /// <summary>
     /// Gets the actual length of the string in bytes.
@@ -34,11 +34,10 @@ public unsafe struct FixedString128
     }
 
     /// <summary>
-    /// Creates a new FixedString128 from a string. Throws if too long or invalid UTF-8.
+    /// Creates a new FixedString256 from a string. Throws if too long or invalid UTF-8.
     /// </summary>
     /// <param name="value">The source string.</param>
-    /// <exception cref="ArgumentException">Thrown if the UTF-8 representation exceeds capacity or contains invalid characters.</exception>
-    public FixedString128(string value)
+    public FixedString256(string value)
     {
         if (!TryFrom(value, out this))
         {
@@ -53,7 +52,7 @@ public unsafe struct FixedString128
             }
 
              if (count > Capacity)
-                throw new ArgumentException($"String provided is too long ({count} bytes) for FixedString128.", nameof(value));
+                throw new ArgumentException($"String provided is too long ({count} bytes) for FixedString256.", nameof(value));
              else
                 throw new ArgumentException("String conversion failed.", nameof(value));
         }
@@ -62,14 +61,14 @@ public unsafe struct FixedString128
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
     /// <summary>
-    /// Tries to create a FixedString128 from a string.
+    /// Tries to create a FixedString256 from a string.
     /// </summary>
     /// <param name="value">The source string.</param>
-    /// <param name="result">The resulting FixedString128.</param>
+    /// <param name="result">The resulting FixedString256.</param>
     /// <returns>True if successful; otherwise false (e.g. if too long or invalid UTF-8).</returns>
-    public static bool TryFrom(string value, out FixedString128 result)
+    public static bool TryFrom(string value, out FixedString256 result)
     {
-        result = default;
+        result = default; // Zero-initializes buffer
         if (value == null) return true;
 
         try
@@ -121,7 +120,13 @@ public unsafe struct FixedString128
         return Encoding.UTF8.GetString(AsUtf8Span());
 #endif
     }
-
+    
     /// <inheritdoc/>
     public override string ToString() => ToStringAllocated();
+
+    /// <summary>Implicits converts FixedString256 to string.</summary>
+    public static implicit operator string(FixedString256 fs) => fs.ToString();
+    
+    /// <summary>Implicits converts string to FixedString256. Throws if too long.</summary>
+    public static implicit operator FixedString256(string s) => new FixedString256(s);
 }

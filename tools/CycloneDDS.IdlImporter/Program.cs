@@ -129,7 +129,7 @@ public class Program
         catch (Exception ex)
         {
              // Log error but allow Main to catch it for consistent exit codes
-             throw ex;
+             throw;
         }
         
         Console.WriteLine();

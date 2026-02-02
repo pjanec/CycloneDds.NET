@@ -1,0 +1,58 @@
+{
+  "File":
+    [
+      {
+        "Name": "D:\\Work\\FastCycloneDdsCsharpBindings\\examples\\FeatureDemo\\Generated\\DemoMode.idl",
+        "_eof": 0
+      }
+    ],
+  "Types":
+    [
+      {
+        "Name": "FeatureDemo_Orchestration_DemoMode",
+        "Kind": "enum",
+        "Extensibility": "final",
+        "Align": 4,
+        "Size": 4,
+        "Members":
+        [
+          {
+            "Name": "FeatureDemo_Orchestration_Interactive",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Orchestration_Standalone",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 1,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Orchestration_Master",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 2,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Orchestration_Slave",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 3,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Orchestration_Autonomous",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 4,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      }
+    ]
+}

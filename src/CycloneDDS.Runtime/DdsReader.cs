@@ -93,7 +93,26 @@ namespace CycloneDDS.Runtime
 
             if (actualQos == IntPtr.Zero)
             {
-                actualQos = DdsApi.dds_create_qos();
+                var qosAttr = typeof(T).GetCustomAttribute<DdsQosAttribute>();
+                if (qosAttr != null)
+                {
+                    actualQos = DdsApi.dds_create_qos();
+                    // Default max_blocking_time is 100ms
+                    long maxBlockingTime = 100 * 1000 * 1000;
+                    DdsApi.dds_qset_reliability(actualQos, (int)qosAttr.Reliability, maxBlockingTime);
+                    DdsApi.dds_qset_durability(actualQos, (int)qosAttr.Durability);
+                    int depth = qosAttr.HistoryDepth;
+                    if (qosAttr.HistoryKind == DdsHistoryKind.KeepAll) 
+                    {
+                        depth = -1;
+                        DdsApi.dds_qset_resource_limits(actualQos, -1, -1, -1);
+                    }
+                    DdsApi.dds_qset_history(actualQos, (int)qosAttr.HistoryKind, depth);
+                }
+                else
+                {
+                    actualQos = DdsApi.dds_create_qos();
+                }
                 ownQos = true;
             }
 
@@ -154,7 +173,7 @@ namespace CycloneDDS.Runtime
                  
                  if (count == (int)DdsApi.DdsReturnCode.NoData)
                  {
-                     return new DdsLoan<T>(_readerHandle, null, null, 0, _registry, _filter);
+                     return new DdsLoan<T>(_readerHandle, null!, null!, 0, _registry, _filter);
                  }
                  throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_{(isTake ? "take" : "read")} failed: {count}");
              }
@@ -341,7 +360,7 @@ namespace CycloneDDS.Runtime
              {
                  ArrayPool<IntPtr>.Shared.Return(samples);
                  ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(infos);
-                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new DdsLoan<T>(_readerHandle, null, null, 0, _registry, _filter);
+                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new DdsLoan<T>(_readerHandle, null!, null!, 0, _registry, _filter);
                  throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_take_instance failed: {count}");
              }
              return new DdsLoan<T>(_readerHandle, samples, infos, count, _registry, _filter);
@@ -360,7 +379,7 @@ namespace CycloneDDS.Runtime
              {
                  ArrayPool<IntPtr>.Shared.Return(samples);
                  ArrayPool<DdsApi.DdsSampleInfo>.Shared.Return(infos);
-                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new DdsLoan<T>(_readerHandle, null, null, 0, _registry, _filter);
+                 if (count == (int)DdsApi.DdsReturnCode.NoData) return new DdsLoan<T>(_readerHandle, null!, null!, 0, _registry, _filter);
                  throw new DdsException((DdsApi.DdsReturnCode)count, $"dds_read_instance failed: {count}");
              }
              return new DdsLoan<T>(_readerHandle, samples, infos, count, _registry, _filter);

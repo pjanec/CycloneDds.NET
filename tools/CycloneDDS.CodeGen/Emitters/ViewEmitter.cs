@@ -16,6 +16,10 @@ namespace CycloneDDS.CodeGen.Emitters
             sb.AppendLine("using CycloneDDS.Core;");
             sb.AppendLine("using CycloneDDS.Runtime;");
             sb.AppendLine();
+            sb.AppendLine("#pragma warning disable CS8600");
+            sb.AppendLine("#pragma warning disable CS8601");
+            sb.AppendLine("#pragma warning disable CS8603");
+            sb.AppendLine();
             
             if (!string.IsNullOrEmpty(type.Namespace))
             {
@@ -94,7 +98,9 @@ namespace CycloneDDS.CodeGen.Emitters
             
             if (fieldTypeInfo != null && fieldTypeInfo.IsUnion)
             {
-                EmitUnionProperty(sb, fieldTypeInfo, field.Name, indent, registry);
+                // registry might be null, but EmitUnionProperty handles usage safely or we accept warning suppression if logic guarantees it. 
+                // However, EmitUnionProperty signature expects GlobalTypeRegistry? so let's update that signature too.
+                EmitUnionProperty(sb, fieldTypeInfo, field.Name, indent, registry!);
                 return;
             }
 
@@ -300,7 +306,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 var conditions = new List<string>();
                 foreach (var val in values)
                 {
-                    string valStr = val.ToString();
+                    string valStr = val?.ToString() ?? "0";
                     if (val is bool b) valStr = b ? "true" : "false";
                     conditions.Add($"{propName}Kind == ({discriminatorEnum}){valStr}");
                 }
@@ -438,7 +444,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 var conditions = new List<string>();
                 foreach (var val in caseAttr.Arguments)
                 {
-                    string valStr = val.ToString();
+                    string valStr = val?.ToString() ?? "0";
                     if (val is bool b) valStr = b ? "true" : "false";
                     
                     if (resolvedDiscType == "bool" || resolvedDiscType == "Boolean") 
@@ -527,7 +533,7 @@ namespace CycloneDDS.CodeGen.Emitters
         }
 
         // Helpers
-        private string ResolveType(string typeName, GlobalTypeRegistry registry)
+        private string ResolveType(string typeName, GlobalTypeRegistry? registry)
         {
              if (registry != null && registry.TryGetDefinition(typeName, out var def))
              {
@@ -537,7 +543,7 @@ namespace CycloneDDS.CodeGen.Emitters
              return typeName;
         }
 
-        private bool IsPrimitive(string typeName, GlobalTypeRegistry registry = null)
+        private bool IsPrimitive(string typeName, GlobalTypeRegistry? registry = null)
         {
              var resolved = registry != null ? ResolveType(typeName, registry) : typeName;
              var lower = resolved.ToLower();
@@ -554,13 +560,13 @@ namespace CycloneDDS.CodeGen.Emitters
                     lower == "double" || lower == "char"; 
         }
 
-        private bool IsBool(string typeName, GlobalTypeRegistry registry = null) 
+        private bool IsBool(string typeName, GlobalTypeRegistry? registry = null) 
         {
              var resolved = registry != null ? ResolveType(typeName, registry) : typeName;
              return resolved.ToLower() == "bool" || resolved == "Boolean" || resolved == "System.Boolean";
         }
 
-        private bool IsString(string typeName, GlobalTypeRegistry registry = null)
+        private bool IsString(string typeName, GlobalTypeRegistry? registry = null)
         {
              var resolved = registry != null ? ResolveType(typeName, registry) : typeName;
              return resolved == "string" || resolved == "System.String";

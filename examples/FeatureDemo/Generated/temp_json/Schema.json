@@ -1,0 +1,431 @@
+{
+  "File":
+    [
+      {
+        "Name": "D:\\Work\\FastCycloneDdsCsharpBindings\\examples\\FeatureDemo\\Generated\\Schema.idl",
+        "_eof": 0
+      }
+    ],
+  "Types":
+    [
+      {
+        "Name": "FeatureDemo_ControlCommand",
+        "Kind": "enum",
+        "Extensibility": "final",
+        "Align": 4,
+        "Size": 4,
+        "Members":
+        [
+          {
+            "Name": "FeatureDemo_Handshake",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_StartScenario",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 1,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_StopScenario",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 2,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Ack",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 3,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "FeatureDemo::DemoControl",
+        "Kind": "struct",
+        "Extensibility": "appendable",
+        "Align": 8,
+        "Size": 24,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 24,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "FeatureDemo::DemoControl",
+          "Keys": [
+            { "Name": "nodeId", "Offset": 0, "Order": 0 }
+          ],
+          "Ops": [
+            67108864, 16842753, 0, 17563776, 4, 3, 16973828, 8, 
+            17039364, 16, 0, 117440513, 1
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "nodeId",
+            "Type": "uint8_t",
+            "IsKey": true,
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "command",
+            "Type": "FeatureDemo_ControlCommand",
+            "Offset": 4,
+            "_eof": 0
+          },
+          {
+            "Name": "scenarioId",
+            "Type": "int32_t",
+            "Offset": 8,
+            "_eof": 0
+          },
+          {
+            "Name": "timestamp",
+            "Type": "int64_t",
+            "Offset": 16,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "FeatureDemo::ChatMessage",
+        "Kind": "struct",
+        "Extensibility": "appendable",
+        "Align": 8,
+        "Size": 176,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 176,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "FeatureDemo::ChatMessage",
+          "Keys": [
+          ],
+          "Ops": [
+            67108864, 17039364, 0, 17301764, 8, 32, 17301764, 40, 
+            128, 17039364, 168, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "messageId",
+            "Type": "int64_t",
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "user",
+            "Type": "char",
+            "Offset": 8,
+            "CollectionType": "array",
+            "Size": 32,
+            "_eof": 0
+          },
+          {
+            "Name": "content",
+            "Type": "char",
+            "Offset": 40,
+            "CollectionType": "array",
+            "Size": 128,
+            "_eof": 0
+          },
+          {
+            "Name": "timestamp",
+            "Type": "int64_t",
+            "Offset": 168,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "FeatureDemo::SensorData",
+        "Kind": "struct",
+        "Extensibility": "appendable",
+        "Align": 8,
+        "Size": 56,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 56,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "FeatureDemo::SensorData",
+          "Keys": [
+            { "Name": "sensorId", "Offset": 0, "Order": 0 }
+          ],
+          "Ops": [
+            67108864, 16973829, 0, 17039362, 8, 17301764, 16, 32, 
+            17039364, 48, 0, 117440513, 1
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "sensorId",
+            "Type": "int32_t",
+            "IsKey": true,
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "value",
+            "Type": "double",
+            "Offset": 8,
+            "_eof": 0
+          },
+          {
+            "Name": "location",
+            "Type": "char",
+            "Offset": 16,
+            "CollectionType": "array",
+            "Size": 32,
+            "_eof": 0
+          },
+          {
+            "Name": "timestamp",
+            "Type": "int64_t",
+            "Offset": 48,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "FeatureDemo::StockTick",
+        "Kind": "struct",
+        "Extensibility": "appendable",
+        "Align": 8,
+        "Size": 64,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 64,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "FeatureDemo::StockTick",
+          "Keys": [
+          ],
+          "Ops": [
+            67108864, 17039364, 0, 17301764, 8, 32, 17039362, 40, 
+            16973828, 48, 17039364, 56, 0
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "tickId",
+            "Type": "int64_t",
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "symbol",
+            "Type": "char",
+            "Offset": 8,
+            "CollectionType": "array",
+            "Size": 32,
+            "_eof": 0
+          },
+          {
+            "Name": "price",
+            "Type": "double",
+            "Offset": 40,
+            "_eof": 0
+          },
+          {
+            "Name": "volume",
+            "Type": "int32_t",
+            "Offset": 48,
+            "_eof": 0
+          },
+          {
+            "Name": "timestamp",
+            "Type": "int64_t",
+            "Offset": 56,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "FeatureDemo::FlightPosition",
+        "Kind": "struct",
+        "Extensibility": "appendable",
+        "Align": 8,
+        "Size": 64,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 64,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "FeatureDemo::FlightPosition",
+          "Keys": [
+            { "Name": "flightId", "Offset": 0, "Order": 0 }
+          ],
+          "Ops": [
+            67108864, 17301765, 0, 32, 17039362, 32, 17039362, 40, 
+            17039362, 48, 17039364, 56, 0, 117440513, 1
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "flightId",
+            "Type": "char",
+            "IsKey": true,
+            "Offset": 0,
+            "CollectionType": "array",
+            "Size": 32,
+            "_eof": 0
+          },
+          {
+            "Name": "latitude",
+            "Type": "double",
+            "Offset": 32,
+            "_eof": 0
+          },
+          {
+            "Name": "longitude",
+            "Type": "double",
+            "Offset": 40,
+            "_eof": 0
+          },
+          {
+            "Name": "altitude",
+            "Type": "double",
+            "Offset": 48,
+            "_eof": 0
+          },
+          {
+            "Name": "timestamp",
+            "Type": "int64_t",
+            "Offset": 56,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "FeatureDemo_LogLevel",
+        "Kind": "enum",
+        "Extensibility": "final",
+        "Align": 4,
+        "Size": 4,
+        "Members":
+        [
+          {
+            "Name": "FeatureDemo_Info",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Warning",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 1,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Error",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 2,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Critical",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 3,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      },
+      {
+        "Name": "FeatureDemo::SystemLog",
+        "Kind": "struct",
+        "Extensibility": "appendable",
+        "Align": 8,
+        "Size": 216,
+        "QoS": {
+          "HistoryDepth": 0
+        },
+        "TopicDescriptor": {
+          "Size": 216,
+          "Align": 8,
+          "FlagSet": 0,
+          "TypeName": "FeatureDemo::SystemLog",
+          "Keys": [
+            { "Name": "logId", "Offset": 0, "Order": 0 }
+          ],
+          "Ops": [
+            67108864, 17039365, 0, 17563776, 8, 3, 17301764, 12, 
+            64, 17301764, 76, 128, 17039364, 208, 0, 117440513, 
+            1
+          ]
+        },
+        "Members":
+        [
+          {
+            "Name": "logId",
+            "Type": "int64_t",
+            "IsKey": true,
+            "Offset": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "level",
+            "Type": "FeatureDemo_LogLevel",
+            "Offset": 8,
+            "_eof": 0
+          },
+          {
+            "Name": "component",
+            "Type": "char",
+            "Offset": 12,
+            "CollectionType": "array",
+            "Size": 64,
+            "_eof": 0
+          },
+          {
+            "Name": "message",
+            "Type": "char",
+            "Offset": 76,
+            "CollectionType": "array",
+            "Size": 128,
+            "_eof": 0
+          },
+          {
+            "Name": "timestamp",
+            "Type": "int64_t",
+            "Offset": 208,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      }
+    ]
+}

@@ -1,0 +1,37 @@
+{
+  "File":
+    [
+      {
+        "Name": "D:\\Work\\FastCycloneDdsCsharpBindings\\examples\\FeatureDemo\\Generated\\SensorSubscriber.idl",
+        "_eof": 0
+      }
+    ],
+  "Types":
+    [
+      {
+        "Name": "FeatureDemo_Scenarios_SensorArray_SubscriberMode",
+        "Kind": "enum",
+        "Extensibility": "final",
+        "Align": 4,
+        "Size": 4,
+        "Members":
+        [
+          {
+            "Name": "FeatureDemo_Scenarios_SensorArray_Managed",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 0,
+            "_eof": 0
+          },
+          {
+            "Name": "FeatureDemo_Scenarios_SensorArray_ZeroCopy",
+            "Kind": "enumerator",
+            "Offset": 0,
+            "Value": 1,
+            "_eof": 0
+          }
+        ],
+        "_eof": 0
+      }
+    ]
+}

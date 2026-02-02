@@ -359,6 +359,9 @@ namespace CycloneDDS.Runtime.Interop
         public static extern void dds_qset_history(IntPtr qos, int kind, int depth);
 
         [DllImport(DLL_NAME)]
+        public static extern void dds_qset_resource_limits(IntPtr qos, int max_samples, int max_instances, int max_samples_per_instance);
+
+        [DllImport(DLL_NAME)]
         public static extern void dds_qset_durability(IntPtr qos, int kind);
 
         public const int DDS_DURABILITY_VOLATILE = 0;
