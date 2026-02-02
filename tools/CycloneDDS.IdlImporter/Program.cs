@@ -126,7 +126,7 @@ public class Program
             var importer = new Importer(verbose, idlcPath);
             importer.Import(fullMasterPath, fullSourceRoot, fullOutputRoot);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
              // Log error but allow Main to catch it for consistent exit codes
              throw;

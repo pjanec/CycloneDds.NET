@@ -124,7 +124,7 @@ using System.Runtime.InteropServices;
 namespace ViewTest
 {
     [StructLayout(LayoutKind.Sequential)]
-    internal unsafe struct FixedStruct_Native
+    public unsafe struct FixedStruct_Native
     {
         public fixed int FixedArr[10];
     }

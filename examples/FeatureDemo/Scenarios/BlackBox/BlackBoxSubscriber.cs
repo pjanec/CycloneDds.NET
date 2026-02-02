@@ -43,7 +43,6 @@ public class BlackBoxSubscriber : IDisposable
                     await _reader.WaitDataAsync(ct);
                 }
 
-                bool gotData = false;
                 {
                     using var loan = _reader.Take(100); // Take all available
                     foreach (var sample in loan)
@@ -51,7 +50,6 @@ public class BlackBoxSubscriber : IDisposable
                         if (sample.IsValid)
                         {
                             logs.Add(sample.Data);
-                            gotData = true;
                         }
                     }
                 }

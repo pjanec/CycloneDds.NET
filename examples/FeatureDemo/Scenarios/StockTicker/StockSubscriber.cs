@@ -75,7 +75,7 @@ public class StockSubscriber : IDisposable
                 }
             }
             catch (OperationCanceledException) { break; }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // In a real app we would log this
                 await Task.Delay(100, ct);

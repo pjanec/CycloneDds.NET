@@ -40,7 +40,7 @@ public class SensorPublisherTests
         var duration = (endTime - startTime).TotalSeconds;
         var rate = count / duration;
 
-        TestContext.WriteLine($"Achieved Rate: {rate:F2} msg/s (Target: {targetRate})");
+        TestContext.Out.WriteLine($"Achieved Rate: {rate:F2} msg/s (Target: {targetRate})");
         
         // Assert we are close. In CI environments timing is tricky, so be lenient (e.g. 50% or just > 1000)
         Assert.That(rate, Is.GreaterThan(500), "Should achieve at least 500 msg/s");

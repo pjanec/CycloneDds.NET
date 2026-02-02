@@ -35,7 +35,7 @@ public class FlightRadarTests
             // Look up "BA-123"
             var history = subscriber.GetHistoryForFlight("BA-123");
             
-            TestContext.WriteLine($"BA-123 History Count: {history.Count}");
+            TestContext.Out.WriteLine($"BA-123 History Count: {history.Count}");
             Assert.That(history.Count, Is.GreaterThan(0), "Should receive history for BA-123");
             Assert.That(history.Count, Is.LessThanOrEqualTo(10), "Should respect History KeepLast(10)");
             
@@ -47,7 +47,7 @@ public class FlightRadarTests
             
             // Look up "LH-456"
             var history2 = subscriber.GetHistoryForFlight("LH-456");
-             TestContext.WriteLine($"LH-456 History Count: {history2.Count}");
+             TestContext.Out.WriteLine($"LH-456 History Count: {history2.Count}");
              Assert.That(history2.Count, Is.GreaterThan(0));
              foreach (var item in history2)
             {

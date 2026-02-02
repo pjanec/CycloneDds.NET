@@ -24,7 +24,7 @@ namespace CycloneDDS.CodeGen.Tests
             var emitter = new SerializerEmitter();
             string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
-            Assert.Contains("internal unsafe struct Test_Native", code);
+            Assert.Contains("public unsafe struct Test_Native", code);
             Assert.Contains("public int id;", code);
         }
 
@@ -160,7 +160,7 @@ namespace CycloneDDS.CodeGen.Tests
             string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
             Assert.Contains("[StructLayout(LayoutKind.Explicit)]", code);
-            Assert.Contains("internal unsafe struct TestUnion_Union_Native", code);
+            Assert.Contains("public unsafe struct TestUnion_Union_Native", code);
             Assert.Contains("[FieldOffset(0)]", code);
             Assert.Contains("public int part1;", code);
             Assert.Contains("public double part2;", code);

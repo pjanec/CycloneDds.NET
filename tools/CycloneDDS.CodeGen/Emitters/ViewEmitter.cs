@@ -7,7 +7,7 @@ namespace CycloneDDS.CodeGen.Emitters
 {
     public class ViewEmitter
     {
-        public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry registry)
+        public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry? registry)
         {
             var sb = new StringBuilder();
             
@@ -62,7 +62,7 @@ namespace CycloneDDS.CodeGen.Emitters
             return sb.ToString();
         }
 
-        private void ProcessField(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry registry, bool isUnion)
+        private void ProcessField(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry? registry, bool isUnion)
         {
             Stack<string> nativeFieldPath = new Stack<string>();
             string nativeFieldName = field.Name;
@@ -87,10 +87,10 @@ namespace CycloneDDS.CodeGen.Emitters
             }
 
             // Unions (FCDC-ZC013)
-            TypeInfo fieldTypeInfo = field.Type;
+            TypeInfo? fieldTypeInfo = field.Type;
             if (fieldTypeInfo == null && registry != null)
             {
-                if (registry.TryGetDefinition(field.TypeName, out var def) && def.TypeInfo != null)
+                if (registry.TryGetDefinition(field.TypeName, out var def) && def?.TypeInfo != null)
                 {
                     fieldTypeInfo = def.TypeInfo;
                 }
@@ -153,7 +153,7 @@ namespace CycloneDDS.CodeGen.Emitters
              return typeName.EndsWith("[]") || typeName.Contains("List<") || typeName.Contains("Sequence<"); 
         }
 
-        private void EmitSequenceProperty(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry registry, string nativeFieldName)
+        private void EmitSequenceProperty(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry? registry, string nativeFieldName)
         {
             var elementType = GetSequenceElementType(field);
             var propName = ToPascalCase(field.Name);
@@ -217,7 +217,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 }
                 else if (registry != null && registry.TryGetDefinition(elementType, out var def))
                 {
-                    if (def.TypeInfo == null || (!def.TypeInfo.IsStruct && !def.TypeInfo.IsUnion))
+                    if (def?.TypeInfo == null || (!def.TypeInfo.IsStruct && !def.TypeInfo.IsUnion))
                     {
                         isViewable = false;
                     }
@@ -398,7 +398,7 @@ namespace CycloneDDS.CodeGen.Emitters
              sb.AppendLine($"{indent}}}");
         }
 
-        private void GenerateToManagedMethod(StringBuilder sb, TypeInfo type, GlobalTypeRegistry registry, string indent)
+        private void GenerateToManagedMethod(StringBuilder sb, TypeInfo type, GlobalTypeRegistry? registry, string indent)
         {
             sb.AppendLine($"{indent}public {type.Name} ToManaged()");
             sb.AppendLine($"{indent}{{");
@@ -423,7 +423,7 @@ namespace CycloneDDS.CodeGen.Emitters
             sb.AppendLine($"{indent}}}");
         }
 
-        private void GenerateToManagedUnionBody(StringBuilder sb, TypeInfo type, string indent, GlobalTypeRegistry registry)
+        private void GenerateToManagedUnionBody(StringBuilder sb, TypeInfo type, string indent, GlobalTypeRegistry? registry)
         {
             var discriminatorField = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
             if (discriminatorField == null) return;
@@ -465,7 +465,7 @@ namespace CycloneDDS.CodeGen.Emitters
             }
         }
 
-        private void GenerateToManagedFieldAssignment(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry registry)
+        private void GenerateToManagedFieldAssignment(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry? registry)
         {
             var propName = ToPascalCase(field.Name);
             var targetProp = propName;
@@ -537,7 +537,7 @@ namespace CycloneDDS.CodeGen.Emitters
         {
              if (registry != null && registry.TryGetDefinition(typeName, out var def))
              {
-                 if (def.IsAlias && !string.IsNullOrEmpty(def.BaseType)) 
+                 if (def != null && def.IsAlias && !string.IsNullOrEmpty(def.BaseType)) 
                      return ResolveType(def.BaseType, registry);
              }
              return typeName;
@@ -572,10 +572,10 @@ namespace CycloneDDS.CodeGen.Emitters
              return resolved == "string" || resolved == "System.String";
         }
 
-        private bool IsEnum(FieldInfo field, GlobalTypeRegistry registry)
+        private bool IsEnum(FieldInfo field, GlobalTypeRegistry? registry)
         {
              if (field.Type != null && field.Type.IsEnum) return true;
-             if (registry != null && registry.TryGetDefinition(field.TypeName, out var def) && def.TypeInfo != null && def.TypeInfo.IsEnum) return true;
+             if (registry != null && registry.TryGetDefinition(field.TypeName, out var def) && def?.TypeInfo != null && def.TypeInfo.IsEnum) return true;
              return false;
         }
 
