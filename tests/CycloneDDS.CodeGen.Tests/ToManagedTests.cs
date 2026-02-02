@@ -259,5 +259,177 @@ namespace Test.ToManaged
 ";
             RunGeneratedCode("Test.ToManaged.TestRunner", "Run", supportCode, viewCode);
         }
+
+        [Fact]
+        public void ToManaged_ComplexNested_CopiesCorrectly()
+        {
+            var innerType = new TypeInfo
+            {
+                Name = "InnerStruct",
+                Namespace = "Test.ToManaged",
+                Fields = new List<FieldInfo>
+                {
+                    new FieldInfo { Name = "Id", TypeName = "int" },
+                    new FieldInfo { Name = "Message", TypeName = "string" },
+                    new FieldInfo { Name = "Numbers", TypeName = "double[]" }
+                }
+            };
+
+            var complexType = new TypeInfo
+            {
+                Name = "ComplexStruct",
+                Namespace = "Test.ToManaged",
+                Fields = new List<FieldInfo>
+                {
+                    new FieldInfo { Name = "Single", TypeName = "InnerStruct" },
+                    new FieldInfo { Name = "List", TypeName = "InnerStruct[]" }
+                }
+            };
+
+            var reg = new GlobalTypeRegistry();
+            reg.RegisterLocal(innerType, "test.cs", "test", "module");
+            reg.RegisterLocal(complexType, "test.cs", "test", "module");
+
+            var viewEmitter = new ViewEmitter();
+            var innerViewCode = viewEmitter.EmitViewStruct(innerType, reg);
+            var complexViewCode = viewEmitter.EmitViewStruct(complexType, reg);
+
+            var supportCode = @"
+using System;
+using System.Runtime.InteropServices;
+using CycloneDDS.Core;
+using CycloneDDS.Runtime;
+
+namespace Test.ToManaged
+{
+    [StructLayout(LayoutKind.Sequential)]
+    public struct InnerStruct
+    {
+        public int Id;
+        public string Message;
+        public System.Collections.Generic.List<double> Numbers;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ComplexStruct
+    {
+        public InnerStruct Single;
+        public System.Collections.Generic.List<InnerStruct> List;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DdsSequence
+    {
+        public uint Maximum;
+        public uint Length;
+        public IntPtr Buffer;
+        public bool Release;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct InnerStruct_Native
+    {
+        public int Id;
+        public IntPtr Message;
+        public DdsSequence Numbers;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ComplexStruct_Native
+    {
+        public InnerStruct_Native Single;
+        public DdsSequence List; 
+    }
+
+    public class TestRunner
+    {
+        public static unsafe void Run()
+        {
+            var native = new ComplexStruct_Native();
+            
+            // 1. Setup 'Single' (InnerStruct)
+            native.Single.Id = 101;
+            
+            var msgBytes = System.Text.Encoding.UTF8.GetBytes(""NestedMessage\0"");
+            var hMsg = Marshal.AllocHGlobal(msgBytes.Length);
+            Marshal.Copy(msgBytes, 0, hMsg, msgBytes.Length);
+            native.Single.Message = hMsg;
+
+            var numbers = new double[] { 1.1, 2.2, 3.3 };
+            var hNumbers = Marshal.AllocHGlobal(numbers.Length * sizeof(double));
+            Marshal.Copy(numbers, 0, hNumbers, numbers.Length);
+            native.Single.Numbers.Length = (uint)numbers.Length;
+            native.Single.Numbers.Buffer = hNumbers;
+
+            // 2. Setup 'List' (Sequence<InnerStruct>)
+            var listCount = 2;
+            var hList = Marshal.AllocHGlobal(listCount * Marshal.SizeOf<InnerStruct_Native>());
+            var nativeListPtr = (InnerStruct_Native*)hList;
+            
+            // List[0]
+            nativeListPtr[0].Id = 201;
+            var msg1Bytes = System.Text.Encoding.UTF8.GetBytes(""ListMsg1\0"");
+            var hMsg1 = Marshal.AllocHGlobal(msg1Bytes.Length);
+            Marshal.Copy(msg1Bytes, 0, hMsg1, msg1Bytes.Length);
+            nativeListPtr[0].Message = hMsg1;
+            nativeListPtr[0].Numbers.Length = 0;
+            nativeListPtr[0].Numbers.Buffer = IntPtr.Zero;
+
+            // List[1]
+            nativeListPtr[1].Id = 202;
+            var msg2Bytes = System.Text.Encoding.UTF8.GetBytes(""ListMsg2\0"");
+            var hMsg2 = Marshal.AllocHGlobal(msg2Bytes.Length);
+            Marshal.Copy(msg2Bytes, 0, hMsg2, msg2Bytes.Length);
+            nativeListPtr[1].Message = hMsg2;
+            
+            // List[1].Numbers -> { 9.9 }
+            var nums2 = new double[] { 9.9 };
+            var hNums2 = Marshal.AllocHGlobal(nums2.Length * sizeof(double));
+            Marshal.Copy(nums2, 0, hNums2, nums2.Length);
+            nativeListPtr[1].Numbers.Length = (uint)nums2.Length;
+            nativeListPtr[1].Numbers.Buffer = hNums2;
+
+            native.List.Length = (uint)listCount;
+            native.List.Buffer = hList;
+
+            try 
+            {
+                unsafe
+                {
+                    var view = new ComplexStructView(&native);
+                    var managed = view.ToManaged();
+
+                    // Assertions
+                    if (managed.Single.Id != 101) throw new Exception($""Single.Id mismatch: {managed.Single.Id}"");
+                    if (managed.Single.Message != ""NestedMessage"") throw new Exception($""Single.Message mismatch: {managed.Single.Message}"");
+                    if (managed.Single.Numbers.Count != 3) throw new Exception($""Single.Numbers.Count mismatch: {managed.Single.Numbers.Count}"");
+                    if (Math.Abs(managed.Single.Numbers[1] - 2.2) > 0.001) throw new Exception($""Single.Numbers[1] mismatch: {managed.Single.Numbers[1]}"");
+
+                    if (managed.List.Count != 2) throw new Exception($""List.Count mismatch: {managed.List.Count}"");
+                    
+                    if (managed.List[0].Id != 201) throw new Exception($""List[0].Id mismatch: {managed.List[0].Id}"");
+                    if (managed.List[0].Message != ""ListMsg1"") throw new Exception($""List[0].Message mismatch: {managed.List[0].Message}"");
+                    if (managed.List[0].Numbers.Count != 0) throw new Exception($""List[0].Numbers.Count mismatch: {managed.List[0].Numbers.Count}"");
+
+                    if (managed.List[1].Id != 202) throw new Exception($""List[1].Id mismatch: {managed.List[1].Id}"");
+                    if (managed.List[1].Numbers.Count != 1) throw new Exception($""List[1].Numbers.Count mismatch: {managed.List[1].Numbers.Count}"");
+                    if (Math.Abs(managed.List[1].Numbers[0] - 9.9) > 0.001) throw new Exception($""List[1].Numbers[0] mismatch: {managed.List[1].Numbers[0]}"");
+                }
+            }
+            finally
+            {
+                 Marshal.FreeHGlobal(hMsg);
+                 Marshal.FreeHGlobal(hNumbers);
+                 Marshal.FreeHGlobal(hMsg1);
+                 Marshal.FreeHGlobal(hMsg2);
+                 Marshal.FreeHGlobal(hNums2);
+                 Marshal.FreeHGlobal(hList);
+            }
+        }
+    }
+}
+";
+            RunGeneratedCode("Test.ToManaged.TestRunner", "Run", supportCode, innerViewCode, complexViewCode);
+        }
     }
 }

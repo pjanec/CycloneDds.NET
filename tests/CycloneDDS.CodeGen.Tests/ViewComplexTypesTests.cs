@@ -86,8 +86,18 @@ namespace CycloneDDS.CodeGen.Tests
         public void EmitUnionProperty_GeneratesDiscriminatorAndAccessors()
         {
             var unionType = new TypeInfo { Name = "MyUnion", IsUnion = true };
-            unionType.Fields.Add(new FieldInfo { Name = "int_val", TypeName = "int" });
-            unionType.Fields.Add(new FieldInfo { Name = "dbl_val", TypeName = "double" });
+            unionType.Fields.Add(new FieldInfo 
+            { 
+                Name = "int_val", 
+                TypeName = "int",
+                Attributes = new List<AttributeInfo> { new AttributeInfo { Name = "DdsCase", Arguments = new List<object> { 1 } } }
+            });
+            unionType.Fields.Add(new FieldInfo 
+            { 
+                Name = "dbl_val", 
+                TypeName = "double",
+                Attributes = new List<AttributeInfo> { new AttributeInfo { Name = "DdsCase", Arguments = new List<object> { 2 } } }
+            });
 
             var type = new TypeInfo { Name = "TestType" };
             type.Fields.Add(new FieldInfo 
@@ -103,9 +113,11 @@ namespace CycloneDDS.CodeGen.Tests
             // In ViewEmitter, it checks type.Fields.Type property first.
             var code = _emitter.EmitViewStruct(type, registry);
 
-            Assert.Contains("public MyUnionDiscriminator MyUKind", code);
+            Assert.Contains("public unsafe int MyUKind", code);
             Assert.Contains("public int? MyUAsInt_val", code);
             Assert.Contains("public double? MyUAsDbl_val", code);
+            Assert.Contains("public TestType ToManaged()", code);
+            Assert.Contains("target.MyU = this.MyU.ToManaged();", code);
         }
     }
 }

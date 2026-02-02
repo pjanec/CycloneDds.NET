@@ -87,3 +87,15 @@ Even strings can be handled in-place using fixed-size buffers, avoiding intermed
 ## Summary
 
 Fast Cyclone DDS C# brings the full power of Cyclone DDS to .NET with a focus on speed and convenience. By combining Cyclone’s native IDL processing and networking engine with modern C# techniques such as source generators, unsafe memory access, and pooling, it enables real-time pub/sub applications in C# that meet demanding DDS performance requirements while maintaining wire-level fidelity with existing Cyclone DDS systems.
+
+## ToManaged() and View Recursive Handling
+
+The library supports deep copy of `View` structs to managed C# objects via the `ToManaged()` method. This method recursively converts nested structures and sequences from their native zero-copy representation into standard .NET `List<T>` and object graphs.
+*   **Complex Nested Types**: Deep recursion for structs within structs, including sequences of nested types.
+*   **Sequences of Booleans**: `bool[]` and `List<bool>` are now fully supported in zero-copy views, with optimized span-based access where possible and correct marshalling to managed lists.
+*   **Safety**: The generated code strictly manages `unsafe` contexts, ensuring stability even when dealing with complex pointer arithmetic required for nested sequences.
+
+## Performance Characteristics
+
+Performance verification confirms that the zero-copy paths (using `View` directly) enable extremely high throughput by avoiding memory allocation. The `ToManaged()` fallback provides a safe, convenient API for when data ownership is required, with optimized implementation to minimize overhead during the copy process.
+

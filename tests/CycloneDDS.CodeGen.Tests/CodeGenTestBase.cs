@@ -48,7 +48,7 @@ namespace CycloneDDS.CodeGen.Tests
                 var failures = result.Diagnostics.Where(diagnostic => 
                     diagnostic.IsWarningAsError || diagnostic.Severity == DiagnosticSeverity.Error);
                 
-                var errorMsg = string.Join("\n", failures.Select(d => $"{d.Id}: {d.GetMessage()}"));
+                var errorMsg = string.Join("\n", failures.Select(d => $"{d.Id}: {d.GetMessage()} at {d.Location}"));
                 throw new Exception($"Compilation failed:\n{errorMsg}\n\nCode:\n{string.Join("\n\n---\n\n", sources)}");
             }
 

@@ -152,7 +152,7 @@ namespace CycloneDDS.CodeGen.Emitters
             var elementType = GetSequenceElementType(field);
             var propName = ToPascalCase(field.Name);
             
-            if (IsPrimitive(elementType, registry))
+            if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
             {
                 // FCDC-ZC009
                 sb.AppendLine($"{indent}/// <summary>Gets {field.Name} as ReadOnlySpan (zero-copy).</summary>");
@@ -396,21 +396,24 @@ namespace CycloneDDS.CodeGen.Emitters
         {
             sb.AppendLine($"{indent}public {type.Name} ToManaged()");
             sb.AppendLine($"{indent}{{");
-            sb.AppendLine($"{indent}    var target = new {type.Name}();");
+            sb.AppendLine($"{indent}    unsafe");
+            sb.AppendLine($"{indent}    {{");
+            sb.AppendLine($"{indent}        var target = new {type.Name}();");
 
             if (!type.IsUnion)
             {
                 foreach (var field in type.Fields)
                 {
-                    GenerateToManagedFieldAssignment(sb, field, indent + "    ", registry);
+                    GenerateToManagedFieldAssignment(sb, field, indent + "        ", registry);
                 }
             }
             else
             {
-                GenerateToManagedUnionBody(sb, type, indent + "    ", registry);
+                GenerateToManagedUnionBody(sb, type, indent + "        ", registry);
             }
 
-            sb.AppendLine($"{indent}    return target;");
+            sb.AppendLine($"{indent}        return target;");
+            sb.AppendLine($"{indent}    }}");
             sb.AppendLine($"{indent}}}");
         }
 
@@ -495,7 +498,7 @@ namespace CycloneDDS.CodeGen.Emitters
                  var elementType = GetSequenceElementType(field);
                  var targetCollectionType = "System.Collections.Generic.List";
 
-                 if (IsPrimitive(elementType, registry))
+                 if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
                  {
                      sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<{elementType}>(this.{propName}.ToArray());");
                  }
