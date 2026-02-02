@@ -9,15 +9,17 @@ See [detailed technical overview](DetailedOverview.md).
 ## Key Features
 
 ### 🚀 Performance Core
-- **Zero-Allocation Writes:** Custom CDR serializer writes directly to pooled buffers (ArrayPool).
-- **Zero-Copy Reads:** Read directly from native DDS buffers using `ref struct` views.
-- **Serdata Integration:** Bypasses legacy C marshalling for raw speed.
-- **Lazy Deserialization:** Only parse fields when you access them.
+- **Zero-Allocation Writes:** Custom marshaller writes directly to pooled buffers (ArrayPool) using a C-compatible memory layout.
+- **Zero-Copy Reads:** Read directly from native DDS buffers using `ref struct` views, bypassing deserialization.
+- **Unified API:** Single reader provides both safe managed objects and high-performance zero-copy views.
+- **Lazy Deserialization:** Only pay the cost of deep-copying objects when you explicitly access `.Data`.
 
 ### 🧬 Schema & Interoperability
 - **Code-First DSL:** Define your data types entirely in C# using attributes (`[DdsTopic]`, `[DdsKey]`, `[DdsStruct]`, `[DdsQos]`). No need to write IDL files manually.
 - **Automatic IDL Generation:** The build tools automatically generate standard OMG IDL files from your C# classes, ensuring perfect interoperability with other DDS implementations (C++, Python, Java) and tools. See [IDL Generation](IDL-GENERATION.md).
 - **Auto-Magic Type Discovery:** Runtime automatically registers type descriptors based on your schema.
+- **IDL Import:** Convert existing IDL files into C# DSL automatically using the `IdlImporter` tool.
+- **100% Native Compliance:** Uses Cyclone DDS native serializer for wire compatibility.
 
 
 ### 🛠️ Developer Experience
@@ -122,33 +124,34 @@ writer.Write(new SensorData
 Reading uses a **Scope** pattern to ensure safety and zero-copy semantics. You "loan" the data, read it, and return it by disposing the scope.
 
 ```csharp
-using var reader = new DdsReader<SensorData, SensorData>(participant, "SensorData");
+using var reader = new DdsReader<SensorData>(participant, "SensorData");
 
 // POLL FOR DATA
-// Returns a "ViewScope" which is a ref struct (cannot escape stack)
-using var scope = reader.Take(maxSamples: 10);
+// Returns a "Loan" which manages native memory
+using var loan = reader.Take(maxSamples: 10);
 
 // Iterate received data
-for (int i = 0; i < scope.Count; i++)
+foreach (var sample in loan)
 {
-    // Check if this is valid data (not just a metadata update)
-    if (scope.Infos[i].ValidData != 0)
+    // Check for valid data (skip metadata-only samples like Dispose events)
+    if (sample.IsValid)
     {
-        // LAZY ACCESS
-        // Deserialization happens ONLY here, when you access the indexer.
-        // If you don't touch scope[i], no CPU is spent parsing it.
-        SensorData data = scope[i];
+        // OPTION A: Simple (Managed)
+        // Lazy property triggers deep copy to managed object
+        // SensorData data = sample.Data;
         
-        Console.WriteLine($"Received: {data.SensorId} = {data.Value}");
+        // OPTION B: Fast (Zero-Copy)
+        // Get a view over native memory. Zero allocations.
+        var view = sample.AsView();
+        
+        Console.WriteLine($"Received: {view.SensorId} = {view.Value}");
+    }
+    else
+    {
+        // Handle lifecycle events (e.g., instance disposed)
+        Console.WriteLine($"Instance state: {sample.Info.InstanceState}");
     }
 }
-
-// When 'using scope' ends:
-// 1. Internal Serdata handles are unreferenced
-// 2. Pooled memory buffers are returned to Arena
-// 3. No GC cleanup required
-
-// Loan returned automatically when scope disposes
 
 ```
 
@@ -304,15 +307,29 @@ writer.DisposeInstance(key);
 writer.UnregisterInstance(key);
 ```
 
+## 9. Legacy IDL Import
+
+If you have existing DDS systems defined in IDL, you can generate the corresponding C# DSL automatically.
+
+```bash
+# Import IDL to C#
+CycloneDDS.IdlImporter MySystem.idl ./src/Generated
+```
+
+This generates C# `[DdsTopic]` structs that are binary-compatible with your existing system.
+See [IDL Import Guide](docs/IDL-IMPORT.md) for advanced usage including multi-module support.
+
 ---
 
 ## Dependencies
 
-*   `CycloneDDS.Core`: CDR Serialization primitives (Zero Alloc)
+*   `CycloneDDS.Core`: Core memory management (NativeArena) and native types
 *   `CycloneDDS.Schema`: Attributes and Type System
 *   `CycloneDDS.CodeGen`: Build-time source generator
 *   `CycloneDDS.Runtime`: The high-level API described above
-*   `ddsc.dll`: Native Cyclone DDS library (extended by exposing serdata oriented APIs - custom build necessary)
+*   `ddsc.dll`: Native Cyclone DDS library
+*   `idlc.exe`: Cyclone DDS IDL compiler
+*   `cycloneddsidljson.dll`: our custom json plugin for IDL compiler - build using `build_cyclone.bat` script
 
 ---
 
@@ -320,12 +337,13 @@ writer.UnregisterInstance(key);
 
 | Feature | Allocation Cost | Performance Note |
 | :--- | :--- | :--- |
-| **Write** | **0 Bytes** | Uses ArrayPool + Span |
-| **Take (Polling)** | **0 Bytes** | Uses Loaned Buffers + Ref Structs |
-| **Filtering** | **0 Bytes** | JIT Inlined Predicates |
+| **Write** | **0 Bytes** | Uses ArrayPool + NativeArena |
+| **Read (View)** | **0 Bytes** | Uses `.AsView()` + Ref Structs |
+| **Read (Managed)** | Allocates | Uses `.Data` (Deep Copy) |
+| **Take (Polling)** | **0 Bytes** | Uses Loaned Buffers |
+| **Filtering** | **0 Bytes** | Manual loop filtering with Views |
 | **Sender Lookup** | **0 Bytes** | O(1) Dictionary Lookup |
 | **Async Wait** | ~80 Bytes | One Task per `await` cycle |
-| **Managed String** | Allocates | Convenience feature (use FixedString for speed) |
 
 *Built for speed. Designed for developers.*
 
