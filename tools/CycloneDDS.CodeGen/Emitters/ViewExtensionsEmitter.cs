@@ -31,6 +31,21 @@ namespace CycloneDDS.CodeGen.Emitters
             sb.AppendLine($"{indent}        unsafe {{ return new {type.Name}View(({type.Name}_Native*)sample.NativePtr); }}");
             sb.AppendLine($"{indent}    }}");
             
+            sb.AppendLine();
+            sb.AppendLine($"{indent}    public static System.Collections.Generic.List<{type.Name}> ReadCopied(this DdsReader<{type.Name}> reader, int maxSamples = 32)");
+            sb.AppendLine($"{indent}    {{");
+            sb.AppendLine($"{indent}        using var samples = reader.Read(maxSamples);");
+            sb.AppendLine($"{indent}        var result = new System.Collections.Generic.List<{type.Name}>(samples.Count);");
+            sb.AppendLine($"{indent}        foreach (var sample in samples)");
+            sb.AppendLine($"{indent}        {{");
+            sb.AppendLine($"{indent}            if (sample.IsValid)");
+            sb.AppendLine($"{indent}            {{");
+            sb.AppendLine($"{indent}                result.Add(sample.AsView().ToManaged());");
+            sb.AppendLine($"{indent}            }}");
+            sb.AppendLine($"{indent}        }}");
+            sb.AppendLine($"{indent}        return result;");
+            sb.AppendLine($"{indent}    }}");
+            
             sb.AppendLine($"{indent}}}"); // End class
             
             if (!string.IsNullOrEmpty(type.Namespace))

@@ -46,6 +46,8 @@ namespace CycloneDDS.CodeGen.Emitters
                  ProcessField(sb, field, indent + "    ", registry, type.IsUnion);
             }
 
+            GenerateToManagedMethod(sb, type, registry, indent);
+
             sb.AppendLine($"{indent}}}"); // End struct
             
             if (!string.IsNullOrEmpty(type.Namespace))
@@ -96,23 +98,25 @@ namespace CycloneDDS.CodeGen.Emitters
                 return;
             }
 
+            var resolvedTypeName = registry != null ? ResolveType(field.TypeName, registry) : field.TypeName;
+
             // Primitive
-            if (IsPrimitive(field.TypeName))
+            if (IsPrimitive(field.TypeName, registry))
             {
-                sb.AppendLine($"{indent}public unsafe {field.TypeName} {ToPascalCase(field.Name)} => _ptr->{nativeFieldName};");
+                sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {ToPascalCase(field.Name)} => _ptr->{nativeFieldName};");
             }
             // Boolean
-            else if (IsBool(field.TypeName))
+            else if (IsBool(field.TypeName, registry))
             {
                 sb.AppendLine($"{indent}public unsafe bool {ToPascalCase(field.Name)} => _ptr->{nativeFieldName} != 0;");
             }
             // Enum
             else if (IsEnum(field, registry))
             {
-                 sb.AppendLine($"{indent}public unsafe {field.TypeName} {ToPascalCase(field.Name)} => ({field.TypeName})_ptr->{nativeFieldName};");
+                 sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {ToPascalCase(field.Name)} => ({resolvedTypeName})_ptr->{nativeFieldName};");
             }
             // String (Scalar)
-            else if (IsString(field.TypeName))
+            else if (IsString(field.TypeName, registry))
             {
                 sb.AppendLine($"{indent}public unsafe ReadOnlySpan<byte> {ToPascalCase(field.Name)}Raw => DdsTextEncoding.GetSpanFromPtr((IntPtr)_ptr->{nativeFieldName});");
                 sb.AppendLine($"{indent}public unsafe string? {ToPascalCase(field.Name)} => DdsTextEncoding.FromNativeUtf8((IntPtr)_ptr->{nativeFieldName});");
@@ -148,7 +152,7 @@ namespace CycloneDDS.CodeGen.Emitters
             var elementType = GetSequenceElementType(field);
             var propName = ToPascalCase(field.Name);
             
-            if (IsPrimitive(elementType))
+            if (IsPrimitive(elementType, registry))
             {
                 // FCDC-ZC009
                 sb.AppendLine($"{indent}/// <summary>Gets {field.Name} as ReadOnlySpan (zero-copy).</summary>");
@@ -163,7 +167,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}    }}");
                 sb.AppendLine($"{indent}}}");
             }
-            else if (IsString(elementType))
+            else if (IsString(elementType, registry))
             {
                 // FCDC-ZC011
                 sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
@@ -251,6 +255,12 @@ namespace CycloneDDS.CodeGen.Emitters
             string propName = ToPascalCase(memberName);
             string fieldName = memberName;
             
+            var viewName = $"{unionType.Name}View";
+            var nativeType = $"{unionType.Name}_Native";
+            sb.AppendLine($"{indent}/// <summary>Gets view for {memberName}.</summary>");
+            sb.AppendLine($"{indent}public unsafe {viewName} {propName} => new {viewName}(({nativeType}*)&_ptr->{fieldName});");
+            sb.AppendLine();
+            
             // Find discriminator field
             var discriminatorField = unionType.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
             string discriminatorType = discriminatorField?.TypeName ?? "int";
@@ -305,7 +315,7 @@ namespace CycloneDDS.CodeGen.Emitters
 
                 string conditionExpr = string.Join(" || ", conditions);
 
-                if (IsString(caseType))
+                if (IsString(caseType, registry))
                 {
                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as string if discriminator matches (allocates).</summary>");
                     sb.AppendLine($"{indent}public unsafe string? {propName}As{caseName}");
@@ -318,7 +328,7 @@ namespace CycloneDDS.CodeGen.Emitters
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
                 }
-                else if (IsBool(caseType))
+                else if (IsBool(caseType, registry))
                 {
                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as bool if discriminator matches.</summary>");
                     sb.AppendLine($"{indent}public unsafe bool? {propName}As{caseName}");
@@ -331,7 +341,7 @@ namespace CycloneDDS.CodeGen.Emitters
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
                 }
-                else if (IsPrimitive(caseType) || IsEnum(member, registry))
+                else if (IsPrimitive(caseType, registry) || IsEnum(member, registry))
                 {
                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {caseType} if discriminator matches.</summary>");
                     sb.AppendLine($"{indent}public unsafe {caseType}? {propName}As{caseName}");
@@ -346,7 +356,20 @@ namespace CycloneDDS.CodeGen.Emitters
                 }
                 else
                 {
-                     sb.AppendLine($"{indent}// Union member {propName}As{caseName} (Type: {caseType}) accessor not generated (Complex Type).");
+                     // Complex type (Struct/Union)
+                     var caseViewName = $"{caseType}View";
+                     var caseNativeType = $"{caseType}_Native";
+                     
+                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {caseType} view if discriminator matches.</summary>");
+                     sb.AppendLine($"{indent}public unsafe {caseViewName}? {propName}As{caseName}");
+                     sb.AppendLine($"{indent}{{");
+                     sb.AppendLine($"{indent}    get");
+                     sb.AppendLine($"{indent}    {{");
+                     sb.AppendLine($"{indent}        if ({conditionExpr})");
+                     sb.AppendLine($"{indent}             return new {caseViewName}(({caseNativeType}*)&_ptr->{fieldName}._u.{caseField});");
+                     sb.AppendLine($"{indent}        return null;");
+                     sb.AppendLine($"{indent}    }}");
+                     sb.AppendLine($"{indent}}}");
                 }
                 sb.AppendLine();
             }
@@ -363,18 +386,158 @@ namespace CycloneDDS.CodeGen.Emitters
              sb.AppendLine($"{indent}{{");
              sb.AppendLine($"{indent}    get");
              sb.AppendLine($"{indent}    {{");
-             sb.AppendLine($"{indent}        fixed ({elementType}* ptr = _ptr->{nativeFieldName})");
-             sb.AppendLine($"{indent}        {{");
-             sb.AppendLine($"{indent}            return new ReadOnlySpan<{elementType}>(ptr, {arrayLen});");
-             sb.AppendLine($"{indent}        }}");
+             sb.AppendLine($"{indent}        {elementType}* ptr = _ptr->{nativeFieldName};");
+             sb.AppendLine($"{indent}        return new ReadOnlySpan<{elementType}>(ptr, {arrayLen});");
              sb.AppendLine($"{indent}    }}");
              sb.AppendLine($"{indent}}}");
         }
 
-        // Helpers
-        private bool IsPrimitive(string typeName)
+        private void GenerateToManagedMethod(StringBuilder sb, TypeInfo type, GlobalTypeRegistry registry, string indent)
         {
-             var lower = typeName.ToLower();
+            sb.AppendLine($"{indent}public {type.Name} ToManaged()");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    var target = new {type.Name}();");
+
+            if (!type.IsUnion)
+            {
+                foreach (var field in type.Fields)
+                {
+                    GenerateToManagedFieldAssignment(sb, field, indent + "    ", registry);
+                }
+            }
+            else
+            {
+                GenerateToManagedUnionBody(sb, type, indent + "    ", registry);
+            }
+
+            sb.AppendLine($"{indent}    return target;");
+            sb.AppendLine($"{indent}}}");
+        }
+
+        private void GenerateToManagedUnionBody(StringBuilder sb, TypeInfo type, string indent, GlobalTypeRegistry registry)
+        {
+            var discriminatorField = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
+            if (discriminatorField == null) return;
+
+            var discProp = ToPascalCase(discriminatorField.Name);
+            var discType = discriminatorField.TypeName; 
+            var resolvedDiscType = registry != null ? ResolveType(discType, registry) : discType;
+
+            sb.AppendLine($"{indent}target.{discProp} = this.{discProp};");
+            
+            foreach (var field in type.Fields)
+            {
+                if (field == discriminatorField) continue;
+                var caseAttr = field.GetAttribute("DdsCase");
+                if (caseAttr == null) continue;
+                
+                // Conditions
+                var conditions = new List<string>();
+                foreach (var val in caseAttr.Arguments)
+                {
+                    string valStr = val.ToString();
+                    if (val is bool b) valStr = b ? "true" : "false";
+                    
+                    if (resolvedDiscType == "bool" || resolvedDiscType == "Boolean") 
+                       conditions.Add($"this.{discProp} == {valStr}");
+                    else 
+                       conditions.Add($"this.{discProp} == ({resolvedDiscType}){valStr}");
+                }
+                
+                if (conditions.Count == 0) continue;
+                string conditionExpr = string.Join(" || ", conditions);
+                
+                sb.AppendLine($"{indent}if ({conditionExpr})");
+                sb.AppendLine($"{indent}{{");
+                
+                GenerateToManagedFieldAssignment(sb, field, indent + "    ", registry);
+                
+                sb.AppendLine($"{indent}}}");
+            }
+        }
+
+        private void GenerateToManagedFieldAssignment(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry registry)
+        {
+            var propName = ToPascalCase(field.Name);
+            var targetProp = propName;
+            
+            if (IsOptional(field.TypeName))
+            {
+                var baseType = GetBaseType(field.TypeName);
+                if (IsPrimitive(baseType, registry) || IsBool(baseType, registry) || IsEnum(field, registry))
+                {
+                    sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
+                }
+                else if (IsString(baseType, registry))
+                {
+                    sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
+                }
+                else
+                {
+                     sb.AppendLine($"{indent}if (this.Has{propName})");
+                     sb.AppendLine($"{indent}{{");
+                     sb.AppendLine($"{indent}    target.{targetProp} = this.{propName}.ToManaged();");
+                     sb.AppendLine($"{indent}}}");
+                }
+                return;
+            }
+
+            if (IsPrimitive(field.TypeName, registry) || IsBool(field.TypeName, registry) || IsEnum(field, registry) || IsString(field.TypeName, registry))
+            {
+                 sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
+            }
+            else if (IsFixedArray(field))
+            {
+                 sb.AppendLine($"{indent}target.{targetProp} = this.{propName}.ToArray();");
+            }
+            else if (IsSequence(field))
+            {
+                 var elementType = GetSequenceElementType(field);
+                 var targetCollectionType = "System.Collections.Generic.List";
+
+                 if (IsPrimitive(elementType, registry))
+                 {
+                     sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<{elementType}>(this.{propName}.ToArray());");
+                 }
+                 else if (IsString(elementType, registry))
+                 {
+                     sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<string>(this.{propName}Count);");
+                     sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                     sb.AppendLine($"{indent}{{");
+                     sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i));");
+                     sb.AppendLine($"{indent}}}");
+                 }
+                 else
+                 {
+                     var elementTargetType = elementType; 
+                     sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<{elementTargetType}>(this.{propName}Count);");
+                     sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                     sb.AppendLine($"{indent}{{");
+                     sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i).ToManaged());");
+                     sb.AppendLine($"{indent}}}");
+                 }
+            }
+            else
+            {
+                 sb.AppendLine($"{indent}target.{targetProp} = this.{propName}.ToManaged();");
+            }
+        }
+
+        // Helpers
+        private string ResolveType(string typeName, GlobalTypeRegistry registry)
+        {
+             if (registry != null && registry.TryGetDefinition(typeName, out var def))
+             {
+                 if (def.IsAlias && !string.IsNullOrEmpty(def.BaseType)) 
+                     return ResolveType(def.BaseType, registry);
+             }
+             return typeName;
+        }
+
+        private bool IsPrimitive(string typeName, GlobalTypeRegistry registry = null)
+        {
+             var resolved = registry != null ? ResolveType(typeName, registry) : typeName;
+             var lower = resolved.ToLower();
              if (lower.StartsWith("system.")) lower = lower.Substring(7);
              
              return lower == "byte" || lower == "sbyte" || 
@@ -388,9 +551,17 @@ namespace CycloneDDS.CodeGen.Emitters
                     lower == "double" || lower == "char"; 
         }
 
-        private bool IsBool(string typeName) => typeName.ToLower() == "bool" || typeName == "Boolean" || typeName == "System.Boolean";
+        private bool IsBool(string typeName, GlobalTypeRegistry registry = null) 
+        {
+             var resolved = registry != null ? ResolveType(typeName, registry) : typeName;
+             return resolved.ToLower() == "bool" || resolved == "Boolean" || resolved == "System.Boolean";
+        }
 
-        private bool IsString(string typeName) => typeName == "string" || typeName == "System.String";
+        private bool IsString(string typeName, GlobalTypeRegistry registry = null)
+        {
+             var resolved = registry != null ? ResolveType(typeName, registry) : typeName;
+             return resolved == "string" || resolved == "System.String";
+        }
 
         private bool IsEnum(FieldInfo field, GlobalTypeRegistry registry)
         {

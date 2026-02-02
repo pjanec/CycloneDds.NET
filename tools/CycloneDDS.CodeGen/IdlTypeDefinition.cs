@@ -8,5 +8,7 @@ namespace CycloneDDS.CodeGen
         public TypeInfo? TypeInfo { get; set; }                 // Full metadata (optional for external)
         public bool IsExternal { get; set; }           // From referenced assembly?
         public string SourceFile { get; set; } = string.Empty; // C# filename for defaults
+        public bool IsAlias { get; set; }
+        public string BaseType { get; set; } = string.Empty;
     }
 }
