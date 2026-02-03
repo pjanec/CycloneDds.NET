@@ -258,7 +258,7 @@ namespace CycloneDDS.CodeGen
              TypeInfo? fieldType = field.Type;
              if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
              {
-                 fieldType = def?.TypeInfo;
+                 fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
              }
 
              if (field.TypeName == "string" || field.TypeName == "System.String")
@@ -535,7 +535,7 @@ namespace CycloneDDS.CodeGen
              TypeInfo? fieldType = field.Type;
              if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
              {
-                 fieldType = def?.TypeInfo;
+                 fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
              }
 
              if (IsOptional(field))
@@ -557,7 +557,7 @@ namespace CycloneDDS.CodeGen
                  }
                  else if (baseType == "string" || baseType == "System.String")
                  {
-                     sb.AppendLine($"                {targetAccess} = DdsTextEncoding.FromNativeUtf8({sourceAccess});");
+                     sb.AppendLine($"                {targetAccess} = CycloneDDS.Core.DdsTextEncoding.FromNativeUtf8({sourceAccess});");
                  }
                  else if (baseType.EndsWith("[]") || baseType.StartsWith("List<") || baseType.StartsWith("System.Collections.Generic.List<") || baseType.StartsWith("BoundedSeq")) 
                  {
@@ -587,12 +587,12 @@ namespace CycloneDDS.CodeGen
                  {
                      sb.AppendLine($"            fixed (byte* __ptr = {sourceAccess})");
                      sb.AppendLine($"            {{");
-                     sb.AppendLine($"                {targetAccess} = DdsTextEncoding.FromNativeUtf8((IntPtr)__ptr);");
+                     sb.AppendLine($"                {targetAccess} = CycloneDDS.Core.DdsTextEncoding.FromNativeUtf8((IntPtr)__ptr);");
                      sb.AppendLine($"            }}");
                  }
                  else
                  {
-                     sb.AppendLine($"            {targetAccess} = DdsTextEncoding.FromNativeUtf8({sourceAccess});");
+                     sb.AppendLine($"            {targetAccess} = CycloneDDS.Core.DdsTextEncoding.FromNativeUtf8({sourceAccess});");
                  }
              }
              else if (field.TypeName == "bool" || field.TypeName == "Boolean" || field.TypeName == "System.Boolean")
@@ -674,7 +674,7 @@ namespace CycloneDDS.CodeGen
                   sb.AppendLine($"                for (int i = 0; i < (int){seqVar}.Length; i++)");
                   sb.AppendLine("                {");
                   // Use FromNativeUtf8 instead of GetString
-                  sb.AppendLine($"                    var __str = DdsTextEncoding.FromNativeUtf8(__span[i]);");
+                  sb.AppendLine($"                    var __str = CycloneDDS.Core.DdsTextEncoding.FromNativeUtf8(__span[i]);");
                   if (isList || isBoundedSeq)
                         sb.AppendLine($"                    {targetAccess}.Add(__str);");
                   else
@@ -784,7 +784,7 @@ namespace CycloneDDS.CodeGen
             TypeInfo? fieldType = field.Type;
             if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
             {
-                fieldType = def?.TypeInfo;
+                fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
             }
 
             if (fieldType != null && fieldType.IsStruct && !fieldType.IsEnum) return true;
@@ -802,7 +802,7 @@ namespace CycloneDDS.CodeGen
              TypeInfo? fieldType = field.Type;
              if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
              {
-                 fieldType = def?.TypeInfo;
+                 fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
              }
              
              if (typeName == "string" || typeName == "System.String")
@@ -810,7 +810,7 @@ namespace CycloneDDS.CodeGen
                  sb.AppendLine($"            if (source.{field.Name} != null)"); 
                  sb.AppendLine($"            {{");
                  sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
-                 sb.AppendLine($"                currentOffset += DdsTextEncoding.GetUtf8Size(source.{field.Name});");
+                 sb.AppendLine($"                currentOffset += CycloneDDS.Core.DdsTextEncoding.GetUtf8Size(source.{field.Name});");
                  sb.AppendLine($"            }}");
              }
              else if (typeName.StartsWith("List<") || typeName.EndsWith("[]") || typeName.StartsWith("System.Collections.Generic.List<"))
@@ -840,7 +840,7 @@ namespace CycloneDDS.CodeGen
                       if (managedType == "string" || managedType == "System.String")
                       {
                            sb.AppendLine($"                    currentOffset = (currentOffset + 7) & ~7;");
-                           sb.AppendLine($"                    currentOffset += DdsTextEncoding.GetUtf8Size(item);");
+                           sb.AppendLine($"                    currentOffset += CycloneDDS.Core.DdsTextEncoding.GetUtf8Size(item);");
                       }
                       else
                       {
@@ -946,7 +946,7 @@ namespace CycloneDDS.CodeGen
              TypeInfo? fieldType = field.Type;
              if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
              {
-                 fieldType = def?.TypeInfo;
+                 fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
              }
              
              if (fieldType != null)
@@ -1072,7 +1072,7 @@ namespace CycloneDDS.CodeGen
             TypeInfo? fieldType = field.Type;
             if (fieldType == null && _registry != null && _registry.TryGetDefinition(field.TypeName, out var def))
             {
-                fieldType = def?.TypeInfo;
+                fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
             }
 
             if (fieldType != null)
@@ -1086,3 +1086,5 @@ namespace CycloneDDS.CodeGen
         }
     }
 }
+
+
