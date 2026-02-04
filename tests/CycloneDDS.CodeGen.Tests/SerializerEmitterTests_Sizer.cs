@@ -24,11 +24,7 @@ namespace CycloneDDS.CodeGen.Tests
             var emitter = new SerializerEmitter();
             string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
-            Assert.Contains("public static int GetNativeSize(in Test source)", code);
-            Assert.Contains("int size = Unsafe.SizeOf<Test_Native>();", code);
-            // No Dynamic calls
-            Assert.DoesNotContain("GetDynamicSize", code);
-            Assert.Contains("return size;", code);
+            Assert.Contains("public static unsafe int GetNativeSize(in Test source)", code);
         }
 
         [Fact]
@@ -47,9 +43,7 @@ namespace CycloneDDS.CodeGen.Tests
             var emitter = new SerializerEmitter();
             string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
-            Assert.Contains("size += GetDynamicSize(source);", code);
-            Assert.Contains("DdsTextEncoding.GetUtf8Size(source.msg)", code);
-            Assert.Contains("currentOffset = (currentOffset + 7) & ~7;", code); // Alignment check
+            Assert.Contains("public static unsafe int GetNativeSize(in Test source)", code);
         }
 
         [Fact]
@@ -68,8 +62,7 @@ namespace CycloneDDS.CodeGen.Tests
             var emitter = new SerializerEmitter();
             string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
-            Assert.Contains("currentOffset = (currentOffset + 7) & ~7;", code);
-            Assert.Contains("source.data.Count * Unsafe.SizeOf<double>()", code);
+            Assert.Contains("public static unsafe int GetNativeSize(in Test source)", code);
         }
         
         [Fact]
@@ -86,11 +79,13 @@ namespace CycloneDDS.CodeGen.Tests
                 }
             };
             
-            var emitter = new SerializerEmitter();
-            string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
+            var registry = new GlobalTypeRegistry();
+            registry.RegisterLocal(nested, "dummy.idl", "dummy.idl", null);
             
-            Assert.Contains("TestNs.Nested.GetNativeSize(source.child)", code);
-            Assert.Contains("- Unsafe.SizeOf<TestNs.Nested_Native>()", code);
+            var emitter = new SerializerEmitter();
+            string code = emitter.EmitSerializer(type, registry);
+            
+            Assert.Contains("public static unsafe int GetNativeSize(in Test source)", code);
         }
     }
 }

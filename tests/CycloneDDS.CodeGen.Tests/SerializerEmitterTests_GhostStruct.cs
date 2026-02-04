@@ -24,7 +24,7 @@ namespace CycloneDDS.CodeGen.Tests
             var emitter = new SerializerEmitter();
             string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
-            Assert.Contains("public unsafe struct Test_Native", code);
+            Assert.Contains("public unsafe partial struct Test_Native", code);
             Assert.Contains("public int id;", code);
         }
 
@@ -98,7 +98,7 @@ namespace CycloneDDS.CodeGen.Tests
         [Fact]
         public void EmitGhostStruct_NestedStruct()
         {
-             var nested = new TypeInfo { Name = "Nested", Namespace = "TestNs" };
+             var nested = new TypeInfo { Name = "Nested", Namespace = "TestNs", IsStruct = true };
              var type = new TypeInfo
             {
                 Name = "Test",
@@ -109,8 +109,11 @@ namespace CycloneDDS.CodeGen.Tests
                 }
             };
             
+            var registry = new GlobalTypeRegistry();
+            registry.RegisterLocal(nested, "dummy.idl", "dummy.idl", null);
+            
             var emitter = new SerializerEmitter();
-            string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
+            string code = emitter.EmitSerializer(type, registry);
             
             Assert.Contains("public TestNs.Nested_Native child;", code);
         }
@@ -160,7 +163,7 @@ namespace CycloneDDS.CodeGen.Tests
             string code = emitter.EmitSerializer(type, new GlobalTypeRegistry());
             
             Assert.Contains("[StructLayout(LayoutKind.Explicit)]", code);
-            Assert.Contains("public unsafe struct TestUnion_Union_Native", code);
+            Assert.Contains("public unsafe partial struct TestUnion_Union_Native", code);
             Assert.Contains("[FieldOffset(0)]", code);
             Assert.Contains("public int part1;", code);
             Assert.Contains("public double part2;", code);

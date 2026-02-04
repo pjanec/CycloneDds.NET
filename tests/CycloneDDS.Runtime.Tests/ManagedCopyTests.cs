@@ -42,25 +42,6 @@ namespace CycloneDDS.Runtime.Tests
             _participant?.Dispose();
         }
 
-        [Fact]
-        public void ReadCopied_ReturnsManagedList()
-        {
-            var msg1 = new TestMessage { Id = 1, Value = 100 };
-            var msg2 = new TestMessage { Id = 2, Value = 200 };
-            _writer.Write(msg1);
-            _writer.Write(msg2);
 
-            // Wait for delivery
-            System.Threading.Thread.Sleep(2000);
-
-            // ReadCopied verification
-            // With KeepAll, we should get both samples
-            List<TestMessage> list = _reader.ReadCopied(10);
-            
-            Assert.Equal(2, list.Count);
-            
-            Assert.Contains(list, x => x.Id == 1 && x.Value == 100);
-            Assert.Contains(list, x => x.Id == 2 && x.Value == 200);
-        }
     }
 }

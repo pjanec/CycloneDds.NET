@@ -7,27 +7,35 @@ namespace CycloneDDS.CodeGen.Emitters
 {
     public class ViewEmitter
     {
-        public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry? registry)
+        public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry? registry = null)
         {
             var sb = new StringBuilder();
-            
             sb.AppendLine("using System;");
             sb.AppendLine("using System.Runtime.InteropServices;");
             sb.AppendLine("using CycloneDDS.Core;");
             sb.AppendLine("using CycloneDDS.Runtime;");
-            sb.AppendLine();
-            sb.AppendLine("#pragma warning disable CS8600");
-            sb.AppendLine("#pragma warning disable CS8601");
-            sb.AppendLine("#pragma warning disable CS8603");
-            sb.AppendLine();
-            
-            if (!string.IsNullOrEmpty(type.Namespace))
+            sb.AppendLine("using CycloneDDS.Schema;");
+            sb.AppendLine("using System.Collections.Generic;");
+
+            bool hasNamespace = !string.IsNullOrEmpty(type.Namespace);
+            if (hasNamespace)
             {
                 sb.AppendLine($"namespace {type.Namespace}");
                 sb.AppendLine("{");
             }
 
-            var indent = !string.IsNullOrEmpty(type.Namespace) ? "    " : "";
+            EmitViewStruct(sb, type, registry);
+
+            if (hasNamespace)
+            {
+                sb.AppendLine("}");
+            }
+            return sb.ToString();
+        }
+
+        public void EmitViewStruct(StringBuilder sb, TypeInfo type, GlobalTypeRegistry? registry = null)
+        {
+            var indent = "    ";
             
             // Generate View Struct
             sb.AppendLine($"{indent}public ref struct {type.Name}View");
@@ -50,16 +58,9 @@ namespace CycloneDDS.CodeGen.Emitters
                  ProcessField(sb, field, indent + "    ", registry, type.IsUnion);
             }
 
-            GenerateToManagedMethod(sb, type, registry, indent);
+            EmitToManagedMethod(sb, type, registry, indent);
 
             sb.AppendLine($"{indent}}}"); // End struct
-            
-            if (!string.IsNullOrEmpty(type.Namespace))
-            {
-                sb.AppendLine("}"); // End namespace
-            }
-
-            return sb.ToString();
         }
 
         private void ProcessField(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry? registry, bool isUnion)
@@ -398,7 +399,7 @@ namespace CycloneDDS.CodeGen.Emitters
              sb.AppendLine($"{indent}}}");
         }
 
-        private void GenerateToManagedMethod(StringBuilder sb, TypeInfo type, GlobalTypeRegistry? registry, string indent)
+        public void EmitToManagedMethod(StringBuilder sb, TypeInfo type, GlobalTypeRegistry? registry, string indent)
         {
             sb.AppendLine($"{indent}public {type.Name} ToManaged()");
             sb.AppendLine($"{indent}{{");

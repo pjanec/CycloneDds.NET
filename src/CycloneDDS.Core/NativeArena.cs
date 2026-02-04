@@ -128,6 +128,48 @@ namespace CycloneDDS.Core
         }
 
         /// <summary>
+        /// Creates a native DDS sequence for a specified number of elements.
+        /// The sequence buffer is allocated in the arena but not initialized (content is zeroed).
+        /// </summary>
+        public DdsSequenceNative CreateSequence<T>(int length) where T : unmanaged
+        {
+            AlignCore(8); // Align the sequence data to 8 bytes (max primitive alignment)
+
+            if (length == 0)
+            {
+                return new DdsSequenceNative
+                {
+                    Maximum = 0,
+                    Length = 0,
+                    Buffer = IntPtr.Zero
+                };
+            }
+
+            int elementSize = Unsafe.SizeOf<T>();
+            int totalSize = length * elementSize;
+
+            if (_tail + totalSize > _buffer.Length)
+            {
+                throw new IndexOutOfRangeException($"Insufficient buffer space for sequence of {typeof(T).Name}.");
+            }
+
+            int offset = _tail;
+            
+            // Zero out memory
+            Span<byte> memory = _buffer.Slice(offset, totalSize);
+            memory.Clear();
+
+            _tail += totalSize;
+
+            return new DdsSequenceNative
+            {
+                Maximum = (uint)length,
+                Length = (uint)length,
+                Buffer = _baseAddress + offset
+            };
+        }
+
+        /// <summary>
         /// Allocates an array of native structs in the arena.
         /// </summary>
         public Span<TNative> AllocateArray<TNative>(int count) where TNative : unmanaged
@@ -151,6 +193,28 @@ namespace CycloneDDS.Core
             _tail += totalSize;
 
             return MemoryMarshal.Cast<byte, TNative>(memory);
+        }
+
+        /// <summary>
+        /// Allocates a block of memory of the specified size.
+        /// </summary>
+        public IntPtr Allocate(int size)
+        {
+            AlignCore(8);
+
+            if (_tail + size > _buffer.Length)
+            {
+                throw new IndexOutOfRangeException("Insufficient buffer space for allocation.");
+            }
+
+            int offset = _tail;
+            
+            // Zero out memory
+            _buffer.Slice(offset, size).Clear();
+
+            _tail += size;
+
+            return _baseAddress + offset;
         }
     }
 }

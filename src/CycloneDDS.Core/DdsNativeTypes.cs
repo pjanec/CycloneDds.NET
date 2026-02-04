@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace CycloneDDS.Core
 {
@@ -32,6 +33,29 @@ namespace CycloneDDS.Core
         [MarshalAs(UnmanagedType.I1)]
         public bool Release;
 
+        public unsafe Span<T> AsSpan<T>() where T : unmanaged
+        {
+            if (Length == 0) return Span<T>.Empty;
+            return new Span<T>((void*)Buffer, (int)Length);
+        }
 
+        public unsafe T[] ToArray<T>() where T : unmanaged
+        {
+            if (Length == 0) return Array.Empty<T>();
+            var span = new ReadOnlySpan<T>((void*)Buffer, (int)Length);
+            return span.ToArray();
+        }
+
+        public unsafe List<T> ToList<T>() where T : unmanaged
+        {
+            if (Length == 0) return new List<T>();
+            var list = new List<T>((int)Length);
+            var span = new ReadOnlySpan<T>((void*)Buffer, (int)Length);
+            foreach (var item in span)
+            {
+                list.Add(item);
+            }
+            return list;
+        }
     }
 }
