@@ -36,8 +36,9 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine("{");
             }
             
-            // Partial struct (assuming struct as per instructions)
-            sb.AppendLine($"    public partial struct {type.Name}");
+            // Generate correct type kind
+            string typeKind = type.IsClass ? "class" : "struct";
+            sb.AppendLine($"    public partial {typeKind} {type.Name}");
             sb.AppendLine("    {");
             
             EmitNativeSizer(sb, type);

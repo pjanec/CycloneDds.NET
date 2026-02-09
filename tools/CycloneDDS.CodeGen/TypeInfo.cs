@@ -16,6 +16,7 @@ namespace CycloneDDS.CodeGen
         public bool IsEnum { get; set; }
         public bool IsTopic { get; set; }
         public bool IsStruct { get; set; }
+        public bool IsClass { get; set; } // Added to support managed classes
         public bool IsUnion { get; set; }
         public List<string> EnumMembers { get; set; } = new List<string>();
 

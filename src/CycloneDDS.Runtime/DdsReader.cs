@@ -15,7 +15,7 @@ using CycloneDDS.Schema;
 namespace CycloneDDS.Runtime
 {
     public sealed class DdsReader<T> : IDisposable 
-        where T : struct
+        where T : new()
     {
         private SenderRegistry? _registry;
         private DdsEntityHandle? _readerHandle;

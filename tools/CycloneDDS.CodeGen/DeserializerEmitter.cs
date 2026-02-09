@@ -48,7 +48,8 @@ namespace CycloneDDS.CodeGen
         
         private void EmitPartialStruct(StringBuilder sb, TypeInfo type)
         {
-            sb.AppendLine($"    public partial struct {type.Name}");
+            string typeKind = type.IsClass ? "class" : "struct";
+            sb.AppendLine($"    public partial {typeKind} {type.Name}");
             sb.AppendLine("    {");
             sb.AppendLine("         // Legacy CDR deserializer removed.");
             sb.AppendLine("    }");

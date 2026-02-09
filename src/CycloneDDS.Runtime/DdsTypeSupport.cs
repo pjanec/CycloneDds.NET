@@ -10,7 +10,7 @@ namespace CycloneDDS.Runtime
     /// Internal helper for extracting type metadata via reflection.
     /// Caches delegates to amortize reflection overhead.
     /// </summary>
-    internal static class DdsTypeSupport
+    public static class DdsTypeSupport
     {
         // Cache: Type -> GetDescriptorOps delegate
         private static readonly ConcurrentDictionary<Type, Func<uint[]>> _opsCache = new();

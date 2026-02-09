@@ -333,7 +333,8 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine("{");
             }
             
-            sb.AppendLine($"    public partial struct {topic.Name}");
+            string typeKind = topic.IsClass ? "class" : "struct";
+            sb.AppendLine($"    public partial {typeKind} {topic.Name}");
             sb.AppendLine("    {");
             
             // OPS - Direct from JSON (no calculation needed!)
