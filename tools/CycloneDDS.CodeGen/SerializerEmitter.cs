@@ -479,14 +479,14 @@ namespace CycloneDDS.CodeGen
             sb.AppendLine("        {");
             sb.AppendLine("            if (nativePtr == IntPtr.Zero) return default;");
             
-            if (type.HasAttribute("DdsTopic"))
-            {
-                foreach(var field in type.Fields)
-                {
-                     sb.AppendLine($"            System.Console.WriteLine(\"Offset {field.Name}: \" + System.Runtime.InteropServices.Marshal.OffsetOf(typeof({type.Name}_Native), \"{field.Name}\"));");
-                }
-                sb.AppendLine($"            System.Console.WriteLine(\"Size {type.Name}_Native: \" + System.Runtime.CompilerServices.Unsafe.SizeOf<{type.Name}_Native>());");
-            }
+            // if (type.HasAttribute("DdsTopic"))
+            // {
+            //    foreach(var field in type.Fields)
+            //    {
+            //         sb.AppendLine($"            System.Console.WriteLine(\"Offset {field.Name}: \" + System.Runtime.InteropServices.Marshal.OffsetOf(typeof({type.Name}_Native), \"{field.Name}\"));");
+            //    }
+            //    sb.AppendLine($"            System.Console.WriteLine(\"Size {type.Name}_Native: \" + System.Runtime.CompilerServices.Unsafe.SizeOf<{type.Name}_Native>());");
+            // }
             sb.AppendLine($"            var native = *({type.Name}_Native*)nativePtr;");
             sb.AppendLine($"            var managed = new {type.Name}();");
             sb.AppendLine($"            MarshalFromNative(ref managed, in native);");
