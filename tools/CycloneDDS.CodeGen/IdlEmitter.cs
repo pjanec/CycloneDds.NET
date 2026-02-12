@@ -1,8 +1,9 @@
-using System;
-using System.Text;
-using System.Linq;
-using System.Collections.Generic;
 using CycloneDDS.Schema;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CycloneDDS.CodeGen
 {
@@ -20,7 +21,7 @@ namespace CycloneDDS.CodeGen
             {
                 string fileName = fileGroup.Key;
                 var sb = new StringBuilder();
-                string guard = $"_CYCLONEDDS_GENERATED_{fileName.ToUpper()}_IDL_";
+                string guard = $"_CYCLONEDDS_GENERATED_{SanitizeToCSymbol(fileName.ToUpper())}_IDL_";
                 
                 // Header comment
                 sb.AppendLine($"// Auto-generated IDL for {fileName} by CycloneDDS C# Bindings");
@@ -559,6 +560,26 @@ namespace CycloneDDS.CodeGen
         {
             if (string.IsNullOrEmpty(name)) return name;
             return char.ToLowerInvariant(name[0]) + name.Substring(1);
+        }
+
+
+        public static string SanitizeToCSymbol(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return "_"; // Return a default safe symbol for empty inputs
+
+            // 1. Replace anything that is NOT (^) alphanumeric or underscore with an underscore
+            //    The '+' merges multiple bad chars into one underscore (optional, remove + if not wanted)
+            string sanitized = Regex.Replace(input, @"[^a-zA-Z0-9_]", "_");
+
+            // 2. C symbols cannot start with a digit. 
+            //    If the first char is a number, prepend an underscore.
+            if (char.IsDigit(sanitized[0]))
+            {
+                sanitized = "_" + sanitized;
+            }
+
+            return sanitized;
         }
     }
 
