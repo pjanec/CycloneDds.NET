@@ -498,6 +498,31 @@ namespace CycloneDDS.Runtime.Interop
         public long Low;
 
         public bool Equals(DdsGuid other) => High == other.High && Low == other.Low;
+
+        // Helper to convert Native DdsGuid -> System.Guid
+        public unsafe System.Guid ToManaged()
+        {
+            fixed (void* ptr = &this)
+            {
+                return new System.Guid(new ReadOnlySpan<byte>(ptr, 16));
+            }
+        }
+
+        // Helper to write System.Guid -> Native DdsGuid
+        public static DdsGuid FromManaged(System.Guid guid)
+        {
+            DdsGuid native = default;
+            unsafe
+            {
+                guid.TryWriteBytes(new Span<byte>(&native, 16));
+            }
+            return native;
+        }
+
+        public static unsafe implicit operator System.Guid(DdsGuid ddsGuid)
+        {
+            return ddsGuid.ToManaged();
+        }
         public override bool Equals(object? obj) => obj is DdsGuid other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(High, Low);
         public override string ToString() => $"{High:X16}{Low:X16}";

@@ -236,6 +236,19 @@ namespace CycloneDDS.CodeGen
                  {
                       // Optional Sequence fall through
                  }
+                 else if (baseType == "System.Guid" || baseType == "Guid")
+                 {
+                     string nativeType = "CycloneDDS.Runtime.Interop.DdsGuid";
+                     sb.AppendLine($"                var __span = arena.AllocateArray<{nativeType}>(1);");
+                     sb.AppendLine($"                __span[0] = CycloneDDS.Runtime.Interop.DdsGuid.FromManaged({valAccess});");
+                     sb.AppendLine($"                {targetAccess} = (IntPtr)Unsafe.AsPointer(ref __span[0]);");
+                 }
+                 else if (baseType == "System.DateTime" || baseType == "DateTime")
+                 {
+                     sb.AppendLine($"                var __span = arena.AllocateArray<long>(1);");
+                     sb.AppendLine($"                __span[0] = {valAccess}.Ticks;");
+                     sb.AppendLine($"                {targetAccess} = (IntPtr)Unsafe.AsPointer(ref __span[0]);");
+                 }
                  else
                  {
                      string nativeType = $"{baseType}_Native";
@@ -286,6 +299,14 @@ namespace CycloneDDS.CodeGen
                  {
                      sb.AppendLine($"            {targetAccess} = arena.CreateString({sourceAccess});");
                  }
+             }
+             else if (field.TypeName == "System.Guid" || field.TypeName == "Guid")
+             {
+                 sb.AppendLine($"            {targetAccess} = CycloneDDS.Runtime.Interop.DdsGuid.FromManaged({sourceAccess});");
+             }
+             else if (field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
+             {
+                 sb.AppendLine($"            {targetAccess} = {sourceAccess}.Ticks;");
              }
              else if (field.TypeName == "bool" || field.TypeName == "Boolean" || field.TypeName == "System.Boolean")
              {
@@ -361,6 +382,38 @@ namespace CycloneDDS.CodeGen
                   sb.AppendLine($"                for (int i = 0; i < {sourceAccess}.{countProp}; i++)");
                   sb.AppendLine($"                {{");
                   sb.AppendLine($"                    __span[i] = arena.CreateString({sourceAccess}[i]);");
+                  sb.AppendLine($"                }}");
+                  sb.AppendLine($"                {targetAccess} = new DdsSequenceNative {{ Maximum = (uint){sourceAccess}.{countProp}, Length = (uint){sourceAccess}.{countProp}, Buffer = (IntPtr)Unsafe.AsPointer(ref __span[0]) }};");
+                  sb.AppendLine($"            }}");
+                  sb.AppendLine($"            else");
+                  sb.AppendLine($"            {{");
+                  sb.AppendLine($"                {targetAccess} = new DdsSequenceNative();");
+                  sb.AppendLine($"            }}");
+             }
+             else if (elementType == "System.Guid" || elementType == "Guid")
+             {
+                  sb.AppendLine($"            if ({nullCheck}{sourceAccess}.{countProp} > 0)");
+                  sb.AppendLine($"            {{");
+                  sb.AppendLine($"                var __span = arena.AllocateArray<CycloneDDS.Runtime.Interop.DdsGuid>({sourceAccess}.{countProp});");
+                  sb.AppendLine($"                for (int i = 0; i < {sourceAccess}.{countProp}; i++)");
+                  sb.AppendLine($"                {{");
+                  sb.AppendLine($"                    __span[i] = CycloneDDS.Runtime.Interop.DdsGuid.FromManaged({sourceAccess}[i]);");
+                  sb.AppendLine($"                }}");
+                  sb.AppendLine($"                {targetAccess} = new DdsSequenceNative {{ Maximum = (uint){sourceAccess}.{countProp}, Length = (uint){sourceAccess}.{countProp}, Buffer = (IntPtr)Unsafe.AsPointer(ref __span[0]) }};");
+                  sb.AppendLine($"            }}");
+                  sb.AppendLine($"            else");
+                  sb.AppendLine($"            {{");
+                  sb.AppendLine($"                {targetAccess} = new DdsSequenceNative();");
+                  sb.AppendLine($"            }}");
+             }
+             else if (elementType == "System.DateTime" || elementType == "DateTime")
+             {
+                  sb.AppendLine($"            if ({nullCheck}{sourceAccess}.{countProp} > 0)");
+                  sb.AppendLine($"            {{");
+                  sb.AppendLine($"                var __span = arena.AllocateArray<long>({sourceAccess}.{countProp});");
+                  sb.AppendLine($"                for (int i = 0; i < {sourceAccess}.{countProp}; i++)");
+                  sb.AppendLine($"                {{");
+                  sb.AppendLine($"                    __span[i] = {sourceAccess}[i].Ticks;");
                   sb.AppendLine($"                }}");
                   sb.AppendLine($"                {targetAccess} = new DdsSequenceNative {{ Maximum = (uint){sourceAccess}.{countProp}, Length = (uint){sourceAccess}.{countProp}, Buffer = (IntPtr)Unsafe.AsPointer(ref __span[0]) }};");
                   sb.AppendLine($"            }}");
@@ -565,6 +618,16 @@ namespace CycloneDDS.CodeGen
                       sb.AppendLine($"                var __seqPtr = (DdsSequenceNative*){sourceAccess};");
                       EmitSequenceUnmarshal(sb, field, "(*__seqPtr)", targetAccess);
                  }
+                 else if (baseType == "System.Guid" || baseType == "Guid")
+                 {
+                      sb.AppendLine($"                var __native = *(CycloneDDS.Runtime.Interop.DdsGuid*){sourceAccess};");
+                      sb.AppendLine($"                {targetAccess} = __native.ToManaged();");
+                 }
+                 else if (baseType == "System.DateTime" || baseType == "DateTime")
+                 {
+                      sb.AppendLine($"                var __native = *(long*){sourceAccess};");
+                      sb.AppendLine($"                {targetAccess} = new System.DateTime(__native, System.DateTimeKind.Utc);");
+                 }
                  else
                  {
                       sb.AppendLine($"                var __native = *({baseType}_Native*){sourceAccess};");
@@ -595,6 +658,14 @@ namespace CycloneDDS.CodeGen
                  {
                      sb.AppendLine($"            {targetAccess} = CycloneDDS.Core.DdsTextEncoding.FromNativeUtf8({sourceAccess});");
                  }
+             }
+             else if (field.TypeName == "System.Guid" || field.TypeName == "Guid")
+             {
+                 sb.AppendLine($"            {targetAccess} = {sourceAccess}.ToManaged();");
+             }
+             else if (field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
+             {
+                 sb.AppendLine($"            {targetAccess} = new System.DateTime({sourceAccess}, System.DateTimeKind.Utc);");
              }
              else if (field.TypeName == "bool" || field.TypeName == "Boolean" || field.TypeName == "System.Boolean")
              {
@@ -667,6 +738,29 @@ namespace CycloneDDS.CodeGen
                   else
                         sb.AppendLine($"                    {targetAccess}[i] = {valExpr};");
                         
+                  sb.AppendLine("                }");
+             }
+             else if (elementType == "System.Guid" || elementType == "Guid")
+             {
+                  string nativeEl = "CycloneDDS.Runtime.Interop.DdsGuid";
+                  sb.AppendLine($"                var __span = new Span<{nativeEl}>((void*){seqVar}.Buffer, (int){seqVar}.Length);");
+                  sb.AppendLine($"                for (int i = 0; i < (int){seqVar}.Length; i++)");
+                  sb.AppendLine("                {");
+                  if (isList || isBoundedSeq)
+                        sb.AppendLine($"                    {targetAccess}.Add(__span[i].ToManaged());");
+                  else
+                        sb.AppendLine($"                    {targetAccess}[i] = __span[i].ToManaged();");
+                  sb.AppendLine("                }");
+             }
+             else if (elementType == "System.DateTime" || elementType == "DateTime")
+             {
+                  sb.AppendLine($"                var __span = new Span<long>((void*){seqVar}.Buffer, (int){seqVar}.Length);");
+                  sb.AppendLine($"                for (int i = 0; i < (int){seqVar}.Length; i++)");
+                  sb.AppendLine("                {");
+                  if (isList || isBoundedSeq)
+                        sb.AppendLine($"                    {targetAccess}.Add(new System.DateTime(__span[i], System.DateTimeKind.Utc));");
+                  else
+                        sb.AppendLine($"                    {targetAccess}[i] = new System.DateTime(__span[i], System.DateTimeKind.Utc);");
                   sb.AppendLine("                }");
              }
              else if (elementType == "string" || elementType == "System.String")
@@ -843,6 +937,10 @@ namespace CycloneDDS.CodeGen
                            sb.AppendLine($"                    currentOffset = (currentOffset + 7) & ~7;");
                            sb.AppendLine($"                    currentOffset += CycloneDDS.Core.DdsTextEncoding.GetUtf8Size(item);");
                       }
+                      else if (managedType == "System.Guid" || managedType == "Guid" || managedType == "System.DateTime" || managedType == "DateTime")
+                      {
+                           // Fixed size, no dynamic part
+                      }
                       else
                       {
                            sb.AppendLine($"                    currentOffset = (currentOffset + 7) & ~7;");
@@ -897,6 +995,8 @@ namespace CycloneDDS.CodeGen
              }
              // For strings? List<string>.
              if (elementType == "string") return "IntPtr";
+             if (elementType == "System.Guid" || elementType == "Guid") return "CycloneDDS.Runtime.Interop.DdsGuid";
+             if (elementType == "System.DateTime" || elementType == "DateTime") return "long";
              
              // User type
              return elementType + "_Native";
@@ -938,7 +1038,7 @@ namespace CycloneDDS.CodeGen
 
              // Primitive checks
              var lower = name.ToLower();
-             if (lower == "double" || lower == "long" || lower == "int64" || lower == "ulong" || lower == "uint64") return 8;
+             if (lower == "double" || lower == "long" || lower == "int64" || lower == "ulong" || lower == "uint64" || lower == "guid" || lower == "datetime") return 8;
              if (lower == "int" || lower == "int32" || lower == "uint" || lower == "uint32" || lower == "float" || lower == "single") return 4;
              if (lower == "short" || lower == "int16" || lower == "ushort" || lower == "uint16" || lower == "char") return 2;
              if (lower == "byte" || lower == "sbyte" || lower == "bool" || lower == "boolean" || lower == "uint8" || lower == "int8") return 1;
@@ -1083,6 +1183,9 @@ namespace CycloneDDS.CodeGen
             }
             
             // Primitives
+            if (field.TypeName == "System.Guid" || field.TypeName == "Guid") return "CycloneDDS.Runtime.Interop.DdsGuid";
+            if (field.TypeName == "System.DateTime" || field.TypeName == "DateTime") return "long";
+
             return field.TypeName;
         }
     }

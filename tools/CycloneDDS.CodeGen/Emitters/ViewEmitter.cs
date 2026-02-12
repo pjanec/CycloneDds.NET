@@ -139,12 +139,47 @@ namespace CycloneDDS.CodeGen.Emitters
                 // Using generic logic but nativeFieldName
                 EmitSequenceProperty(sb, field, indent, registry, nativeFieldName);
             }
+            // System.Guid
+            else if (field.TypeName == "System.Guid" || field.TypeName == "Guid")
+            {
+                sb.AppendLine($"{indent}public unsafe System.Guid {ToPascalCase(field.Name)} => _ptr->{nativeFieldName}.ToManaged();");
+            }
+            // System.DateTime
+            else if (field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
+            {
+                sb.AppendLine($"{indent}public unsafe System.DateTime {ToPascalCase(field.Name)} => new System.DateTime(_ptr->{nativeFieldName}, System.DateTimeKind.Utc);");
+            }
             // Nested Struct
             else
             {
+                string typeName = field.TypeName;
+                string fullName = typeName;
+
+                if (registry != null)
+                {
+                    if (registry.TryGetDefinition(typeName, out var def))
+                    {
+                        if (def.TypeInfo != null) fullName = def.TypeInfo.FullName;
+                        else fullName = def.CSharpFullName;
+                    }
+                    else
+                    {
+                         // Fallback attempt to resolve by short name if unique
+                         var candidates = registry.AllTypes
+                                            .Where(t => t.CSharpFullName.EndsWith("." + typeName) || t.CSharpFullName == typeName)
+                                            .ToList();
+                         if (candidates.Count == 1)
+                         {
+                             if (candidates[0].TypeInfo != null) fullName = candidates[0].TypeInfo.FullName;
+                             else fullName = candidates[0].CSharpFullName;
+                         }
+                    }
+                }
+
                 // Has to be a struct view
-                string viewName = $"{field.TypeName}View";
-                sb.AppendLine($"{indent}public unsafe {viewName} {ToPascalCase(field.Name)} => new {viewName}(&_ptr->{nativeFieldName});");
+                string viewName = $"{fullName}View";
+                string nativeType = $"{fullName}_Native";
+                sb.AppendLine($"{indent}public unsafe {viewName} {ToPascalCase(field.Name)} => new {viewName}(({nativeType}*)&_ptr->{nativeFieldName});");
             }
         }
         
@@ -207,6 +242,50 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}    return DdsTextEncoding.FromNativeUtf8(ptrArray[index]);");
                 sb.AppendLine($"{indent}}}");
             }
+            else if (elementType == "System.Guid" || elementType == "Guid")
+            {
+                sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
+                sb.AppendLine($"{indent}public int {propName}Count");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    get");
+                sb.AppendLine($"{indent}    {{");
+                sb.AppendLine($"{indent}        unsafe {{ return (int)_ptr->{nativeFieldName}.Length; }}");
+                sb.AppendLine($"{indent}    }}");
+                sb.AppendLine($"{indent}}}");
+                sb.AppendLine();
+
+                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at specified index.</summary>");
+                sb.AppendLine($"{indent}public unsafe System.Guid Get{propName}(int index)");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
+                sb.AppendLine($"{indent}        throw new ArgumentOutOfRangeException(nameof(index));");
+                sb.AppendLine();
+                sb.AppendLine($"{indent}    CycloneDDS.Runtime.Interop.DdsGuid* arr = (CycloneDDS.Runtime.Interop.DdsGuid*)_ptr->{nativeFieldName}.Buffer;");
+                sb.AppendLine($"{indent}    return arr[index].ToManaged();");
+                sb.AppendLine($"{indent}}}");
+            }
+           else if (elementType == "System.DateTime" || elementType == "DateTime")
+            {
+                sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
+                sb.AppendLine($"{indent}public int {propName}Count");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    get");
+                sb.AppendLine($"{indent}    {{");
+                sb.AppendLine($"{indent}        unsafe {{ return (int)_ptr->{nativeFieldName}.Length; }}");
+                sb.AppendLine($"{indent}    }}");
+                sb.AppendLine($"{indent}}}");
+                sb.AppendLine();
+
+                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at specified index.</summary>");
+                sb.AppendLine($"{indent}public unsafe System.DateTime Get{propName}(int index)");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
+                sb.AppendLine($"{indent}        throw new ArgumentOutOfRangeException(nameof(index));");
+                sb.AppendLine();
+                sb.AppendLine($"{indent}    long* arr = (long*)_ptr->{nativeFieldName}.Buffer;");
+                sb.AppendLine($"{indent}    return new System.DateTime(arr[index], System.DateTimeKind.Utc);");
+                sb.AppendLine($"{indent}}}");
+            }
             else
             {
                 // Check if element is a valid View target
@@ -261,8 +340,8 @@ namespace CycloneDDS.CodeGen.Emitters
             string propName = ToPascalCase(memberName);
             string fieldName = memberName;
             
-            var viewName = $"{unionType.Name}View";
-            var nativeType = $"{unionType.Name}_Native";
+            var viewName = $"{unionType.FullName}View";
+            var nativeType = $"{unionType.FullName}_Native";
             sb.AppendLine($"{indent}/// <summary>Gets view for {memberName}.</summary>");
             sb.AppendLine($"{indent}public unsafe {viewName} {propName} => new {viewName}(({nativeType}*)&_ptr->{fieldName});");
             sb.AppendLine();
@@ -360,20 +439,46 @@ namespace CycloneDDS.CodeGen.Emitters
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
                 }
+                else if (caseType == "System.Guid" || caseType == "Guid")
+                {
+                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as System.Guid if discriminator matches.</summary>");
+                    sb.AppendLine($"{indent}public unsafe System.Guid? {propName}As{caseName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if ({conditionExpr})");
+                    sb.AppendLine($"{indent}             return _ptr->{fieldName}._u.{caseField}.ToManaged();");
+                    sb.AppendLine($"{indent}        return null;");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
+                else if (caseType == "System.DateTime" || caseType == "DateTime")
+                {
+                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as System.DateTime if discriminator matches.</summary>");
+                    sb.AppendLine($"{indent}public unsafe System.DateTime? {propName}As{caseName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if ({conditionExpr})");
+                    sb.AppendLine($"{indent}             return new System.DateTime(_ptr->{fieldName}._u.{caseField}, System.DateTimeKind.Utc);");
+                    sb.AppendLine($"{indent}        return null;");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
                 else
                 {
                      // Complex type (Struct/Union)
                      var caseViewName = $"{caseType}View";
                      var caseNativeType = $"{caseType}_Native";
                      
-                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {caseType} view if discriminator matches.</summary>");
-                     sb.AppendLine($"{indent}public unsafe {caseViewName}? {propName}As{caseName}");
+                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {caseType} view if discriminator matches. Throws if mismatch.</summary>");
+                     sb.AppendLine($"{indent}public unsafe {caseViewName} {propName}As{caseName}");
                      sb.AppendLine($"{indent}{{");
                      sb.AppendLine($"{indent}    get");
                      sb.AppendLine($"{indent}    {{");
                      sb.AppendLine($"{indent}        if ({conditionExpr})");
                      sb.AppendLine($"{indent}             return new {caseViewName}(({caseNativeType}*)&_ptr->{fieldName}._u.{caseField});");
-                     sb.AppendLine($"{indent}        return null;");
+                     sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
                      sb.AppendLine($"{indent}    }}");
                      sb.AppendLine($"{indent}}}");
                 }
@@ -473,7 +578,8 @@ namespace CycloneDDS.CodeGen.Emitters
             if (IsOptional(field.TypeName))
             {
                 var baseType = GetBaseType(field.TypeName);
-                if (IsPrimitive(baseType, registry) || IsBool(baseType, registry) || IsEnum(field, registry))
+                if (IsPrimitive(baseType, registry) || IsBool(baseType, registry) || IsEnum(field, registry) || 
+                    baseType == "System.Guid" || baseType == "Guid" || baseType == "System.DateTime" || baseType == "DateTime")
                 {
                     sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
                 }
@@ -516,6 +622,14 @@ namespace CycloneDDS.CodeGen.Emitters
                      sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i));");
                      sb.AppendLine($"{indent}}}");
                  }
+                 else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime")
+                 {
+                     sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<{elementType}>(this.{propName}Count);");
+                     sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                     sb.AppendLine($"{indent}{{");
+                     sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i));");
+                     sb.AppendLine($"{indent}}}");
+                 }
                  else
                  {
                      var elementTargetType = elementType; 
@@ -525,6 +639,11 @@ namespace CycloneDDS.CodeGen.Emitters
                      sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i).ToManaged());");
                      sb.AppendLine($"{indent}}}");
                  }
+            }
+            else if (field.TypeName == "System.Guid" || field.TypeName == "Guid" || 
+                     field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
+            {
+                 sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
             }
             else
             {
@@ -671,6 +790,30 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}    {{");
                 sb.AppendLine($"{indent}        if (_ptr->{nativeFieldName} == default) return null;");
                 sb.AppendLine($"{indent}        return DdsTextEncoding.FromNativeUtf8((IntPtr)_ptr->{nativeFieldName});");
+                sb.AppendLine($"{indent}    }}");
+                sb.AppendLine($"{indent}}}");
+            }
+            else if (baseType == "System.Guid" || baseType == "Guid")
+            {
+                sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe System.Guid? {propName}");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    get");
+                sb.AppendLine($"{indent}    {{");
+                sb.AppendLine($"{indent}        if (_ptr->{nativeFieldName} == default) return null;");
+                sb.AppendLine($"{indent}        return (*(CycloneDDS.Runtime.Interop.DdsGuid*)_ptr->{nativeFieldName}).ToManaged();");
+                sb.AppendLine($"{indent}    }}");
+                sb.AppendLine($"{indent}}}");
+            }
+            else if (baseType == "System.DateTime" || baseType == "DateTime")
+            {
+                sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe System.DateTime? {propName}");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    get");
+                sb.AppendLine($"{indent}    {{");
+                sb.AppendLine($"{indent}        if (_ptr->{nativeFieldName} == default) return null;");
+                sb.AppendLine($"{indent}        return new System.DateTime(*(long*)_ptr->{nativeFieldName}, System.DateTimeKind.Utc);");
                 sb.AppendLine($"{indent}    }}");
                 sb.AppendLine($"{indent}}}");
             }
