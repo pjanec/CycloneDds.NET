@@ -5,18 +5,28 @@
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <PackageId>CycloneDDS.Runtime</PackageId>
-    <Version>2.0.0-alpha1</Version>
-    <Authors>FastCycloneDDS</Authors>
-    <Description>Cyclone DDS Runtime bindings</Description>
+    <PackageId>CycloneDDS.NET</PackageId>
+    <Description>Cyclone DDS Runtime bindings for .NET (Win64)</Description>
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\CycloneDDS.Core\CycloneDDS.Core.csproj" />
-    <ProjectReference Include="..\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
+    <None Include="..\..\artifacts\native\win-x64\**" Pack="true" PackagePath="runtimes/win-x64/native" />
+    <None Include="..\..\build\targets\CycloneDDS.targets" Pack="true" PackagePath="buildTransitive/CycloneDDS.NET.targets" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\**" Pack="true" PackagePath="tools/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CycloneDDS.Core\CycloneDDS.Core.csproj" PrivateAssets="All" />
+    <ProjectReference Include="..\CycloneDDS.Schema\CycloneDDS.Schema.csproj" PrivateAssets="All" />
     <ProjectReference Include="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(OutputPath)\CycloneDDS.Core.dll" Pack="true" PackagePath="lib\$(TargetFramework)" Visible="false" />
+    <None Include="$(OutputPath)\CycloneDDS.Schema.dll" Pack="true" PackagePath="lib\$(TargetFramework)" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

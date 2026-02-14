@@ -16,7 +16,7 @@ if ($LASTEXITCODE -ne 0) { Write-Error "CodeGen build failed"; exit 1 }
 
 # 2. Build Entire Solution
 Write-Host "`n[2/3] Building Solution..." -ForegroundColor Yellow
-dotnet build FastCycloneDdsCsharpBindings.sln -c $Configuration
+dotnet build CycloneDDS.NET.sln -c $Configuration
 if ($LASTEXITCODE -ne 0) { Write-Error "Solution build failed"; exit 1 }
 
 # 3. Run All Tests
@@ -24,7 +24,7 @@ Write-Host "`n[3/3] Executing Test Suite (All Projects)..." -ForegroundColor Yel
 
 # Construct Test Args
 # Note: We use the SLN file to target all test projects contained within it.
-$TestArgs = @("test", "FastCycloneDdsCsharpBindings.sln", "-c", $Configuration, "--no-build", "--logger", "console;verbosity=normal")
+$TestArgs = @("test", "CycloneDDS.NET.sln", "-c", $Configuration, "--no-build", "--logger", "console;verbosity=normal")
 
 if (![string]::IsNullOrWhiteSpace($Filter)) {
     $TestArgs += "--filter"

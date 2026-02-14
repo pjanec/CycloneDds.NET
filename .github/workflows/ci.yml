@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    env:
+      # This ensures the build script can find CMake if not in default path (though it usually is on runners)
+      CMAKE_GENERATOR: "Visual Studio 17 2022"
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0 # Required for Nerdbank.GitVersioning to determine version
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Display Tools Versions
+      run: |
+        dotnet --version
+        cmake --version
+
+    - name: Build, Test, and Pack
+      shell: pwsh
+      run: .\build\pack.ps1
+
+    - name: Upload NuGet Packages
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: nuget-packages
+        path: artifacts/nuget/*.nupkg
+        if-no-files-found: warn
+
+    - name: Upload Symbol Packages
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: symbol-packages
+        path: artifacts/nuget/*.snupkg
+        if-no-files-found: warn

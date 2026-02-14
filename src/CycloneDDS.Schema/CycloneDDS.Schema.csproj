@@ -9,9 +9,9 @@
     
     <!-- Metadata -->
     <PackageId>CycloneDDS.Schema</PackageId>
-    <Authors>Bagira</Authors>
     <Description>DDS schema attributes for C# types</Description>
     <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
 </Project>

@@ -345,7 +345,7 @@ public class CSharpEmitter
                 sb.Append(char.ToUpper(part[0]));
                 if (part.Length > 1)
                 {
-                    sb.Append(part.Substring(1));
+                    sb.Append(part.Substring(1).ToLowerInvariant());
                 }
             }
         }

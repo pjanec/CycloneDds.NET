@@ -1,0 +1,69 @@
+<Project>
+  <!-- Default RID -->
+  <PropertyGroup>
+    <CycloneDdsRid Condition="'$(RuntimeIdentifier)'==''">win-x64</CycloneDdsRid>
+    <CycloneDdsRid Condition="'$(RuntimeIdentifier)'!=''">$(RuntimeIdentifier)</CycloneDdsRid>
+  </PropertyGroup>
+  
+  <!-- Locate native tools & libraries -->
+  <PropertyGroup>
+    <!-- 
+      The package layout is:
+      buildTransitive/CycloneDDS.targets (THIS FILE)
+      runtimes/win-x64/native/ (Native Assets)
+      tools/CycloneDDS.CodeGen.dll (Managed CodeGen Tool)
+      
+      $(MSBuildThisFileDirectory) is buildTransitive/
+    -->
+    <CycloneDdsPackageRoot>$(MSBuildThisFileDirectory)../</CycloneDdsPackageRoot>
+    <CycloneDdsToolsPath>$(CycloneDdsPackageRoot)runtimes/$(CycloneDdsRid)/native/</CycloneDdsToolsPath>
+    <CycloneDdsCodeGenPath>$(CycloneDdsPackageRoot)tools/CycloneDDS.CodeGen.dll</CycloneDdsCodeGenPath>
+  </PropertyGroup>
+  
+  <!-- Code Generator Target -->
+  <Target Name="CycloneDdsGenerate" BeforeTargets="CoreCompile" Condition="'$(CycloneDdsDisableCodeGen)' != 'true'">
+    <PropertyGroup>
+      <CycloneDdsGeneratedDir Condition="'$(CycloneDdsGeneratedDir)' == ''">$(IntermediateOutputPath)CycloneDdsGenerated/</CycloneDdsGeneratedDir>
+      <!-- Optimized for Design-Time Builds: Skip execution, just include existing files -->
+      <RunCycloneDdsCodeGen Condition="'$(DesignTimeBuild)' != 'true' AND '$(BuildingProject)' == 'true'">true</RunCycloneDdsCodeGen>
+    </PropertyGroup>
+
+    <Message Text="Running CycloneDDS Code Generator..." Importance="high" Condition="'$(RunCycloneDdsCodeGen)' == 'true'" />
+    
+    <MakeDir Directories="$(CycloneDdsGeneratedDir)" />
+    
+    <!-- 
+      Invoke the CodeGen tool only during real builds.
+      Arg 1: Source Directory (Project Dir)
+      Arg 2: Output Directory (obj/...)
+      Arg 3: Referenced Assemblies (semicolon separated list)
+    -->
+    <Exec Command="dotnet &quot;$(CycloneDdsCodeGenPath)&quot; &quot;$(MSBuildProjectDirectory)&quot; &quot;$(CycloneDdsGeneratedDir)&quot; &quot;@(ReferencePath)&quot;" 
+          Condition="'$(RunCycloneDdsCodeGen)' == 'true'" />
+    
+    <ItemGroup>
+      <Compile Include="$(CycloneDdsGeneratedDir)**/*.cs" />
+    </ItemGroup>
+  </Target>
+  
+  <!-- Copy Native Assets to Output Directory -->
+  <Target Name="CycloneDdsCopyNative" AfterTargets="Build">
+    <ItemGroup>
+      <NativeFiles Include="$(CycloneDdsToolsPath)*.dll" />
+      <NativeFiles Include="$(CycloneDdsToolsPath)*.exe" />
+    </ItemGroup>
+    
+    <Message Text="Copying CycloneDDS native assets from $(CycloneDdsToolsPath) to $(OutputPath)" Importance="normal" />
+    
+    <Copy SourceFiles="@(NativeFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Clean generated files -->
+  <Target Name="CycloneDdsClean" AfterTargets="Clean">
+    <PropertyGroup>
+      <CycloneDdsGeneratedDir Condition="'$(CycloneDdsGeneratedDir)' == ''">$(IntermediateOutputPath)CycloneDdsGenerated/</CycloneDdsGeneratedDir>
+    </PropertyGroup>
+    <RemoveDir Directories="$(CycloneDdsGeneratedDir)" />
+  </Target>
+
+</Project>

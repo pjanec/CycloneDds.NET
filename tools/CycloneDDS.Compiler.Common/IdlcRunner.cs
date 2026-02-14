@@ -21,6 +21,14 @@ namespace CycloneDDS.Compiler.Common
             string localIdlc = Path.Combine(currentDir, "idlc.exe");
             if (File.Exists(localIdlc)) return localIdlc;
 
+            // Check NuGet package location relative to tools/ (tools/ -> ../runtimes/win-x64/native/)
+            try 
+            {
+               string nugetNativePath = Path.Combine(currentDir, "..", "runtimes", "win-x64", "native", "idlc.exe");
+               if (File.Exists(nugetNativePath)) return Path.GetFullPath(nugetNativePath);
+            }
+            catch {}
+
             // DEV: Check workspace location (for tests/dev)
             // Iterate up 6 levels looking for cyclonedds/install/bin/idlc.exe OR cyclone-compiled/bin/idlc.exe
             var searchDir = new DirectoryInfo(currentDir);

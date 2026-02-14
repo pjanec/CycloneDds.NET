@@ -1,10 +1,27 @@
 # FastCycloneDDS C# Bindings
 
+[![CI](https://github.com/pjanec/CycloneDds.NET/actions/workflows/ci.yml/badge.svg)](https://github.com/pjanec/CycloneDds.NET/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/CycloneDDS.NET.svg)](https://www.nuget.org/packages/CycloneDDS.NET/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A modern, high-performance, zero-allocation .NET binding for Eclipse Cyclone DDS, with idiomatic C# API.
 
 See a [short presentation of principles](docs/CsharpBindings_presentation.pdf).
 
 See [detailed technical overview](DetailedOverview.md).
+
+## Installation
+
+Install the CycloneDDS.NET package from NuGet:
+
+```bash
+dotnet add package CycloneDDS.NET
+```
+
+This single package includes:
+- **Runtime Library:** High-performance managed bindings.
+- **Native Assets:** Pre-compiled `ddsc.dll` and `idlc.exe` (Windows x64).
+- **Build Tools:** Automatic C# code generation during build.
 
 ## Key Features
 
@@ -321,17 +338,29 @@ See [IDL Import Guide](docs/IDL-IMPORT.md) for advanced usage including multi-mo
 
 ---
 
-## Dependencies
+## Examples
 
-*   `CycloneDDS.Core`: Core memory management (NativeArena) and native types
-*   `CycloneDDS.Schema`: Attributes and Type System
-*   `CycloneDDS.CodeGen`: Build-time source generator
-*   `CycloneDDS.Runtime`: The high-level API described above
-*   `ddsc.dll`: Native Cyclone DDS library
-*   `idlc.exe`: Cyclone DDS IDL compiler
-*   `cycloneddsidljson.dll`: our custom json plugin for IDL compiler - build using `build_cyclone.bat` script
+### Hello World
+A complete "Hello World" example that demonstrates creating a topic, publishing, and subscribing in a single application can be found in [`examples/HelloWorld`](examples/HelloWorld).
+
+This example is designed to verify the NuGet package installation and basic functionality using the locally built package.
+
+To run it:
+1. Build the packages: `.\build\pack.ps1`
+2. Run the example:
+   ```bash
+   cd examples/HelloWorld
+   dotnet run
+   ```
 
 ---
+
+## Dependencies
+
+The `CycloneDDS.NET` package bundles these internal components:
+
+*   **Managed Libraries:** `CycloneDDS.Core`, `CycloneDDS.Schema`, `CycloneDDS.CodeGen`, `CycloneDDS.Runtime`
+*   **Native Assets:** `ddsc.dll` (Cyclone DDS), `idlc.exe` (IDL Compiler), `cycloneddsidljson.dll` (IDL JSON plugin)
 
 ## Performance Characteristics
 
