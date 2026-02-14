@@ -81,6 +81,18 @@ namespace CycloneDDS.Runtime
             catch (Exception ex) { Console.WriteLine($"[DdsReader] Initialization failed: {ex}"); throw; }
         }
 
+        public DdsReader(DdsParticipant participant, IntPtr qos = default)
+            : this(participant, GetTopicNameFromAttribute(), qos)
+        {
+        }
+
+        private static string GetTopicNameFromAttribute()
+        {
+            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
+            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
+            return attr.TopicName;
+        }
+
         public DdsReader(DdsParticipant participant, string topicName, IntPtr qos = default)
         {
             _dataAvailableHandler = OnDataAvailable;

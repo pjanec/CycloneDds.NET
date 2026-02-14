@@ -26,13 +26,11 @@ namespace HelloWorld
             
             // Create a wrapper for topic registration handled internally by Writer/Reader
 
-            const string TopicName = "HelloWorldTopic";
+            // Create a writer - topic name "HelloWorldTopic" automatically used from [DdsTopic] attribute
+            using var writer = new DdsWriter<HelloWorldMessage>(participant);
 
-            // Create a writer
-            using var writer = new DdsWriter<HelloWorldMessage>(participant, TopicName);
-
-            // Create a reader
-            using var reader = new DdsReader<HelloWorldMessage>(participant, TopicName);
+            // Create a reader - topic name "HelloWorldTopic" automatically used from [DdsTopic] attribute
+            using var reader = new DdsReader<HelloWorldMessage>(participant);
 
             // Local helper to read synchronously
             void ReadSamples()
