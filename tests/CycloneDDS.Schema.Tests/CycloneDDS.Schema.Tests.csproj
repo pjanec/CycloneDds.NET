@@ -27,7 +27,7 @@
 
   <ItemGroup>
     <!-- CycloneDDS Native Binaries -->
-    <None Include="..\..\cyclone-compiled\bin\*.dll">
+    <None Include="..\..\artifacts\native\win-x64\*.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>%(Filename)%(Extension)</Link>
     </None>

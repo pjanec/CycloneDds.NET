@@ -1,4 +1,18 @@
+# ===================================================================================
 # build/pack.ps1
+#
+# PURPOSE:
+#   Full release pipeline script:
+#   1. Rebuilds Native assets.
+#   2. Restores & Rebuilds the managed Solution.
+#   3. Runs all Tests.
+#   4. Packs the main CycloneDDS.NET NuGet package.
+#
+#   This is what runs in CI to produce release artifacts.
+#
+# USAGE:
+#   .\build\pack.ps1
+# ===================================================================================
 
 $ErrorActionPreference = "Stop"
 

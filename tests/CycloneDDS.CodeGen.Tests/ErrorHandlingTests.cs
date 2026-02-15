@@ -128,7 +128,7 @@ module Test {
                 var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 // Traverse up 5 levels: net8.0 -> Debug -> bin -> CycloneDDS.CodeGen.Tests -> tests -> RepoRoot
                 var repoRoot = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", "..", ".."));
-                var idlcPath = Path.Combine(repoRoot, "cyclone-compiled", "bin", "idlc.exe");
+                var idlcPath = Path.Combine(repoRoot, "artifacts", "native", "win-x64", "idlc.exe");
                 
                 runner.IdlcPathOverride = idlcPath;
                 var result = runner.RunIdlc(tempIdl, Path.GetTempPath());

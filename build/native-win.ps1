@@ -1,3 +1,15 @@
+# ===================================================================================
+# build/native-win.ps1
+#
+# PURPOSE:
+#   Compiles the native (C/C++) Cyclone DDS submodule and copies the resulting
+#   binaries (DLLs, tools, etc.) to the local 'artifacts' directory.
+#   This is a prerequisite for running managed tests or packing the NuGet package.
+#
+# USAGE:
+#   .\build\native-win.ps1 [-Configuration Release|Debug]
+# ===================================================================================
+
 param (
     [string]$Configuration = "Release"
 )

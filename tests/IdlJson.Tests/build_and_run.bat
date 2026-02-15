@@ -12,9 +12,9 @@ set "BUILD_CONFIG=Release"
 if not "%1"=="" set "BUILD_CONFIG=%1"
 
 if /I "%BUILD_CONFIG%"=="Debug" (
-    set "CYCLONE_INSTALL_DIR=%REPO_ROOT%\cyclone-compiled-debug"
+    set "CYCLONE_INSTALL_DIR=%REPO_ROOT%\artifacts\native-install"
 ) else (
-    set "CYCLONE_INSTALL_DIR=%REPO_ROOT%\cyclone-compiled"
+    set "CYCLONE_INSTALL_DIR=%REPO_ROOT%\artifacts\native-install"
 )
 
 set "CYCLONE_INSTALL_BIN=%CYCLONE_INSTALL_DIR%\bin"

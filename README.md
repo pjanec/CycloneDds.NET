@@ -6,22 +6,43 @@
 
 A modern, high-performance, zero-allocation .NET binding for Eclipse Cyclone DDS, with idiomatic C# API.
 
-See a [short presentation of principles](docs/CsharpBindings_presentation.pdf).
-
 See [detailed technical overview](DetailedOverview.md).
 
 ## Installation
+ 
+### Using the NuGet Package (Recommended)
 
 Install the CycloneDDS.NET package from NuGet:
-
+ 
 ```bash
 dotnet add package CycloneDDS.NET
 ```
-
+ 
 This single package includes:
 - **Runtime Library:** High-performance managed bindings.
 - **Native Assets:** Pre-compiled `ddsc.dll` and `idlc.exe` (Windows x64).
 - **Build Tools:** Automatic C# code generation during build.
+
+### Working with Source Code
+
+If you want to build the project from source or contribute:
+
+1.  **Clone the repository** (recursively, to get the native submodule):
+    ```bash
+    git clone --recursive https://github.com/pjanec/CycloneDds.NET.git
+    cd CycloneDds.NET
+    ```
+
+2.  **Build and Test** (One-Stop Script):
+    Run the developer workflow script. This will automatically check for native artifacts (building them if missing), build the solution, and run all tests.
+    ```powershell
+    .\build\build-and-test.ps1
+    ```
+
+3.  **Requirements:**
+    -   .NET 8.0 SDK
+    -   Visual Studio 2022 (C++ Desktop Development workload) for native compilation.
+    -   CMake 3.16+ in your PATH.
 
 ## Key Features
 

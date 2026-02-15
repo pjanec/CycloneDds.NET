@@ -10,9 +10,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="..\..\cyclone-compiled\bin\ddsc.dll">
+    <Content Include="..\..\artifacts\native\win-x64\**\*.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>ddsc.dll</Link>
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+    <Content Include="..\..\artifacts\native\win-x64\**\*.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
     </Content>
   </ItemGroup>
 </Project>

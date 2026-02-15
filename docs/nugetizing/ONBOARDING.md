@@ -13,7 +13,7 @@ Welcome to the CycloneDDS.NET NuGet packaging project! This guide will help you 
 - Multiple assemblies: Core, Runtime, Schema
 - Internal code generation tool (`CycloneDDS.CodeGen`) that runs during build
 - Manual CLI tool (`CycloneDDS.IdlImporter`) for IDL conversion
-- Native dependencies from `cyclone-compiled/bin/`:
+- Native dependencies from `artifacts/native/win-x64/`:
   - **ddsc.dll** - Main DDS runtime library
   - **idlc.exe** - IDL compiler used during code generation
   - **cycloneddsidl*.dll** - IDL support libraries
@@ -109,7 +109,7 @@ After reading the design documents, read:
 │
 ├── version.json                  ← NEW: NBGV version configuration
 ├── Directory.Build.props         ← NEW: Shared package metadata
-├── build_and_run_tests.ps1       ← Existing build script (reference)
+├── build\build-and-test.ps1      ← Build & Test All (Developer Workflow)
 └── CycloneDDS.NET.sln          ← Solution file
 ```
 
@@ -165,22 +165,17 @@ git submodule update --init --recursive
 
 # Build native Cyclone DDS
 # Option 1: Use existing batch files
-.\build_cyclone.bat
+.\build\native-win.ps1
 
-# Option 2: Manual CMake (Release build)
-mkdir cyclonedds\build
-cd cyclonedds\build
-cmake .. -DCMAKE_INSTALL_PREFIX=..\..\cyclone-compiled
-cmake --build . --config Release
-cmake --install . --config Release
-cd ..\..
+# Option 2: Use build/native-win.ps1 which wraps CMake
+.\build\native-win.ps1
 ```
 
 ### Build Managed Projects
 
 ```powershell
 # Build and run tests
-.\build_and_run_tests.ps1 -Configuration Release
+.\build\build-and-test.ps1 -Configuration Release
 
 # Or manually:
 dotnet build CycloneDDS.NET.sln -c Release
@@ -189,10 +184,10 @@ dotnet test CycloneDDS.NET.sln -c Release --no-build
 
 ### What You'll See
 
-- Native DLL: `cyclone-compiled/bin/ddsc.dll`
-- Native tool: `cyclone-compiled/bin/idlc.exe`
-- IDL libraries: `cyclone-compiled/bin/cycloneddsidl*.dll`
-- VC++ runtime: `cyclone-compiled/bin/msvcp140*.dll`, `vcruntime140*.dll`, etc.
+- Native DLL: `artifacts/native/win-x64/ddsc.dll`
+- Native tool: `artifacts/native/win-x64/idlc.exe`
+- IDL libraries: `artifacts/native/win-x64/cycloneddsidl*.dll`
+- VC++ runtime: `artifacts/native/win-x64/msvcp140*.dll`, `vcruntime140*.dll`, etc.
 - Managed assemblies: `src/*/bin/Release/net8.0/*.dll`
 - Tests pass (multiple xUnit projects)
 
@@ -354,11 +349,11 @@ Closes #123 (if applicable)
 **Solution:**
 ```powershell
 # Rebuild native components
-.\build_cyclone.bat
+.\build\native-win.ps1
 
 # Verify outputs
-Test-Path cyclone-compiled\bin\idlc.exe
-Test-Path cyclone-compiled\bin\ddsc.dll
+Test-Path artifacts\native\win-x64\idlc.exe
+Test-Path artifacts\native\win-x64\ddsc.dll
 ```
 
 ### "Cannot find CodeGen tool" during build
@@ -381,10 +376,10 @@ dotnet build CycloneDDS.NET.sln -c Release
 **Solution:**
 ```powershell
 # Copy all native DLLs to test output
-Copy-Item cyclone-compiled\bin\*.dll tests\CycloneDDS.Core.Tests\bin\Release\net8.0\
+Copy-Item artifacts\native\win-x64\*.dll tests\CycloneDDS.Core.Tests\bin\Release\net8.0\
 
 # Or set environment variable
-$env:PATH = "$(pwd)\cyclone-compiled\bin;$env:PATH"
+$env:PATH = "$(pwd)\artifacts\native\win-x64;$env:PATH"
 dotnet test
 ```
 

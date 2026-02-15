@@ -4,7 +4,7 @@ project(IdlJsonVerifier C)
 # --- Configuration ---
 if(NOT DEFINED CYCLONE_INSTALL_DIR)
     get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-    set(CYCLONE_INSTALL_DIR "${REPO_ROOT}/cyclone-compiled")
+    set(CYCLONE_INSTALL_DIR "${REPO_ROOT}/artifacts/native-install")
 endif()
 set(IDLC_EXE "${CYCLONE_INSTALL_DIR}/bin/idlc.exe")
 

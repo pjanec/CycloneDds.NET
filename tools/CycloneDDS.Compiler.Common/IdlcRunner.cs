@@ -42,6 +42,9 @@ namespace CycloneDDS.Compiler.Common
                 string repoPath = Path.Combine(searchDir.FullName, "cyclone-compiled", "bin", "idlc.exe");
                 if (File.Exists(repoPath)) return repoPath;
 
+                repoPath = Path.Combine(searchDir.FullName, "artifacts", "native", "win-x64", "idlc.exe");
+                if (File.Exists(repoPath)) return repoPath;
+
                 searchDir = searchDir.Parent;
             }
 

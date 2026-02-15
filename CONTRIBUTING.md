@@ -20,7 +20,7 @@ Thank you for your interest in contributing to CycloneDDS.NET! We welcome contri
 
 2. Build the native Cyclone DDS libraries (one-time setup):
    ```powershell
-   .\build_cyclone.bat
+   .\build\native-win.ps1
    ```
 
 3. Build and pack the NuGet packages:
