@@ -11,9 +11,44 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Runtime: Native Assets -->
     <None Include="..\..\artifacts\native\win-x64\ddsc.dll" Pack="true" PackagePath="runtimes/win-x64/native" />
+    
+    <!-- Build: Targets -->
     <None Include="..\..\build\targets\CycloneDDS.targets" Pack="true" PackagePath="buildTransitive/CycloneDDS.NET.targets" />
-    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\**" Pack="true" PackagePath="tools/" Exclude="**\concrt140.dll;**\ddsperf.exe;**\msvcp*.dll;**\vcruntime*.dll" />
+
+    <!-- Tools: Native Assets (Explicitly selected) -->
+    <None Include="..\..\artifacts\native\win-x64\idlc.exe" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\artifacts\native\win-x64\cycloneddsidl.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\artifacts\native\win-x64\cycloneddsidlc.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\artifacts\native\win-x64\cycloneddsidljson.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\artifacts\native\win-x64\ddsc.dll" Pack="true" PackagePath="tools/" />
+
+    <!-- Tools: Shared Managed Libraries -->
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Compiler.Common.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Compiler.Common.pdb" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Core.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Core.pdb" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Schema.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Schema.pdb" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\Newtonsoft.Json.dll" Pack="true" PackagePath="tools/" />
+
+    <!-- Tools: CodeGen -->
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.CodeGen.exe" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.CodeGen.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.CodeGen.pdb" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.CodeGen.deps.json" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.CodeGen.runtimeconfig.json" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\Microsoft.CodeAnalysis.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\Microsoft.CodeAnalysis.CSharp.dll" Pack="true" PackagePath="tools/" />
+
+    <!-- Tools: IdlImporter -->
+    <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\CycloneDDS.IdlImporter.exe" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\CycloneDDS.IdlImporter.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\CycloneDDS.IdlImporter.pdb" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\CycloneDDS.IdlImporter.deps.json" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\CycloneDDS.IdlImporter.runtimeconfig.json" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\System.CommandLine.dll" Pack="true" PackagePath="tools/" />
   </ItemGroup>
 
   <ItemGroup>
