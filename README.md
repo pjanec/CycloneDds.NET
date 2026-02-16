@@ -22,6 +22,8 @@ This single package includes:
 - **Runtime Library:** High-performance managed bindings.
 - **Native Assets:** Pre-compiled `ddsc.dll` and `idlc.exe` (Windows x64).
 - **Build Tools:** Automatic C# code generation during build.
+ 
+**Important:** This package relies on native libraries that require the [Visual C++ Redistributable for Visual Studio 2022](https://aka.ms/vs/17/release/vc_redist.x64.exe) to be installed on the target system.
 
 ### Working with Source Code
 

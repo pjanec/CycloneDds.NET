@@ -11,9 +11,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\artifacts\native\win-x64\**" Pack="true" PackagePath="runtimes/win-x64/native" />
+    <None Include="..\..\artifacts\native\win-x64\ddsc.dll" Pack="true" PackagePath="runtimes/win-x64/native" />
     <None Include="..\..\build\targets\CycloneDDS.targets" Pack="true" PackagePath="buildTransitive/CycloneDDS.NET.targets" />
-    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\**" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\**" Pack="true" PackagePath="tools/" Exclude="**\concrt140.dll;**\ddsperf.exe;**\msvcp*.dll;**\vcruntime*.dll" />
   </ItemGroup>
 
   <ItemGroup>
