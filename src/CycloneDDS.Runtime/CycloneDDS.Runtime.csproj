@@ -74,6 +74,52 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
+  <Target Name="GetNativeVersionInfo" BeforeTargets="GenerateNuspec;Pack">
+    <PropertyGroup>
+      <NativeDir>$(MSBuildProjectDirectory)\..\..\cyclonedds</NativeDir>
+      <UpstreamRepoUrl>https://github.com/eclipse-cyclonedds/cyclonedds</UpstreamRepoUrl>
+    </PropertyGroup>
+    
+    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" WorkingDirectory="$(NativeDir)" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="NativeFullCommit" />
+    </Exec>
+    
+    <Exec Command="git merge-base origin/master HEAD" ConsoleToMSBuild="true" WorkingDirectory="$(NativeDir)" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="NativeBaseCommit" />
+    </Exec>
+
+    <Exec Command="git config --get remote.origin.url" ConsoleToMSBuild="true" WorkingDirectory="$(NativeDir)" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="NativeRepoUrl" />
+    </Exec>
+
+    <PropertyGroup>
+      <NativeVersionInfo>
+{
+  "Original": {
+    "Repository": "$(UpstreamRepoUrl)",
+    "Commit": "$(NativeBaseCommit)"
+  },
+  "Modified": {
+    "Repository": "$(NativeRepoUrl)",
+    "Commit": "$(NativeFullCommit)"
+  }
+}
+      </NativeVersionInfo>
+      <NativeVersionFile>$(IntermediateOutputPath)native_version.json</NativeVersionFile>
+    </PropertyGroup>
+
+    <WriteLinesToFile File="$(NativeVersionFile)" Lines="$(NativeVersionInfo)" Overwrite="true" />
+
+    <ItemGroup>
+      <None Include="$(NativeVersionFile)" Pack="true" PackagePath="/" Visible="false" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <Description>$(Description)%0a%0aNative Version Information:%0a- Based on Eclipse Cyclone DDS ($(UpstreamRepoUrl)) commit: $(NativeBaseCommit)%0a- Modified from $(NativeRepoUrl) commit: $(NativeFullCommit)</Description>
+      <PackageReleaseNotes>$(PackageReleaseNotes)%0aNative Version Information:%0a- Based on Eclipse Cyclone DDS ($(UpstreamRepoUrl)) commit: $(NativeBaseCommit)%0a- Modified from $(NativeRepoUrl) commit: $(NativeFullCommit)</PackageReleaseNotes>
+    </PropertyGroup>
+  </Target>
+
   <Import Project="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
 
 </Project>
