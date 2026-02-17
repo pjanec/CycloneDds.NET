@@ -189,6 +189,8 @@ public class Importer
              var parser = new IdlJsonParser();
              var types = parser.Parse(jsonFile);
              
+             UnflattenTypes(types);
+
              _typeCache[idlPath] = types;
              return types;
         }
@@ -197,6 +199,118 @@ public class Importer
             if (Directory.Exists(tempDir))
             {
                 try { Directory.Delete(tempDir, true); } catch { /* ignore cleanup errors */ }
+            }
+        }
+    }
+
+    private void UnflattenTypes(List<JsonTypeDefinition> types)
+    {
+        // 1. Collect scopes from explicitly scoped types (e.g. "Module::Struct")
+        var scopes = new HashSet<string>();
+        foreach (var t in types)
+        {
+             if (t.Name.Contains("::"))
+             {
+                 var parts = t.Name.Split(new[] { "::" }, StringSplitOptions.None);
+                 string current = "";
+                 for (int i = 0; i < parts.Length - 1; i++) 
+                 {
+                     if (i > 0) current += "::";
+                     current += parts[i];
+                     scopes.Add(current);
+                 }
+             }
+        }
+        
+        // 2. Build mapping of valid Flattened -> Scoped names
+        // e.g. "CommonLib_Point" -> "CommonLib::Point"
+        var flattenedToScoped = new Dictionary<string, string>();
+        
+        // Populate with existing scoped names
+        foreach (var t in types)
+        {
+             if (t.Name.Contains("::"))
+             {
+                 string flat = t.Name.Replace("::", "_");
+                 flattenedToScoped[flat] = t.Name;
+             }
+        }
+
+        // 3. Fix Type Definitions
+        foreach (var t in types)
+        {
+             // Fix Name: If implicit flattened name (e.g. "CommonLib_Color")
+             if (!t.Name.Contains("::") && t.Name.Contains("_"))
+             {
+                 foreach(var scope in scopes) 
+                 {
+                     string prefix = scope.Replace("::", "_") + "_";
+                     if (t.Name.StartsWith(prefix)) 
+                     {
+                         string rest = t.Name.Substring(prefix.Length);
+                         // Check implies it's not just a partial match of a longer word?
+                         // e.g. Scope="A", Name="A_B". Rest="B". Valid.
+                         
+                         string newName = scope + "::" + rest;
+                         t.Name = newName;
+                         flattenedToScoped[t.Name.Replace("::", "_")] = newName;
+                         break; 
+                     }
+                 }
+             }
+        }
+
+        // 4. Fix References (Type, Discriminator, Members)
+        foreach (var t in types)
+        {
+             if (t.Type != null && flattenedToScoped.TryGetValue(t.Type, out var scopedAlias)) 
+             {
+                 t.Type = scopedAlias;
+             }
+             
+             if (t.Discriminator != null && flattenedToScoped.TryGetValue(t.Discriminator, out var scopedDisc)) 
+             {
+                 t.Discriminator = scopedDisc;
+             }
+             
+             foreach (var m in t.Members) 
+             {
+                 FixMemberType(m, flattenedToScoped);
+             }
+
+             // Fix Enum Members (CommonLib_RED -> RED)
+             if (t.Kind == "enum" && t.Name.Contains("::"))
+             {
+                 var parts = t.Name.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
+                 if (parts.Length > 1) 
+                 {
+                     string parentScope = string.Join("_", parts.Take(parts.Length - 1));
+                     string prefix = parentScope + "_";
+                     
+                     foreach(var m in t.Members)
+                     {
+                         if (m.Name.StartsWith(prefix))
+                         {
+                             m.Name = m.Name.Substring(prefix.Length);
+                         }
+                     }
+                 }
+             }
+        }
+    }
+
+    private void FixMemberType(JsonMember m, Dictionary<string, string> mapping)
+    {
+        if (m.Type != null && mapping.TryGetValue(m.Type, out var scoped))
+        {
+            m.Type = scoped;
+        }
+        
+        if (m.Members != null)
+        {
+            foreach(var child in m.Members)
+            {
+                FixMemberType(child, mapping);
             }
         }
     }

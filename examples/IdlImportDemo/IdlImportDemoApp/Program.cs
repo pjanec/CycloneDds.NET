@@ -53,13 +53,12 @@ using var extendedWriter = new DdsWriter<ExtendedPoint>(participant, appTopicNam
 using var extendedReader = new DdsReader<ExtendedPoint>(participant, appTopicName);
 
 // Create a complex sample
-// Create a complex sample
 // Note: extended.BasePoint is a CommonLib.Point
 var extendedSample = new ExtendedPoint
 {
     Id = 12345,
     BasePoint = new Point { X = 100, Y = 200 }, 
-    Color = CommonLib_Color.CommonlibGreen, // From CommonLib enum
+    Color = CommonLib.Color.Green, // From CommonLib enum (Scoped now!)
     ExtraInfo = new Result 
     { 
        _d = true, // Discriminator for Union
