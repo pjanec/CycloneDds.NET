@@ -2,7 +2,7 @@
     Note: The include path here relies on the --source-root being the 'IdlImportDemo' folder,
           so both 'CommonLib' and 'AppLib' are top-level directories under it.
 */
-#include "CommonLib/common_types.idl"
+#include "../CommonLib/common_types.idl"
 
 module AppLib
 {

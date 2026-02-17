@@ -189,8 +189,16 @@ public class CSharpEmitter
         string discType = "int"; // fallback
         if (!string.IsNullOrEmpty(type.Discriminator))
         {
-             try { discType = _typeMapper.MapPrimitive(type.Discriminator); }
-             catch { discType = _typeMapper.GetCSharpNamespace(type.Discriminator); }
+             // Special case for boolean discriminator: map to int, as DdsCase attributes use int
+             if (type.Discriminator == "boolean")
+             {
+                 discType = "int";
+             }
+             else
+             {
+                 try { discType = _typeMapper.MapPrimitive(type.Discriminator); }
+                 catch { discType = _typeMapper.GetCSharpNamespace(type.Discriminator); }
+             }
         }
 
         sb.AppendLine($"{indent}    [DdsDiscriminator]");

@@ -174,6 +174,10 @@ namespace CycloneDDS.CodeGen
                     {
                         string caseLabel = val!.ToString()!;
                         if (val is bool b) caseLabel = b ? "true" : "false";
+                        else if (discriminator.TypeName == "bool" || discriminator.TypeName == "Boolean" || discriminator.TypeName == "System.Boolean")
+                        {
+                             if (val is int iVal) caseLabel = (iVal != 0) ? "true" : "false";
+                        }
                          else if (!IsPrimitive(discriminator.TypeName) && discriminator.TypeName != "string")
                          {
                               caseLabel = $"({discriminator.TypeName}){val}"; 
@@ -550,6 +554,10 @@ namespace CycloneDDS.CodeGen
                     {
                         string caseLabel = val!.ToString()!;
                         if (val is bool b) caseLabel = b ? "true" : "false";
+                        else if (discriminator.TypeName == "bool" || discriminator.TypeName == "Boolean" || discriminator.TypeName == "System.Boolean")
+                        {
+                             if (val is int iVal) caseLabel = (iVal != 0) ? "true" : "false";
+                        }
                          else if (!IsPrimitive(discriminator.TypeName) && discriminator.TypeName != "string")
                          {
                               caseLabel = $"({discriminator.TypeName}){val}"; 
@@ -994,7 +1002,7 @@ namespace CycloneDDS.CodeGen
                  return elementType;
              }
              // For strings? List<string>.
-             if (elementType == "string") return "IntPtr";
+             if (elementType == "string" || elementType == "System.String") return "IntPtr";
              if (elementType == "System.Guid" || elementType == "Guid") return "CycloneDDS.Runtime.Interop.DdsGuid";
              if (elementType == "System.DateTime" || elementType == "DateTime") return "long";
              

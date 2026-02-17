@@ -4,13 +4,16 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\CycloneDDS.Core\CycloneDDS.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
     <ProjectReference Include="..\..\..\src\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
   </ItemGroup>
 
 
 
+  <Import Project="..\..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
 </Project>

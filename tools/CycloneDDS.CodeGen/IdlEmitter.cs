@@ -396,6 +396,15 @@ namespace CycloneDDS.CodeGen
                             if (iVal >= 0 && iVal < enumDef.TypeInfo!.EnumMembers.Count)
                                 label = enumDef.TypeInfo.EnumMembers[iVal];
                         }
+                        
+                        if (switchType == "boolean")
+                        {
+                            if (val is int i) label = (i != 0) ? "TRUE" : "FALSE";
+                            else if (val is bool b) label = b ? "TRUE" : "FALSE";
+                            else if (label == "1") label = "TRUE";
+                            else if (label == "0") label = "FALSE";
+                        }
+                        
                         sb.AppendLine($"{fieldIndent}case {label}:");
                      }
                 }

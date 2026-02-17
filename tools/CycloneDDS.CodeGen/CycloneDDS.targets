@@ -1,10 +1,10 @@
 <Project>
 
   <!-- 1. Copy IDL files from referenced assemblies -->
-  <Target Name="CopyReferencedIdlFiles" BeforeTargets="CycloneDDSCodeGen">
+  <Target Name="CopyReferencedIdlFiles" DependsOnTargets="ResolveReferences">
      <ItemGroup>
          <!-- Find .idl files in the references that are copied locally -->
-         <ReferencedIdlFiles Include="%(ReferenceCopyLocalPaths.Identity)" Condition="'%(Extension)' == '.idl'" />
+         <ReferencedIdlFiles Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.idl'" />
      </ItemGroup>
      
      <Message Text="Copying referenced IDL files: @(ReferencedIdlFiles)" Importance="normal" />
@@ -12,7 +12,7 @@
      <Copy SourceFiles="@(ReferencedIdlFiles)" DestinationFolder="$(MSBuildProjectDirectory)\obj\Generated" SkipUnchangedFiles="true" />
   </Target>
 
-  <Target Name="CycloneDDSCodeGen" BeforeTargets="CoreCompile">
+  <Target Name="CycloneDDSCodeGen" BeforeTargets="CoreCompile" DependsOnTargets="CopyReferencedIdlFiles">
     <PropertyGroup>
       <CodeGenAssembly Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)bin\Release\net8.0\CycloneDDS.CodeGen.dll</CodeGenAssembly>
       <CodeGenAssembly Condition="'$(Configuration)' != 'Release'">$(MSBuildThisFileDirectory)bin\Debug\net8.0\CycloneDDS.CodeGen.dll</CodeGenAssembly>

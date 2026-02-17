@@ -302,21 +302,23 @@ namespace CycloneDDS.CodeGen
                 _ => throw new ArgumentException("Member must be field or property")
             };
 
-            // Capture valid DDS types (even external ones) for validation
-            if (HasAttribute(type, "CycloneDDS.Schema.DdsStructAttribute") || 
-                HasAttribute(type, "CycloneDDS.Schema.DdsTopicAttribute"))
-            {
-                // Unclear if ToDisplayString() matches TypeName format exactly (nullable?)
-                // TypeName handles nullable? 
-                // ToDisplayString with defaults usually includes ?
-                ValidExternalTypes.Add(type.ToDisplayString().TrimEnd('?'));
-            }
-
             // Use a format that ensures fully qualified names (Namespace.Type)
             // We want "Namespace.Type", not "global::Namespace.Type"
             var format = new SymbolDisplayFormat(
                 typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
                 genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters);
+
+            // Capture valid DDS types (even external ones) for validation
+            if (HasAttribute(type, "CycloneDDS.Schema.DdsStructAttribute") || 
+                HasAttribute(type, "CycloneDDS.Schema.DdsTopicAttribute") ||
+                HasAttribute(type, "CycloneDDS.Schema.DdsUnionAttribute") ||
+                type.TypeKind == TypeKind.Enum)
+            {
+                // Unclear if ToDisplayString() matches TypeName format exactly (nullable?)
+                // TypeName handles nullable? 
+                // ToDisplayString with defaults usually includes ?
+                ValidExternalTypes.Add(type.ToDisplayString(format).TrimEnd('?'));
+            }
 
             // Normalize common types to C# aliases for consistency with SerializerEmitter
             string typeName = type.ToDisplayString(format);

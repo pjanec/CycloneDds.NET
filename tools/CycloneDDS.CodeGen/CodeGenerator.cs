@@ -258,8 +258,7 @@ namespace CycloneDDS.CodeGen
                     var result = idlcRunner.RunIdlc(idlPath, tempJsonDir, outputDir);
                     if (result.ExitCode != 0)
                     {
-                         Console.Error.WriteLine($"    `idlc -l json {idlFileName}` failed for: {result.StandardError}");
-                         continue; 
+                         throw new InvalidOperationException($"idlc generated failed for {idlFileName} (exit {result.ExitCode}). Stderr: {result.StandardError}. Stdout: {result.StandardOutput}");
                     }
                     processedIdlFiles.Add(idlFileName);
                 }

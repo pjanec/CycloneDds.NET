@@ -387,7 +387,16 @@ namespace CycloneDDS.CodeGen.Emitters
                 {
                     string valStr = val?.ToString() ?? "0";
                     if (val is bool b) valStr = b ? "true" : "false";
-                    conditions.Add($"{propName}Kind == ({discriminatorEnum}){valStr}");
+                    
+                    if (discriminatorEnum == "bool" || discriminatorEnum == "Boolean" || discriminatorEnum == "System.Boolean")
+                    {
+                        if (val is int iVal) valStr = (iVal != 0) ? "true" : "false";
+                        conditions.Add($"{propName}Kind == {valStr}");
+                    }
+                    else
+                    {
+                        conditions.Add($"{propName}Kind == ({discriminatorEnum}){valStr}");
+                    }
                 }
                 
                 // Also check DdsDefaultCase?
@@ -545,15 +554,18 @@ namespace CycloneDDS.CodeGen.Emitters
                 var caseAttr = field.GetAttribute("DdsCase");
                 if (caseAttr == null) continue;
                 
-                // Conditions
                 var conditions = new List<string>();
                 foreach (var val in caseAttr.Arguments)
                 {
                     string valStr = val?.ToString() ?? "0";
                     if (val is bool b) valStr = b ? "true" : "false";
                     
-                    if (resolvedDiscType == "bool" || resolvedDiscType == "Boolean") 
+                    if (resolvedDiscType == "bool" || resolvedDiscType == "Boolean" || resolvedDiscType == "System.Boolean") 
+                    {
+                       // Handle integer constants representing booleans (e.g. from IDL 1/0)
+                       if (val is int iVal) valStr = (iVal != 0) ? "true" : "false";
                        conditions.Add($"this.{discProp} == {valStr}");
+                    }
                     else 
                        conditions.Add($"this.{discProp} == ({resolvedDiscType}){valStr}");
                 }
