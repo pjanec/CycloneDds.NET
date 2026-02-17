@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\CycloneDDS.Core\CycloneDDS.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\CycloneDDS.Schema\CycloneDDS.Schema.csproj" />
+    <!-- Reference the CommonLib which contains the types we depend on -->
+    <ProjectReference Include="..\CommonLib\CommonLib.csproj" />
+  </ItemGroup>
+
+
+
+</Project>

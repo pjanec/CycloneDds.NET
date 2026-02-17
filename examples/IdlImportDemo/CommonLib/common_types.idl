@@ -1,0 +1,21 @@
+module CommonLib
+{
+    // A simple enumeration
+    enum Color
+    {
+        RED,
+        GREEN,
+        BLUE
+    };
+
+    // A structure with extensibility annotation
+    @final
+    struct Point
+    {
+        long x;
+        long y;
+    };
+
+    // A type definition alias
+    typedef Point Point2D;
+};

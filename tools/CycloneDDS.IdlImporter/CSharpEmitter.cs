@@ -183,19 +183,25 @@ public class CSharpEmitter
         sb.AppendLine($"{indent}public partial struct {typeName}");
         sb.AppendLine($"{indent}{{");
         
-        if (type.Members.Count > 0)
+        // Emit Discriminator
+        // Use declared discriminator type from JSON or default to int/long?
+        // IDL default is usually long if not specified, but JSON has it.
+        string discType = "int"; // fallback
+        if (!string.IsNullOrEmpty(type.Discriminator))
         {
-            // Discriminator is always first
-            var disc = type.Members[0];
-            var (discType, _, _, _) = _typeMapper.MapMember(disc);
-            
-            sb.AppendLine($"{indent}    [DdsDiscriminator]");
-            sb.AppendLine($"{indent}    public {discType} {ToPascalCase(disc.Name)};");
-            
-            foreach (var member in type.Members.Skip(1))
-            {
-                EmitUnionMember(sb, member, indent + "    ");
-            }
+             try { discType = _typeMapper.MapPrimitive(type.Discriminator); }
+             catch { discType = _typeMapper.GetCSharpNamespace(type.Discriminator); }
+        }
+
+        sb.AppendLine($"{indent}    [DdsDiscriminator]");
+        sb.AppendLine($"{indent}    public {discType} _d;");
+
+        // Emit members
+        foreach (var member in type.Members)
+        {
+            // Skip if idlc includes _d (it usually doesn't in modern versions but check)
+            if (member.Name == "_d") continue;
+            EmitUnionMember(sb, member, indent + "    ");
         }
 
         sb.AppendLine($"{indent}}}");

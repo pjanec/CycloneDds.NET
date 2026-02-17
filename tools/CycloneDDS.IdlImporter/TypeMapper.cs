@@ -38,14 +38,29 @@ public class TypeMapper
     };
 
     private readonly Dictionary<string, string> _flattenedToScoped = new();
+    private readonly Dictionary<string, string> _typedefMapping = new();
 
-    public void RegisterType(string scopedName)
+    public void RegisterType(JsonTypeDefinition type)
     {
+        string scopedName = type.Name;
+        
         // Geom::Point -> Geom_Point
         // We want to map Geom_Point -> Geom.Point in C#
         string flattened = scopedName.Replace("::", "_");
         string csName = scopedName.Replace("::", ".");
         _flattenedToScoped[flattened] = csName;
+
+        // Register typedefs/aliases
+        if (type.Kind == "alias" || type.Kind == "typedef")
+        {
+            if (!string.IsNullOrEmpty(type.Type))
+            {
+                // Map the alias name to the target type name
+                // e.g. "CommonLib::Point2D" -> "CommonLib::Point"
+                // The target type will be resolved recursively
+                _typedefMapping[scopedName] = type.Type;
+            }
+        }
     }
 
     /// <summary>
@@ -139,6 +154,15 @@ public class TypeMapper
 
     private string MapPrimitiveOrUserType(string idlType)
     {
+        // Recursively resolve typedef/aliases
+        int maxDepth = 10;
+        int depth = 0;
+        while (_typedefMapping.TryGetValue(idlType, out var baseType) && depth < maxDepth)
+        {
+            idlType = baseType;
+            depth++;
+        }
+
         // Handle idlc implicit sequence type names (e.g. dds_sequence_long)
         while (idlType.StartsWith("dds_sequence_"))
         {

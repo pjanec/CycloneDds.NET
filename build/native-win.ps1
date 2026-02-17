@@ -44,7 +44,7 @@ Push-Location $BuildDir
 try {
     # Using Visual Studio generator for x64
     # -DBUILD_IDLC=ON is required to build changes to IDL compiler
-    cmake -S $SourceDir -B . -G "Visual Studio 17 2022" -A x64 `
+    cmake -S $SourceDir -B . -G "Visual Studio 18 2026" -T v143 -A x64 `
         -DCMAKE_INSTALL_PREFIX="$InstallDir" `
         -DBUILD_IDLC=ON `
         -DBUILD_TESTING=OFF `

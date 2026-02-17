@@ -122,7 +122,7 @@ public class Importer
             // Register all types (even excluded ones) so we can resolve references to them
             foreach (var t in allTypes)
             {
-                typeMapper.RegisterType(t.Name);
+                typeMapper.RegisterType(t);
             }
 
             var emitter = new CSharpEmitter(typeMapper);
