@@ -189,7 +189,8 @@ public class Importer
              var parser = new IdlJsonParser();
              var types = parser.Parse(jsonFile);
              
-             UnflattenTypes(types);
+             var extraScopes = ParseScopesFromIdl(idlPath);
+             UnflattenTypes(types, extraScopes);
 
              _typeCache[idlPath] = types;
              return types;
@@ -203,10 +204,10 @@ public class Importer
         }
     }
 
-    private void UnflattenTypes(List<JsonTypeDefinition> types)
+    private void UnflattenTypes(List<JsonTypeDefinition> types, List<string> extraScopes)
     {
         // 1. Collect scopes from explicitly scoped types (e.g. "Module::Struct")
-        var scopes = new HashSet<string>();
+        var scopes = new HashSet<string>(extraScopes);
         foreach (var t in types)
         {
              if (t.Name.Contains("::"))
@@ -222,6 +223,9 @@ public class Importer
              }
         }
         
+        // Sort scopes by length descending to match deepest/longest scopes first
+        var sortedScopes = scopes.OrderByDescending(s => s.Length).ToList();
+
         // 2. Build mapping of valid Flattened -> Scoped names
         // e.g. "CommonLib_Point" -> "CommonLib::Point"
         var flattenedToScoped = new Dictionary<string, string>();
@@ -239,22 +243,35 @@ public class Importer
         // 3. Fix Type Definitions
         foreach (var t in types)
         {
-             // Fix Name: If implicit flattened name (e.g. "CommonLib_Color")
-             if (!t.Name.Contains("::") && t.Name.Contains("_"))
+             string flatName = t.Name.Replace("::", "_");
+             
+             // Try to find a matching scope prefix
+             foreach(var scope in sortedScopes) 
              {
-                 foreach(var scope in scopes) 
+                 string prefix = scope.Replace("::", "_") + "_";
+                 
+                 // Check if it matches the prefix
+                 if (flatName.StartsWith(prefix) && flatName.Length > prefix.Length) 
                  {
-                     string prefix = scope.Replace("::", "_") + "_";
-                     if (t.Name.StartsWith(prefix)) 
+                     string rest = flatName.Substring(prefix.Length);
+                     // Heuristic: The rest should not start with an underscore implies cleaner match?
+                     // actually prefix includes the trailing underscore.
+                     
+                     string newName = scope + "::" + rest;
+                     
+                     // Determine if we should apply this new name
+                     // We apply if:
+                     // 1. The original name was fully flattened (no ::)
+                     // 2. The new name has MORE structure (more ::) than the original
+                     
+                     int oldColons = t.Name.Split(new[] { "::" }, StringSplitOptions.None).Length - 1;
+                     int newColons = newName.Split(new[] { "::" }, StringSplitOptions.None).Length - 1;
+                     
+                     if (newColons > oldColons || !t.Name.Contains("::"))
                      {
-                         string rest = t.Name.Substring(prefix.Length);
-                         // Check implies it's not just a partial match of a longer word?
-                         // e.g. Scope="A", Name="A_B". Rest="B". Valid.
-                         
-                         string newName = scope + "::" + rest;
                          t.Name = newName;
-                         flattenedToScoped[t.Name.Replace("::", "_")] = newName;
-                         break; 
+                         flattenedToScoped[flatName] = newName;
+                         break; // match found (longest because sortedScopes is desc)
                      }
                  }
              }
@@ -263,12 +280,12 @@ public class Importer
         // 4. Fix References (Type, Discriminator, Members)
         foreach (var t in types)
         {
-             if (t.Type != null && flattenedToScoped.TryGetValue(t.Type, out var scopedAlias)) 
+             if (t.Type != null && flattenedToScoped.TryGetValue(t.Type.Replace("::", "_"), out var scopedAlias)) 
              {
                  t.Type = scopedAlias;
              }
              
-             if (t.Discriminator != null && flattenedToScoped.TryGetValue(t.Discriminator, out var scopedDisc)) 
+             if (t.Discriminator != null && flattenedToScoped.TryGetValue(t.Discriminator.Replace("::", "_"), out var scopedDisc)) 
              {
                  t.Discriminator = scopedDisc;
              }
@@ -297,6 +314,68 @@ public class Importer
                  }
              }
         }
+    }
+
+    private List<string> ParseScopesFromIdl(string idlPath)
+    {
+        var scopes = new List<string>();
+        if (!File.Exists(idlPath)) return scopes;
+
+        string content = File.ReadAllText(idlPath);
+        
+        // Remove comments block and line
+        string noComments = Regex.Replace(content, @"//.*", "");
+        noComments = Regex.Replace(noComments, @"/\*[\s\S]*?\*/", "");
+
+        // Split by whitespace and braces/semicolons to get tokens
+        string[] rawTokens = Regex.Split(noComments, @"(\s+|{|}|;)");
+        var tokens = rawTokens.Where(t => !string.IsNullOrWhiteSpace(t)).ToArray();
+
+        var stack = new Stack<(string Name, int Depth)>();
+        int depth = 0;
+        
+        for (int i = 0; i < tokens.Length; i++)
+        {
+            string t = tokens[i];
+            if (t == "{")
+            {
+                depth++;
+            }
+            else if (t == "}")
+            {
+                if (stack.Count > 0 && stack.Peek().Depth == depth)
+                {
+                    stack.Pop();
+                }
+                depth--;
+            }
+            else if (t == "module")
+            {
+                if (i + 1 < tokens.Length)
+                {
+                    string name = tokens[i+1];
+                    // Check if followed by { (eventually)
+                    // We assume valid IDL so next meaningful token is Name, then {
+                    // But wait, if tokenizer stripped whitespace, tokens[i+2] MUST be {
+                    if (i+2 < tokens.Length && tokens[i+2] == "{")
+                    {
+                        // Found module Name {
+                        // Push (Name, depth + 1) because the scope starts INSIDE the braces
+                        stack.Push((name, depth + 1));
+                        
+                        // Add to Found Scopes
+                        var currentPath = string.Join("::", stack.Select(x => x.Name).Reverse());
+                        scopes.Add(currentPath);
+                        
+                        // Skip name token
+                        i++; 
+                        // Next token is {, handled in next loop iteration which will inc depth
+                    }
+                }
+            }
+        }
+        
+        return scopes;
     }
 
     private void FixMemberType(JsonMember m, Dictionary<string, string> mapping)
