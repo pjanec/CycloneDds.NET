@@ -74,7 +74,7 @@ module Geom {
             
             string shapeContent = File.ReadAllText(Path.Combine(_outputRoot, "Shape.cs"));
             Assert.Contains("public partial struct Shape", shapeContent);
-            Assert.Contains("public Geom.Point Center;", shapeContent); // PascalCase + Namespaced type
+            Assert.Contains("public Geom.Point center;", shapeContent); // Original case retained + Namespaced type
         }
         
         [Fact]

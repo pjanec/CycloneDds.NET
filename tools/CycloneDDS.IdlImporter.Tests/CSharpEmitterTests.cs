@@ -9,7 +9,7 @@ namespace CycloneDDS.IdlImporter.Tests
     public class CSharpEmitterTests
     {
         [Fact]
-        public void GenerateCSharp_GeneratesSimpleStruct_WithPascalCaseFields()
+        public void GenerateCSharp_GeneratesSimpleStruct_RetainsFieldCase()
         {
             // Arrange
             var types = new List<JsonTypeDefinition>
@@ -38,7 +38,7 @@ namespace CycloneDDS.IdlImporter.Tests
                 
                 Assert.Contains("namespace Module", content); // Converted namespace
                 Assert.Contains("public partial struct MyStruct", content);
-                Assert.Contains("public int MyField;", content); // PascalCase verification
+                Assert.Contains("public int my_field;", content); // Case retention verification
                 Assert.Contains("[DdsStruct]", content);
             }
             finally
@@ -48,7 +48,7 @@ namespace CycloneDDS.IdlImporter.Tests
         }
 
         [Fact]
-        public void GenerateCSharp_GeneratesEnum_WithPascalCaseMembers()
+        public void GenerateCSharp_GeneratesEnum_RetainsMemberCase()
         {
             // Arrange
             var types = new List<JsonTypeDefinition>
@@ -76,8 +76,8 @@ namespace CycloneDDS.IdlImporter.Tests
                 
                 // Assert
                 Assert.Contains("public enum Colors : int", content);
-                Assert.Contains("RedColor = 0", content); 
-                Assert.Contains("GreenColor = 1", content); 
+                Assert.Contains("RED_COLOR = 0", content); 
+                Assert.Contains("green_color = 1", content); 
             }
             finally
             {
@@ -112,9 +112,9 @@ namespace CycloneDDS.IdlImporter.Tests
                 emitter.GenerateCSharp(types, "primitives.idl", tempFile);
                 string content = File.ReadAllText(tempFile);
                 
-                Assert.Contains("public int F1;", content);
-                Assert.Contains("public uint F2;", content);
-                Assert.Contains("public bool F3;", content);
+                Assert.Contains("public int f1;", content);
+                Assert.Contains("public uint f2;", content);
+                Assert.Contains("public bool f3;", content);
             }
             finally
             {
@@ -149,7 +149,7 @@ namespace CycloneDDS.IdlImporter.Tests
                 var output = File.ReadAllText(tempFile);
                 
                 Assert.Contains("[DdsManaged]", output);
-                Assert.Contains("public List<int> Values;", output);
+                Assert.Contains("public List<int> values;", output);
             } finally { if(File.Exists(tempFile)) File.Delete(tempFile); }
         }
 
@@ -182,7 +182,7 @@ namespace CycloneDDS.IdlImporter.Tests
                 
                 Assert.Contains("[MaxLength(10)]", output);
                 Assert.Contains("[DdsManaged]", output);
-                Assert.Contains("public List<int> Values;", output);
+                Assert.Contains("public List<int> values;", output);
             } finally { if(File.Exists(tempFile)) File.Delete(tempFile); }
         }
 
@@ -215,7 +215,7 @@ namespace CycloneDDS.IdlImporter.Tests
                 
                 Assert.Contains("[ArrayLength(5)]", output);
                 Assert.Contains("[DdsManaged]", output);
-                Assert.Contains("public double[] Matrix;", output);
+                Assert.Contains("public double[] matrix;", output);
             } finally { if(File.Exists(tempFile)) File.Delete(tempFile); }
         }
 
@@ -252,14 +252,14 @@ namespace CycloneDDS.IdlImporter.Tests
                 Assert.Contains("public int _d;", output);
                 
                 Assert.Contains("[DdsCase(0)]", output);
-                Assert.Contains("public int IntVal;", output);
+                Assert.Contains("public int int_val;", output);
                 
                 Assert.Contains("[DdsCase(1)]", output);
                 Assert.Contains("[DdsManaged]", output);
-                Assert.Contains("public string StrVal;", output);
+                Assert.Contains("public string str_val;", output);
                 
                 Assert.Contains("[DdsDefaultCase]", output);
-                Assert.Contains("public double DefVal;", output);
+                Assert.Contains("public double def_val;", output);
             } 
             finally 
             { 
@@ -296,8 +296,8 @@ namespace CycloneDDS.IdlImporter.Tests
                 
                 // Assert
                 Assert.Contains("[DdsOptional]", content);
-                Assert.Contains("public int? OptLong;", content);
-                Assert.Contains("public string OptStr;", content);
+                Assert.Contains("public int? opt_long;", content);
+                Assert.Contains("public string opt_str;", content);
             }
             finally
             {
@@ -336,6 +336,125 @@ namespace CycloneDDS.IdlImporter.Tests
                 // Assert
                 Assert.Contains("[DdsId(1)]", content);
                 Assert.Contains("[DdsId(100)]", content);
+            }
+            finally
+            {
+                if (File.Exists(tempFile)) File.Delete(tempFile);
+            }
+        }
+
+        [Fact]
+        public void GenerateCSharp_RetainsMixedCaseFieldNames()
+        {
+            // Arrange – various casing styles that IDL authors use
+            var types = new List<JsonTypeDefinition>
+            {
+                new JsonTypeDefinition
+                {
+                    Name = "MixedCaseStruct",
+                    Kind = "struct",
+                    Members = new List<JsonMember>
+                    {
+                        new JsonMember { Name = "camelCaseField",    Type = "long" },
+                        new JsonMember { Name = "SCREAMING_SNAKE",   Type = "long" },
+                        new JsonMember { Name = "PascalAlready",     Type = "long" },
+                        new JsonMember { Name = "lower_snake_case",  Type = "long" },
+                        new JsonMember { Name = "mixedCamel_Snake",  Type = "long" }
+                    }
+                }
+            };
+
+            var emitter = new CSharpEmitter(new TypeMapper());
+            string tempFile = Path.GetTempFileName();
+
+            try
+            {
+                emitter.GenerateCSharp(types, "mixed.idl", tempFile);
+                string content = File.ReadAllText(tempFile);
+
+                // Every name must appear exactly as declared – no PascalCase transformation
+                Assert.Contains("public int camelCaseField;",   content);
+                Assert.Contains("public int SCREAMING_SNAKE;",  content);
+                Assert.Contains("public int PascalAlready;",    content);
+                Assert.Contains("public int lower_snake_case;", content);
+                Assert.Contains("public int mixedCamel_Snake;", content);
+            }
+            finally
+            {
+                if (File.Exists(tempFile)) File.Delete(tempFile);
+            }
+        }
+
+        [Fact]
+        public void GenerateCSharp_UnionMembersRetainCase()
+        {
+            // Arrange
+            var types = new List<JsonTypeDefinition>
+            {
+                new JsonTypeDefinition
+                {
+                    Name = "CaseUnion",
+                    Kind = "union",
+                    Discriminator = "long",
+                    Members = new List<JsonMember>
+                    {
+                        new JsonMember { Name = "snake_value",   Type = "long",   Labels = new List<string> { "0" } },
+                        new JsonMember { Name = "camelValue",    Type = "double", Labels = new List<string> { "1" } },
+                        new JsonMember { Name = "UPPER_VALUE",   Type = "long",   Labels = new List<string> { "default" } }
+                    }
+                }
+            };
+
+            var emitter = new CSharpEmitter(new TypeMapper());
+            string tempFile = Path.GetTempFileName();
+
+            try
+            {
+                emitter.GenerateCSharp(types, "union.idl", tempFile);
+                string content = File.ReadAllText(tempFile);
+
+                Assert.Contains("public int snake_value;",  content);
+                Assert.Contains("public double camelValue;",content);
+                Assert.Contains("public int UPPER_VALUE;",  content);
+            }
+            finally
+            {
+                if (File.Exists(tempFile)) File.Delete(tempFile);
+            }
+        }
+
+        [Fact]
+        public void GenerateCSharp_SanitizesKeywords()
+        {
+            // Arrange
+            var types = new List<JsonTypeDefinition>
+            {
+                new JsonTypeDefinition
+                {
+                    Name = "KeywordStruct",
+                    Kind = "struct",
+                    Members = new List<JsonMember>
+                    {
+                        new JsonMember { Name = "class", Type = "long" },
+                        new JsonMember { Name = "int", Type = "long" },
+                        new JsonMember { Name = "virtual", Type = "boolean" }
+                    }
+                }
+            };
+            
+            var emitter = new CSharpEmitter(new TypeMapper());
+            string tempFile = Path.GetTempFileName();
+            
+            try
+            {
+                // Act
+                emitter.GenerateCSharp(types, "keywords.idl", tempFile);
+                string content = File.ReadAllText(tempFile);
+                
+                // Assert
+                Assert.Contains("public int @class;", content);
+                Assert.Contains("public int @int;", content);
+                Assert.Contains("public bool @virtual;", content);
             }
             finally
             {

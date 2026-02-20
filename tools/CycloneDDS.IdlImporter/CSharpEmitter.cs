@@ -256,7 +256,7 @@ public class CSharpEmitter
 
         if (isManaged) sb.AppendLine($"{indent}[DdsManaged]");
         
-        sb.AppendLine($"{indent}public {csType} {ToPascalCase(member.Name)};");
+        sb.AppendLine($"{indent}public {csType} {SanitizeName(member.Name)};");
     }
 
     private void EmitStruct(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
@@ -323,7 +323,7 @@ public class CSharpEmitter
 
         if (isManaged) sb.AppendLine($"{indent}[DdsManaged]");
         
-        sb.AppendLine($"{indent}public {csType} {ToPascalCase(member.Name)};");
+        sb.AppendLine($"{indent}public {csType} {SanitizeName(member.Name)};");
     }
 
     private void EmitEnum(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
@@ -336,33 +336,30 @@ public class CSharpEmitter
             var m = type.Members[i];
             string comma = (i < type.Members.Count - 1) ? "," : "";
             long val = m.Value ?? (m.Id ?? i);
-            sb.AppendLine($"{indent}    {ToPascalCase(m.Name)} = {val}{comma}");
+            sb.AppendLine($"{indent}    {SanitizeName(m.Name)} = {val}{comma}");
         }
 
         sb.AppendLine($"{indent}}}");
         sb.AppendLine();
     }
 
-    private string ToPascalCase(string name)
+    private static readonly HashSet<string> CSharpKeywords = new HashSet<string>
+    {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked",
+        "class", "const", "continue", "decimal", "default", "delegate", "do", "double", "else",
+        "enum", "event", "explicit", "extern", "false", "finally", "fixed", "float", "for",
+        "foreach", "goto", "if", "implicit", "in", "int", "interface", "internal", "is", "lock",
+        "long", "namespace", "new", "null", "object", "operator", "out", "override", "params",
+        "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short",
+        "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true",
+        "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "virtual",
+        "void", "volatile", "while"
+    };
+
+    private string SanitizeName(string name)
     {
         if (string.IsNullOrEmpty(name)) return name;
-        if (name == "_d") return "_d";
-
-        var parts = name.Split('_', StringSplitOptions.RemoveEmptyEntries);
-        var sb = new StringBuilder();
-        
-        foreach (var part in parts)
-        {
-            if (part.Length > 0)
-            {
-                sb.Append(char.ToUpper(part[0]));
-                if (part.Length > 1)
-                {
-                    sb.Append(part.Substring(1).ToLowerInvariant());
-                }
-            }
-        }
-        
-        return sb.ToString();
+        if (CSharpKeywords.Contains(name)) return "@" + name;
+        return name;
     }
 }

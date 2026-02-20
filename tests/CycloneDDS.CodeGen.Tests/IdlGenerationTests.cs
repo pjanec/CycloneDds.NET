@@ -286,7 +286,84 @@ namespace Math {
                 if (Directory.Exists(outputDir)) Directory.Delete(outputDir, true);
             }
         }
-    }
+
+        [Fact]
+        public void EmitIdl_StructFieldNames_RetainOriginalCase()
+        {
+            // C# fields may use any casing; the emitted IDL must preserve it exactly
+            var registry = new GlobalTypeRegistry();
+            var type = new TypeInfo { Name = "CaseStruct", Namespace = "Ns" };
+            type.Fields.Add(new FieldInfo { Name = "camelCaseField",   TypeName = "int" });
+            type.Fields.Add(new FieldInfo { Name = "SCREAMING_SNAKE",  TypeName = "int" });
+            type.Fields.Add(new FieldInfo { Name = "PascalAlready",    TypeName = "int" });
+            type.Fields.Add(new FieldInfo { Name = "lower_snake_case", TypeName = "int" });
+            registry.RegisterLocal(type, "src.cs", "CaseFile", "Ns");
+
+            var outputDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            Directory.CreateDirectory(outputDir);
+            try
+            {
+                new IdlEmitter().EmitIdlFiles(registry, outputDir);
+                var content = File.ReadAllText(Path.Combine(outputDir, "CaseFile.idl"));
+
+                // Each name must appear verbatim – no camelCase lowercasing
+                Assert.Contains("camelCaseField",   content);
+                Assert.Contains("SCREAMING_SNAKE",  content);
+                Assert.Contains("PascalAlready",    content);
+                Assert.Contains("lower_snake_case", content);
+
+                // The first character of PascalAlready must NOT be lowercased
+                Assert.DoesNotContain("pascalAlready", content);
+                // SCREAMING_SNAKE must not have its first char lowercased
+                Assert.DoesNotContain("sCREAMING_SNAKE", content);
+            }
+            finally
+            {
+                if (Directory.Exists(outputDir)) Directory.Delete(outputDir, true);
+            }
+        }
+
+        [Fact]
+        public void EmitIdl_UnionBranchNames_RetainOriginalCase()
+        {
+            // Union branch member names must also retain original casing
+            var registry = new GlobalTypeRegistry();
+            var type = new TypeInfo { Name = "CaseUnion", Namespace = "Ns" };
+            type.Attributes.Add(new AttributeInfo { Name = "DdsUnion" });
+
+            var disc = new FieldInfo { Name = "_d", TypeName = "int" };
+            disc.Attributes.Add(new AttributeInfo { Name = "DdsDiscriminator" });
+            type.Fields.Add(disc);
+
+            var caseField = new FieldInfo { Name = "MyValue", TypeName = "int" };
+            var caseAttr = new AttributeInfo { Name = "DdsCase" };
+            caseAttr.Arguments.Add(0);
+            caseField.Attributes.Add(caseAttr);
+            type.Fields.Add(caseField);
+
+            var defaultField = new FieldInfo { Name = "OtherValue", TypeName = "int" };
+            defaultField.Attributes.Add(new AttributeInfo { Name = "DdsDefaultCase" });
+            type.Fields.Add(defaultField);
+
+            registry.RegisterLocal(type, "src.cs", "UnionFile", "Ns");
+
+            var outputDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            Directory.CreateDirectory(outputDir);
+            try
+            {
+                new IdlEmitter().EmitIdlFiles(registry, outputDir);
+                var content = File.ReadAllText(Path.Combine(outputDir, "UnionFile.idl"));
+
+                Assert.Contains("MyValue",    content);
+                Assert.Contains("OtherValue", content);
+
+                // Must NOT be lowercased by ToCamelCase
+                Assert.DoesNotContain("myValue",    content);
+                Assert.DoesNotContain("otherValue", content);
+            }
+            finally
+            {
+                if (Directory.Exists(outputDir)) Directory.Delete(outputDir, true);
+            }
+        }    }
 }
-
-

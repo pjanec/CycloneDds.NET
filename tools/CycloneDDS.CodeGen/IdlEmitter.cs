@@ -318,7 +318,7 @@ namespace CycloneDDS.CodeGen
                 if (field.HasAttribute("DdsOptional"))
                     annotations += "@optional ";
                 
-                sb.AppendLine($"{fieldIndent}{annotations}{idlType} {ToCamelCase(field.Name)}{suffix};");
+                sb.AppendLine($"{fieldIndent}{annotations}{idlType} {field.Name}{suffix};");
             }
             
             sb.AppendLine($"{indent}}};");
@@ -414,7 +414,7 @@ namespace CycloneDDS.CodeGen
                 }
 
                 var (idlType, suffix) = MapType(field);
-                sb.AppendLine($"{fieldIndent}    {idlType} {ToCamelCase(field.Name)}{suffix};");
+                sb.AppendLine($"{fieldIndent}    {idlType} {field.Name}{suffix};");
             }
             sb.AppendLine($"{indent}}};");
         }
