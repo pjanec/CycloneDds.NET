@@ -18,6 +18,7 @@ public class Importer
     private readonly Queue<string> _workQueue = new();
     private readonly bool _verbose;
     private readonly string? _idlcPath;
+    private readonly string? _idlcExtraArgs;
     
     private string _sourceRoot = string.Empty;
     private string _outputRoot = string.Empty;
@@ -25,10 +26,11 @@ public class Importer
     // Cache idlc output: path -> types
     private readonly Dictionary<string, List<JsonTypeDefinition>> _typeCache = new();
 
-    public Importer(bool verbose = false, string? idlcPath = null)
+    public Importer(bool verbose = false, string? idlcPath = null, string? idlcExtraArgs = null)
     {
         _verbose = verbose;
         _idlcPath = idlcPath;
+        _idlcExtraArgs = idlcExtraArgs;
     }
 
     /// <summary>
@@ -160,7 +162,11 @@ public class Importer
             return cached;
         }
 
-        var runner = new IdlcRunner { IdlcPathOverride = _idlcPath };
+        var runner = new IdlcRunner 
+        { 
+            IdlcPathOverride = _idlcPath,
+            IdlcExtraArgs = _idlcExtraArgs 
+        };
         // Use a simple random temp dir to avoid conflicts
         string tempDir = Path.Combine(Path.GetTempPath(), "CycloneDDS_Import_" + Guid.NewGuid());
         

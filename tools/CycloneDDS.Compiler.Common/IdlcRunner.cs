@@ -7,6 +7,7 @@ namespace CycloneDDS.Compiler.Common
     public class IdlcRunner
     {
         public string? IdlcPathOverride { get; set; }
+        public string? IdlcExtraArgs { get; set; }
 
         public string FindIdlc()
         {
@@ -94,12 +95,35 @@ namespace CycloneDDS.Compiler.Common
             var startInfo = new ProcessStartInfo
             {
                 FileName = idlcPath,
-                Arguments = GetArguments(idlFilePath, outputDir, includePath),
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            
+            if (!string.IsNullOrWhiteSpace(IdlcExtraArgs))
+            {
+                // Simple split by whitespace is sufficient for most compiler flags like "-Werror"
+                // But if they have spaces inside quotes, this simple split would break. 
+                // System.CommandLine parsing is better handled by caller, so we assume caller provides simple args
+                foreach(var arg in IdlcExtraArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    startInfo.ArgumentList.Add(arg);
+                }
+            }
+
+            startInfo.ArgumentList.Add("-l");
+            startInfo.ArgumentList.Add("json");
+            startInfo.ArgumentList.Add("-o");
+            startInfo.ArgumentList.Add(outputDir);
+            
+            if (!string.IsNullOrEmpty(includePath))
+            {
+                startInfo.ArgumentList.Add("-I");
+                startInfo.ArgumentList.Add(includePath);
+            }
+            
+            startInfo.ArgumentList.Add(idlFilePath);
             
             using var process = Process.Start(startInfo);
             if (process == null)

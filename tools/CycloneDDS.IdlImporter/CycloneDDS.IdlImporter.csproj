@@ -25,4 +25,10 @@
     <!-- For now, will need to link or reference CodeGen project for IdlcRunner and JsonModels -->
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="CycloneDDS.IdlImporter.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

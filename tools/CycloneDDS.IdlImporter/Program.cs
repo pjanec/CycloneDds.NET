@@ -29,6 +29,10 @@ public class Program
             name: "--idlc-path",
             description: "Path to idlc executable (default: auto-detect)");
 
+        var idlcArgsOption = new Option<string?>(
+            name: "--idlc-args",
+            description: "Extra arguments to pass to idlc");
+
         var verboseOption = new Option<bool>(
             name: "--verbose",
             description: "Enable detailed logging");
@@ -39,11 +43,12 @@ public class Program
             sourceRootOption,
             outputRootOption,
             idlcPathOption,
+            idlcArgsOption,
             verboseOption
         };
 
         rootCommand.SetHandler(
-            async (masterIdl, sourceRoot, outputRoot, idlcPath, verbose) =>
+            async (masterIdl, sourceRoot, outputRoot, idlcPath, idlcArgs, verbose) =>
             {
                 // Default logic
                 if (string.IsNullOrEmpty(sourceRoot))
@@ -58,7 +63,7 @@ public class Program
 
                 try
                 {
-                    await RunImporter(masterIdl, sourceRoot, outputRoot, idlcPath, verbose);
+                    await RunImporter(masterIdl, sourceRoot, outputRoot, idlcPath, idlcArgs, verbose);
                 }
                 catch (Exception ex)
                 {
@@ -74,7 +79,7 @@ public class Program
                     Environment.Exit(1);
                 }
             },
-            masterIdlArg, sourceRootOption, outputRootOption, idlcPathOption, verboseOption);
+            masterIdlArg, sourceRootOption, outputRootOption, idlcPathOption, idlcArgsOption, verboseOption);
 
         return await rootCommand.InvokeAsync(args);
     }
@@ -84,6 +89,7 @@ public class Program
         string sourceRoot,
         string outputRoot,
         string? idlcPath,
+        string? idlcArgs,
         bool verbose)
     {
         // Validate arguments
@@ -115,6 +121,10 @@ public class Program
         {
             Console.WriteLine($"IDLC Path:    {idlcPath}");
         }
+        if (!string.IsNullOrEmpty(idlcArgs))
+        {
+            Console.WriteLine($"IDLC Args:    {idlcArgs}");
+        }
         Console.WriteLine();
 
         // Create output directory if it doesn't exist
@@ -123,7 +133,7 @@ public class Program
         // Run the Importer
         try 
         {
-            var importer = new Importer(verbose, idlcPath);
+            var importer = new Importer(verbose, idlcPath, idlcArgs);
             importer.Import(fullMasterPath, fullSourceRoot, fullOutputRoot);
         }
         catch (Exception)

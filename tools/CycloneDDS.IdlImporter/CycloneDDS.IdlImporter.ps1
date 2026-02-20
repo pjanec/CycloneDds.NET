@@ -24,7 +24,8 @@
 
 param(
     [string]$SourceRoot = ".",
-    [string]$OutputRoot = "."
+    [string]$OutputRoot = ".",
+    [string]$IdlcArgs = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,7 +71,11 @@ function Invoke-IdlImport {
 
         # Run the importer tool
         # passing the IDL file path, and the GLOBAL source-root and output-root
-        & $ImporterTool $masterIdl.FullName --source-root $SourceRoot --output-root $OutputRoot
+        if ($IdlcArgs) {
+            & $ImporterTool $masterIdl.FullName --source-root $SourceRoot --output-root $OutputRoot --idlc-args $IdlcArgs
+        } else {
+            & $ImporterTool $masterIdl.FullName --source-root $SourceRoot --output-root $OutputRoot
+        }
 
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error: Import failed for $($masterIdl.FullName) with exit code $LASTEXITCODE" -ForegroundColor Red
