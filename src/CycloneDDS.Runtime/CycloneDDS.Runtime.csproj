@@ -49,6 +49,7 @@
     <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\CycloneDDS.IdlImporter.deps.json" Pack="true" PackagePath="tools/" />
     <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\CycloneDDS.IdlImporter.runtimeconfig.json" Pack="true" PackagePath="tools/" />
     <None Include="..\..\tools\CycloneDDS.IdlImporter\bin\$(Configuration)\net8.0\System.CommandLine.dll" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\tools\CycloneDDS.IdlImporter\CycloneDDS.IdlImporter.ps1" Pack="true" PackagePath="tools/" />
   </ItemGroup>
 
   <ItemGroup>
