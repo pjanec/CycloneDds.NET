@@ -54,16 +54,23 @@ try {
         "Visual Studio 15 2017"
     )
 
+    $commonCmakeArgs = @(
+        "-S", "$SourceDir",
+        "-B", ".",
+        "-A", "x64",
+        "-DCMAKE_INSTALL_PREFIX=$InstallDir",
+        "-DBUILD_IDLC=ON",
+        "-DBUILD_TESTING=OFF",
+        "-DBUILD_EXAMPLES=OFF",
+        "-DENABLE_SSL=OFF",
+        "-DENABLE_SHM=OFF",
+        "-DENABLE_SECURITY=OFF"
+    )
+
     foreach ($gen in $cmakeGenerators) {
         Write-Host "  Trying CMake generator: $gen (x64)..." -ForegroundColor Gray
-        $cmakeOut = cmake -S $SourceDir -B . -G $gen -A x64 `
-            -DCMAKE_INSTALL_PREFIX="$InstallDir" `
-            -DBUILD_IDLC=ON `
-            -DBUILD_TESTING=OFF `
-            -DBUILD_EXAMPLES=OFF `
-            -DENABLE_SSL=OFF `
-            -DENABLE_SHM=OFF `
-            -DENABLE_SECURITY=OFF 2>&1
+        
+        $cmakeOut = cmake -G $gen @commonCmakeArgs 2>&1
 
         if ($LASTEXITCODE -eq 0) {
             $cmakeConfigured = $true
@@ -75,14 +82,8 @@ try {
 
     if (-not $cmakeConfigured) {
         Write-Host "  Falling back to default CMake generator with -A x64..." -ForegroundColor Yellow
-        $cmakeOut = cmake -S $SourceDir -B . -A x64 `
-            -DCMAKE_INSTALL_PREFIX="$InstallDir" `
-            -DBUILD_IDLC=ON `
-            -DBUILD_TESTING=OFF `
-            -DBUILD_EXAMPLES=OFF `
-            -DENABLE_SSL=OFF `
-            -DENABLE_SHM=OFF `
-            -DENABLE_SECURITY=OFF 2>&1
+        if (Test-Path "CMakeCache.txt") { Remove-Item "CMakeCache.txt" -Force }
+        $cmakeOut = cmake @commonCmakeArgs 2>&1
 
         if ($LASTEXITCODE -eq 0) {
             $cmakeConfigured = $true
@@ -93,14 +94,8 @@ try {
 
     if (-not $cmakeConfigured) {
         Write-Host "  Falling back to default CMake generator..." -ForegroundColor Yellow
-        $cmakeOut = cmake -S $SourceDir -B . `
-            -DCMAKE_INSTALL_PREFIX="$InstallDir" `
-            -DBUILD_IDLC=ON `
-            -DBUILD_TESTING=OFF `
-            -DBUILD_EXAMPLES=OFF `
-            -DENABLE_SSL=OFF `
-            -DENABLE_SHM=OFF `
-            -DENABLE_SECURITY=OFF 2>&1
+        if (Test-Path "CMakeCache.txt") { Remove-Item "CMakeCache.txt" -Force }
+        $cmakeOut = cmake @commonCmakeArgs 2>&1
 
         if ($LASTEXITCODE -eq 0) {
             $cmakeConfigured = $true
