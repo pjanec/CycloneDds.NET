@@ -18,6 +18,10 @@ It allows you to use existing IDL definitions from other systems (C++, Java, Pyt
 
 ## 🚀 Basic Usage
 
+The importer can be run either as a single-file CLI tool or as a recursive batch script.
+
+### Using the Single-File CLI
+
 ```bash
 CycloneDDS.IdlImporter <master-idl> <source-root> <output-root> [options]
 ```
@@ -35,6 +39,7 @@ CycloneDDS.IdlImporter <master-idl> <source-root> <output-root> [options]
 | Option | Description |
 | :--- | :--- |
 | `--idlc-path <path>` | Explicit path to the `idlc` executable. If omitted, the tool searches `PATH` and standard install locations. |
+| `--idlc-args <args>` | Extra arguments to pass directly to the underlying `idlc` compiler (e.g., `-f keylist -x appendable`). |
 | `--verbose` | Enable detailed logging of type mapping and file processing. |
 
 ### Example
@@ -50,7 +55,26 @@ CycloneDDS.IdlImporter <master-idl> <source-root> <output-root> [options]
 
 **Command:**
 ```bash
-CycloneDDS.IdlImporter src/idl/shapes.idl src/idl src/csharp_project/Generated
+CycloneDDS.IdlImporter src/idl/shapes.idl src/idl src/csharp_project/Generated --idlc-args "-I src/common_idl"
+```
+
+### Using the Recursive PowerShell Script
+
+For large workspaces containing multiple independent IDL packages, a helper script is included to automate discovery:
+
+```powershell
+.\CycloneDDS.IdlImporter.ps1 -SourceRoot <path> -OutputRoot <path> [-IdlcArgs <args>]
+```
+
+**Behavior:**
+1. Scans the `SourceRoot` recursively.
+2. When a folder with `.idl` files is found, it automatically identifies the "master" IDL (either the only IDL present, or the one matching the folder's name).
+3. Invokes the `CycloneDDS.IdlImporter.exe` on that master IDL.
+4. Stops recursing into subdirectories of that folder (treating it as a self-contained package root).
+
+**Example:**
+```powershell
+.\CycloneDDS.IdlImporter.ps1 -SourceRoot "D:\WORK\MyProject\Idl" -OutputRoot "D:\WORK\MyProject\Generated" -IdlcArgs "-DVERSION=2"
 ```
 
 ---

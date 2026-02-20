@@ -42,22 +42,81 @@ if (!(Get-Command cmake -ErrorAction SilentlyContinue)) {
 Write-Host "`n[1/3] Configuring CMake..." -ForegroundColor Yellow
 Push-Location $BuildDir
 try {
-    # Using Visual Studio generator for x64
     # -DBUILD_IDLC=ON is required to build changes to IDL compiler
-    cmake -S $SourceDir -B . -G "Visual Studio 18 2026" -T v143 -A x64 `
-        -DCMAKE_INSTALL_PREFIX="$InstallDir" `
-        -DBUILD_IDLC=ON `
-        -DBUILD_TESTING=OFF `
-        -DBUILD_EXAMPLES=OFF `
-        -DENABLE_SSL=OFF `
-        -DENABLE_SHM=OFF `
-        -DENABLE_SECURITY=OFF 
+    $cmakeConfigured = $false
+    $oldEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+
+    $cmakeGenerators = @(
+        "Visual Studio 18 2026",
+        "Visual Studio 17 2022",
+        "Visual Studio 16 2019",
+        "Visual Studio 15 2017"
+    )
+
+    foreach ($gen in $cmakeGenerators) {
+        Write-Host "  Trying CMake generator: $gen (x64)..." -ForegroundColor Gray
+        $cmakeOut = cmake -S $SourceDir -B . -G $gen -A x64 `
+            -DCMAKE_INSTALL_PREFIX="$InstallDir" `
+            -DBUILD_IDLC=ON `
+            -DBUILD_TESTING=OFF `
+            -DBUILD_EXAMPLES=OFF `
+            -DENABLE_SSL=OFF `
+            -DENABLE_SHM=OFF `
+            -DENABLE_SECURITY=OFF 2>&1
+
+        if ($LASTEXITCODE -eq 0) {
+            $cmakeConfigured = $true
+            Write-Host "  [+] Successfully configured using $gen" -ForegroundColor Green
+            $cmakeOut
+            break
+        }
+    }
+
+    if (-not $cmakeConfigured) {
+        Write-Host "  Falling back to default CMake generator with -A x64..." -ForegroundColor Yellow
+        $cmakeOut = cmake -S $SourceDir -B . -A x64 `
+            -DCMAKE_INSTALL_PREFIX="$InstallDir" `
+            -DBUILD_IDLC=ON `
+            -DBUILD_TESTING=OFF `
+            -DBUILD_EXAMPLES=OFF `
+            -DENABLE_SSL=OFF `
+            -DENABLE_SHM=OFF `
+            -DENABLE_SECURITY=OFF 2>&1
+
+        if ($LASTEXITCODE -eq 0) {
+            $cmakeConfigured = $true
+            Write-Host "  [+] Successfully configured using default generator (x64)" -ForegroundColor Green
+            $cmakeOut
+        }
+    }
+
+    if (-not $cmakeConfigured) {
+        Write-Host "  Falling back to default CMake generator..." -ForegroundColor Yellow
+        $cmakeOut = cmake -S $SourceDir -B . `
+            -DCMAKE_INSTALL_PREFIX="$InstallDir" `
+            -DBUILD_IDLC=ON `
+            -DBUILD_TESTING=OFF `
+            -DBUILD_EXAMPLES=OFF `
+            -DENABLE_SSL=OFF `
+            -DENABLE_SHM=OFF `
+            -DENABLE_SECURITY=OFF 2>&1
+
+        if ($LASTEXITCODE -eq 0) {
+            $cmakeConfigured = $true
+            Write-Host "  [+] Successfully configured using default generator" -ForegroundColor Green
+            $cmakeOut
+        } else {
+            $ErrorActionPreference = $oldEap
+            $cmakeOut | ForEach-Object { Write-Error $_.ToString() }
+            throw "CMake configuration failed."
+        }
+    }
 }
 finally {
+    $ErrorActionPreference = $oldEap
     Pop-Location
 }
-
-if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed." }
 
 # Build & Install
 Write-Host "`n[2/3] Building & Installing..." -ForegroundColor Yellow
@@ -74,16 +133,7 @@ $RequiredFiles = @(
     "idlc.exe",
     "cycloneddsidl.dll",
     "cycloneddsidlc.dll",
-    "cycloneddsidljson.dll", 
-    "ddsperf.exe",
-    "concrt140.dll",
-    "msvcp140.dll",
-    "msvcp140_1.dll", 
-    "msvcp140_2.dll",
-    "msvcp140_atomic_wait.dll",
-    "msvcp140_codecvt_ids.dll",
-    "vcruntime140.dll",
-    "vcruntime140_1.dll"
+    "cycloneddsidljson.dll"
 )
 
 # Copy required files from bin/
