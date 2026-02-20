@@ -169,7 +169,7 @@ namespace CycloneDDS.Compiler.Common.IdlJson
         /// Enum value (for enum members)
         /// </summary>
         [JsonPropertyName("Value")]
-        public int? Value { get; set; }
+        public long? Value { get; set; }
 
         /// <summary>
         /// Member Offset

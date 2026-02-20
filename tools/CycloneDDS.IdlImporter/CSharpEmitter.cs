@@ -335,7 +335,7 @@ public class CSharpEmitter
         {
             var m = type.Members[i];
             string comma = (i < type.Members.Count - 1) ? "," : "";
-            int val = m.Value ?? (m.Id ?? i);
+            long val = m.Value ?? (m.Id ?? i);
             sb.AppendLine($"{indent}    {ToPascalCase(m.Name)} = {val}{comma}");
         }
 
