@@ -201,6 +201,10 @@ public class Importer
              _typeCache[idlPath] = types;
              return types;
         }
+        catch( Exception ex )
+        {
+            throw;
+        }
         finally
         {
             if (Directory.Exists(tempDir))

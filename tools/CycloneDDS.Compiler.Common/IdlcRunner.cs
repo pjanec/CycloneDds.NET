@@ -131,10 +131,30 @@ namespace CycloneDDS.Compiler.Common
                 throw new Exception("Failed to start idlc process.");
             }
             
-            string stdout = process.StandardOutput.ReadToEnd();
-            string stderr = process.StandardError.ReadToEnd();
-            
+            var stdoutBuilder = new System.Text.StringBuilder();
+            var stderrBuilder = new System.Text.StringBuilder();
+
+            // 1. Subscribe to the events
+            process.OutputDataReceived += (sender, e) => 
+            {
+                if (e.Data != null) stdoutBuilder.AppendLine(e.Data);
+            };
+
+            process.ErrorDataReceived += (sender, e) => 
+            {
+                if (e.Data != null) stderrBuilder.AppendLine(e.Data);
+            };
+
+            // 2. Begin reading asynchronously
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            // 3. Wait for the process to finish
             process.WaitForExit();
+
+            // 4. Extract the final strings
+            string stdout = stdoutBuilder.ToString();
+            string stderr = stderrBuilder.ToString();
             
             return new IdlcResult
             {
