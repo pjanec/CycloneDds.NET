@@ -152,17 +152,17 @@ namespace CycloneDDS.CodeGen
              
              if (discriminator.TypeName == "bool" || discriminator.TypeName == "Boolean" || discriminator.TypeName == "System.Boolean")
              {
-                 sb.AppendLine($"            target._d = source.{ToPascalCase(discriminator.Name)} ? (byte)1 : (byte)0;");
+                 sb.AppendLine($"            target._d = source.{discriminator.Name} ? (byte)1 : (byte)0;");
              }
              else
              {
                  string castType = GetDiscriminatorCastType(discriminator.TypeName);
                  string castExpr = castType == "bool" ? "" : $"({castType})";
                  if (discriminator.Type != null && discriminator.Type.IsEnum) castExpr = "(int)";
-                 sb.AppendLine($"            target._d = {castExpr}source.{ToPascalCase(discriminator.Name)};");
+                 sb.AppendLine($"            target._d = {castExpr}source.{discriminator.Name};");
              }
              
-             sb.AppendLine($"            switch (source.{ToPascalCase(discriminator.Name)})");
+             sb.AppendLine($"            switch (source.{discriminator.Name})");
              sb.AppendLine("            {");
 
              foreach (var field in type.Fields)
@@ -210,7 +210,7 @@ namespace CycloneDDS.CodeGen
 
         private void EmitFieldMarshal(StringBuilder sb, FieldInfo field, TypeInfo parentType, string targetPrefix, string sourcePrefix)
         {
-             string sourceAccess = $"{sourcePrefix}.{ToPascalCase(field.Name)}";
+             string sourceAccess = $"{sourcePrefix}.{field.Name}";
              string targetAccess = $"{targetPrefix}.{field.Name}";
 
              if (IsOptional(field))
@@ -533,16 +533,16 @@ namespace CycloneDDS.CodeGen
              
              if (discriminator.TypeName == "bool" || discriminator.TypeName == "Boolean" || discriminator.TypeName == "System.Boolean")
              {
-                 sb.AppendLine($"            target.{ToPascalCase(discriminator.Name)} = source._d != 0;");
+                 sb.AppendLine($"            target.{discriminator.Name} = source._d != 0;");
              }
              else
              {
                  string castType = GetDiscriminatorCastType(discriminator.TypeName);
                  string castExpr = castType == "bool" ? "" : $"({castType})";
-                 sb.AppendLine($"            target.{ToPascalCase(discriminator.Name)} = {castExpr}source._d;");
+                 sb.AppendLine($"            target.{discriminator.Name} = {castExpr}source._d;");
              }
              
-             sb.AppendLine($"            switch (target.{ToPascalCase(discriminator.Name)})");
+             sb.AppendLine($"            switch (target.{discriminator.Name})");
              sb.AppendLine("            {");
 
              foreach (var field in type.Fields)
@@ -591,7 +591,7 @@ namespace CycloneDDS.CodeGen
         private void EmitFieldUnmarshal(StringBuilder sb, FieldInfo field, TypeInfo parentType, string targetPrefix, string sourcePrefix)
         {
              string sourceAccess = $"{sourcePrefix}.{field.Name}";
-             string targetAccess = $"{targetPrefix}.{ToPascalCase(field.Name)}";
+             string targetAccess = $"{targetPrefix}.{field.Name}";
 
              // Resolve TypeInfo if missing
              TypeInfo? fieldType = field.Type;
@@ -1007,16 +1007,10 @@ namespace CycloneDDS.CodeGen
              if (elementType == "System.DateTime" || elementType == "DateTime") return "long";
              
              // User type
-             return elementType + "_Native";
-        }
+               return elementType + "_Native";
+          }
 
-        private string ToPascalCase(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return name;
-            return char.ToUpper(name[0]) + name.Substring(1);
-        }
-
-        private int? GetMaxLength(FieldInfo field)
+          private int? GetMaxLength(FieldInfo field)
         {
             var attr = field.GetAttribute("MaxLength");
             if (attr != null && attr.Arguments.Count > 0)

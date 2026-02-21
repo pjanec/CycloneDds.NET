@@ -31,7 +31,7 @@ namespace CycloneDDS.CodeGen.Tests
             var registry = new GlobalTypeRegistry();
             var code = _emitter.EmitViewStruct(type, registry);
 
-            Assert.Contains("public unsafe ReadOnlySpan<double> Values", code);
+            Assert.Contains("public unsafe ReadOnlySpan<double> values", code);
             Assert.Contains("return new ReadOnlySpan<double>", code);
             Assert.Contains("(void*)_ptr->values.Buffer", code);
             Assert.Contains("(int)_ptr->values.Length", code);
@@ -56,9 +56,9 @@ namespace CycloneDDS.CodeGen.Tests
             
             var code = _emitter.EmitViewStruct(type, registry);
 
-            Assert.Contains("public int PointsCount", code);
+            Assert.Contains("public int pointsCount", code);
             Assert.Contains("_ptr->points.Length", code);
-            Assert.Contains("public unsafe Point3DView GetPoints(int index)", code);
+            Assert.Contains("public unsafe Point3DView Getpoints(int index)", code);
             Assert.Contains("Point3D_Native* arr = (Point3D_Native*)_ptr->points.Buffer", code);
             Assert.Contains("return new Point3DView(&arr[index])", code);
         }
@@ -77,9 +77,9 @@ namespace CycloneDDS.CodeGen.Tests
             var registry = new GlobalTypeRegistry();
             var code = _emitter.EmitViewStruct(type, registry);
 
-            Assert.Contains("public int MessagesCount", code);
-            Assert.Contains("public unsafe ReadOnlySpan<byte> GetMessagesRaw(int index)", code);
-            Assert.Contains("public unsafe string? GetMessages(int index)", code);
+            Assert.Contains("public int messagesCount", code);
+            Assert.Contains("public unsafe ReadOnlySpan<byte> GetmessagesRaw(int index)", code);
+            Assert.Contains("public unsafe string? Getmessages(int index)", code);
         }
         
         [Fact]
@@ -113,11 +113,11 @@ namespace CycloneDDS.CodeGen.Tests
             // In ViewEmitter, it checks type.Fields.Type property first.
             var code = _emitter.EmitViewStruct(type, registry);
 
-            Assert.Contains("public unsafe int MyUKind", code);
-            Assert.Contains("public unsafe int? MyUAsInt_val", code);
-            Assert.Contains("public unsafe double? MyUAsDbl_val", code);
+            Assert.Contains("public unsafe int myUKind", code);
+            Assert.Contains("public unsafe int? myUAsint_val", code);
+            Assert.Contains("public unsafe double? myUAsdbl_val", code);
             Assert.Contains("public TestType ToManaged()", code);
-            Assert.Contains("target.MyU = this.MyU.ToManaged();", code);
+            Assert.Contains("target.myU = this.myU.ToManaged();", code);
         }
     }
 }

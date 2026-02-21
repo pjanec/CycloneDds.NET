@@ -26,9 +26,9 @@ using var pointWriter = new DdsWriter<Point>(participant, pointTopicName);
 using var pointReader = new DdsReader<Point>(participant, pointTopicName);
 
 // Publish a sample
-var pointSample = new Point { X = 10, Y = 20 };
+var pointSample = new Point { x = 10, y = 20 };
 pointWriter.Write(pointSample);
-Console.WriteLine($"Sent Point: X={pointSample.X}, Y={pointSample.Y}");
+Console.WriteLine($"Sent Point: X={pointSample.x}, Y={pointSample.y}");
 
 // Receive the sample
 Task.Delay(100).Wait(); // Brief wait for discovery/传输
@@ -38,7 +38,7 @@ foreach (var sample in pointLoan)
     if (sample.IsValid)
     {
         var data = sample.Data;
-        Console.WriteLine($"Received Point: X={data.X}, Y={data.Y}");
+        Console.WriteLine($"Received Point: X={data.x}, Y={data.y}");
     }
 }
 
@@ -56,20 +56,20 @@ using var extendedReader = new DdsReader<ExtendedPoint>(participant, appTopicNam
 // Note: extended.BasePoint is a CommonLib.Point
 var extendedSample = new ExtendedPoint
 {
-    Id = 12345,
-    BasePoint = new Point { X = 100, Y = 200 }, 
-    Color = CommonLib.Color.Green, // From CommonLib enum (Scoped now!)
-    ExtraInfo = new Result 
+    id = 12345,
+    base_point = new Point { x = 100, y = 200 }, 
+    color = CommonLib.Color.GREEN, // From CommonLib enum (Scoped now!)
+    extra_info = new Result 
     { 
        _d = true, // Discriminator for Union
-       Value = new Point { X = 999, Y = 999 } 
+       value = new Point { x = 999, y = 999 } 
     },
     // Using List<string> for sequence<string>
-    Tags = new List<string> { "demo", "idl-import", "cyclonedds" }
+    tags = new List<string> { "demo", "idl-import", "cyclonedds" }
 };
 
 extendedWriter.Write(extendedSample);
-Console.WriteLine($"Sent ExtendedPoint: ID={extendedSample.Id}, Color={extendedSample.Color}");
+Console.WriteLine($"Sent ExtendedPoint: ID={extendedSample.id}, Color={extendedSample.color}");
 
 Task.Delay(100).Wait();
 
@@ -80,14 +80,14 @@ foreach (var sample in extendedLoan)
     {
         // Using managed read for convenience with lists/strings
         var data = sample.Data; 
-        Console.WriteLine($"Received ExtendedPoint: ID={data.Id}");
-        Console.WriteLine($"  Base Point: ({data.BasePoint.X}, {data.BasePoint.Y})");
-        Console.WriteLine($"  Color: {data.Color}");
-        Console.WriteLine($"  Tags: {string.Join(", ", data.Tags)}");
+        Console.WriteLine($"Received ExtendedPoint: ID={data.id}");
+        Console.WriteLine($"  Base Point: ({data.base_point.x}, {data.base_point.y})");
+        Console.WriteLine($"  Color: {data.color}");
+        Console.WriteLine($"  Tags: {string.Join(", ", data.tags)}");
         
-        if (data.ExtraInfo._d)
+        if (data.extra_info._d)
         {
-             Console.WriteLine($"  Extra Info (Point): ({data.ExtraInfo.Value.X}, {data.ExtraInfo.Value.Y})");
+             Console.WriteLine($"  Extra Info (Point): ({data.extra_info.value.x}, {data.extra_info.value.y})");
         }
     }
 }

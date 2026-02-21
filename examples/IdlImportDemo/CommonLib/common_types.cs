@@ -12,17 +12,17 @@ namespace CommonLib
 {
     public enum Color : int
     {
-        Red = 0,
-        Green = 1,
-        Blue = 2
+        RED = 0,
+        GREEN = 1,
+        BLUE = 2
     }
 
     [DdsStruct]
     [DdsExtensibility(DdsExtensibilityKind.Final)]
     public partial struct Point
     {
-        public int X;
-        public int Y;
+        public int x;
+        public int y;
     }
 
 }

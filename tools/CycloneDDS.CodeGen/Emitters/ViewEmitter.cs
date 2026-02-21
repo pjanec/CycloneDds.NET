@@ -109,23 +109,23 @@ namespace CycloneDDS.CodeGen.Emitters
             // Primitive
             if (IsPrimitive(field.TypeName, registry))
             {
-                sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {ToPascalCase(field.Name)} => _ptr->{nativeFieldName};");
+               sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {field.Name} => _ptr->{nativeFieldName};");
             }
             // Boolean
             else if (IsBool(field.TypeName, registry))
             {
-                sb.AppendLine($"{indent}public unsafe bool {ToPascalCase(field.Name)} => _ptr->{nativeFieldName} != 0;");
+               sb.AppendLine($"{indent}public unsafe bool {field.Name} => _ptr->{nativeFieldName} != 0;");
             }
             // Enum
             else if (IsEnum(field, registry))
             {
-                 sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {ToPascalCase(field.Name)} => ({resolvedTypeName})_ptr->{nativeFieldName};");
+                 sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {field.Name} => ({resolvedTypeName})_ptr->{nativeFieldName};");
             }
             // String (Scalar)
             else if (IsString(field.TypeName, registry))
             {
-                sb.AppendLine($"{indent}public unsafe ReadOnlySpan<byte> {ToPascalCase(field.Name)}Raw => DdsTextEncoding.GetSpanFromPtr((IntPtr)_ptr->{nativeFieldName});");
-                sb.AppendLine($"{indent}public unsafe string? {ToPascalCase(field.Name)} => DdsTextEncoding.FromNativeUtf8((IntPtr)_ptr->{nativeFieldName});");
+               sb.AppendLine($"{indent}public unsafe ReadOnlySpan<byte> {field.Name}Raw => DdsTextEncoding.GetSpanFromPtr((IntPtr)_ptr->{nativeFieldName});");
+               sb.AppendLine($"{indent}public unsafe string? {field.Name} => DdsTextEncoding.FromNativeUtf8((IntPtr)_ptr->{nativeFieldName});");
             }
             // Fixed Array
             else if (IsFixedArray(field))
@@ -142,12 +142,12 @@ namespace CycloneDDS.CodeGen.Emitters
             // System.Guid
             else if (field.TypeName == "System.Guid" || field.TypeName == "Guid")
             {
-                sb.AppendLine($"{indent}public unsafe System.Guid {ToPascalCase(field.Name)} => _ptr->{nativeFieldName}.ToManaged();");
+               sb.AppendLine($"{indent}public unsafe System.Guid {field.Name} => _ptr->{nativeFieldName}.ToManaged();");
             }
             // System.DateTime
             else if (field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
             {
-                sb.AppendLine($"{indent}public unsafe System.DateTime {ToPascalCase(field.Name)} => new System.DateTime(_ptr->{nativeFieldName}, System.DateTimeKind.Utc);");
+               sb.AppendLine($"{indent}public unsafe System.DateTime {field.Name} => new System.DateTime(_ptr->{nativeFieldName}, System.DateTimeKind.Utc);");
             }
             // Nested Struct
             else
@@ -179,7 +179,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 // Has to be a struct view
                 string viewName = $"{fullName}View";
                 string nativeType = $"{fullName}_Native";
-                sb.AppendLine($"{indent}public unsafe {viewName} {ToPascalCase(field.Name)} => new {viewName}(({nativeType}*)&_ptr->{nativeFieldName});");
+               sb.AppendLine($"{indent}public unsafe {viewName} {field.Name} => new {viewName}(({nativeType}*)&_ptr->{nativeFieldName});");
             }
         }
         
@@ -191,7 +191,7 @@ namespace CycloneDDS.CodeGen.Emitters
         private void EmitSequenceProperty(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry? registry, string nativeFieldName)
         {
             var elementType = GetSequenceElementType(field);
-            var propName = ToPascalCase(field.Name);
+            var propName = field.Name;
             
             if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
             {
@@ -337,7 +337,7 @@ namespace CycloneDDS.CodeGen.Emitters
 
         private void EmitUnionProperty(StringBuilder sb, TypeInfo unionType, string memberName, string indent, GlobalTypeRegistry registry)
         {
-            string propName = ToPascalCase(memberName);
+            string propName = memberName;
             string fieldName = memberName;
             
             var viewName = $"{unionType.FullName}View";
@@ -377,7 +377,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 var caseAttr = member.GetAttribute("DdsCase");
                 if (caseAttr == null) continue;
 
-                string caseName = ToPascalCase(member.Name);
+                string caseName = member.Name;
                 string caseType = member.TypeName;
                 string caseField = member.Name;
                 
@@ -497,7 +497,7 @@ namespace CycloneDDS.CodeGen.Emitters
 
         private void EmitFixedArrayProperty(StringBuilder sb, FieldInfo field, string indent, string nativeFieldName)
         {
-             string propName = ToPascalCase(field.Name);
+             string propName = field.Name;
              string elementType = GetElementType(field.TypeName);
              int? arrayLen = GetArrayLength(field);
              
@@ -542,7 +542,7 @@ namespace CycloneDDS.CodeGen.Emitters
             var discriminatorField = type.Fields.FirstOrDefault(f => f.HasAttribute("DdsDiscriminator"));
             if (discriminatorField == null) return;
 
-            var discProp = ToPascalCase(discriminatorField.Name);
+            var discProp = discriminatorField.Name;
             var discType = discriminatorField.TypeName; 
             var resolvedDiscType = registry != null ? ResolveType(discType, registry) : discType;
 
@@ -584,7 +584,7 @@ namespace CycloneDDS.CodeGen.Emitters
 
         private void GenerateToManagedFieldAssignment(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry? registry)
         {
-            var propName = ToPascalCase(field.Name);
+            var propName = field.Name;
             var targetProp = propName;
             
             if (IsOptional(field.TypeName))
@@ -749,12 +749,6 @@ namespace CycloneDDS.CodeGen.Emitters
              return typeName;
         }
 
-        private string ToPascalCase(string output)
-        {
-            if (string.IsNullOrEmpty(output)) return output;
-            return char.ToUpper(output[0]) + output.Substring(1);
-        }
-
         private bool IsOptional(string typeName)
         {
             return typeName.EndsWith("?") || typeName.StartsWith("System.Nullable<") || typeName.StartsWith("Nullable<");
@@ -777,7 +771,7 @@ namespace CycloneDDS.CodeGen.Emitters
         private void EmitOptionalProperty(StringBuilder sb, FieldInfo field, string indent, string nativeFieldName)
         {
             var baseType = GetBaseType(field.TypeName);
-            var propName = ToPascalCase(field.Name);
+            var propName = field.Name;
 
             if (IsPrimitive(baseType) || IsBool(baseType))
             {

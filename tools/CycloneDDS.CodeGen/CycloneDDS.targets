@@ -3,13 +3,16 @@
   <!-- 1. Copy IDL files from referenced assemblies -->
   <Target Name="CopyReferencedIdlFiles" DependsOnTargets="ResolveReferences">
      <ItemGroup>
-         <!-- Find .idl files in the references that are copied locally -->
-         <ReferencedIdlFiles Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.idl'" />
+         <ReferenceDirs Include="@(ReferencePath->'%(RootDir)%(Directory)')" />
+         <!-- Look for IDL files next to referenced assemblies -->
+         <PotentialIdlFiles Include="%(ReferenceDirs.Identity)*.idl" />
      </ItemGroup>
      
-     <Message Text="Copying referenced IDL files: @(ReferencedIdlFiles)" Importance="normal" />
+     <Message Text="Copying referenced IDL files from: @(ReferenceDirs)" Importance="normal" />
+     <Message Text="Found IDL files: @(PotentialIdlFiles)" Importance="normal" />
+     
      <!-- Copy them to the generation folder so the generator (and idlc) can find them -->
-     <Copy SourceFiles="@(ReferencedIdlFiles)" DestinationFolder="$(MSBuildProjectDirectory)\obj\Generated" SkipUnchangedFiles="true" />
+     <Copy SourceFiles="@(PotentialIdlFiles)" DestinationFolder="$(MSBuildProjectDirectory)\obj\Generated" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CycloneDDSCodeGen" BeforeTargets="CoreCompile" DependsOnTargets="CopyReferencedIdlFiles">
@@ -31,16 +34,17 @@
   </Target>
 
   <!-- 2. Include generated IDL files in the final build output -->
-  <Target Name="IncludeIdlFilesInOutput" AfterTargets="CycloneDDSCodeGen">
+  <Target Name="IncludeIdlFilesInOutput" BeforeTargets="GetCopyToOutputDirectoryItems;AssignTargetPaths" AfterTargets="CycloneDDSCodeGen">
      <ItemGroup>
          <GeneratedIdlFiles Include="$(MSBuildProjectDirectory)\obj\Generated\*.idl" />
      </ItemGroup>
      
      <ItemGroup>
-         <None Include="@(GeneratedIdlFiles)">
+         <Content Include="@(GeneratedIdlFiles)">
              <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
              <Visible>false</Visible>
-         </None>
+             <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+         </Content>
      </ItemGroup>
   </Target>
 

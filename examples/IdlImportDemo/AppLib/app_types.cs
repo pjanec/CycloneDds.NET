@@ -16,10 +16,10 @@ namespace AppLib
         [DdsDiscriminator]
         public bool _d;
         [DdsCase(1)]
-        public CommonLib.Point Value;
+        public CommonLib.Point value;
         [DdsCase(0)]
         [DdsManaged]
-        public string Msg;
+        public string msg;
     }
 
     [DdsTopic("AppLib::ExtendedPoint")]
@@ -27,12 +27,12 @@ namespace AppLib
     public partial struct ExtendedPoint
     {
         [DdsKey]
-        public int Id;
-        public CommonLib.Point BasePoint;
-        public CommonLib.Color Color;
-        public AppLib.Result ExtraInfo;
+        public int id;
+        public CommonLib.Point base_point;
+        public CommonLib.Color color;
+        public AppLib.Result extra_info;
         [DdsManaged]
-        public List<string> Tags;
+        public List<string> tags;
     }
 
 }
