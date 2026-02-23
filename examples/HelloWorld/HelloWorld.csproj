@@ -14,7 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CycloneDDS.NET" Version="0.1.*-*" />
+    <!-- "*-*" matches any version including pre-release (e.g. alpha/beta builds from local-artifacts) -->
+    <PackageReference Include="CycloneDDS.NET" Version="*-*" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,21 @@
+{
+  "solution": {
+    "path": "CycloneDDS.NET.sln",
+    "projects": [
+      "src\\CycloneDDS.Core\\CycloneDDS.Core.csproj",
+      "src\\CycloneDDS.Runtime\\CycloneDDS.Runtime.csproj",
+      "src\\CycloneDDS.Schema\\CycloneDDS.Schema.csproj",
+      "tools\\CycloneDDS.CodeGen\\CycloneDDS.CodeGen.csproj",
+      "tools\\CycloneDDS.Compiler.Common\\CycloneDDS.Compiler.Common.csproj",
+      "tools\\CycloneDDS.IdlImporter\\CycloneDDS.IdlImporter.csproj",
+      "tools\\CycloneDDS.IdlImporter.Tests\\CycloneDDS.IdlImporter.Tests.csproj",
+      "tools\\CycloneDDS.Compiler.Common.Tests\\CycloneDDS.Compiler.Common.Tests.csproj",
+      "tests\\CycloneDDS.Runtime.Tests\\CycloneDDS.Runtime.Tests.csproj",
+      "tests\\CycloneDDS.CodeGen.Tests\\CycloneDDS.CodeGen.Tests.csproj",
+      "tests\\CycloneDDS.Core.Tests\\CycloneDDS.Core.Tests.csproj",
+      "tests\\CycloneDDS.Schema.Tests\\CycloneDDS.Schema.Tests.csproj",
+      "tests\\CycloneDDS.Native.Verify\\CycloneDDS.Native.Verify.csproj",
+      "tests\\FeatureDemo.Tests\\FeatureDemo.Tests.csproj"
+    ]
+  }
+}
