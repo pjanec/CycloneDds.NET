@@ -31,7 +31,6 @@
     <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Core.pdb" Pack="true" PackagePath="tools/" />
     <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Schema.dll" Pack="true" PackagePath="tools/" />
     <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Schema.pdb" Pack="true" PackagePath="tools/" />
-    <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\Newtonsoft.Json.dll" Pack="true" PackagePath="tools/" />
 
     <!-- Tools: CodeGen -->
     <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.CodeGen.exe" Pack="true" PackagePath="tools/" />
@@ -72,7 +71,6 @@
     </PackageReference>
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.8.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
   <Target Name="GetNativeVersionInfo" BeforeTargets="GenerateNuspec;Pack">

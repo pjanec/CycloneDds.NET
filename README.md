@@ -70,6 +70,10 @@ If you want to build the project from source or contribute:
 - **Sender Tracking:** Identify the source application (Computer, PID, custom app id) of every message.
 - **Modern C#:** Events, Properties, and generic constraints instead of listeners and pointers.
 
+### 📡 Partitioning & Monitoring
+- **Partition Support:** Isolate traffic using DDS partitions. Set a partition on a participant once and every reader/writer inherits it automatically, or override per-reader/writer with a named argument.
+- **Zero-Allocation WaitSet:** Monitor 100+ readers on a single OS thread. `DdsWaitSet.Wait(Span<IDdsReader>, timeout, ct)` never allocates in the hot path and supports `CancellationToken` for instant, safe interruption.
+
 ---
 
 ## 1. Defining Data (The Schema)
@@ -347,7 +351,126 @@ writer.DisposeInstance(key);
 writer.UnregisterInstance(key);
 ```
 
-## 9. Legacy IDL Import
+## 9. Partitions
+
+DDS partitions let you divide a domain into named logical channels. Readers and writers only communicate within the same partition, making it easy to run multiple isolated subsystems on the same DDS domain (e.g. separate a monitoring plane from a control plane, or multiplex tenants).
+
+### Set a partition on the participant (inherited by all readers/writers)
+
+```csharp
+// All readers and writers created from this participant will use "monitoring" automatically.
+using var participant = new DdsParticipant(domainId: 0, defaultPartition: "monitoring");
+
+// Topic name comes from [DdsTopic("SensorData")] — no need to repeat it.
+using var reader = new DdsReader<SensorData>(participant);
+using var writer = new DdsWriter<SensorData>(participant);
+```
+
+### Override the partition per reader / writer
+
+```csharp
+using var participant = new DdsParticipant(0, defaultPartition: "*"); // wildcard default
+
+// This writer specifically targets the "control" partition.
+using var controlWriter = new DdsWriter<SensorData>(
+    participant, "SensorData", partition: "control");
+
+// This reader stays on the default "*" partition — sees everything.
+using var broadcastReader = new DdsReader<SensorData>(participant);
+```
+
+### Resolution order
+
+```
+per-reader / per-writer partition  →  participant.DefaultPartition  →  (no partition)
+```
+
+---
+
+## 10. WaitSet — Efficient Multi-Reader Monitoring
+
+`DdsWaitSet` provides a native-backed mechanism for sleeping on many readers simultaneously on **a single OS thread**. This is ideal for monitoring applications that track 100+ topics and do not want the overhead of spawning a background `Task` per reader.
+
+### Basic usage
+
+```csharp
+using var participant = new DdsParticipant(0, defaultPartition: "*");
+
+// Create readers for every topic you want to monitor
+using var tempReader    = new DdsReader<TemperatureEvent>(participant);
+using var pressReader   = new DdsReader<PressureEvent>(participant);
+using var statusReader  = new DdsReader<MachineStatus>(participant);
+
+// Create WaitSet and attach all readers
+using var waitset = new DdsWaitSet(participant);
+waitset.Attach(tempReader);
+waitset.Attach(pressReader);
+waitset.Attach(statusReader);
+
+// Pre-allocate result buffer once — no allocation inside the loop
+IDdsReader[] triggered = new IDdsReader[16];
+
+var cts = new CancellationTokenSource();
+
+while (!cts.IsCancellationRequested)
+{
+    // Blocks until at least one reader has data, or the timeout expires, or ct is cancelled.
+    // Zero allocation in this hot path.
+    int count = waitset.Wait(triggered.AsSpan(), timeout: TimeSpan.FromSeconds(1), cts.Token);
+
+    for (int i = 0; i < count; i++)
+    {
+        switch (triggered[i])
+        {
+            case DdsReader<TemperatureEvent> r:
+                using (var loan = r.Take()) { /* handle temp */ }
+                break;
+
+            case DdsReader<PressureEvent> r:
+                using (var loan = r.Take()) { /* handle pressure */ }
+                break;
+
+            case DdsReader<MachineStatus> r:
+                using (var loan = r.Take()) { /* handle status */ }
+                break;
+        }
+    }
+}
+```
+
+### Attach / Detach at runtime
+
+Readers can be added or removed while the WaitSet is not waiting, making the monitored set dynamic:
+
+```csharp
+// Start watching a new topic at runtime
+var newReader = new DdsReader<AlarmEvent>(participant);
+waitset.Attach(newReader);
+
+// Stop watching (and dispose the reader when no longer needed)
+waitset.Detach(newReader);
+newReader.Dispose();
+```
+
+### CancellationToken
+
+Pass a `CancellationToken` to `Wait` to interrupt the blocking native call safely from any thread:
+
+```csharp
+cts.Cancel(); // triggers the native guard condition, unblocks Wait() instantly
+```
+
+### Performance characteristics
+
+| Operation | Allocation | Notes |
+| :--- | :--- | :--- |
+| `Wait(...)` hot path | **0 Bytes** | `ArrayPool` rent inside; result written into caller's `Span` |
+| `Attach` / `Detach` | Small (one-time) | `GCHandle` + dictionary entry per reader |
+| Cancellation callback | **0 Bytes** | Triggers native guard condition via P/Invoke |
+
+---
+
+## 11. Legacy IDL Import
 
 If you have existing DDS systems defined in IDL, you can generate the corresponding C# DSL automatically.
 
@@ -396,6 +519,7 @@ The `CycloneDDS.NET` package bundles these internal components:
 | **Filtering** | **0 Bytes** | Manual loop filtering with Views |
 | **Sender Lookup** | **0 Bytes** | O(1) Dictionary Lookup |
 | **Async Wait** | ~80 Bytes | One Task per `await` cycle |
+| **WaitSet.Wait** | **0 Bytes** | Span output + ArrayPool rent; no heap in hot path |
 
 *Built for speed. Designed for developers.*
 

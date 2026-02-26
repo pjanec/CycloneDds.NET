@@ -74,22 +74,11 @@ namespace CycloneDDS.Runtime
             }
         }
 
-        public DdsWriter(DdsParticipant participant, IntPtr qos = default)
-            : this(participant, GetTopicNameFromAttribute(), qos)
+        public DdsWriter(DdsParticipant participant, string? topicName = null, IntPtr qos = default, string? partition = null)
         {
-        }
-
-        private static string GetTopicNameFromAttribute()
-        {
-            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
-            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
-            return attr.TopicName;
-        }
-
-        public DdsWriter(DdsParticipant participant, string topicName, IntPtr qos = default)
-        {
+            topicName ??= GetTopicNameFromAttribute();
             _participant = participant;
-            _topicName = topicName;
+            _topicName = topicName!;
             _publicationMatchedHandler = OnPublicationMatched;
 
             if (_nativeSizer == null || _nativeMarshaller == null)
@@ -129,6 +118,12 @@ namespace CycloneDDS.Runtime
 
             try
             {
+                string? activePartition = partition ?? participant.DefaultPartition;
+                if (!string.IsNullOrEmpty(activePartition))
+                {
+                    DdsApi.dds_qset_partition(actualQos, 1, new[] { activePartition });
+                }
+
                 // Set Data Representation and Encoding based on Extensibility
                 // We default to XCDR2 for all standard extensibility kinds (Final, Appendable, Mutable).
                 // XCDR2 limits alignment to 4 bytes, which ensures compatibility with Native CycloneDDS
@@ -175,6 +170,13 @@ namespace CycloneDDS.Runtime
             {
                 _participant.RegisterWriter();
             }
+        }
+
+        private static string GetTopicNameFromAttribute()
+        {
+            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
+            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
+            return attr.TopicName;
         }
 
         public void Write(in T sample)

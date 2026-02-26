@@ -10,6 +10,7 @@ namespace CycloneDDS.Runtime
     {
         private DdsEntityHandle? _handle;
         private readonly uint _domainId;
+        private readonly string? _defaultPartition;
         private bool _disposed;
         
         private readonly Dictionary<string, DdsApi.DdsEntity> _topicCache = new();
@@ -23,9 +24,10 @@ namespace CycloneDDS.Runtime
         private readonly object _trackingLock = new();
         internal SenderRegistry? _senderRegistry;
 
-        public DdsParticipant(uint domainId = 0)
+        public DdsParticipant(uint domainId = 0, string? defaultPartition = null)
         {
             _domainId = domainId;
+            _defaultPartition = defaultPartition;
             var entity = DdsApi.dds_create_participant(domainId, IntPtr.Zero, IntPtr.Zero);
 
             if (!entity.IsValid)
@@ -45,6 +47,8 @@ namespace CycloneDDS.Runtime
         }
 
         public uint DomainId => _domainId;
+
+        public string? DefaultPartition => _defaultPartition;
         
         public bool IsDisposed => _disposed;
 

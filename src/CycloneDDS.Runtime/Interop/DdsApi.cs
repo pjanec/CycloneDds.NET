@@ -373,6 +373,14 @@ namespace CycloneDDS.Runtime.Interop
         public const int DDS_RELIABILITY_BEST_EFFORT = 0;
         public const int DDS_RELIABILITY_RELIABLE = 1;
 
+        // Partition QoS
+        [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void dds_qset_partition(
+            IntPtr qos,
+            uint n,
+            [In, MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPStr)]
+            string[] parts);
+
         public const int DDS_HISTORY_KEEP_LAST = 0;
         public const int DDS_HISTORY_KEEP_ALL = 1;
 
@@ -473,6 +481,35 @@ namespace CycloneDDS.Runtime.Interop
         public const uint DDS_PUBLICATION_MATCHED_STATUS = (1u << 11);
         public const uint DDS_SUBSCRIPTION_MATCHED_STATUS = (1u << 12);
         
+        // WaitSet & Conditions
+        [DllImport(DLL_NAME)]
+        public static extern DdsEntity dds_create_waitset(DdsEntity participant);
+
+        [DllImport(DLL_NAME)]
+        public static extern DdsEntity dds_create_readcondition(DdsEntity reader, uint mask);
+
+        [DllImport(DLL_NAME)]
+        public static extern DdsEntity dds_create_guardcondition(DdsEntity participant);
+
+        // dds_set_guardcondition(entity, triggered=true) is the correct API in this build
+        [DllImport(DLL_NAME)]
+        public static extern int dds_set_guardcondition(DdsEntity guardcond, [MarshalAs(UnmanagedType.I1)] bool triggered);
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_waitset_attach(DdsEntity waitset, DdsEntity entity, IntPtr attach_arg);
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_waitset_detach(DdsEntity waitset, DdsEntity entity);
+
+        [DllImport(DLL_NAME)]
+        public static extern int dds_waitset_wait(
+            DdsEntity waitset,
+            [Out] IntPtr[] active_entities,
+            UIntPtr n_entities,
+            long reltimeout);
+
+        public const long DDS_INFINITY = 0x7FFFFFFFFFFFFFFF;
+
         // Cleanup
         [DllImport(DLL_NAME)]
         public static extern int dds_delete(DdsEntity entity);
