@@ -483,7 +483,7 @@ namespace CycloneDDS.Runtime.Interop
     /// Maps to native dds_guid_t (uint8_t v[16]).
     /// Used for O(1) participant/writer correlation.
     /// </summary>
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     [CycloneDDS.Schema.DdsStruct]
     public partial struct DdsGuid : IEquatable<DdsGuid>
     {
