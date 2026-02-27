@@ -239,7 +239,7 @@ namespace CycloneDDS.Compiler.Common.IdlJson
         public List<JsonKeyDescriptor> Keys { get; set; } = new();
 
         /// <summary>
-        /// XCDR2 serialization opcodes array
+        /// Serialization opcodes array
         /// Note: JSON often outputs as signed ints, but they're uint32 bitmasks
         /// Using long[] to safely capture both, cast to uint later
         /// </summary>
