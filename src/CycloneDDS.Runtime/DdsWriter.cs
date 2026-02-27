@@ -124,29 +124,10 @@ namespace CycloneDDS.Runtime
                     DdsApi.dds_qset_partition(actualQos, 1, new[] { activePartition });
                 }
 
-                // Set Data Representation and Encoding based on Extensibility
-                // We default to XCDR2 for all standard extensibility kinds (Final, Appendable, Mutable).
-                // XCDR2 limits alignment to 4 bytes, which ensures compatibility with Native CycloneDDS
-                // expectations and our generated serializer logic.
-
                 // 1. Get or register topic (auto-discovery) - Use modified QoS
                 _topicHandle = participant.GetOrRegisterTopic<T>(topicName, actualQos);
 
                 DdsApi.DdsEntity writer = default;
-
-                short[] reps;
-
-                // _extensibilityKind is already a static field in DdsWriter<T>
-                if (_extensibilityKind == DdsExtensibilityKind.Appendable || _extensibilityKind == DdsExtensibilityKind.Mutable)
-                {
-                    // Force XCDR2 for XTypes
-                    reps = new short[] { DdsApi.DDS_DATA_REPRESENTATION_XCDR2 };
-                    DdsApi.dds_qset_data_representation(actualQos, (uint)reps.Length, reps);
-                }
-                else
-                {
-                    // Default/Final uses defaults (don't force XCDR1)
-                }
 
                 writer = DdsApi.dds_create_writer(
                     participant.NativeEntity,
