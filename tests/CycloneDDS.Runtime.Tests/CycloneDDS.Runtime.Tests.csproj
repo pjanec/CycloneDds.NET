@@ -37,6 +37,19 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Generated\AdvancedTypes\" />
+    <Folder Include="Generated\Probe\" />
+  </ItemGroup>
+
   <Import Project="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
+
+  <ItemGroup>
+    <Compile Remove="Generated\**\*.cs" />
+  </ItemGroup>
+
+  <Target Name="CleanGeneratedTestTypes" AfterTargets="Clean">
+    <RemoveDir Directories="$(MSBuildProjectDirectory)\Generated" />
+  </Target>
 
 </Project>

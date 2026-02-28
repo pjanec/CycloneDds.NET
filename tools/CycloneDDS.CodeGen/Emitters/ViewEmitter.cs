@@ -7,19 +7,22 @@ namespace CycloneDDS.CodeGen.Emitters
 {
     public class ViewEmitter
     {
-        public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry? registry)
+        public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry? registry, bool generateUsings = true)
         {
             var sb = new StringBuilder();
             
-            sb.AppendLine("using System;");
-            sb.AppendLine("using System.Runtime.InteropServices;");
-            sb.AppendLine("using CycloneDDS.Core;");
-            sb.AppendLine("using CycloneDDS.Runtime;");
-            sb.AppendLine();
-            sb.AppendLine("#pragma warning disable CS8600");
-            sb.AppendLine("#pragma warning disable CS8601");
-            sb.AppendLine("#pragma warning disable CS8603");
-            sb.AppendLine();
+            if (generateUsings)
+            {
+                sb.AppendLine("using System;");
+                sb.AppendLine("using System.Runtime.InteropServices;");
+                sb.AppendLine("using CycloneDDS.Core;");
+                sb.AppendLine("using CycloneDDS.Runtime;");
+                sb.AppendLine();
+                sb.AppendLine("#pragma warning disable CS8600");
+                sb.AppendLine("#pragma warning disable CS8601");
+                sb.AppendLine("#pragma warning disable CS8603");
+                sb.AppendLine();
+            }
             
             if (!string.IsNullOrEmpty(type.Namespace))
             {
@@ -106,8 +109,15 @@ namespace CycloneDDS.CodeGen.Emitters
 
             var resolvedTypeName = registry != null ? ResolveType(field.TypeName, registry) : field.TypeName;
 
+            // Fixed String wrappers
+            if (IsFixedString(resolvedTypeName))
+            {
+                var fixedView = GetFixedStringViewType(resolvedTypeName);
+                var fixedType = GetFixedStringType(resolvedTypeName);
+                sb.AppendLine($"{indent}public unsafe {fixedView} {field.Name} => new {fixedView}(({fixedType}*)&_ptr->{nativeFieldName});");
+            }
             // Primitive
-            if (IsPrimitive(field.TypeName, registry))
+            else if (IsPrimitive(field.TypeName, registry))
             {
                sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {field.Name} => _ptr->{nativeFieldName};");
             }
@@ -835,6 +845,33 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}/// <summary>Gets view for optional {field.Name}. Accessing this when Has{propName} is false may lead to undefined behavior.</summary>");
                 sb.AppendLine($"{indent}public unsafe {viewName} {propName} => new {viewName}(({nativeType}*)_ptr->{nativeFieldName});");
             }
+        }
+
+        private bool IsFixedString(string typeName)
+        {
+            var resolved = typeName.Replace("global::", string.Empty);
+            return resolved.EndsWith("FixedString32") ||
+                   resolved.EndsWith("FixedString64") ||
+                   resolved.EndsWith("FixedString128") ||
+                   resolved.EndsWith("FixedString256");
+        }
+
+        private string GetFixedStringViewType(string typeName)
+        {
+            var resolved = typeName.Replace("global::", string.Empty);
+            return resolved.EndsWith("FixedString32") ? "CycloneDDS.Schema.FixedString32View" :
+                   resolved.EndsWith("FixedString64") ? "CycloneDDS.Schema.FixedString64View" :
+                   resolved.EndsWith("FixedString128") ? "CycloneDDS.Schema.FixedString128View" :
+                   "CycloneDDS.Schema.FixedString256View";
+        }
+
+        private string GetFixedStringType(string typeName)
+        {
+            var resolved = typeName.Replace("global::", string.Empty);
+            return resolved.EndsWith("FixedString32") ? "CycloneDDS.Schema.FixedString32" :
+                   resolved.EndsWith("FixedString64") ? "CycloneDDS.Schema.FixedString64" :
+                   resolved.EndsWith("FixedString128") ? "CycloneDDS.Schema.FixedString128" :
+                   "CycloneDDS.Schema.FixedString256";
         }
     }
 }

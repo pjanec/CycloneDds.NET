@@ -192,6 +192,31 @@ namespace MyNamespace {
             Assert.Contains(topics, t => t.Name == "Topic1");
             Assert.Contains(topics, t => t.Name == "Topic2");
         }
+
+        [Fact]
+        public void CodeGenerator_CombinesOutputs_AndCleansLegacyFiles()
+        {
+            CreateFile("CombinedTopic.cs", @"
+using CycloneDDS.Schema;
+[DdsTopic(""Combined"")]
+public struct CombinedTopic { }
+");
+            var outputDir = Path.Combine(_tempDir, "CombinedOutput");
+            Directory.CreateDirectory(outputDir);
+            File.WriteAllText(Path.Combine(outputDir, "CombinedTopic.Serializer.cs"), "stale");
+            File.WriteAllText(Path.Combine(outputDir, "CombinedTopic.View.cs"), "stale");
+            File.WriteAllText(Path.Combine(outputDir, "CombinedTopic.ViewExtensions.cs"), "stale");
+            File.WriteAllText(Path.Combine(outputDir, "CombinedTopic.Descriptor.cs"), "stale");
+
+            var generator = new CodeGenerator();
+            generator.Generate(_tempDir, outputDir);
+
+            Assert.True(File.Exists(Path.Combine(outputDir, "CombinedTopic.g.cs")));
+            Assert.False(File.Exists(Path.Combine(outputDir, "CombinedTopic.Serializer.cs")));
+            Assert.False(File.Exists(Path.Combine(outputDir, "CombinedTopic.View.cs")));
+            Assert.False(File.Exists(Path.Combine(outputDir, "CombinedTopic.ViewExtensions.cs")));
+            Assert.False(File.Exists(Path.Combine(outputDir, "CombinedTopic.Descriptor.cs")));
+        }
     }
 }
 

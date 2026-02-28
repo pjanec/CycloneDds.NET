@@ -27,4 +27,5 @@
     </None>
   </ItemGroup>
 
+  <Import Project="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
 </Project>

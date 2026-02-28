@@ -4,39 +4,65 @@
   <Target Name="CopyReferencedIdlFiles" DependsOnTargets="ResolveReferences">
      <ItemGroup>
          <ReferenceDirs Include="@(ReferencePath->'%(RootDir)%(Directory)')" />
-         <!-- Look for IDL files next to referenced assemblies -->
+         <ReferenceDirs Include="@(ReferenceCopyLocalPaths->'%(RootDir)%(Directory)')" />
          <PotentialIdlFiles Include="%(ReferenceDirs.Identity)*.idl" />
+         <ProjectReferenceIdlDirs Include="@(ProjectReference->'%(RootDir)%(Directory)obj\Generated')" Condition="Exists('%(ProjectReference.RootDir)%(ProjectReference.Directory)obj\Generated')" />
      </ItemGroup>
+
+     <CreateItem Include="@(ProjectReferenceIdlDirs->'%(Identity)\*.idl')">
+       <Output TaskParameter="Include" ItemName="ProjectReferenceIdlFiles" />
+     </CreateItem>
      
      <Message Text="Copying referenced IDL files from: @(ReferenceDirs)" Importance="normal" />
-     <Message Text="Found IDL files: @(PotentialIdlFiles)" Importance="normal" />
+     <Message Text="Found IDL files: @(PotentialIdlFiles);@(ProjectReferenceIdlFiles)" Importance="normal" />
      
      <!-- Copy them to the generation folder so the generator (and idlc) can find them -->
-     <Copy SourceFiles="@(PotentialIdlFiles)" DestinationFolder="$(MSBuildProjectDirectory)\obj\Generated" SkipUnchangedFiles="true" />
+     <Copy SourceFiles="@(PotentialIdlFiles);@(ProjectReferenceIdlFiles)" DestinationFolder="$(CycloneDdsGeneratedDir)" SkipUnchangedFiles="true" />
   </Target>
 
-  <Target Name="CycloneDDSCodeGen" BeforeTargets="CoreCompile" DependsOnTargets="CopyReferencedIdlFiles">
+  <PropertyGroup>
+    <CycloneDdsGeneratedDir>$(MSBuildProjectDirectory)\obj\Generated</CycloneDdsGeneratedDir>
+    <CycloneDdsStampFile>$(CycloneDdsGeneratedDir)\codegen.stamp</CycloneDdsStampFile>
+    <CodeGenAssembly Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)bin\Release\net8.0\CycloneDDS.CodeGen.dll</CodeGenAssembly>
+    <CodeGenAssembly Condition="'$(Configuration)' != 'Release'">$(MSBuildThisFileDirectory)bin\Debug\net8.0\CycloneDDS.CodeGen.dll</CodeGenAssembly>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <CycloneDdsSourceFiles Include="**\*.cs" Exclude="$(CycloneDdsGeneratedDir)\**\*.cs;obj\**;bin\**" />
+  </ItemGroup>
+
+  <Target Name="BuildCycloneDDSCodeGen" BeforeTargets="CycloneDDSCodeGen">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)CycloneDDS.CodeGen.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+  </Target>
+
+  <Target Name="CycloneDDSCodeGen" 
+          BeforeTargets="CoreCompile" 
+          DependsOnTargets="BuildCycloneDDSCodeGen;CopyReferencedIdlFiles"
+          Inputs="@(CycloneDdsSourceFiles);@(ReferencePath);$(CodeGenAssembly)" 
+          Outputs="$(CycloneDdsStampFile)">
+          
     <PropertyGroup>
-      <CodeGenAssembly Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)bin\Release\net8.0\CycloneDDS.CodeGen.dll</CodeGenAssembly>
-      <CodeGenAssembly Condition="'$(Configuration)' != 'Release'">$(MSBuildThisFileDirectory)bin\Debug\net8.0\CycloneDDS.CodeGen.dll</CodeGenAssembly>
-      
       <SourcePath>$(MSBuildProjectDirectory)</SourcePath>
-      <OutputPath>$(MSBuildProjectDirectory)\obj\Generated</OutputPath>
     </PropertyGroup>
     
-    <Message Text="Running CycloneDDS Code Generator..." Importance="high" />
-    <Message Text="CodeGenAssembly: $(CodeGenAssembly)" Importance="high" />
-    <Exec Command="dotnet &quot;$(CodeGenAssembly)&quot; &quot;$(SourcePath)&quot; &quot;$(OutputPath)&quot; &quot;@(ReferencePath)&quot;" />
+    <MakeDir Directories="$(CycloneDdsGeneratedDir)" Condition="!Exists('$(CycloneDdsGeneratedDir)')" />
     
+    <Message Text="Running CycloneDDS Code Generator (Incremental)..." Importance="high" />
+    <Exec Command="dotnet &quot;$(CodeGenAssembly)&quot; &quot;$(SourcePath)&quot; &quot;$(CycloneDdsGeneratedDir)&quot; &quot;@(ReferencePath)&quot;" />
+    
+    <Touch Files="$(CycloneDdsStampFile)" AlwaysCreate="true" />
+  </Target>
+
+  <Target Name="IncludeCycloneDDSGeneratedFiles" BeforeTargets="CoreCompile" DependsOnTargets="CycloneDDSCodeGen">
     <ItemGroup>
-        <Compile Include="$(OutputPath)\**\*.cs" />
+      <Compile Include="$(CycloneDdsGeneratedDir)\**\*.cs" Exclude="@(Compile)" />
     </ItemGroup>
   </Target>
 
   <!-- 2. Include generated IDL files in the final build output -->
   <Target Name="IncludeIdlFilesInOutput" BeforeTargets="GetCopyToOutputDirectoryItems;AssignTargetPaths" AfterTargets="CycloneDDSCodeGen">
      <ItemGroup>
-         <GeneratedIdlFiles Include="$(MSBuildProjectDirectory)\obj\Generated\*.idl" />
+         <GeneratedIdlFiles Include="$(CycloneDdsGeneratedDir)\*.idl" />
      </ItemGroup>
      
      <ItemGroup>
@@ -46,6 +72,12 @@
              <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
          </Content>
      </ItemGroup>
+
+     <Copy SourceFiles="@(GeneratedIdlFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CycloneDDSClean" AfterTargets="Clean">
+    <RemoveDir Directories="$(CycloneDdsGeneratedDir)" />
   </Target>
 
 </Project>

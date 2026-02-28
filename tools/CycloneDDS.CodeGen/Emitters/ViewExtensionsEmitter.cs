@@ -5,15 +5,18 @@ namespace CycloneDDS.CodeGen.Emitters
 {
     public class ViewExtensionsEmitter
     {
-        public string EmitExtensions(TypeInfo type, GlobalTypeRegistry registry)
+        public string EmitExtensions(TypeInfo type, GlobalTypeRegistry registry, bool generateUsings = true)
         {
             var sb = new StringBuilder();
             
-            sb.AppendLine("using System;");
-            sb.AppendLine("using System.Runtime.InteropServices;");
-            sb.AppendLine("using CycloneDDS.Core;");
-            sb.AppendLine("using CycloneDDS.Runtime;");
-            sb.AppendLine();
+            if (generateUsings)
+            {
+                sb.AppendLine("using System;");
+                sb.AppendLine("using System.Runtime.InteropServices;");
+                sb.AppendLine("using CycloneDDS.Core;");
+                sb.AppendLine("using CycloneDDS.Runtime;");
+                sb.AppendLine();
+            }
             
             if (!string.IsNullOrEmpty(type.Namespace))
             {

@@ -25,6 +25,7 @@ namespace CycloneDDS.CodeGen
             var files = Directory.GetFiles(sourceDirectory, "*.cs", SearchOption.AllDirectories)
                 .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
                             !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
+                            !f.Contains(Path.DirectorySeparatorChar + "Generated" + Path.DirectorySeparatorChar) &&
                             !f.EndsWith(".Descriptor.cs") && 
                             !f.EndsWith(".Serializer.cs") &&
                             !f.EndsWith(".Deserializer.cs"))
@@ -72,6 +73,12 @@ namespace CycloneDDS.CodeGen
             Compilation = CSharpCompilation.Create("Discovery")
                 .AddReferences(references)
                 .AddSyntaxTrees(syntaxTrees);
+
+            var typeDisplayFormat = new SymbolDisplayFormat(
+                typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+                genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters);
+
+            CollectExternalTypes(Compilation, typeDisplayFormat);
             
             var topics = new List<TypeInfo>();
             
@@ -330,6 +337,46 @@ namespace CycloneDDS.CodeGen
                 TypeName = typeName,
                 Attributes = ExtractAttributes(member)
             };
+        }
+
+        private void CollectExternalTypes(Compilation compilation, SymbolDisplayFormat format)
+        {
+            foreach (var assembly in compilation.SourceModule.ReferencedAssemblySymbols)
+            {
+                CollectExternalTypes(assembly.GlobalNamespace, format);
+            }
+        }
+
+        private void CollectExternalTypes(INamespaceSymbol ns, SymbolDisplayFormat format)
+        {
+            foreach (var type in ns.GetTypeMembers())
+            {
+                if (ShouldIncludeExternalType(type))
+                {
+                    ValidExternalTypes.Add(type.ToDisplayString(format).TrimEnd('?'));
+                }
+
+                foreach (var nested in type.GetTypeMembers())
+                {
+                    if (ShouldIncludeExternalType(nested))
+                    {
+                        ValidExternalTypes.Add(nested.ToDisplayString(format).TrimEnd('?'));
+                    }
+                }
+            }
+
+            foreach (var child in ns.GetNamespaceMembers())
+            {
+                CollectExternalTypes(child, format);
+            }
+        }
+
+        private bool ShouldIncludeExternalType(INamedTypeSymbol type)
+        {
+            return type.TypeKind == TypeKind.Enum ||
+                   HasAttribute(type, "CycloneDDS.Schema.DdsStructAttribute") ||
+                   HasAttribute(type, "CycloneDDS.Schema.DdsTopicAttribute") ||
+                   HasAttribute(type, "CycloneDDS.Schema.DdsUnionAttribute");
         }
     }
 }
