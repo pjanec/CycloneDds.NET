@@ -29,9 +29,11 @@ public sealed class SampleStore : ISampleStore, IDisposable
     private FieldMetadata? _sortField;
     private SortDirection _sortDirection;
     private bool _sortDirty;
+    private bool _requiresFullSort;
     private bool _disposed;
 
     private SampleData[] _sortedView = Array.Empty<SampleData>();
+    private int _sortedCount;
     private int _currentFilteredCount;
 
     /// <summary>
@@ -130,7 +132,10 @@ public sealed class SampleStore : ISampleStore, IDisposable
             _samplesByTopic.Clear();
             _filteredSamples.Clear();
             _sortedView = Array.Empty<SampleData>();
+            _sortedCount = EmptyCount;
             Volatile.Write(ref _currentFilteredCount, EmptyCount);
+            _requiresFullSort = true;
+            _sortDirty = false;
         }
 
         OnViewRebuilt?.Invoke();
@@ -187,6 +192,8 @@ public sealed class SampleStore : ISampleStore, IDisposable
 
             Volatile.Write(ref _currentFilteredCount, _filteredSamples.Count);
             _sortDirty = true;
+            _requiresFullSort = true;
+            _sortedCount = EmptyCount;
         }
 
         _sortSignal.Set();
@@ -201,6 +208,7 @@ public sealed class SampleStore : ISampleStore, IDisposable
             _sortField = field;
             _sortDirection = direction;
             _sortDirty = true;
+            _requiresFullSort = true;
         }
 
         _sortSignal.Set();
@@ -249,7 +257,9 @@ public sealed class SampleStore : ISampleStore, IDisposable
 
             FieldMetadata? sortField;
             SortDirection direction;
-            SampleData[] snapshot;
+            SampleData[] existingSorted;
+            SampleData[] newArrivals;
+            bool fullSort;
 
             lock (_sync)
             {
@@ -261,12 +271,41 @@ public sealed class SampleStore : ISampleStore, IDisposable
                 _sortDirty = false;
                 sortField = _sortField;
                 direction = _sortDirection;
-                snapshot = _filteredSamples.ToArray();
+                fullSort = _requiresFullSort || _sortedCount > _filteredSamples.Count;
+
+                if (fullSort)
+                {
+                    _requiresFullSort = false;
+                    _sortedCount = _filteredSamples.Count;
+                    existingSorted = Array.Empty<SampleData>();
+                    newArrivals = _filteredSamples.ToArray();
+                }
+                else
+                {
+                    var totalCount = _filteredSamples.Count;
+                    if (totalCount == _sortedCount)
+                    {
+                        continue;
+                    }
+
+                    existingSorted = _sortedView;
+                    newArrivals = _filteredSamples.GetRange(_sortedCount, totalCount - _sortedCount).ToArray();
+                    _sortedCount = totalCount;
+                }
             }
 
-            var sorted = SortSnapshot(snapshot, sortField, direction);
-            Volatile.Write(ref _sortedView, sorted);
-            Volatile.Write(ref _currentFilteredCount, sorted.Length);
+            SampleData[] merged;
+            if (fullSort)
+            {
+                merged = SortSnapshot(newArrivals, sortField, direction);
+            }
+            else
+            {
+                merged = MergeSorted(existingSorted, newArrivals, sortField, direction);
+            }
+
+            Volatile.Write(ref _sortedView, merged);
+            Volatile.Write(ref _currentFilteredCount, merged.Length);
             OnViewRebuilt?.Invoke();
         }
     }
@@ -292,6 +331,74 @@ public sealed class SampleStore : ISampleStore, IDisposable
         });
 
         return snapshot;
+    }
+
+    private static SampleData[] MergeSorted(
+        SampleData[] existingSorted,
+        SampleData[] newArrivals,
+        FieldMetadata? sortField,
+        SortDirection direction)
+    {
+        if (newArrivals.Length == EmptyCount)
+        {
+            return existingSorted;
+        }
+
+        if (existingSorted.Length == EmptyCount)
+        {
+            return SortSnapshot(newArrivals, sortField, direction);
+        }
+
+        if (sortField == null)
+        {
+            var mergedNoSort = new SampleData[existingSorted.Length + newArrivals.Length];
+            Array.Copy(existingSorted, 0, mergedNoSort, 0, existingSorted.Length);
+            Array.Copy(newArrivals, 0, mergedNoSort, existingSorted.Length, newArrivals.Length);
+            return mergedNoSort;
+        }
+
+        var sortedNew = SortSnapshot(newArrivals, sortField, direction);
+        var merged = new SampleData[existingSorted.Length + sortedNew.Length];
+
+        var leftIndex = EmptyCount;
+        var rightIndex = EmptyCount;
+        var mergedIndex = EmptyCount;
+
+        while (leftIndex < existingSorted.Length && rightIndex < sortedNew.Length)
+        {
+            var comparison = CompareSamples(existingSorted[leftIndex], sortedNew[rightIndex], sortField, direction);
+            if (comparison <= EmptyCount)
+            {
+                merged[mergedIndex++] = existingSorted[leftIndex++];
+            }
+            else
+            {
+                merged[mergedIndex++] = sortedNew[rightIndex++];
+            }
+        }
+
+        if (leftIndex < existingSorted.Length)
+        {
+            Array.Copy(existingSorted, leftIndex, merged, mergedIndex, existingSorted.Length - leftIndex);
+        }
+        else if (rightIndex < sortedNew.Length)
+        {
+            Array.Copy(sortedNew, rightIndex, merged, mergedIndex, sortedNew.Length - rightIndex);
+        }
+
+        return merged;
+    }
+
+    private static int CompareSamples(
+        SampleData left,
+        SampleData right,
+        FieldMetadata sortField,
+        SortDirection direction)
+    {
+        var leftValue = GetSortValue(left, sortField);
+        var rightValue = GetSortValue(right, sortField);
+        var comparison = CompareValues(leftValue, rightValue);
+        return direction == SortDirection.Descending ? -comparison : comparison;
     }
 
     private static object? GetSortValue(SampleData sample, FieldMetadata sortField)

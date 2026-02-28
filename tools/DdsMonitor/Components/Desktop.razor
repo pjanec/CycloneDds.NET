@@ -1,0 +1,238 @@
+@page "/"
+@rendermode @(new Microsoft.AspNetCore.Components.Web.InteractiveServerRenderMode(prerender: false))
+
+@inject IWindowManager WindowManager
+
+<div class="desktop" @onmousemove="HandleMouseMove" @onmouseup="EndDrag" @onmouseleave="EndDrag">
+    @foreach (var panel in WindowManager.ActivePanels)
+    {
+        if (panel.IsMinimized)
+        {
+            continue;
+        }
+
+        <div class="panel" style="@GetPanelStyle(panel)" @onmousedown="() => BringToFront(panel)">
+            <div class="panel-titlebar" @onmousedown="(e) => BeginDrag(panel, e)">
+                <span class="panel-title">@panel.Title</span>
+                <div class="panel-actions" @onmousedown:stopPropagation="true">
+                    <button type="button" class="panel-btn" @onclick="() => ToggleMinimize(panel)" @onclick:stopPropagation="true">_</button>
+                    <button type="button" class="panel-btn" @onclick="() => ClosePanel(panel)" @onclick:stopPropagation="true">x</button>
+                </div>
+            </div>
+            <div class="panel-body">
+                @RenderPanelBody(panel)
+            </div>
+
+            <div class="resize-handle handle-top" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Top, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-right" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Right, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-bottom" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Bottom, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-left" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Left, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-top-left" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Top | ResizeEdge.Left, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-top-right" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Top | ResizeEdge.Right, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-bottom-left" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Bottom | ResizeEdge.Left, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-bottom-right" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Bottom | ResizeEdge.Right, e)" @onmousedown:stopPropagation="true"></div>
+        </div>
+    }
+
+    <div class="panel-strip">
+        @foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (!panel.IsMinimized)
+            {
+                continue;
+            }
+
+            <button type="button" class="panel-strip-item" @onclick="() => RestorePanel(panel)">
+                @panel.Title
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    private const double MinPanelWidth = 220;
+    private const double MinPanelHeight = 140;
+
+    private PanelState? _activePanel;
+    private DragMode _dragMode = DragMode.None;
+    private ResizeEdge _resizeEdge = ResizeEdge.None;
+    private double _startMouseX;
+    private double _startMouseY;
+    private double _startX;
+    private double _startY;
+    private double _startWidth;
+    private double _startHeight;
+
+    protected override void OnInitialized()
+    {
+        if (WindowManager.ActivePanels.Count == 0)
+        {
+            var panel = WindowManager.SpawnPanel(typeof(PlaceholderPanel).AssemblyQualifiedName!);
+            panel.Title = "Welcome";
+        }
+    }
+
+    private void BeginDrag(PanelState panel, MouseEventArgs args)
+    {
+        BringToFront(panel);
+        _activePanel = panel;
+        _dragMode = DragMode.Move;
+        _startMouseX = args.ClientX;
+        _startMouseY = args.ClientY;
+        _startX = panel.X;
+        _startY = panel.Y;
+    }
+
+    private void BeginResize(PanelState panel, ResizeEdge edge, MouseEventArgs args)
+    {
+        BringToFront(panel);
+        _activePanel = panel;
+        _dragMode = DragMode.Resize;
+        _resizeEdge = edge;
+        _startMouseX = args.ClientX;
+        _startMouseY = args.ClientY;
+        _startX = panel.X;
+        _startY = panel.Y;
+        _startWidth = panel.Width;
+        _startHeight = panel.Height;
+    }
+
+    private void HandleMouseMove(MouseEventArgs args)
+    {
+        if (_activePanel == null || _dragMode == DragMode.None)
+        {
+            return;
+        }
+
+        var deltaX = args.ClientX - _startMouseX;
+        var deltaY = args.ClientY - _startMouseY;
+
+        if (_dragMode == DragMode.Move)
+        {
+            _activePanel.X = _startX + deltaX;
+            _activePanel.Y = _startY + deltaY;
+        }
+        else if (_dragMode == DragMode.Resize)
+        {
+            ApplyResize(_activePanel, deltaX, deltaY);
+        }
+
+        StateHasChanged();
+    }
+
+    private void EndDrag()
+    {
+        if (_dragMode == DragMode.None)
+        {
+            return;
+        }
+
+        _dragMode = DragMode.None;
+        _resizeEdge = ResizeEdge.None;
+        _activePanel = null;
+    }
+
+    private void ApplyResize(PanelState panel, double deltaX, double deltaY)
+    {
+        if (_resizeEdge.HasFlag(ResizeEdge.Right))
+        {
+            panel.Width = Math.Max(MinPanelWidth, _startWidth + deltaX);
+        }
+
+        if (_resizeEdge.HasFlag(ResizeEdge.Left))
+        {
+            var proposed = _startWidth - deltaX;
+            var clamped = Math.Max(MinPanelWidth, proposed);
+            panel.Width = clamped;
+            panel.X = _startX + (_startWidth - clamped);
+        }
+
+        if (_resizeEdge.HasFlag(ResizeEdge.Bottom))
+        {
+            panel.Height = Math.Max(MinPanelHeight, _startHeight + deltaY);
+        }
+
+        if (_resizeEdge.HasFlag(ResizeEdge.Top))
+        {
+            var proposed = _startHeight - deltaY;
+            var clamped = Math.Max(MinPanelHeight, proposed);
+            panel.Height = clamped;
+            panel.Y = _startY + (_startHeight - clamped);
+        }
+    }
+
+    private void BringToFront(PanelState panel)
+    {
+        WindowManager.BringToFront(panel.PanelId);
+    }
+
+    private void ToggleMinimize(PanelState panel)
+    {
+        panel.IsMinimized = !panel.IsMinimized;
+    }
+
+    private void RestorePanel(PanelState panel)
+    {
+        panel.IsMinimized = false;
+        BringToFront(panel);
+    }
+
+    private void ClosePanel(PanelState panel)
+    {
+        WindowManager.ClosePanel(panel.PanelId);
+    }
+
+    private RenderFragment RenderPanelBody(PanelState panel) => builder =>
+    {
+        var componentType = ResolveComponentType(panel.ComponentTypeName);
+        if (componentType != null)
+        {
+            builder.OpenComponent(0, componentType);
+            if (panel.ComponentState.Count > 0)
+            {
+                builder.AddMultipleAttributes(1, panel.ComponentState);
+            }
+            builder.CloseComponent();
+        }
+        else
+        {
+            builder.OpenElement(2, "div");
+            builder.AddAttribute(3, "class", "panel-placeholder");
+            builder.AddContent(4, $"Missing component: {panel.ComponentTypeName}");
+            builder.CloseElement();
+        }
+    };
+
+    private static Type? ResolveComponentType(string componentTypeName)
+    {
+        if (string.IsNullOrWhiteSpace(componentTypeName))
+        {
+            return null;
+        }
+
+        return Type.GetType(componentTypeName);
+    }
+
+    private static string GetPanelStyle(PanelState panel)
+    {
+        return FormattableString.Invariant(
+            $"left:{panel.X}px; top:{panel.Y}px; width:{panel.Width}px; height:{panel.Height}px; z-index:{panel.ZIndex};");
+    }
+
+    private enum DragMode
+    {
+        None,
+        Move,
+        Resize
+    }
+
+    [Flags]
+    private enum ResizeEdge
+    {
+        None = 0,
+        Left = 1,
+        Top = 2,
+        Right = 4,
+        Bottom = 8
+    }
+}

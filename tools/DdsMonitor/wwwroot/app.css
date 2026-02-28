@@ -1,0 +1,246 @@
+:root {
+  color-scheme: light;
+  --font-display: "Space Grotesk", "Segoe UI", Tahoma, sans-serif;
+  --bg-1: #10141f;
+  --bg-2: #1e2536;
+  --bg-3: #2d3650;
+  --panel-bg: #141a28;
+  --panel-border: #2a3550;
+  --panel-title: #1b2235;
+  --panel-text: #e6eaf2;
+  --panel-muted: #9aa6bf;
+  --accent: #ffb347;
+  --accent-2: #4fc3f7;
+  --shadow: 0 20px 40px rgba(10, 16, 28, 0.45);
+  --panel-radius: 12px;
+  --title-height: 34px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--panel-text);
+  background: var(--bg-1);
+}
+
+body {
+  overflow: hidden;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: radial-gradient(circle at 15% 20%, rgba(79, 195, 247, 0.2), transparent 45%),
+    radial-gradient(circle at 80% 15%, rgba(255, 179, 71, 0.18), transparent 50%),
+    linear-gradient(135deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
+}
+
+.desktop {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.panel {
+  position: absolute;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  animation: panel-in 200ms ease-out;
+}
+
+.panel-titlebar {
+  height: var(--title-height);
+  padding: 0 10px 0 14px;
+  background: var(--panel-title);
+  border-bottom: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius) var(--panel-radius) 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: grab;
+  user-select: none;
+}
+
+.panel-title {
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.panel-btn {
+  width: 28px;
+  height: 22px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--panel-muted);
+  cursor: pointer;
+}
+
+.panel-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.panel-body {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+}
+
+.panel-placeholder,
+.panel-placeholder-content {
+  color: var(--panel-muted);
+}
+
+.panel-placeholder-content h2 {
+  margin: 0 0 8px 0;
+  font-weight: 600;
+  color: var(--panel-text);
+}
+
+.panel-placeholder-content p {
+  margin: 0;
+}
+
+.panel-strip {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(16, 20, 31, 0.8);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(10px);
+}
+
+.panel-strip-item {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(30, 37, 54, 0.8);
+  color: var(--panel-text);
+  cursor: pointer;
+}
+
+.panel-strip-item:hover {
+  border-color: var(--accent-2);
+}
+
+.resize-handle {
+  position: absolute;
+  background: transparent;
+}
+
+.handle-top {
+  top: -4px;
+  left: 20px;
+  right: 20px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.handle-bottom {
+  bottom: -4px;
+  left: 20px;
+  right: 20px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.handle-left {
+  left: -4px;
+  top: 20px;
+  bottom: 20px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.handle-right {
+  right: -4px;
+  top: 20px;
+  bottom: 20px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.handle-top-left {
+  top: -6px;
+  left: -6px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+.handle-top-right {
+  top: -6px;
+  right: -6px;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+
+.handle-bottom-left {
+  bottom: -6px;
+  left: -6px;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+
+.handle-bottom-right {
+  bottom: -6px;
+  right: -6px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+.empty-state {
+  padding: 24px;
+  color: var(--panel-muted);
+}
+
+@keyframes panel-in {
+  from {
+    transform: translateY(8px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .desktop {
+    padding: 8px;
+  }
+
+  .panel {
+    min-width: 240px;
+  }
+
+  .panel-strip {
+    left: 8px;
+    right: 8px;
+  }
+}

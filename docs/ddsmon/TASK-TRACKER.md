@@ -18,10 +18,10 @@
 - [x] **DMON-007** — DynamicReader\<T\> implementation &nbsp; [details](./TASK-DETAIL.md#dmon-007--dynamicreadert-implementation)
 - [x] **DMON-008** — DynamicWriter\<T\> implementation &nbsp; [details](./TASK-DETAIL.md#dmon-008--dynamicwritert-implementation)
 - [x] **DMON-009** — DdsBridge service &nbsp; [details](./TASK-DETAIL.md#dmon-009--ddsbridge-service)
-- [ ] **DMON-010** — SampleStore (chronological ledger) &nbsp; [details](./TASK-DETAIL.md#dmon-010--samplestore-chronological-ledger)
-- [ ] **DMON-011** — InstanceStore (keyed instance tracking) &nbsp; [details](./TASK-DETAIL.md#dmon-011--instancestore-keyed-instance-tracking)
-- [ ] **DMON-012** — FilterCompiler (Dynamic LINQ) &nbsp; [details](./TASK-DETAIL.md#dmon-012--filtercompiler-dynamic-linq)
-- [ ] **DMON-013** — DdsIngestionService (background worker) &nbsp; [details](./TASK-DETAIL.md#dmon-013--ddsingestionservice-background-worker)
+- [x] **DMON-010** — SampleStore (chronological ledger) &nbsp; [details](./TASK-DETAIL.md#dmon-010--samplestore-chronological-ledger)
+- [x] **DMON-011** — InstanceStore (keyed instance tracking) &nbsp; [details](./TASK-DETAIL.md#dmon-011--instancestore-keyed-instance-tracking)
+- [x] **DMON-012** — FilterCompiler (Dynamic LINQ) &nbsp; [details](./TASK-DETAIL.md#dmon-012--filtercompiler-dynamic-linq)
+- [x] **DMON-013** — DdsIngestionService (background worker) &nbsp; [details](./TASK-DETAIL.md#dmon-013--ddsingestionservice-background-worker)
 - [ ] **DMON-014** — Application host & DI wiring &nbsp; [details](./TASK-DETAIL.md#dmon-014--application-host--di-wiring)
 
 ---

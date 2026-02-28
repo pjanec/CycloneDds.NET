@@ -87,13 +87,11 @@ public sealed class SampleStoreTests
         var sortField = CreateOrdinalSortField();
         store.SetSortSpec(sortField, SortDirection.Descending);
 
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        store.OnViewRebuilt += () => tcs.TrySetResult(true);
-
+        var waitTask = WaitForViewRebuilt(store);
         store.Append(CreateSample(metadata, ordinals[^1] + 1));
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(SortTimeoutMs));
-        Assert.Same(tcs.Task, completed);
+        var completed = await Task.WhenAny(waitTask, Task.Delay(SortTimeoutMs));
+        Assert.Same(waitTask, completed);
 
         var view = store.GetVirtualView(0, ordinals.Length + 1).ToArray();
         var ordered = view.Select(sample => sample.Ordinal).ToArray();
@@ -103,6 +101,43 @@ public sealed class SampleStoreTests
             .ToArray();
 
         Assert.Equal(expected, ordered);
+    }
+
+    [Fact]
+    public async Task SampleStore_MergeSort_MergesNewArrivals()
+    {
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        using var store = new SampleStore();
+        var sortField = CreateOrdinalSortField();
+
+        store.SetSortSpec(sortField, SortDirection.Ascending);
+
+        var initial = new[] { 10, 30, 20 };
+        var initialWait = WaitForViewRebuilt(store);
+        foreach (var ordinal in initial)
+        {
+            store.Append(CreateSample(metadata, ordinal));
+        }
+
+        var initialCompleted = await Task.WhenAny(initialWait, Task.Delay(SortTimeoutMs));
+        Assert.Same(initialWait, initialCompleted);
+
+        var initialView = store.GetVirtualView(0, initial.Length).ToArray();
+        Assert.Equal(new long[] { 10, 20, 30 }, initialView.Select(sample => sample.Ordinal));
+
+        var newArrivals = new[] { 25, 5 };
+        var mergeWait = WaitForViewRebuilt(store);
+        foreach (var ordinal in newArrivals)
+        {
+            store.Append(CreateSample(metadata, ordinal));
+        }
+
+        var mergeCompleted = await Task.WhenAny(mergeWait, Task.Delay(SortTimeoutMs));
+        Assert.Same(mergeWait, mergeCompleted);
+
+        var mergedView = store.GetVirtualView(0, initial.Length + newArrivals.Length).ToArray();
+        var expected = initial.Concat(newArrivals).OrderBy(value => value).Select(value => (long)value).ToArray();
+        Assert.Equal(expected, mergedView.Select(sample => sample.Ordinal));
     }
 
     [Fact]
@@ -222,5 +257,19 @@ public sealed class SampleStoreTests
             sample => ((SampleData)sample).Ordinal,
             (_, __) => { },
             true);
+    }
+
+    private static Task WaitForViewRebuilt(SampleStore store)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void Handler()
+        {
+            store.OnViewRebuilt -= Handler;
+            tcs.TrySetResult(true);
+        }
+
+        store.OnViewRebuilt += Handler;
+        return tcs.Task;
     }
 }

@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
+    <ProjectReference Include="DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
   </ItemGroup>
 
 </Project>

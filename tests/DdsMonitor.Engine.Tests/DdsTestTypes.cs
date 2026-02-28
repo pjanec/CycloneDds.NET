@@ -42,3 +42,24 @@ public partial struct SimpleType
 {
     public int Count;
 }
+
+[DdsTopic("InstanceKeyed")]
+public partial struct InstanceKeyedMessage
+{
+    [DdsKey]
+    public int Id;
+
+    public int Value;
+}
+
+[DdsTopic("InstanceComposite")]
+public partial struct InstanceCompositeKeyMessage
+{
+    [DdsKey]
+    public int EntityId;
+
+    [DdsKey]
+    public int PartId;
+
+    public int Value;
+}
