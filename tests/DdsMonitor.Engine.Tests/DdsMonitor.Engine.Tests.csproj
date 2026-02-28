@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,5 +23,15 @@
   <ItemGroup>
     <ProjectReference Include="..\..\tools\DdsMonitor\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- CycloneDDS Native Binaries -->
+    <None Include="..\..\artifacts\native\win-x64\*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+  <Import Project="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.targets" />
 
 </Project>

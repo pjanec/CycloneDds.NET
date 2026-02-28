@@ -1,5 +1,4 @@
 using System.Linq;
-using CycloneDDS.Schema;
 using Xunit;
 
 namespace DdsMonitor.Engine.Tests;
@@ -23,16 +22,11 @@ public class FieldMetadataTests
     {
         var metadata = new TopicMetadata(typeof(SimpleType));
         var field = metadata.AllFields.Single(f => f.StructuredName == "Count");
-        var instance = new SimpleType();
+        object instance = new SimpleType();
 
         field.Setter(instance, 42);
 
-        Assert.Equal(42, instance.Count);
-    }
-
-    [DdsTopic("Simple")]
-    private class SimpleType
-    {
-        public int Count { get; set; }
+        var updated = (SimpleType)instance;
+        Assert.Equal(42, updated.Count);
     }
 }

@@ -1,5 +1,4 @@
 using System;
-using CycloneDDS.Schema;
 using CycloneDDS.Runtime.Interop;
 using Xunit;
 
@@ -76,11 +75,4 @@ public class SampleDataTests
         Assert.Equal(left, right);
     }
 
-#pragma warning disable CS0649
-    [DdsTopic("Sample")]
-    private struct SampleTopic
-    {
-        public int Id;
-    }
-#pragma warning restore CS0649
 }

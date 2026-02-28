@@ -63,27 +63,4 @@ public class TopicMetadataTests
         Assert.InRange(delayMs, 123.3, 123.5);
     }
 
-#pragma warning disable CS0649
-    [DdsTopic("TestTopic")]
-    private struct OuterType
-    {
-        public int Id;
-        public InnerType Position;
-    }
-
-    private struct InnerType
-    {
-        public double X;
-        public double Y;
-    }
-
-    [DdsTopic("Keyed")]
-    private struct KeyedType
-    {
-        [DdsKey]
-        public int Id;
-
-        public string Name;
-    }
-#pragma warning restore CS0649
 }
