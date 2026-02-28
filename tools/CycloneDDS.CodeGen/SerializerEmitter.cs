@@ -1120,7 +1120,7 @@ namespace CycloneDDS.CodeGen
              
              if (fieldType != null)
              {
-                 if (fieldType.IsEnum) return 4; 
+                 if (fieldType.IsEnum) return 4;
                  if (fieldType.IsStruct || fieldType.IsUnion || fieldType.IsTopic)
                  {
                      int max = 1;
