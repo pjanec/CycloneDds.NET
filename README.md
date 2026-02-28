@@ -177,24 +177,30 @@ using var loan = reader.Take(maxSamples: 10);
 // Iterate received data
 foreach (var sample in loan)
 {
-    // Check for valid data (skip metadata-only samples like Dispose events)
+    // `sample.IsValid` indicates whether a full payload is present.
+    // IMPORTANT: even when `ValidData == 0` (lifecycle/metadata-only samples),
+    // the middleware provides the native memory with the topic key fields populated.
+    // Therefore `sample.Data` is safe to call for every sample and will return
+    // a managed object where key fields are set and non-key fields are defaulted.
+
+    // Always obtain the managed copy (safe for metadata-only samples too)
+    var data = sample.Data;
+
     if (sample.IsValid)
     {
         // OPTION A: Simple (Managed)
-        // Lazy property triggers deep copy to managed object
-        // SensorData data = sample.Data;
-        
-        // OPTION B: Fast (Zero-Copy)
-        // Get a view over native memory. Zero allocations.
-        var view = sample.AsView();
-        
-        Console.WriteLine($"Received: {view.SensorId} = {view.Value}");
+        // `data` is a full managed copy populated from native memory
+        Console.WriteLine($"Received: {data.SensorId} = {data.Value}");
     }
     else
     {
-        // Handle lifecycle events (e.g., instance disposed)
-        Console.WriteLine($"Instance state: {sample.Info.InstanceState}");
+        // Lifecycle event (e.g., instance disposed). Key fields are available in `data`.
+        Console.WriteLine($"Instance {data.SensorId} state: {sample.Info.InstanceState}");
     }
+
+    // OPTION B: Fast (Zero-Copy) — you can still use AsView() when you only need
+    // transient, zero-allocation access to the native buffer (stack-only).
+    // var view = sample.AsView();
 }
 
 ```

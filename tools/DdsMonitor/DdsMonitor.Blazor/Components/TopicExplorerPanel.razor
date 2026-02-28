@@ -1,0 +1,640 @@
+@using System.Threading
+@using DdsMonitor.Engine.Ui
+@implements IDisposable
+
+@inject ITopicRegistry TopicRegistry
+@inject IDdsBridge DdsBridge
+@inject ISampleStore SampleStore
+@inject IInstanceStore InstanceStore
+@inject IWindowManager WindowManager
+@inject DdsSettings Settings
+
+<div class="topic-explorer">
+    <div class="topic-explorer__filters">
+        @RenderFilterButton("Received", TopicFilterKind.Received, _filters.Received)
+        @RenderFilterButton("Subscribed", TopicFilterKind.Subscribed, _filters.Subscribed)
+        @RenderFilterButton("Keyed", TopicFilterKind.Keyed, _filters.Keyed)
+        @RenderFilterButton("Alive", TopicFilterKind.Alive, _filters.Alive)
+    </div>
+
+    @{
+        var allTopicCount = TopicRegistry.AllTopics.Count;
+    }
+
+    @if (allTopicCount == 0)
+    {
+        <div class="topic-explorer__no-topics-warning">
+            <strong>No topic models have been imported!</strong>
+            Open <strong>File → Topic Sources</strong> to link CycloneDDS DLL assemblies.
+            <button type="button" class="topic-explorer__no-topics-btn" @onclick="OpenTopicSourcesPanel">Open Topic Sources</button>
+        </div>
+    }
+
+    <div class="topic-explorer__toolbar">
+        <label class="topic-explorer__bulk">
+            <input type="checkbox" checked="@AreAllSubscribed" @onchange="ToggleAllSubscriptions" />
+            <span>Subscribe All</span>
+        </label>
+        <span class="topic-explorer__count">@allTopicCount topic@(allTopicCount == 1 ? string.Empty : "s")</span>
+        <button type="button" class="topic-explorer__action topic-explorer__sources-btn"
+                title="Open Topic Sources" @onclick="OpenTopicSourcesPanel">
+            <!-- Gear / settings icon -->
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
+                         a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
+                         A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
+                         l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
+                         A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
+                         l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
+                         a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
+                         l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
+                         a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+        </button>
+        <div class="topic-explorer__search">
+            <span>Search:</span>
+            <input type="text" value="@_searchText" @oninput="OnSearchChanged" placeholder="type to filter topics…" />
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_subscriptionError))
+    {
+        <div class="topic-explorer__error">@_subscriptionError</div>
+    }
+
+    <table class="topic-explorer__table">
+        <thead>
+            <tr>
+                <th>Sub</th>
+                <th>Name</th>
+                <th>Samples</th>
+                <th>Freq</th>
+                <th>Instances</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var topic in FilteredTopics)
+            {
+                <tr @ondblclick="() => OpenSamplesPanel(topic.Metadata)">
+                    <td>
+                        <input type="checkbox" checked="@topic.IsSubscribed" @onchange="(e) => ToggleSubscription(topic.Metadata, e)" />
+                    </td>
+                    <td>
+                        <div class="topic-explorer__name">@topic.Metadata.ShortName</div>
+                        <div class="topic-explorer__namespace">@topic.Metadata.Namespace</div>
+                    </td>
+                    <td>@topic.SampleCount</td>
+                    <td class="topic-explorer__sparkline-cell">
+                        @RenderSparkline(topic.Metadata.TopicType)
+                    </td>
+                    <td>@topic.LiveInstances</td>
+                    <td>
+                        <button type="button" class="topic-explorer__action" title="Open samples grid" @onclick="() => OpenSamplesPanel(topic.Metadata)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        </button>
+                        <button type="button" class="topic-explorer__action" title="Send sample to this topic" @onclick="() => OpenSendSamplePanel(topic.Metadata)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </button>
+                        @if (topic.Metadata.IsKeyed)
+                        {
+                            <button type="button" class="topic-explorer__action" title="Open instances view" @onclick="() => OpenInstancesPanel(topic.Metadata)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private const int MinimumUiRefreshHz = 1;
+    private const int MillisecondsPerSecond = 1000;
+    private const int MaxErrorTopicNames = 3;
+    private const int SparklineSlots = 10;
+    private const int SparklineFlushIntervalMs = 1000;
+
+    private readonly TopicExplorerFilterState _filters = new();
+    private IReadOnlyList<TopicExplorerTopicSnapshot> _topics = Array.Empty<TopicExplorerTopicSnapshot>();
+    private readonly Dictionary<Type, RingBuffer> _sparklines = new();
+    private readonly Dictionary<Type, int> _lastSampleCounts = new();
+    private string _searchText = string.Empty;
+    private Timer? _refreshTimer;
+    private Timer? _sparklineTimer;
+    private string? _subscriptionError;
+
+    protected override void OnInitialized()
+    {
+        DdsBridge.ReadersChanged += HandleReadersChanged;
+        TopicRegistry.Changed += HandleRegistryChanged;
+
+        // Auto-configure default UI filters
+        _filters.Received = TriStateFilter.Include;
+
+        // Auto-subscribe all known topics at startup so the All Samples panel populates
+        // immediately and the subscription checkboxes begin in the correct checked state.
+        AutoSubscribeAll();
+        RefreshTopics();
+        StartRefreshTimer();
+        StartSparklineTimer();
+    }
+
+    private void AutoSubscribeAll()
+    {
+        foreach (var topic in TopicRegistry.AllTopics)
+        {
+            // Silently ignore topics that lack type descriptors; they cannot be subscribed.
+            DdsBridge.TrySubscribe(topic, out _, out _);
+        }
+    }
+
+    private void StartRefreshTimer()
+    {
+        var refreshHz = Math.Max(MinimumUiRefreshHz, Settings.UiRefreshHz);
+        var interval = MillisecondsPerSecond / refreshHz;
+        _refreshTimer = new Timer(_ => _ = InvokeAsync(RefreshAndRender), null, interval, interval);
+    }
+
+    private void StartSparklineTimer()
+    {
+        _sparklineTimer = new Timer(_ => FlushSparklines(), null, SparklineFlushIntervalMs, SparklineFlushIntervalMs);
+    }
+
+    private void FlushSparklines()
+    {
+        foreach (var topic in TopicRegistry.AllTopics)
+        {
+            var topicSamples = SampleStore.GetTopicSamples(topic.TopicType);
+            var currentCount = topicSamples.TotalCount;
+
+            if (!_sparklines.TryGetValue(topic.TopicType, out var buffer))
+            {
+                buffer = new RingBuffer(SparklineSlots);
+                _sparklines[topic.TopicType] = buffer;
+            }
+
+            if (_lastSampleCounts.TryGetValue(topic.TopicType, out var previousCount))
+            {
+                var delta = Math.Max(0, currentCount - previousCount);
+                for (var i = 0; i < delta; i++)
+                {
+                    buffer.Increment();
+                }
+            }
+
+            _lastSampleCounts[topic.TopicType] = currentCount;
+            buffer.Flush();
+        }
+    }
+
+    private Task RefreshAndRender()
+    {
+        RefreshTopics();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void HandleReadersChanged()
+    {
+        _ = InvokeAsync(RefreshAndRender);
+    }
+
+    private void HandleRegistryChanged()
+    {
+        AutoSubscribeAll();
+        _ = InvokeAsync(RefreshAndRender);
+    }
+
+    private void OpenTopicSourcesPanel()
+    {
+        var typeName = typeof(TopicSourcesPanel).AssemblyQualifiedName!;
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, typeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var topicSourcesPanel = WindowManager.SpawnPanel(typeName);
+        topicSourcesPanel.Title = "Topic Sources";
+        topicSourcesPanel.Width = 720;
+        topicSourcesPanel.Height = 520;
+        topicSourcesPanel.X = 200;
+        topicSourcesPanel.Y = 80;
+    }
+
+    private void RefreshTopics()
+    {
+        var activeReaders = DdsBridge.ActiveReaders;
+        var snapshots = new List<TopicExplorerTopicSnapshot>();
+
+        foreach (var meta in TopicRegistry.AllTopics)
+        {
+            var samples = SampleStore.GetTopicSamples(meta.TopicType);
+            var instances = InstanceStore.GetTopicInstances(meta.TopicType);
+            var isSubscribed = activeReaders.ContainsKey(meta.TopicType);
+
+            snapshots.Add(new TopicExplorerTopicSnapshot(meta, samples.TotalCount, instances.LiveCount, isSubscribed));
+        }
+
+        _topics = snapshots;
+    }
+
+    private RenderFragment RenderSparkline(Type topicType) => builder =>
+    {
+        if (!_sparklines.TryGetValue(topicType, out var buffer))
+        {
+            return;
+        }
+
+        var values = buffer.GetSnapshot();
+        var maxVal = 1;
+        foreach (var v in values)
+        {
+            if (v > maxVal)
+            {
+                maxVal = v;
+            }
+        }
+
+        const int svgWidth = 60;
+        const int svgHeight = 20;
+        var step = (double)svgWidth / (values.Length - 1);
+        var points = new System.Text.StringBuilder();
+
+        for (var i = 0; i < values.Length; i++)
+        {
+            var x = i * step;
+            var y = svgHeight - (((double)values[i] / maxVal) * (svgHeight - 2)) - 1;
+            if (i > 0) points.Append(' ');
+            points.Append(FormattableString.Invariant($"{x:0.#},{y:0.#}"));
+        }
+
+        var sequence = 0;
+        builder.OpenElement(sequence++, "svg");
+        builder.AddAttribute(sequence++, "class", "topic-explorer__sparkline");
+        builder.AddAttribute(sequence++, "viewBox", FormattableString.Invariant($"0 0 {svgWidth} {svgHeight}"));
+        builder.AddAttribute(sequence++, "width", svgWidth);
+        builder.AddAttribute(sequence++, "height", svgHeight);
+
+        builder.OpenElement(sequence++, "polyline");
+        builder.AddAttribute(sequence++, "class", "topic-explorer__sparkline-line");
+        builder.AddAttribute(sequence++, "points", points.ToString());
+        builder.AddAttribute(sequence++, "fill", "none");
+        builder.AddAttribute(sequence++, "stroke", "var(--accent-2)");
+        builder.AddAttribute(sequence++, "stroke-width", "1.5");
+        builder.AddAttribute(sequence++, "stroke-linecap", "round");
+        builder.AddAttribute(sequence++, "stroke-linejoin", "round");
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
+
+    private IEnumerable<TopicExplorerTopicSnapshot> FilteredTopics
+    {
+        get
+        {
+            foreach (var topic in _topics)
+            {
+                if (!TopicPickerFilter.Matches(topic.Metadata, _searchText))
+                {
+                    continue;
+                }
+
+                if (!MatchesFilters(topic))
+                {
+                    continue;
+                }
+
+                yield return topic;
+            }
+        }
+    }
+
+    private bool MatchesFilters(TopicExplorerTopicSnapshot topic)
+    {
+        return MatchesFilter(_filters.Received, topic.SampleCount > 0) &&
+               MatchesFilter(_filters.Subscribed, topic.IsSubscribed) &&
+               MatchesFilter(_filters.Keyed, topic.Metadata.IsKeyed) &&
+               MatchesFilter(_filters.Alive, topic.LiveInstances > 0);
+    }
+
+    private static bool MatchesFilter(TriStateFilter filter, bool value)
+    {
+        return filter switch
+        {
+            TriStateFilter.Include => value,
+            TriStateFilter.Exclude => !value,
+            _ => true
+        };
+    }
+
+    private RenderFragment RenderFilterButton(string label, TopicFilterKind kind, TriStateFilter state) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", $"tri-toggle {GetTriStateClass(state)}");
+        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => CycleFilter(kind)));
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "tri-toggle__state");
+        builder.AddContent(sequence++, GetTriStateLabel(state));
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "tri-toggle__label");
+        builder.AddContent(sequence++, label);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private void CycleFilter(TopicFilterKind kind)
+    {
+        _filters.Cycle(kind);
+    }
+
+    private static string GetTriStateLabel(TriStateFilter state)
+    {
+        return state switch
+        {
+            TriStateFilter.Include => "+",
+            TriStateFilter.Exclude => "-",
+            _ => "o"
+        };
+    }
+
+    private static string GetTriStateClass(TriStateFilter state)
+    {
+        return state switch
+        {
+            TriStateFilter.Include => "tri-toggle--include",
+            TriStateFilter.Exclude => "tri-toggle--exclude",
+            _ => "tri-toggle--ignore"
+        };
+    }
+
+    private void ToggleSubscription(TopicMetadata metadata, ChangeEventArgs args)
+    {
+        if (metadata == null)
+        {
+            return;
+        }
+
+        _subscriptionError = null;
+        var isChecked = args.Value is bool value && value;
+        if (isChecked)
+        {
+            if (!DdsBridge.TrySubscribe(metadata, out _, out var errorMessage))
+            {
+                _subscriptionError = errorMessage ?? $"Topic '{metadata.ShortName}' cannot be subscribed.";
+            }
+        }
+        else
+        {
+            DdsBridge.Unsubscribe(metadata);
+        }
+
+        RefreshTopics();
+    }
+
+    private void ToggleAllSubscriptions(ChangeEventArgs args)
+    {
+        var isChecked = args.Value is bool value && value;
+        var activeReaders = DdsBridge.ActiveReaders;
+        var invalidTopics = new List<string>();
+
+        foreach (var topic in TopicRegistry.AllTopics)
+        {
+            var subscribed = activeReaders.ContainsKey(topic.TopicType);
+
+            if (isChecked && !subscribed)
+            {
+                if (!DdsBridge.TrySubscribe(topic, out _, out _))
+                {
+                    invalidTopics.Add(topic.ShortName);
+                }
+            }
+            else if (!isChecked && subscribed)
+            {
+                DdsBridge.Unsubscribe(topic);
+            }
+        }
+
+        // Descriptor-missing topics (e.g. self-test or dynamically-discovered types without
+        // registered ops) are silently skipped — they are expected to fail and the noise
+        // should not surface as a red error in the UI.
+        _subscriptionError = null;
+
+        RefreshTopics();
+    }
+
+    private static string? BuildSubscriptionErrorMessage(IReadOnlyList<string> invalidTopics)
+    {
+        if (invalidTopics.Count == 0)
+        {
+            return null;
+        }
+
+        var displayed = invalidTopics.Take(MaxErrorTopicNames).ToArray();
+        var message = $"Skipped {invalidTopics.Count} topic(s) without descriptor ops: {string.Join(", ", displayed)}";
+
+        if (invalidTopics.Count > MaxErrorTopicNames)
+        {
+            message += $" and {invalidTopics.Count - MaxErrorTopicNames} more.";
+        }
+
+        return message;
+    }
+
+    private bool AreAllSubscribed
+    {
+        get
+        {
+            var topics = TopicRegistry.AllTopics;
+            if (topics.Count == 0)
+            {
+                return false;
+            }
+
+            var activeReaders = DdsBridge.ActiveReaders;
+
+            foreach (var topic in topics)
+            {
+                if (!activeReaders.ContainsKey(topic.TopicType))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    private void OnSearchChanged(ChangeEventArgs args)
+    {
+        _searchText = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OpenSamplesPanel(TopicMetadata metadata)
+    {
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(existingPanel.ComponentTypeName, typeof(SamplesPanel).AssemblyQualifiedName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (existingPanel.ComponentState.TryGetValue(nameof(SamplesPanel.TopicMetadata), out var stored) &&
+                stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+        }
+
+        var panel = WindowManager.SpawnPanel(typeof(SamplesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        {
+            [nameof(SamplesPanel.TopicMetadata)] = metadata
+        });
+
+        panel.Title = $"Samples [{metadata.ShortName}]";
+        panel.Width = 840;
+    }
+
+    private void OpenInstancesPanel(TopicMetadata metadata)
+    {
+        const string instancesTopicTypeKey = "InstancesPanel.TopicTypeName";
+        var instanceTypeName = typeof(InstancesPanel).AssemblyQualifiedName!;
+        var stableId = GetStableInstancesPanelId(metadata);
+
+        // First: look for a panel with the stable ID (fastest path after first creation).
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(existingPanel.PanelId, stableId, StringComparison.Ordinal))
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+        }
+
+        // Second: look for any matching InstancesPanel by live TopicMetadata or stored type name.
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(existingPanel.ComponentTypeName, instanceTypeName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (existingPanel.ComponentState.TryGetValue(nameof(InstancesPanel.TopicMetadata), out var stored) &&
+                stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+
+            if (existingPanel.ComponentState.TryGetValue(instancesTopicTypeKey, out var typeObj))
+            {
+                var typeName = typeObj is System.Text.Json.JsonElement el
+                    ? el.GetString()
+                    : typeObj?.ToString();
+                if (!string.IsNullOrWhiteSpace(typeName))
+                {
+                    var resolved = Type.GetType(typeName);
+                    if (resolved == metadata.TopicType)
+                    {
+                        existingPanel.IsHidden = false;
+                        existingPanel.IsMinimized = false;
+                        WindowManager.BringToFront(existingPanel.PanelId);
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Create a new panel with a stable PanelId.
+        var panel = WindowManager.SpawnPanel(instanceTypeName, new Dictionary<string, object>
+        {
+            [nameof(InstancesPanel.TopicMetadata)] = metadata
+        });
+
+        panel.PanelId = stableId;
+        panel.Title = $"Instances [{metadata.ShortName}]";
+        panel.Width = 840;
+    }
+
+    private static string GetStableInstancesPanelId(TopicMetadata metadata)
+    {
+        var key = metadata.TopicType.FullName ?? metadata.ShortName;
+        unchecked
+        {
+            // FNV-1a hash: deterministic across sessions (unlike string.GetHashCode()).
+            var hash = 2166136261u;
+            foreach (var c in key)
+            {
+                hash ^= (uint)c;
+                hash *= 16777619u;
+            }
+
+            return FormattableString.Invariant($"InstancesPanel.T{hash:X8}");
+        }
+    }
+
+    private void OpenSendSamplePanel(TopicMetadata metadata)
+    {
+        var sendSampleTypeName = typeof(SendSamplePanel).AssemblyQualifiedName!;
+
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(existingPanel.ComponentTypeName, sendSampleTypeName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // Re-use an existing Send Sample panel pre-loaded with this exact topic.
+            if (existingPanel.ComponentState.TryGetValue(nameof(SendSamplePanel.InitialTopic), out var stored) &&
+                stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+        }
+
+        var panel = WindowManager.SpawnPanel(sendSampleTypeName, new Dictionary<string, object>
+        {
+            [nameof(SendSamplePanel.InitialTopic)] = metadata
+        });
+
+        panel.Title = $"Send Sample [{metadata.ShortName}]";
+        panel.Width = 480;
+        panel.Height = 520;
+    }
+
+    public void Dispose()
+    {
+        DdsBridge.ReadersChanged -= HandleReadersChanged;
+        TopicRegistry.Changed -= HandleRegistryChanged;
+        _refreshTimer?.Dispose();
+        _sparklineTimer?.Dispose();
+    }
+
+    private sealed record TopicExplorerTopicSnapshot(
+        TopicMetadata Metadata,
+        int SampleCount,
+        int LiveInstances,
+        bool IsSubscribed);
+}

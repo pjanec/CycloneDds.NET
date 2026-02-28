@@ -1,0 +1,108 @@
+@using System.Collections.Generic
+@using DdsMonitor.Engine.Ui
+
+@inject ITypeDrawerRegistry DrawerRegistry
+
+@if (Meta == null || Payload == null)
+{
+    <div class="dynamic-form dynamic-form--empty">
+        <span class="dynamic-form__placeholder">No topic selected.</span>
+    </div>
+}
+else
+{
+    <div class="dynamic-form">
+        @{
+            string? currentGroup = null;
+        }
+        @foreach (var field in EditableFields)
+        {
+            var groupName = GetGroupName(field.StructuredName);
+            var isNested = groupName != null;
+
+            @if (groupName != currentGroup)
+            {
+                if (currentGroup != null)
+                {
+                    <div class="dynamic-form__group-end"></div>
+                }
+                currentGroup = groupName;
+                if (groupName != null)
+                {
+                    <div class="dynamic-form__group-header">@groupName</div>
+                }
+            }
+
+            var capturedField = field;
+            var drawer = DrawerRegistry.GetDrawer(field.ValueType);
+
+            <div class="dynamic-form__row @(isNested ? "dynamic-form__row--nested" : string.Empty)">
+                <label class="dynamic-form__label" title="@capturedField.StructuredName">
+                    @capturedField.DisplayName
+                </label>
+                <div class="dynamic-form__control">
+                    @if (drawer != null)
+                    {
+                        var ctx = new DrawerContext(
+                            capturedField.DisplayName,
+                            capturedField.ValueType,
+                            () => capturedField.Getter(Payload!),
+                            value =>
+                            {
+                                capturedField.Setter(Payload!, value);
+                                StateHasChanged();
+                            },
+                            this);
+                        @drawer(ctx)
+                    }
+                    else if (field.ValueType.IsArray)
+                    {
+                        <span class="dynamic-form__unsupported" title="Array editing not yet supported">
+                            [@((capturedField.Getter(Payload!) as Array)?.Length ?? 0) items]
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="dynamic-form__unsupported">
+                            @(capturedField.Getter(Payload!)?.ToString() ?? "(null)")
+                        </span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (currentGroup != null)
+        {
+            <div class="dynamic-form__group-end"></div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Topic metadata describing the fields to display.
+    /// </summary>
+    [Parameter]
+    public TopicMetadata? Meta { get; set; }
+
+    /// <summary>
+    /// The boxed payload instance whose fields are read and mutated by the form.
+    /// Must be a boxed instance of <see cref="TopicMetadata.TopicType"/>.
+    /// </summary>
+    [Parameter]
+    public object? Payload { get; set; }
+
+    private IEnumerable<FieldMetadata> EditableFields =>
+        Meta?.AllFields.Where(f => !f.IsSynthetic) ?? Array.Empty<FieldMetadata>();
+
+    /// <summary>
+    /// Returns the parent path prefix as the group name for nested fields,
+    /// or null for top-level fields.
+    /// e.g. "Position.X" → "Position"; "Id" → null.
+    /// </summary>
+    private static string? GetGroupName(string structuredName)
+    {
+        var dot = structuredName.LastIndexOf('.');
+        return dot < 0 ? null : structuredName[..dot];
+    }
+}

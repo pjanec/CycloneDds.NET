@@ -1,0 +1,266 @@
+@using DdsMonitor.Components
+@inherits LayoutComponentBase
+
+@using System.IO
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject IWindowManager WindowManager
+@inject IWorkspaceState WorkspaceState
+@inject IJSRuntime JSRuntime
+@inject WorkspacePersistenceService WorkspacePersistence
+@inject DevelSettings DevelSettings
+
+<div class="app-shell" @onclick="CloseMenus">
+    <nav class="app-menu" @onclick:stopPropagation="true">
+        <span class="app-menu__brand">DDS Monitor</span>
+
+        <div class="app-menu__item @(_openMenu == "file" ? "is-open" : string.Empty)">
+            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("file")'>File</button>
+            <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicSourcesPanel">Topic Sources…</button>
+                <div class="app-menu__dropdown-separator"></div>
+                <button type="button" class="app-menu__dropdown-item" @onclick="ResetLayout">Reset Layout</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="ExportWorkspace">Export Layout</button>
+                <label class="app-menu__dropdown-item" for="workspaceImport" @onclick="CloseMenus">Import Layout</label>
+            </div>
+        </div>
+
+        <div class="app-menu__item @(_openMenu == "view" ? "is-open" : string.Empty)">
+            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("view")'>View</button>
+            <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="ToggleTheme">@GetThemeLabel()</button>
+            </div>
+        </div>
+
+        <div class="app-menu__item @(_openMenu == "devel" ? "is-open" : string.Empty)">
+            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("devel")'>Devel</button>
+            <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="ToggleSelfSending">
+                    @(DevelSettings.SelfSendEnabled ? "✓ " : string.Empty)Enable Self-Sending
+                </button>
+            </div>
+        </div>
+
+        <div class="app-menu__item @(_openMenu == "windows" ? "is-open" : string.Empty)">
+            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("windows")'>Windows</button>
+            <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicsPanel">Topics</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenAllSamplesPanel">All Samples</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenSendSamplePanel">Send Sample</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenReplayPanel">Replay</button>
+            </div>
+        </div>
+    </nav>
+    <InputFile id="workspaceImport" OnChange="ImportWorkspace" style="display:none" accept=".workspace,application/json" />
+    <div class="app-shell__content">
+        @Body
+    </div>
+</div>
+
+@code {
+    private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
+    private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
+    private static readonly string SendSamplePanelTypeName = typeof(SendSamplePanel).AssemblyQualifiedName!;
+    private static readonly string ReplayPanelTypeName = typeof(ReplayPanel).AssemblyQualifiedName!;
+    private static readonly string TopicSourcesPanelTypeName = typeof(TopicSourcesPanel).AssemblyQualifiedName!;
+    private const string WorkspaceExportFileName = "ddsmon.workspace";
+    private const string AllSamplesTopicTypeKey = "SamplesPanel.TopicTypeName";
+    private string _theme = "dark";
+    private string? _openMenu;
+
+    private void ToggleMenu(string menuName)
+    {
+        _openMenu = string.Equals(_openMenu, menuName, StringComparison.Ordinal) ? null : menuName;
+    }
+
+    private void CloseMenus()
+    {
+        if (_openMenu != null)
+        {
+            _openMenu = null;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenTopicSourcesPanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, TopicSourcesPanelTypeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var topicSourcesPanel = WindowManager.SpawnPanel(TopicSourcesPanelTypeName);
+        topicSourcesPanel.Title = "Topic Sources";
+        topicSourcesPanel.Width = 720;
+        topicSourcesPanel.Height = 520;
+        topicSourcesPanel.X = 200;
+        topicSourcesPanel.Y = 80;
+    }
+
+    private void ToggleSelfSending()
+    {
+        CloseMenus();
+        DevelSettings.SelfSendEnabled = !DevelSettings.SelfSendEnabled;
+    }
+
+    private void OpenTopicsPanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, TopicExplorerTypeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var newPanel = WindowManager.SpawnPanel(TopicExplorerTypeName);
+        newPanel.Title = "Topics";
+        newPanel.Width = 840;
+    }
+
+    private void OpenAllSamplesPanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, SamplesPanelTypeName, StringComparison.Ordinal) &&
+                !panel.ComponentState.ContainsKey(AllSamplesTopicTypeKey))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var allPanel = WindowManager.SpawnPanel(SamplesPanelTypeName);
+        allPanel.PanelId = "SamplesPanel.0";
+        allPanel.Title = "All Samples";
+        allPanel.X = 480;
+        allPanel.Y = 40;
+        allPanel.Width = 1120;
+        allPanel.Height = 360;
+    }
+
+    private void OpenSendSamplePanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, SendSamplePanelTypeName, StringComparison.Ordinal) &&
+                !panel.ComponentState.ContainsKey("SendSamplePanel.TopicTypeName"))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var newPanel = WindowManager.SpawnPanel(SendSamplePanelTypeName);
+        newPanel.Title = "Send Sample";
+        newPanel.Width = 480;
+        newPanel.Height = 520;
+        newPanel.X = 300;
+        newPanel.Y = 80;
+    }
+
+    private void OpenReplayPanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, ReplayPanelTypeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var newPanel = WindowManager.SpawnPanel(ReplayPanelTypeName);
+        newPanel.Title = "Replay";
+        newPanel.Width = 540;
+        newPanel.Height = 340;
+        newPanel.X = 320;
+        newPanel.Y = 100;
+    }
+
+    private void ResetLayout()
+    {
+        CloseMenus();
+        var filePath = WorkspaceState.WorkspaceFilePath;
+        if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
+
+        WindowManager.ClearPanels();
+        var newPanel = WindowManager.SpawnPanel(TopicExplorerTypeName);
+        newPanel.Title = "Topics";
+
+        WorkspacePersistence.SaveNow();
+    }
+
+    private async Task ExportWorkspace()
+    {
+        CloseMenus();
+        var json = WorkspacePersistence.ExportWorkspaceJson();
+        await JSRuntime.InvokeVoidAsync("ddsMonitor.downloadTextFile", WorkspaceExportFileName, json, "application/json");
+    }
+
+    private async Task ImportWorkspace(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file == null)
+        {
+            return;
+        }
+
+        using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        var json = await reader.ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return;
+        }
+
+        WorkspacePersistence.ImportWorkspaceJson(json);
+        WorkspacePersistence.SaveNow();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _theme = await JSRuntime.InvokeAsync<string>("ddsMonitor.applyStoredTheme");
+        StateHasChanged();
+    }
+
+    private async Task ToggleTheme()
+    {
+        CloseMenus();
+        _theme = await JSRuntime.InvokeAsync<string>("ddsMonitor.toggleTheme");
+    }
+
+    private string GetThemeLabel()
+    {
+        return _theme == "light" ? "Theme: Light" : "Theme: Dark";
+    }
+}

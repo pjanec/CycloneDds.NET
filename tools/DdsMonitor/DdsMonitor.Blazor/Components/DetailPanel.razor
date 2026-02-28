@@ -1,0 +1,723 @@
+@using System.Collections.Generic
+@using System.Linq
+@using System.Reflection
+@using System.Text.Json
+@using CycloneDDS.Runtime
+@using CycloneDDS.Runtime.Interop
+@using Microsoft.AspNetCore.Components.Rendering
+@using Microsoft.JSInterop
+@implements IDisposable
+
+@inject IEventBroker EventBroker
+@inject IWindowManager WindowManager
+@inject TooltipService TooltipService
+@inject ContextMenuService ContextMenuService
+@inject IJSRuntime JSRuntime
+
+@if (_currentSample == null)
+{
+    <div class="panel-placeholder-content">
+        <h2>Detail Panel</h2>
+        <p>No sample selected.</p>
+    </div>
+}
+else
+{
+    <div class="detail-panel">
+        <div class="detail-panel__toolbar">
+            <button type="button"
+                    title="@(_linked ? "Linked \u2013 follows sample selection" : "Detached \u2013 pinned to this sample")"
+                    class="detail-panel__link @(_linked ? "is-on" : string.Empty)"
+                    @onclick="ToggleLinkMode">
+                @if (_linked)
+                {
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                }
+                else
+                {
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.72-1.71"/><line x1="8" y1="2" x2="8" y2="5"/><line x1="2" y1="8" x2="5" y2="8"/><line x1="16" y1="19" x2="16" y2="22"/><line x1="19" y1="16" x2="22" y2="16"/></svg>
+                }
+            </button>
+            <button type="button" title="Clone this sample payload to the Sender" class="detail-panel__clone" @onclick="CloneToSend">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <span class="detail-state-badge @GetInstanceStateClass(_currentSample)"
+                  title="Instance State: @GetInstanceStateTooltip(_currentSample)"></span>
+        </div>
+
+        <div class="detail-panel__tabs">
+            @RenderTab(DetailTab.Tree, "Tree")
+            @RenderTab(DetailTab.Table, "Table")
+            @RenderTab(DetailTab.Json, "JSON")
+            @RenderTab(DetailTab.SampleInfo, "Sample Info")
+            @RenderTab(DetailTab.Sender, "Sender")
+        </div>
+
+        <div class="detail-panel__content">
+            @switch (_activeTab)
+            {
+                case DetailTab.Tree:
+                    @RenderTreeView()
+                    break;
+                case DetailTab.Table:
+                    @RenderTableView()
+                    break;
+                case DetailTab.Json:
+                    @RenderJsonView()
+                    break;
+                case DetailTab.SampleInfo:
+                    @RenderSampleInfo()
+                    break;
+                case DetailTab.Sender:
+                    @RenderSenderInfo()
+                    break;
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private const int DebounceDelayMs = 25;
+    private const int RightMouseButton = 2;
+    private const int MaxTreeDepth = 32;
+
+    private SampleData? _currentSample;
+    private SampleData? _pendingSample;
+    private SampleData? _lastParameterSample;
+    private bool _linked = true;
+    private DetailTab _activeTab = DetailTab.Tree;
+    private DebouncedAction? _debouncer;
+    private IDisposable? _subscription;
+
+    [CascadingParameter]
+    public PanelState? PanelState { get; set; }
+
+    [Parameter]
+    public SampleData? Sample { get; set; }
+
+    [Parameter]
+    public string? SourcePanelId { get; set; }
+
+    [Parameter]
+    public bool? IsLinked { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Sample != null)
+        {
+            _currentSample = Sample;
+        }
+
+        _linked = IsLinked ?? Sample == null;
+        PersistPanelState();
+
+        if (!string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            _subscription = EventBroker.Subscribe<SampleSelectedEvent>(OnSampleSelected);
+        }
+
+        _debouncer = new DebouncedAction(TimeSpan.FromMilliseconds(DebounceDelayMs),
+            () => _ = InvokeAsync(ApplyPendingSample));
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (IsLinked.HasValue)
+        {
+            _linked = IsLinked.Value;
+            PersistPanelState();
+        }
+
+        if (Sample != null && Sample != _lastParameterSample)
+        {
+            _lastParameterSample = Sample;
+            _currentSample = Sample;
+        }
+    }
+
+    private void OnSampleSelected(SampleSelectedEvent message)
+    {
+        if (!_linked)
+        {
+            return;
+        }
+
+        if (!string.Equals(message.SourcePanelId, SourcePanelId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _pendingSample = message.Sample;
+        _debouncer?.Trigger();
+    }
+
+    private Task ApplyPendingSample()
+    {
+        _currentSample = _pendingSample;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void ToggleLinkMode()
+    {
+        _linked = !_linked;
+        PersistPanelState();
+    }
+
+    private void PersistPanelState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        PanelState.ComponentState[nameof(IsLinked)] = _linked;
+    }
+
+    private RenderFragment RenderTab(DetailTab tab, string label) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", _activeTab == tab ? "detail-panel__tab is-active" : "detail-panel__tab");
+        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => _activeTab = tab));
+        builder.AddContent(sequence++, label);
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderTreeView() => builder =>
+    {
+        if (_currentSample == null)
+        {
+            return;
+        }
+
+        var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "detail-tree");
+        builder.AddContent(2, RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty, traversal, 0));
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderTableView() => builder =>
+    {
+        if (_currentSample == null)
+        {
+            return;
+        }
+
+        builder.OpenElement(0, "table");
+        builder.AddAttribute(1, "class", "detail-table");
+        builder.OpenElement(2, "thead");
+        builder.OpenElement(3, "tr");
+        builder.OpenElement(4, "th");
+        builder.AddContent(5, "Field");
+        builder.CloseElement();
+        builder.OpenElement(6, "th");
+        builder.AddContent(7, "Value");
+        builder.CloseElement();
+        builder.CloseElement();
+        builder.CloseElement();
+
+        builder.OpenElement(8, "tbody");
+        foreach (var field in _currentSample.TopicMetadata.AllFields.Where(meta => !meta.IsSynthetic))
+        {
+            var value = field.Getter(_currentSample.Payload);
+            builder.OpenElement(9, "tr");
+            builder.OpenElement(10, "td");
+            builder.AddContent(11, field.StructuredName);
+            builder.CloseElement();
+            builder.OpenElement(12, "td");
+            builder.AddContent(13, RenderValue(value));
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderJsonView() => builder =>
+    {
+        if (_currentSample == null)
+        {
+            return;
+        }
+
+        var payload = _currentSample.Payload;
+        var json = SerializePayload(payload);
+        if (json == null)
+        {
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "detail-panel__empty");
+            builder.AddContent(2, "JSON serialization failed.");
+            builder.CloseElement();
+            return;
+        }
+
+        var html = JsonSyntaxHighlighter.ToHtml(json);
+        builder.OpenElement(3, "pre");
+        builder.AddAttribute(4, "class", "detail-json");
+        builder.AddContent(5, (MarkupString)html);
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderSampleInfo() => builder =>
+    {
+        if (_currentSample == null)
+        {
+            return;
+        }
+
+        var info = _currentSample.SampleInfo;
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "detail-info");
+        builder.AddContent(2, $"Instance: {info.InstanceState}");
+        builder.AddMarkupContent(3, "<br />");
+        builder.AddContent(4, $"Sample: {info.SampleState}");
+        builder.AddMarkupContent(5, "<br />");
+        builder.AddContent(6, $"View: {info.ViewState}");
+        builder.AddMarkupContent(7, "<br />");
+        builder.AddContent(8, $"SourceTimestamp: {info.SourceTimestamp}");
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderSenderInfo() => builder =>
+    {
+        if (_currentSample == null)
+        {
+            return;
+        }
+
+        var sender = _currentSample.Sender;
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "detail-info");
+        if (sender == null)
+        {
+            builder.AddContent(2, "No sender metadata.");
+        }
+        else
+        {
+            builder.AddContent(2, $"ProcessId: {sender.ProcessId}");
+            builder.AddMarkupContent(3, "<br />");
+            builder.AddContent(4, $"Machine: {sender.MachineName}");
+            builder.AddMarkupContent(5, "<br />");
+            builder.AddContent(6, $"IP: {sender.IpAddress}");
+        }
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderNode(object? value, string label, string path, HashSet<object> traversal, int depth) => builder =>
+    {
+        var sequence = 0;
+        var type = value?.GetType();
+        var isReferenceType = type != null && !type.IsValueType;
+        var isCycle = isReferenceType && traversal.Contains(value!);
+        var isMaxDepth = depth >= MaxTreeDepth;
+        var isLeaf = type == null || IsLeafType(type) || isCycle || isMaxDepth;
+        var isRoot = string.IsNullOrEmpty(path) && _currentSample != null &&
+            string.Equals(label, _currentSample.TopicMetadata.ShortName, StringComparison.Ordinal);
+        var nextPath = isRoot
+            ? string.Empty
+            : (string.IsNullOrEmpty(path) ? label : $"{path}.{label}");
+        var displayValue = value;
+        var displayType = type;
+
+        if (isCycle)
+        {
+            displayValue = "(cycle)";
+            displayType = typeof(string);
+        }
+        else if (isMaxDepth)
+        {
+            displayValue = "(max depth)";
+            displayType = typeof(string);
+        }
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "detail-tree__node");
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "detail-tree__row");
+
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "detail-tree__label");
+        builder.AddContent(sequence++, label);
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", GetValueClass(displayType));
+        builder.AddContent(sequence++, RenderValue(displayValue));
+        builder.CloseElement();
+
+        if (isLeaf)
+        {
+            RenderPin(builder, ref sequence, nextPath);
+            RenderTextViewButton(builder, ref sequence, value);
+        }
+
+        builder.CloseElement();
+
+        var addedToTraversal = false;
+        if (!isLeaf && isReferenceType && value != null)
+        {
+            addedToTraversal = traversal.Add(value);
+        }
+
+        if (!isLeaf && value != null)
+        {
+            var nonNullType = type!;
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "detail-tree__children");
+            foreach (var member in GetMembers(nonNullType))
+            {
+                var memberValue = GetMemberValue(member, value);
+                builder.AddContent(sequence++, RenderNode(memberValue, member.Name, nextPath, traversal, depth + 1));
+            }
+            builder.CloseElement();
+        }
+
+        if (addedToTraversal)
+        {
+            traversal.Remove(value!);
+        }
+
+        builder.CloseElement();
+    };
+
+    private void RenderPin(RenderTreeBuilder builder, ref int sequence, string path)
+    {
+        if (string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            return;
+        }
+
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", "detail-tree__pin");
+        builder.AddAttribute(sequence++, "onclick",
+            EventCallback.Factory.Create(this, () => AddColumn(path)));
+        builder.AddContent(sequence++, "+");
+        builder.CloseElement();
+    }
+
+    private void RenderTextViewButton(RenderTreeBuilder builder, ref int sequence, object? value)
+    {
+        if (value is not string text)
+        {
+            return;
+        }
+
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", "detail-tree__textview");
+        builder.AddAttribute(sequence++, "onclick",
+            EventCallback.Factory.Create(this, () => OpenTextView(text)));
+        builder.AddContent(sequence++, "Open");
+        builder.CloseElement();
+    }
+
+    private void AddColumn(string path)
+    {
+        if (string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            return;
+        }
+
+        EventBroker.Publish(new AddColumnRequestEvent(SourcePanelId, path));
+    }
+
+    private void OpenTextView(string text)
+    {
+        var panel = WindowManager.SpawnPanel(typeof(TextViewPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        {
+            [nameof(TextViewPanel.Title)] = "Text View",
+            [nameof(TextViewPanel.Content)] = text
+        });
+
+        panel.Title = "Text View";
+    }
+
+    private RenderFragment RenderValue(object? value) => builder =>
+    {
+        if (value is string text)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "detail-tree__value is-string");
+            builder.AddAttribute(2, "onmouseenter",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => ShowJsonTooltip(text, args)));
+            builder.AddAttribute(3, "onmouseleave",
+                EventCallback.Factory.Create(this, HideTooltip));
+            builder.AddAttribute(4, "onmousedown",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(text, true, args)));
+            builder.AddAttribute(5, "oncontextmenu:preventDefault", true);
+            builder.AddContent(6, text);
+            builder.CloseElement();
+        }
+        else
+        {
+            var content = value?.ToString() ?? string.Empty;
+            builder.OpenElement(6, "span");
+            builder.AddAttribute(7, "class", "detail-tree__value");
+            builder.AddAttribute(8, "onmousedown",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(content, false, args)));
+            builder.AddAttribute(9, "oncontextmenu:preventDefault", true);
+            builder.AddContent(10, content);
+            builder.CloseElement();
+        }
+    };
+
+    private void ShowJsonTooltip(string text, MouseEventArgs args)
+    {
+        if (!JsonTooltipParser.TryFormatJson(text, out var formatted))
+        {
+            return;
+        }
+
+        var html = JsonSyntaxHighlighter.ToHtml(formatted);
+        TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+    }
+
+    private void HideTooltip()
+    {
+        TooltipService.Hide();
+    }
+
+    private void OpenValueContextMenu(string text, bool allowTextView, MouseEventArgs args)
+    {
+        var items = new List<ContextMenuItem>
+        {
+            new("Copy to Clipboard", null, () => CopyToClipboardAsync(text))
+        };
+
+        if (allowTextView)
+        {
+            items.Add(new("Show in Separate Window", null, () =>
+            {
+                OpenTextView(text);
+                return Task.CompletedTask;
+            }));
+        }
+
+        ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+    }
+
+    private void HandleValueMouseDown(string text, bool allowTextView, MouseEventArgs args)
+    {
+        if (args.Button != RightMouseButton)
+        {
+            return;
+        }
+
+        OpenValueContextMenu(text, allowTextView, args);
+    }
+
+    private Task CopyToClipboardAsync(string text)
+    {
+        return JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text).AsTask();
+    }
+
+    private static string? SerializePayload(object payload)
+    {
+        try
+        {
+            return JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true, IncludeFields = true });
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void CloneToSend()
+    {
+        if (_currentSample == null)
+        {
+            return;
+        }
+
+        var payload = _currentSample.Payload;
+        try
+        {
+            var options = new JsonSerializerOptions { IncludeFields = true };
+            var json = JsonSerializer.Serialize(payload, options);
+            var clone = JsonSerializer.Deserialize(json, payload.GetType(), options);
+            if (clone != null)
+            {
+                EventBroker.Publish(new CloneAndSendRequestEvent(_currentSample.TopicMetadata, clone));
+            }
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static IEnumerable<MemberInfo> GetMembers(Type type)
+    {
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
+        foreach (var field in type.GetFields(flags))
+        {
+            if (!field.IsStatic)
+            {
+                yield return field;
+            }
+        }
+
+        foreach (var property in type.GetProperties(flags))
+        {
+            if (property.GetMethod != null && property.GetIndexParameters().Length == 0)
+            {
+                yield return property;
+            }
+        }
+    }
+
+    private static object? GetMemberValue(MemberInfo member, object target)
+    {
+        return member switch
+        {
+            FieldInfo field => field.GetValue(target),
+            PropertyInfo property => property.GetValue(target),
+            _ => null
+        };
+    }
+
+    private static bool IsLeafType(Type type)
+    {
+        if (type.IsPrimitive || type.IsEnum)
+        {
+            return true;
+        }
+
+        return type == typeof(string) || type == typeof(decimal) || type == typeof(DateTime) ||
+               type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid);
+    }
+
+    private static string GetValueClass(Type? type)
+    {
+        if (type == null)
+        {
+            return "detail-tree__value is-null";
+        }
+
+        if (type == typeof(string))
+        {
+            return "detail-tree__value is-string";
+        }
+
+        if (type == typeof(bool))
+        {
+            return "detail-tree__value is-bool";
+        }
+
+        if (type.IsEnum)
+        {
+            return "detail-tree__value is-enum";
+        }
+
+        if (type.IsPrimitive || type == typeof(decimal))
+        {
+            return "detail-tree__value is-number";
+        }
+
+        return "detail-tree__value";
+    }
+
+    // Test helper for verifying recursion guards without rendering.
+    internal static TraversalSummary AnalyzeTraversal(object? value)
+    {
+        var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var summary = new TraversalSummary();
+        AnalyzeTraversal(value, traversal, 0, summary);
+        return summary;
+    }
+
+    private static void AnalyzeTraversal(object? value, HashSet<object> traversal, int depth, TraversalSummary summary)
+    {
+        summary.NodeCount++;
+
+        if (value == null)
+        {
+            return;
+        }
+
+        var type = value.GetType();
+        var isReferenceType = !type.IsValueType;
+        if (isReferenceType && traversal.Contains(value))
+        {
+            summary.HitCycle = true;
+            return;
+        }
+
+        if (depth >= MaxTreeDepth)
+        {
+            summary.HitMaxDepth = true;
+            return;
+        }
+
+        if (IsLeafType(type))
+        {
+            return;
+        }
+
+        var addedToTraversal = false;
+        if (isReferenceType)
+        {
+            addedToTraversal = traversal.Add(value);
+        }
+
+        foreach (var member in GetMembers(type))
+        {
+            AnalyzeTraversal(GetMemberValue(member, value), traversal, depth + 1, summary);
+        }
+
+        if (addedToTraversal)
+        {
+            traversal.Remove(value);
+        }
+    }
+
+    public void Dispose()
+    {
+        _subscription?.Dispose();
+        _debouncer?.Dispose();
+    }
+
+    private static string GetInstanceStateClass(SampleData? sample)
+    {
+        if (sample == null) return string.Empty;
+        return sample.SampleInfo.InstanceState switch
+        {
+            DdsInstanceState.Alive            => "detail-state-badge--alive",
+            DdsInstanceState.NotAliveDisposed => "detail-state-badge--disposed",
+            _                                 => "detail-state-badge--no-writers"
+        };
+    }
+
+    private static string GetInstanceStateTooltip(SampleData? sample)
+    {
+        if (sample == null) return string.Empty;
+        return sample.SampleInfo.InstanceState switch
+        {
+            DdsInstanceState.Alive            => "Alive",
+            DdsInstanceState.NotAliveDisposed => "Disposed (Not Alive)",
+            _                                 => "No Writers"
+        };
+    }
+
+    private enum DetailTab
+    {
+        Tree,
+        Table,
+        Json,
+        SampleInfo,
+        Sender
+    }
+
+    internal sealed class TraversalSummary
+    {
+        public int NodeCount { get; set; }
+
+        public bool HitCycle { get; set; }
+
+        public bool HitMaxDepth { get; set; }
+    }
+}

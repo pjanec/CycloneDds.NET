@@ -1,0 +1,103 @@
+<div class="text-view">
+    <div class="text-view__toolbar">
+        <div class="text-view__title">@Title</div>
+        <div class="text-view__actions">
+            <button type="button"
+                    class="text-view__toggle @(_jsonMode ? "is-active" : string.Empty)"
+                    @onclick="() => SetMode(true)"
+                    disabled="@(!_hasJson)">
+                JSON
+            </button>
+            <button type="button"
+                    class="text-view__toggle @(!_jsonMode ? "is-active" : string.Empty)"
+                    @onclick="() => SetMode(false)">
+                Plain
+            </button>
+            @if (AllowEdit)
+            {
+                <button type="button"
+                        class="text-view__toggle @(_isEditing ? "is-active" : string.Empty)"
+                        @onclick="ToggleEdit">
+                    Edit
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="text-view__content">
+        @if (_isEditing)
+        {
+            <textarea class="text-view__editor" @oninput="OnEditChanged">@_editableContent</textarea>
+            <button type="button" class="text-view__save" @onclick="SaveEdit">Save</button>
+        }
+        else if (_jsonMode && _hasJson)
+        {
+            <pre class="text-view__json">@((MarkupString)_jsonHtml)</pre>
+        }
+        else
+        {
+            <pre class="text-view__plain">@Content</pre>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _jsonMode = true;
+    private bool _hasJson;
+    private string _jsonHtml = string.Empty;
+    private bool _isEditing;
+    private string _editableContent = string.Empty;
+
+    [Parameter]
+    public string Title { get; set; } = "Text View";
+
+    [Parameter]
+    public string Content { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool AllowEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnContentChanged { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _editableContent = Content;
+        _hasJson = JsonTooltipParser.TryFormatJson(Content, out var formatted);
+        _jsonHtml = _hasJson ? JsonSyntaxHighlighter.ToHtml(formatted) : string.Empty;
+        if (!_hasJson)
+        {
+            _jsonMode = false;
+        }
+    }
+
+    private void SetMode(bool jsonMode)
+    {
+        if (jsonMode && !_hasJson)
+        {
+            return;
+        }
+
+        _jsonMode = jsonMode;
+    }
+
+    private void ToggleEdit()
+    {
+        _isEditing = !_isEditing;
+    }
+
+    private void OnEditChanged(ChangeEventArgs args)
+    {
+        _editableContent = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task SaveEdit()
+    {
+        _isEditing = false;
+        if (AllowEdit)
+        {
+            await OnContentChanged.InvokeAsync(_editableContent);
+        }
+    }
+
+}

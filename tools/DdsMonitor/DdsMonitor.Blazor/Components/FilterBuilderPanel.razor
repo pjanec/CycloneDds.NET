@@ -1,0 +1,646 @@
+@using System.Text.Json
+@using System.Linq
+@using System.IO
+@using System.Collections.Generic
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
+@implements IDisposable
+
+@inject ITopicRegistry TopicRegistry
+@inject IEventBroker EventBroker
+@inject IWindowManager WindowManager
+@inject IFilterCompiler FilterCompiler
+@inject IJSRuntime JSRuntime
+
+<div class="filter-builder">
+    <div class="filter-builder__toolbar">
+        <button type="button" class="filter-builder__btn" @onclick="ApplyFilter">Apply Filter</button>
+        <button type="button" class="filter-builder__btn" @onclick="ClearFilter">Clear</button>
+        <label class="filter-builder__btn" for="filterLoad">Load...</label>
+        <button type="button" class="filter-builder__btn" @onclick="SaveFilter">Save...</button>
+    </div>
+
+    <div class="filter-builder__selectors">
+        <div class="filter-builder__selector">
+            <span class="filter-builder__label">Topic</span>
+            <TopicPicker Topics="TopicRegistry.AllTopics" Placeholder="Search topics..." OnTopicSelected="SelectTopic" OnClosed="OnPickerClosed" />
+        </div>
+        @if (string.IsNullOrWhiteSpace(LockedTargetPanelId))
+        {
+            <div class="filter-builder__selector">
+                <span class="filter-builder__label">Target Panel</span>
+                <select class="filter-builder__select" value="@_targetPanelId" @onchange="OnTargetChanged">
+                    <option value="">Select samples panel...</option>
+                    @foreach (var panel in GetSamplesPanels())
+                    {
+                        <option value="@panel.PanelId">@panel.Title</option>
+                    }
+                </select>
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="filter-builder__error">@_errorMessage</div>
+    }
+
+    <div class="filter-builder__tree">
+        @RenderGroup(_root, isRoot: true)
+    </div>
+</div>
+
+<InputFile id="filterLoad" OnChange="LoadFilter" style="display:none" accept=".samplefilter,application/json" />
+
+@code {
+    private const string SamplesPanelTypeName = "DdsMonitor.Components.SamplesPanel";
+    private const string FilterFileName = "filter.samplefilter";
+
+    private readonly FilterGroupNode _root = new() { Operator = FilterGroupOperator.And };
+    private TopicMetadata? _topicMetadata;
+    private string? _targetPanelId;
+    private string? _errorMessage;
+    private bool _initialised;
+
+    [CascadingParameter]
+    public PanelState? PanelState { get; set; }
+
+    /// <summary>
+    /// When set, the Filter Builder will target this specific panel and not allow changing the target.
+    /// </summary>
+    [Parameter]
+    public string? LockedTargetPanelId { get; set; }
+
+    /// <summary>
+    /// When set, pre-loads the topic metadata for building conditions.
+    /// </summary>
+    [Parameter]
+    public TopicMetadata? PreloadedTopicMetadata { get; set; }
+
+    protected override void OnInitialized()
+    {
+        WindowManager.PanelsChanged += HandlePanelsChanged;
+        EnsureDefaultTarget();
+        EnsureRootNodes();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_initialised)
+        {
+            return;
+        }
+
+        _initialised = true;
+
+        if (PreloadedTopicMetadata != null)
+        {
+            _topicMetadata = PreloadedTopicMetadata;
+        }
+
+        if (!string.IsNullOrWhiteSpace(LockedTargetPanelId))
+        {
+            _targetPanelId = LockedTargetPanelId;
+        }
+    }
+
+    private void HandlePanelsChanged()
+    {
+        EnsureDefaultTarget();
+        StateHasChanged();
+    }
+
+    private void EnsureDefaultTarget()
+    {
+        if (!string.IsNullOrWhiteSpace(LockedTargetPanelId) || !string.IsNullOrWhiteSpace(_targetPanelId))
+        {
+            return;
+        }
+
+        var panel = GetSamplesPanels().FirstOrDefault();
+        if (panel != null)
+        {
+            _targetPanelId = panel.PanelId;
+            TrySetTopicFromPanel(panel);
+        }
+    }
+
+    private IEnumerable<PanelState> GetSamplesPanels()
+    {
+        return WindowManager.ActivePanels
+            .Where(panel => panel.ComponentTypeName.Contains(SamplesPanelTypeName, StringComparison.Ordinal));
+    }
+
+    private IReadOnlyList<FieldMetadata> GetAvailableFields()
+    {
+        if (_topicMetadata == null)
+        {
+            return Array.Empty<FieldMetadata>();
+        }
+
+        // Include normal payload fields AND synthetic wrapper fields (e.g. Timestamp, Ordinal).
+        // Display-only synthetic fields (Delay, Size) have special-char names that are not valid
+        // LINQ identifiers and are intentionally excluded from the filter builder.
+        return _topicMetadata.AllFields.Where(field => !field.IsSynthetic || field.IsWrapperField).ToList();
+    }
+
+    private void EnsureRootNodes()
+    {
+        if (_root.Children.Count == 0)
+        {
+            AddCondition(_root);
+        }
+    }
+
+    private Task OnPickerClosed()
+    {
+        return Task.CompletedTask;
+    }
+
+    private void SelectTopic(TopicMetadata metadata)
+    {
+        _topicMetadata = metadata;
+        StateHasChanged();
+    }
+
+    private void OnTargetChanged(ChangeEventArgs args)
+    {
+        _targetPanelId = args.Value?.ToString();
+
+        var panel = GetSamplesPanels().FirstOrDefault(entry =>
+            string.Equals(entry.PanelId, _targetPanelId, StringComparison.Ordinal));
+        if (panel != null)
+        {
+            TrySetTopicFromPanel(panel);
+        }
+    }
+
+    private void TrySetTopicFromPanel(PanelState panel)
+    {
+        if (panel.ComponentState.TryGetValue(nameof(SamplesPanel.TopicMetadata), out var stored) &&
+            stored is TopicMetadata metadata)
+        {
+            _topicMetadata = metadata;
+            return;
+        }
+
+        if (panel.ComponentState.TryGetValue("SamplesPanel.TopicTypeName", out var typeObj) &&
+            typeObj is string typeName && !string.IsNullOrWhiteSpace(typeName))
+        {
+            var type = Type.GetType(typeName);
+            if (type != null)
+            {
+                _topicMetadata = TopicRegistry.GetByType(type);
+            }
+        }
+    }
+
+    private void AddCondition(FilterGroupNode group)
+    {
+        // Start with an empty condition so the user must choose the field from the picker.
+        // Avoid auto-selecting the first field, which previously caused the "id" pre-fill bug.
+        var condition = new FilterConditionNode();
+        group.Children.Add(condition);
+    }
+
+    private void AddGroup(FilterGroupNode group)
+    {
+        var child = new FilterGroupNode { Operator = FilterGroupOperator.And };
+        AddCondition(child);
+        group.Children.Add(child);
+    }
+
+    private void RemoveNode(FilterGroupNode parent, FilterNode node)
+    {
+        parent.Children.Remove(node);
+    }
+
+    private void ToggleNegation(FilterNode node)
+    {
+        node.IsNegated = !node.IsNegated;
+    }
+
+    private void ApplyField(FilterConditionNode condition, FieldMetadata field)
+    {
+        condition.FieldPath = $"Payload.{field.StructuredName}";
+        condition.ValueTypeName = field.ValueType.AssemblyQualifiedName;
+
+        if (field.ValueType == typeof(bool))
+        {
+            condition.ValueText = "true";
+        }
+        else if (field.ValueType.IsEnum)
+        {
+            condition.ValueText = Enum.GetNames(field.ValueType).FirstOrDefault() ?? string.Empty;
+        }
+        else
+        {
+            condition.ValueText ??= string.Empty;
+        }
+    }
+
+    private FieldMetadata? GetFieldForCondition(FilterConditionNode condition)
+    {
+        if (_topicMetadata == null || string.IsNullOrWhiteSpace(condition.FieldPath))
+        {
+            return null;
+        }
+
+        if (!condition.FieldPath.StartsWith("Payload.", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var path = condition.FieldPath.Substring("Payload.".Length);
+        return _topicMetadata.AllFields.FirstOrDefault(field =>
+            string.Equals(field.StructuredName, path, StringComparison.Ordinal));
+    }
+
+    private IReadOnlyList<FilterComparisonOperator> GetOperatorOptions(FilterConditionNode condition)
+    {
+        var valueType = ResolveValueType(condition);
+        if (valueType == typeof(string))
+        {
+            return new[]
+            {
+                FilterComparisonOperator.Equals,
+                FilterComparisonOperator.NotEquals,
+                FilterComparisonOperator.StartsWith,
+                FilterComparisonOperator.EndsWith,
+                FilterComparisonOperator.Contains
+            };
+        }
+
+        if (valueType != null && (valueType.IsEnum || valueType == typeof(bool)))
+        {
+            return new[]
+            {
+                FilterComparisonOperator.Equals,
+                FilterComparisonOperator.NotEquals
+            };
+        }
+
+        return new[]
+        {
+            FilterComparisonOperator.Equals,
+            FilterComparisonOperator.NotEquals,
+            FilterComparisonOperator.GreaterThan,
+            FilterComparisonOperator.GreaterThanOrEqual,
+            FilterComparisonOperator.LessThan,
+            FilterComparisonOperator.LessThanOrEqual
+        };
+    }
+
+    private Type? ResolveValueType(FilterConditionNode condition)
+    {
+        if (!string.IsNullOrWhiteSpace(condition.ValueTypeName))
+        {
+            return Type.GetType(condition.ValueTypeName);
+        }
+
+        var field = GetFieldForCondition(condition);
+        return field?.ValueType;
+    }
+
+    private void OnConditionOperatorChanged(FilterConditionNode condition, ChangeEventArgs args)
+    {
+        if (Enum.TryParse<FilterComparisonOperator>(args.Value?.ToString(), out var op))
+        {
+            condition.Operator = op;
+        }
+    }
+
+    private void OnConditionValueChanged(FilterConditionNode condition, ChangeEventArgs args)
+    {
+        condition.ValueText = args.Value?.ToString();
+    }
+
+    private void OnConditionBoolChanged(FilterConditionNode condition, ChangeEventArgs args)
+    {
+        var value = args.Value is bool flag && flag;
+        condition.ValueText = value ? "true" : "false";
+    }
+
+    private void OnConditionEnumChanged(FilterConditionNode condition, ChangeEventArgs args)
+    {
+        condition.ValueText = args.Value?.ToString();
+    }
+
+    private RenderFragment RenderGroup(FilterGroupNode group, bool isRoot) => @<div class="filter-builder__group">
+        <div class="filter-builder__group-header">
+            <select class="filter-builder__select" value="@group.Operator" @onchange="(e) => group.Operator = ParseGroupOperator(e)">
+                <option value="@FilterGroupOperator.And">AND</option>
+                <option value="@FilterGroupOperator.Or">OR</option>
+            </select>
+            <div class="filter-builder__group-actions">
+                <button type="button" class="filter-builder__btn" @onclick="() => AddCondition(group)">+ Condition</button>
+                <button type="button" class="filter-builder__btn" @onclick="() => AddGroup(group)">+ Sub-Group</button>
+                <button type="button" class="filter-builder__btn filter-builder__negate @(group.IsNegated ? "is-active" : string.Empty)" @onclick="() => ToggleNegation(group)">!</button>
+                @if (!isRoot)
+                {
+                    <button type="button" class="filter-builder__btn" @onclick="() => RemoveNodeFromParent(group)">X</button>
+                }
+            </div>
+        </div>
+        <div class="filter-builder__group-body">
+            @foreach (var child in group.Children)
+            {
+                if (child is FilterGroupNode childGroup)
+                {
+                    @RenderGroup(childGroup, isRoot: false)
+                }
+                else if (child is FilterConditionNode condition)
+                {
+                    <div class="filter-builder__condition">
+                        <div class="filter-builder__field">
+                            <FieldPicker Fields="GetAvailableFields()" SelectedField="GetFieldForCondition(condition)" Placeholder="Field..." OnFieldSelected="field => ApplyField(condition, field)" />
+                        </div>
+                        <select class="filter-builder__select" value="@condition.Operator" @onchange="(e) => OnConditionOperatorChanged(condition, e)">
+                            @foreach (var op in GetOperatorOptions(condition))
+                            {
+                                <option value="@op">@GetOperatorLabel(op)</option>
+                            }
+                        </select>
+                        <div class="filter-builder__value">
+                            @RenderValueEditor(condition)
+                        </div>
+                        <button type="button" class="filter-builder__btn filter-builder__negate @(condition.IsNegated ? "is-active" : string.Empty)" @onclick="() => ToggleNegation(condition)">!</button>
+                        <button type="button" class="filter-builder__btn" @onclick="() => RemoveNode(group, condition)">X</button>
+                    </div>
+                }
+            }
+        </div>
+    </div>;
+
+    private RenderFragment RenderValueEditor(FilterConditionNode condition) => builder =>
+    {
+        var valueType = ResolveValueType(condition);
+        var sequence = 0;
+
+        if (valueType == typeof(bool))
+        {
+            builder.OpenElement(sequence++, "input");
+            builder.AddAttribute(sequence++, "type", "checkbox");
+            builder.AddAttribute(sequence++, "checked", string.Equals(condition.ValueText, "true", StringComparison.OrdinalIgnoreCase));
+            builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => OnConditionBoolChanged(condition, args)));
+            builder.CloseElement();
+            return;
+        }
+
+        if (valueType != null && valueType.IsEnum)
+        {
+            builder.OpenElement(sequence++, "select");
+            builder.AddAttribute(sequence++, "class", "filter-builder__select");
+            builder.AddAttribute(sequence++, "value", condition.ValueText);
+            builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => OnConditionEnumChanged(condition, args)));
+
+            foreach (var name in Enum.GetNames(valueType))
+            {
+                builder.OpenElement(sequence++, "option");
+                builder.AddAttribute(sequence++, "value", name);
+                builder.AddContent(sequence++, name);
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+            return;
+        }
+
+        var inputType = valueType == typeof(DateTime) || valueType == typeof(DateTimeOffset) ? "datetime-local" : "text";
+        builder.OpenElement(sequence++, "input");
+        builder.AddAttribute(sequence++, "type", inputType);
+        builder.AddAttribute(sequence++, "class", "filter-builder__input");
+        builder.AddAttribute(sequence++, "value", condition.ValueText ?? string.Empty);
+        builder.AddAttribute(sequence++, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, args => OnConditionValueChanged(condition, args)));
+        builder.CloseElement();
+    };
+
+    private FilterGroupOperator ParseGroupOperator(ChangeEventArgs args)
+    {
+        return Enum.TryParse<FilterGroupOperator>(args.Value?.ToString(), out var value) ? value : FilterGroupOperator.And;
+    }
+
+    private void RemoveNodeFromParent(FilterGroupNode group)
+    {
+        foreach (var parent in EnumerateGroups(_root))
+        {
+            if (parent.Children.Contains(group))
+            {
+                parent.Children.Remove(group);
+                return;
+            }
+        }
+    }
+
+    private IEnumerable<FilterGroupNode> EnumerateGroups(FilterGroupNode node)
+    {
+        yield return node;
+
+        foreach (var child in node.Children)
+        {
+            if (child is FilterGroupNode group)
+            {
+                foreach (var nested in EnumerateGroups(group))
+                {
+                    yield return nested;
+                }
+            }
+        }
+    }
+
+    private string GetOperatorLabel(FilterComparisonOperator op)
+    {
+        return op switch
+        {
+            FilterComparisonOperator.Equals => "==",
+            FilterComparisonOperator.NotEquals => "!=",
+            FilterComparisonOperator.GreaterThan => ">",
+            FilterComparisonOperator.GreaterThanOrEqual => ">=",
+            FilterComparisonOperator.LessThan => "<",
+            FilterComparisonOperator.LessThanOrEqual => "<=",
+            _ => op.ToString()
+        };
+    }
+
+    private void ApplyFilter()
+    {
+        _errorMessage = null;
+
+        var targetId = string.IsNullOrWhiteSpace(LockedTargetPanelId) ? _targetPanelId : LockedTargetPanelId;
+        if (string.IsNullOrWhiteSpace(targetId))
+        {
+            _errorMessage = "Select a target samples panel.";
+            return;
+        }
+
+        var expression = _root.ToDynamicLinqString();
+        var result = FilterCompiler.Compile(expression, _topicMetadata);
+        if (!result.IsValid)
+        {
+            _errorMessage = result.ErrorMessage ?? "Invalid filter expression.";
+            return;
+        }
+
+        EventBroker.Publish(new ApplyFilterRequestEvent(targetId, expression));
+    }
+
+    private void ClearFilter()
+    {
+        _root.Children.Clear();
+        AddCondition(_root);
+        _errorMessage = null;
+
+        var targetId = string.IsNullOrWhiteSpace(LockedTargetPanelId) ? _targetPanelId : LockedTargetPanelId;
+        if (!string.IsNullOrWhiteSpace(targetId))
+        {
+            EventBroker.Publish(new ApplyFilterRequestEvent(targetId, string.Empty));
+        }
+    }
+
+    private async Task SaveFilter()
+    {
+        var state = new FilterBuilderState
+        {
+            TopicTypeName = _topicMetadata?.TopicType.AssemblyQualifiedName,
+            Root = FilterNodeDto.FromNode(_root)
+        };
+
+        var json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
+        await JSRuntime.InvokeVoidAsync("ddsMonitor.downloadTextFile", FilterFileName, json, "application/json");
+    }
+
+    private async Task LoadFilter(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file == null)
+        {
+            return;
+        }
+
+        using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        var json = await reader.ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return;
+        }
+
+        var state = JsonSerializer.Deserialize<FilterBuilderState>(json);
+        if (state == null)
+        {
+            _errorMessage = "Unable to load filter file.";
+            return;
+        }
+
+        _topicMetadata = ResolveTopicMetadata(state.TopicTypeName);
+        _root.Children.Clear();
+        if (state.Root != null)
+        {
+            var node = state.Root.ToNode();
+            if (node is FilterGroupNode group)
+            {
+                _root.Operator = group.Operator;
+                _root.IsNegated = group.IsNegated;
+                _root.Children.AddRange(group.Children);
+            }
+        }
+
+        EnsureRootNodes();
+        _errorMessage = null;
+    }
+
+    private TopicMetadata? ResolveTopicMetadata(string? typeName)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            return null;
+        }
+
+        foreach (var topic in TopicRegistry.AllTopics)
+        {
+            if (string.Equals(topic.TopicType.AssemblyQualifiedName, typeName, StringComparison.Ordinal))
+            {
+                return topic;
+            }
+        }
+
+        return null;
+    }
+
+    public void Dispose()
+    {
+        WindowManager.PanelsChanged -= HandlePanelsChanged;
+    }
+
+    private sealed class FilterBuilderState
+    {
+        public string? TopicTypeName { get; set; }
+        public FilterNodeDto? Root { get; set; }
+    }
+
+    private sealed class FilterNodeDto
+    {
+        public FilterNodeType NodeType { get; set; }
+        public FilterGroupOperator GroupOperator { get; set; }
+        public FilterComparisonOperator ComparisonOperator { get; set; }
+        public bool IsNegated { get; set; }
+        public string? FieldPath { get; set; }
+        public string? ValueText { get; set; }
+        public string? ValueTypeName { get; set; }
+        public List<FilterNodeDto> Children { get; set; } = new();
+
+        public static FilterNodeDto FromNode(FilterNode node)
+        {
+            if (node is FilterGroupNode group)
+            {
+                return new FilterNodeDto
+                {
+                    NodeType = FilterNodeType.Group,
+                    GroupOperator = group.Operator,
+                    IsNegated = group.IsNegated,
+                    Children = group.Children.Select(FromNode).ToList()
+                };
+            }
+
+            var condition = (FilterConditionNode)node;
+            return new FilterNodeDto
+            {
+                NodeType = FilterNodeType.Condition,
+                ComparisonOperator = condition.Operator,
+                IsNegated = condition.IsNegated,
+                FieldPath = condition.FieldPath,
+                ValueText = condition.ValueText,
+                ValueTypeName = condition.ValueTypeName
+            };
+        }
+
+        public FilterNode ToNode()
+        {
+            if (NodeType == FilterNodeType.Group)
+            {
+                var group = new FilterGroupNode { Operator = GroupOperator, IsNegated = IsNegated };
+                foreach (var child in Children)
+                {
+                    group.Children.Add(child.ToNode());
+                }
+
+                return group;
+            }
+
+            return new FilterConditionNode
+            {
+                FieldPath = FieldPath ?? string.Empty,
+                Operator = ComparisonOperator,
+                IsNegated = IsNegated,
+                ValueText = ValueText,
+                ValueTypeName = ValueTypeName
+            };
+        }
+    }
+
+    private enum FilterNodeType
+    {
+        Group,
+        Condition
+    }
+}

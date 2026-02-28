@@ -1,0 +1,624 @@
+@page "/"
+@implements IDisposable
+
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@using System.Reflection
+@using System.IO
+@using System.Text.Json
+
+@inject IWindowManager WindowManager
+@inject IWorkspaceState WorkspaceState
+@inject WorkspacePersistenceService WorkspacePersistence
+@inject IJSRuntime JSRuntime
+
+<div class="desktop" @ref="_desktopRef" @onmousemove="HandleMouseMove" @onmouseup="EndDrag" @onmouseleave="EndDrag">
+    @foreach (var panel in WindowManager.ActivePanels)
+    {
+        if (panel.IsMinimized || panel.IsHidden)
+        {
+            continue;
+        }
+
+        <div class="panel" style="@GetPanelStyle(panel)" @onmousedown="() => BringToFront(panel)">
+            <div class="panel-titlebar" @onmousedown="(e) => BeginDrag(panel, e)">
+                <span class="panel-title">@panel.Title</span>
+                <div class="panel-actions" @onmousedown:stopPropagation="true">
+                    <button type="button" class="panel-btn" @onclick="() => ToggleMinimize(panel)" @onclick:stopPropagation="true">_</button>
+                    <button type="button" class="panel-btn" @onclick="() => ClosePanel(panel)" @onclick:stopPropagation="true">x</button>
+                </div>
+            </div>
+            <div class="panel-body">
+                @RenderPanelBody(panel)
+            </div>
+
+            <div class="resize-handle handle-top" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Top, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-right" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Right, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-bottom" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Bottom, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-left" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Left, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-top-left" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Top | ResizeEdge.Left, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-top-right" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Top | ResizeEdge.Right, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-bottom-left" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Bottom | ResizeEdge.Left, e)" @onmousedown:stopPropagation="true"></div>
+            <div class="resize-handle handle-bottom-right" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Bottom | ResizeEdge.Right, e)" @onmousedown:stopPropagation="true"></div>
+        </div>
+    }
+
+    <div class="panel-strip">
+        @foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (!panel.IsMinimized || panel.IsHidden)
+            {
+                continue;
+            }
+
+            <button type="button" class="panel-strip-item" @onclick="() => RestorePanel(panel)">
+                @panel.Title
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    private const double MinPanelWidth = 220;
+    private const double MinPanelHeight = 140;
+    private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
+    private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
+
+    private PanelState? _activePanel;
+    private DragMode _dragMode = DragMode.None;
+    private ResizeEdge _resizeEdge = ResizeEdge.None;
+    private double _startMouseX;
+    private double _startMouseY;
+    private double _startX;
+    private double _startY;
+    private double _startWidth;
+    private double _startHeight;
+    private ElementReference _desktopRef;
+    private DesktopSize? _desktopSize;
+    private bool _pendingClamp = true;
+    private bool _isLoadingWorkspace;
+
+    protected override void OnInitialized()
+    {
+        WindowManager.PanelsChanged += HandlePanelsChanged;
+        LoadWorkspace();
+        EnsureTopicsPanel();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _pendingClamp)
+        {
+            _pendingClamp = false;
+            await EnsurePanelsVisibleAsync();
+        }
+    }
+
+    private void HandlePanelsChanged()
+    {
+        // Ensure panels are visible after changes (e.g. loading workspace or restore)
+        _ = InvokeAsync(async () =>
+        {
+            await EnsurePanelsVisibleAsync();
+            StateHasChanged();
+        });
+
+        if (!_isLoadingWorkspace)
+        {
+            SaveWorkspace();
+        }
+    }
+
+    private async Task EnsurePanelsVisibleAsync()
+    {
+        if (!await RefreshDesktopSizeAsync())
+        {
+            return;
+        }
+
+        const double minMargin = 12;
+
+        var maxWidth = Math.Max(MinPanelWidth, _desktopSize!.Width - (minMargin * 2));
+        var maxHeight = Math.Max(MinPanelHeight, _desktopSize!.Height - (minMargin * 2));
+
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (panel == null || panel.IsHidden || panel.IsMinimized)
+            {
+                continue;
+            }
+
+            panel.Width = ClampSize(panel.Width, MinPanelWidth, maxWidth);
+            panel.Height = ClampSize(panel.Height, MinPanelHeight, maxHeight);
+
+            panel.X = Clamp(panel.X, minMargin, _desktopSize.Width - panel.Width - minMargin);
+            panel.Y = Clamp(panel.Y, minMargin, _desktopSize.Height - panel.Height - minMargin);
+        }
+    }
+
+    private void EnsureTopicsPanel()
+    {
+        var hasTopics = false;
+        var hasAllSamples = false;
+
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, TopicExplorerTypeName, StringComparison.Ordinal))
+            {
+                hasTopics = true;
+            }
+
+            // The global All Samples panel is a SamplesPanel that has no stored topic type.
+            if (string.Equals(panel.ComponentTypeName, SamplesPanelTypeName, StringComparison.Ordinal) &&
+                !panel.ComponentState.ContainsKey("SamplesPanel.TopicTypeName"))
+            {
+                hasAllSamples = true;
+            }
+        }
+
+        if (!hasTopics)
+        {
+            var panelState = WindowManager.SpawnPanel(TopicExplorerTypeName);
+            panelState.Title = "Topics";
+            panelState.Width = 840;
+        }
+
+        if (!hasAllSamples)
+        {
+            var allPanel = WindowManager.SpawnPanel(SamplesPanelTypeName);
+            allPanel.PanelId = "SamplesPanel.0"; // Reserve index 0 for the global All Samples panel.
+            allPanel.Title = "All Samples";
+            allPanel.X = 480;
+            allPanel.Y = 40;
+            allPanel.Width = 1120;
+            allPanel.Height = 360;
+        }
+
+        SaveWorkspace();
+    }
+
+    private void BeginDrag(PanelState panel, MouseEventArgs args)
+    {
+        BringToFront(panel);
+        _activePanel = panel;
+        _dragMode = DragMode.Move;
+        _startMouseX = args.ClientX;
+        _startMouseY = args.ClientY;
+        _startX = panel.X;
+        _startY = panel.Y;
+    }
+
+    private void BeginResize(PanelState panel, ResizeEdge edge, MouseEventArgs args)
+    {
+        BringToFront(panel);
+        _activePanel = panel;
+        _dragMode = DragMode.Resize;
+        _resizeEdge = edge;
+        _startMouseX = args.ClientX;
+        _startMouseY = args.ClientY;
+        _startX = panel.X;
+        _startY = panel.Y;
+        _startWidth = panel.Width;
+        _startHeight = panel.Height;
+    }
+
+    private void HandleMouseMove(MouseEventArgs args)
+    {
+        if (_activePanel == null || _dragMode == DragMode.None)
+        {
+            return;
+        }
+
+        var deltaX = args.ClientX - _startMouseX;
+        var deltaY = args.ClientY - _startMouseY;
+
+        if (_dragMode == DragMode.Move)
+        {
+            _activePanel.X = _startX + deltaX;
+            _activePanel.Y = _startY + deltaY;
+        }
+        else if (_dragMode == DragMode.Resize)
+        {
+            ApplyResize(_activePanel, deltaX, deltaY);
+        }
+
+        StateHasChanged();
+    }
+
+    private void EndDrag()
+    {
+        if (_dragMode == DragMode.None)
+        {
+            return;
+        }
+
+        var panel = _activePanel;
+
+        _dragMode = DragMode.None;
+        _resizeEdge = ResizeEdge.None;
+        _activePanel = null;
+
+        if (panel != null)
+        {
+            _ = InvokeAsync(async () =>
+            {
+                await ClampPanelToDesktopAsync(panel);
+                SaveWorkspace();
+                StateHasChanged();
+            });
+        }
+    }
+
+    private void ApplyResize(PanelState panel, double deltaX, double deltaY)
+    {
+        if (_resizeEdge.HasFlag(ResizeEdge.Right))
+        {
+            panel.Width = Math.Max(MinPanelWidth, _startWidth + deltaX);
+        }
+
+        if (_resizeEdge.HasFlag(ResizeEdge.Left))
+        {
+            var proposed = _startWidth - deltaX;
+            var clamped = Math.Max(MinPanelWidth, proposed);
+            panel.Width = clamped;
+            panel.X = _startX + (_startWidth - clamped);
+        }
+
+        if (_resizeEdge.HasFlag(ResizeEdge.Bottom))
+        {
+            panel.Height = Math.Max(MinPanelHeight, _startHeight + deltaY);
+        }
+
+        if (_resizeEdge.HasFlag(ResizeEdge.Top))
+        {
+            var proposed = _startHeight - deltaY;
+            var clamped = Math.Max(MinPanelHeight, proposed);
+            panel.Height = clamped;
+            panel.Y = _startY + (_startHeight - clamped);
+        }
+    }
+
+    private void BringToFront(PanelState panel)
+    {
+        WindowManager.BringToFront(panel.PanelId);
+    }
+
+    private void ToggleMinimize(PanelState panel)
+    {
+        panel.IsMinimized = !panel.IsMinimized;
+        SaveWorkspace();
+    }
+
+    private void RestorePanel(PanelState panel)
+    {
+        panel.IsMinimized = false;
+        // Ensure restored panels have their titlebar visible
+        const double minMargin = 12;
+        if (double.IsNaN(panel.X) || panel.X < minMargin) panel.X = minMargin;
+        if (double.IsNaN(panel.Y) || panel.Y < minMargin) panel.Y = minMargin;
+        BringToFront(panel);
+        SaveWorkspace();
+    }
+
+    private async Task ClampPanelToDesktopAsync(PanelState panel)
+    {
+        if (panel == null)
+        {
+            return;
+        }
+
+        if (!await RefreshDesktopSizeAsync())
+        {
+            return;
+        }
+
+        const double minMargin = 12;
+        var maxWidth = Math.Max(MinPanelWidth, _desktopSize!.Width - (minMargin * 2));
+        var maxHeight = Math.Max(MinPanelHeight, _desktopSize!.Height - (minMargin * 2));
+
+        panel.Width = ClampSize(panel.Width, MinPanelWidth, maxWidth);
+        panel.Height = ClampSize(panel.Height, MinPanelHeight, maxHeight);
+        panel.X = Clamp(panel.X, minMargin, _desktopSize.Width - panel.Width - minMargin);
+        panel.Y = Clamp(panel.Y, minMargin, _desktopSize.Height - panel.Height - minMargin);
+    }
+
+    private async Task<bool> RefreshDesktopSizeAsync()
+    {
+        var size = await JSRuntime.InvokeAsync<DesktopSize?>("ddsMonitor.getElementSize", _desktopRef);
+        if (size == null || size.Width <= 0 || size.Height <= 0)
+        {
+            return false;
+        }
+
+        _desktopSize = size;
+        return true;
+    }
+
+    private static double Clamp(double value, double min, double max)
+    {
+        if (double.IsNaN(value))
+        {
+            return min;
+        }
+
+        if (max < min)
+        {
+            return min;
+        }
+
+        if (value < min)
+        {
+            return min;
+        }
+
+        return value > max ? max : value;
+    }
+
+    private static double ClampSize(double value, double min, double max)
+    {
+        if (double.IsNaN(value) || value <= 0)
+        {
+            return min;
+        }
+
+        if (max < min)
+        {
+            return min;
+        }
+
+        if (value < min)
+        {
+            return min;
+        }
+
+        return value > max ? max : value;
+    }
+
+    private void ClosePanel(PanelState panel)
+    {
+        // SamplesPanel and FilterBuilderPanel windows are hidden on close instead of removed,
+        // so their position, size, and column state are preserved across re-opens.
+        if (IsHideOnClosePanel(panel))
+        {
+            panel.IsHidden = true;
+            SaveWorkspace();
+            StateHasChanged();
+            return;
+        }
+
+        WindowManager.ClosePanel(panel.PanelId);
+        SaveWorkspace();
+    }
+
+    private static bool IsHideOnClosePanel(PanelState panel)
+    {
+        return panel.ComponentTypeName.Contains("SamplesPanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("FilterBuilderPanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("DetailPanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("TopicExplorerPanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("InstancesPanel", StringComparison.Ordinal);
+    }
+
+    private void LoadWorkspace()
+    {
+        var filePath = WorkspaceState.WorkspaceFilePath;
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            _isLoadingWorkspace = true;
+            WorkspacePersistence.LoadDefault();
+        }
+        finally
+        {
+            _isLoadingWorkspace = false;
+        }
+    }
+
+    private void SaveWorkspace()
+    {
+        WorkspacePersistence.RequestSave();
+    }
+
+    private RenderFragment RenderPanelBody(PanelState panel) => builder =>
+    {
+        var componentType = ResolveComponentType(panel.ComponentTypeName);
+        if (componentType != null)
+        {
+            builder.OpenComponent<CascadingValue<PanelState>>(0);
+            builder.AddAttribute(1, "Value", panel);
+            builder.AddAttribute(2, "IsFixed", true);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(childBuilder =>
+            {
+                childBuilder.OpenComponent(0, componentType);
+                if (panel.ComponentState.Count > 0)
+                {
+                    var parameters = FilterComponentParameters(componentType, panel.ComponentState);
+                    if (parameters.Count > 0)
+                    {
+                        childBuilder.AddMultipleAttributes(1, parameters);
+                    }
+                }
+                childBuilder.CloseComponent();
+            }));
+            builder.CloseComponent();
+        }
+        else
+        {
+            builder.OpenElement(2, "div");
+            builder.AddAttribute(3, "class", "panel-placeholder");
+            builder.AddContent(4, $"Missing component: {panel.ComponentTypeName}");
+            builder.CloseElement();
+        }
+    };
+
+    private static Type? ResolveComponentType(string componentTypeName)
+    {
+        if (string.IsNullOrWhiteSpace(componentTypeName))
+        {
+            return null;
+        }
+
+        return Type.GetType(componentTypeName);
+    }
+
+    private static Dictionary<string, object> FilterComponentParameters(Type componentType, Dictionary<string, object> state)
+    {
+        var result = new Dictionary<string, object>(StringComparer.Ordinal);
+        var parameters = GetParameterProperties(componentType);
+
+        foreach (var entry in state)
+        {
+            if (!parameters.TryGetValue(entry.Key, out var property))
+            {
+                continue;
+            }
+
+            if (TryConvertParameterValue(entry.Value, property.PropertyType, out var converted))
+            {
+                result[entry.Key] = converted!;
+            }
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, PropertyInfo> GetParameterProperties(Type componentType)
+    {
+        var set = new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+        foreach (var property in componentType.GetProperties(flags))
+        {
+            if (property.GetCustomAttribute<ParameterAttribute>() != null)
+            {
+                set[property.Name] = property;
+            }
+        }
+
+        return set;
+    }
+
+    private static bool TryConvertParameterValue(object? value, Type targetType, out object? converted)
+    {
+        if (value == null)
+        {
+            converted = null;
+            return IsNullableType(targetType);
+        }
+
+        if (targetType.IsInstanceOfType(value))
+        {
+            converted = value;
+            return true;
+        }
+
+        if (value is JsonElement element)
+        {
+            return TryConvertJsonElement(element, targetType, out converted);
+        }
+
+        try
+        {
+            var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+            converted = Convert.ChangeType(value, underlying);
+            return true;
+        }
+        catch
+        {
+            converted = null;
+            return false;
+        }
+    }
+
+    private static bool TryConvertJsonElement(JsonElement element, Type targetType, out object? converted)
+    {
+        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+        if (underlying == typeof(string))
+        {
+            converted = element.ValueKind == JsonValueKind.String ? element.GetString() : element.ToString();
+            return true;
+        }
+
+        if (underlying == typeof(bool) && element.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            converted = element.GetBoolean();
+            return true;
+        }
+
+        if (underlying == typeof(int) && element.TryGetInt32(out var intValue))
+        {
+            converted = intValue;
+            return true;
+        }
+
+        if (underlying == typeof(long) && element.TryGetInt64(out var longValue))
+        {
+            converted = longValue;
+            return true;
+        }
+
+        if (underlying == typeof(double) && element.TryGetDouble(out var doubleValue))
+        {
+            converted = doubleValue;
+            return true;
+        }
+
+        if (underlying == typeof(float) && element.TryGetSingle(out var floatValue))
+        {
+            converted = floatValue;
+            return true;
+        }
+
+        converted = null;
+        return false;
+    }
+
+    private static bool IsNullableType(Type type)
+    {
+        if (!type.IsValueType)
+        {
+            return true;
+        }
+
+        return Nullable.GetUnderlyingType(type) != null;
+    }
+
+    private static string GetPanelStyle(PanelState panel)
+    {
+        return FormattableString.Invariant(
+            $"left:{panel.X}px; top:{panel.Y}px; width:{panel.Width}px; height:{panel.Height}px; z-index:{panel.ZIndex};");
+    }
+
+    private enum DragMode
+    {
+        None,
+        Move,
+        Resize
+    }
+
+    [Flags]
+    private enum ResizeEdge
+    {
+        None = 0,
+        Left = 1,
+        Top = 2,
+        Right = 4,
+        Bottom = 8
+    }
+
+    private sealed class DesktopSize
+    {
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+
+    public void Dispose()
+    {
+        WindowManager.PanelsChanged -= HandlePanelsChanged;
+    }
+}
