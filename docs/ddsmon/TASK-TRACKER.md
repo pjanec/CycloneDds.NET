@@ -9,11 +9,11 @@
 
 **Goal:** Build the core data engine (no UI). Topic discovery, DDS bridge, sample/instance stores, filtering, and the ingestion pipeline.
 
-- [ ] **DMON-001** — Solution & project scaffolding &nbsp; [details](./TASK-DETAIL.md#dmon-001--create-solution--project-scaffolding)
-- [ ] **DMON-002** — TopicMetadata & FieldMetadata types &nbsp; [details](./TASK-DETAIL.md#dmon-002--topicmetadata--fieldmetadata-types)
-- [ ] **DMON-003** — TopicDiscoveryService (assembly scanning) &nbsp; [details](./TASK-DETAIL.md#dmon-003--topicdiscoveryservice-assembly-scanning)
-- [ ] **DMON-004** — Synthetic (computed) fields &nbsp; [details](./TASK-DETAIL.md#dmon-004--synthetic-computed-fields)
-- [ ] **DMON-005** — SampleData record &nbsp; [details](./TASK-DETAIL.md#dmon-005--sampledata-record)
+- [x] **DMON-001** — Solution & project scaffolding  &nbsp; [details](./TASK-DETAIL.md#dmon-001--create-solution--project-scaffolding)
+- [x] **DMON-002** — TopicMetadata & FieldMetadata types &nbsp; [details](./TASK-DETAIL.md#dmon-002--topicmetadata--fieldmetadata-types)
+- [x] **DMON-003** — TopicDiscoveryService (assembly scanning) &nbsp; [details](./TASK-DETAIL.md#dmon-003--topicdiscoveryservice-assembly-scanning)
+- [x] **DMON-004** — Synthetic (computed) fields &nbsp; [details](./TASK-DETAIL.md#dmon-004--synthetic-computed-fields)
+- [x] **DMON-005** — SampleData record &nbsp; [details](./TASK-DETAIL.md#dmon-005--sampledata-record)
 - [ ] **DMON-006** — IDynamicReader / IDynamicWriter interfaces &nbsp; [details](./TASK-DETAIL.md#dmon-006--idynamicreader--idynamicwriter-interfaces)
 - [ ] **DMON-007** — DynamicReader\<T\> implementation &nbsp; [details](./TASK-DETAIL.md#dmon-007--dynamicreadert-implementation)
 - [ ] **DMON-008** — DynamicWriter\<T\> implementation &nbsp; [details](./TASK-DETAIL.md#dmon-008--dynamicwritert-implementation)
