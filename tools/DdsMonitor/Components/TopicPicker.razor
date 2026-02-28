@@ -1,0 +1,151 @@
+@using System.Threading
+@implements IDisposable
+
+<div class="topic-picker">
+    <input class="topic-picker__input"
+           type="text"
+           value="@_query"
+           placeholder="@Placeholder"
+           @oninput="OnInput"
+           @onkeydown="OnKeyDown" />
+
+    @if (_filteredTopics.Count > 0)
+    {
+        <ul class="topic-picker__results">
+            @for (var i = 0; i < _filteredTopics.Count; i++)
+            {
+                var topic = _filteredTopics[i];
+                var isActive = i == _highlightIndex;
+                <li class="topic-picker__row @(isActive ? "is-active" : string.Empty)"
+                    @onclick="() => SelectTopic(topic)">
+                    <span class="topic-picker__name">@topic.ShortName</span>
+                    <span class="topic-picker__namespace">@topic.Namespace</span>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private const int DebounceDelayMs = 100;
+    private const int NoSelection = -1;
+
+    private readonly List<TopicMetadata> _filteredTopics = new();
+    private string _query = string.Empty;
+    private int _highlightIndex = NoSelection;
+    private CancellationTokenSource? _debounceCts;
+
+    [Parameter]
+    public IReadOnlyList<TopicMetadata> Topics { get; set; } = Array.Empty<TopicMetadata>();
+
+    [Parameter]
+    public string Placeholder { get; set; } = "Search topics...";
+
+    [Parameter]
+    public EventCallback<TopicMetadata> OnTopicSelected { get; set; }
+
+    [Parameter]
+    public EventCallback OnClosed { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        ApplyFilter();
+    }
+
+    private async Task OnInput(ChangeEventArgs args)
+    {
+        _query = args.Value?.ToString() ?? string.Empty;
+
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+
+        var cts = new CancellationTokenSource();
+        _debounceCts = cts;
+
+        try
+        {
+            await Task.Delay(DebounceDelayMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!cts.IsCancellationRequested)
+        {
+            ApplyFilter();
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        _filteredTopics.Clear();
+        _filteredTopics.AddRange(TopicPickerFilter.FilterTopics(Topics, _query));
+        _highlightIndex = _filteredTopics.Count > 0 ? 0 : NoSelection;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "ArrowDown")
+        {
+            MoveHighlight(1);
+            return;
+        }
+
+        if (args.Key == "ArrowUp")
+        {
+            MoveHighlight(-1);
+            return;
+        }
+
+        if (args.Key == "Enter")
+        {
+            if (_highlightIndex >= 0 && _highlightIndex < _filteredTopics.Count)
+            {
+                await SelectTopic(_filteredTopics[_highlightIndex]);
+            }
+
+            return;
+        }
+
+        if (args.Key == "Escape")
+        {
+            _query = string.Empty;
+            ApplyFilter();
+            await OnClosed.InvokeAsync();
+        }
+    }
+
+    private void MoveHighlight(int delta)
+    {
+        if (_filteredTopics.Count == 0)
+        {
+            _highlightIndex = NoSelection;
+            return;
+        }
+
+        var nextIndex = _highlightIndex + delta;
+        if (nextIndex < 0)
+        {
+            nextIndex = 0;
+        }
+        else if (nextIndex >= _filteredTopics.Count)
+        {
+            nextIndex = _filteredTopics.Count - 1;
+        }
+
+        _highlightIndex = nextIndex;
+    }
+
+    private async Task SelectTopic(TopicMetadata topic)
+    {
+        await OnTopicSelected.InvokeAsync(topic);
+    }
+
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+    }
+}

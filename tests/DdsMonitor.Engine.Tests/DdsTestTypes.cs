@@ -63,3 +63,15 @@ public partial struct InstanceCompositeKeyMessage
 
     public int Value;
 }
+
+[DdsTopic("RobotTopic")]
+public partial struct RobotTopic
+{
+    public int Id;
+}
+
+[DdsTopic("OtherTopic")]
+public partial struct OtherTopic
+{
+    public int Id;
+}

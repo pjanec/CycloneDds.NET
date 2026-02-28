@@ -1,0 +1,16 @@
+<div class="panel-placeholder-content">
+    <h2>Instances Panel</h2>
+    @if (TopicMetadata == null)
+    {
+        <p>No topic selected.</p>
+    }
+    else
+    {
+        <p>Topic: @TopicMetadata.ShortName</p>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public TopicMetadata? TopicMetadata { get; set; }
+}

@@ -1,0 +1,295 @@
+@using System.Threading
+@implements IDisposable
+
+@inject ITopicRegistry TopicRegistry
+@inject IDdsBridge DdsBridge
+@inject ISampleStore SampleStore
+@inject IInstanceStore InstanceStore
+@inject IWindowManager WindowManager
+@inject DdsSettings Settings
+
+<div class="topic-explorer">
+    <div class="topic-explorer__filters">
+        @RenderFilterButton("Received", TopicFilterKind.Received, _filters.Received)
+        @RenderFilterButton("Subscribed", TopicFilterKind.Subscribed, _filters.Subscribed)
+        @RenderFilterButton("Keyed", TopicFilterKind.Keyed, _filters.Keyed)
+        @RenderFilterButton("Alive", TopicFilterKind.Alive, _filters.Alive)
+    </div>
+
+    <div class="topic-explorer__toolbar">
+        <label class="topic-explorer__bulk">
+            <input type="checkbox" checked="@AreAllSubscribed" @onchange="ToggleAllSubscriptions" />
+            <span>Subscribe All</span>
+        </label>
+        <div class="topic-explorer__search">
+            <span>Search:</span>
+            <input type="text" value="@_searchText" @oninput="OnSearchChanged" placeholder="type to filter topics..." />
+        </div>
+    </div>
+
+    <table class="topic-explorer__table">
+        <thead>
+            <tr>
+                <th>Sub</th>
+                <th>Name</th>
+                <th>Samples</th>
+                <th>Instances</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var topic in FilteredTopics)
+            {
+                <tr @ondblclick="() => OpenSamplesPanel(topic.Metadata)">
+                    <td>
+                        <input type="checkbox" checked="@topic.IsSubscribed" @onchange="(e) => ToggleSubscription(topic.Metadata, e)" />
+                    </td>
+                    <td>
+                        <div class="topic-explorer__name">@topic.Metadata.ShortName</div>
+                        <div class="topic-explorer__namespace">@topic.Metadata.Namespace</div>
+                    </td>
+                    <td>@topic.SampleCount</td>
+                    <td>@topic.LiveInstances</td>
+                    <td>
+                        <button type="button" class="topic-explorer__action" @onclick="() => OpenSamplesPanel(topic.Metadata)">Grid</button>
+                        @if (topic.Metadata.IsKeyed)
+                        {
+                            <button type="button" class="topic-explorer__action" @onclick="() => OpenInstancesPanel(topic.Metadata)">Instances</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private const int MinimumUiRefreshHz = 1;
+    private const int MillisecondsPerSecond = 1000;
+
+    private readonly TopicExplorerFilterState _filters = new();
+    private IReadOnlyList<TopicExplorerTopicSnapshot> _topics = Array.Empty<TopicExplorerTopicSnapshot>();
+    private string _searchText = string.Empty;
+    private Timer? _refreshTimer;
+
+    protected override void OnInitialized()
+    {
+        RefreshTopics();
+        StartRefreshTimer();
+    }
+
+    private void StartRefreshTimer()
+    {
+        var refreshHz = Math.Max(MinimumUiRefreshHz, Settings.UiRefreshHz);
+        var interval = MillisecondsPerSecond / refreshHz;
+        _refreshTimer = new Timer(_ => _ = InvokeAsync(RefreshAndRender), null, interval, interval);
+    }
+
+    private Task RefreshAndRender()
+    {
+        RefreshTopics();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void RefreshTopics()
+    {
+        var activeReaders = DdsBridge.ActiveReaders;
+        var snapshots = new List<TopicExplorerTopicSnapshot>();
+
+        foreach (var meta in TopicRegistry.AllTopics)
+        {
+            var samples = SampleStore.GetTopicSamples(meta.TopicType);
+            var instances = InstanceStore.GetTopicInstances(meta.TopicType);
+            var isSubscribed = activeReaders.ContainsKey(meta.TopicType);
+
+            snapshots.Add(new TopicExplorerTopicSnapshot(meta, samples.TotalCount, instances.LiveCount, isSubscribed));
+        }
+
+        _topics = snapshots;
+    }
+
+    private IEnumerable<TopicExplorerTopicSnapshot> FilteredTopics
+    {
+        get
+        {
+            foreach (var topic in _topics)
+            {
+                if (!TopicPickerFilter.Matches(topic.Metadata, _searchText))
+                {
+                    continue;
+                }
+
+                if (!MatchesFilters(topic))
+                {
+                    continue;
+                }
+
+                yield return topic;
+            }
+        }
+    }
+
+    private bool MatchesFilters(TopicExplorerTopicSnapshot topic)
+    {
+        return MatchesFilter(_filters.Received, topic.SampleCount > 0) &&
+               MatchesFilter(_filters.Subscribed, topic.IsSubscribed) &&
+               MatchesFilter(_filters.Keyed, topic.Metadata.IsKeyed) &&
+               MatchesFilter(_filters.Alive, topic.LiveInstances > 0);
+    }
+
+    private static bool MatchesFilter(TriStateFilter filter, bool value)
+    {
+        return filter switch
+        {
+            TriStateFilter.Include => value,
+            TriStateFilter.Exclude => !value,
+            _ => true
+        };
+    }
+
+    private RenderFragment RenderFilterButton(string label, TopicFilterKind kind, TriStateFilter state) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", $"tri-toggle {GetTriStateClass(state)}");
+        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => CycleFilter(kind)));
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "tri-toggle__state");
+        builder.AddContent(sequence++, GetTriStateLabel(state));
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "tri-toggle__label");
+        builder.AddContent(sequence++, label);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private void CycleFilter(TopicFilterKind kind)
+    {
+        _filters.Cycle(kind);
+    }
+
+    private static string GetTriStateLabel(TriStateFilter state)
+    {
+        return state switch
+        {
+            TriStateFilter.Include => "+",
+            TriStateFilter.Exclude => "-",
+            _ => "o"
+        };
+    }
+
+    private static string GetTriStateClass(TriStateFilter state)
+    {
+        return state switch
+        {
+            TriStateFilter.Include => "tri-toggle--include",
+            TriStateFilter.Exclude => "tri-toggle--exclude",
+            _ => "tri-toggle--ignore"
+        };
+    }
+
+    private void ToggleSubscription(TopicMetadata metadata, ChangeEventArgs args)
+    {
+        if (metadata == null)
+        {
+            return;
+        }
+
+        var isChecked = args.Value is bool value && value;
+        if (isChecked)
+        {
+            DdsBridge.Subscribe(metadata);
+        }
+        else
+        {
+            DdsBridge.Unsubscribe(metadata);
+        }
+
+        RefreshTopics();
+    }
+
+    private void ToggleAllSubscriptions(ChangeEventArgs args)
+    {
+        var isChecked = args.Value is bool value && value;
+        var activeReaders = DdsBridge.ActiveReaders;
+
+        foreach (var topic in TopicRegistry.AllTopics)
+        {
+            var subscribed = activeReaders.ContainsKey(topic.TopicType);
+
+            if (isChecked && !subscribed)
+            {
+                DdsBridge.Subscribe(topic);
+            }
+            else if (!isChecked && subscribed)
+            {
+                DdsBridge.Unsubscribe(topic);
+            }
+        }
+
+        RefreshTopics();
+    }
+
+    private bool AreAllSubscribed
+    {
+        get
+        {
+            var topics = TopicRegistry.AllTopics;
+            if (topics.Count == 0)
+            {
+                return false;
+            }
+
+            var activeReaders = DdsBridge.ActiveReaders;
+
+            foreach (var topic in topics)
+            {
+                if (!activeReaders.ContainsKey(topic.TopicType))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    private void OnSearchChanged(ChangeEventArgs args)
+    {
+        _searchText = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OpenSamplesPanel(TopicMetadata metadata)
+    {
+        var panel = WindowManager.SpawnPanel(typeof(SamplesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        {
+            [nameof(SamplesPanel.TopicMetadata)] = metadata
+        });
+
+        panel.Title = $"Samples [{metadata.ShortName}]";
+    }
+
+    private void OpenInstancesPanel(TopicMetadata metadata)
+    {
+        var panel = WindowManager.SpawnPanel(typeof(InstancesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        {
+            [nameof(InstancesPanel.TopicMetadata)] = metadata
+        });
+
+        panel.Title = $"Instances [{metadata.ShortName}]";
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+
+    private sealed record TopicExplorerTopicSnapshot(
+        TopicMetadata Metadata,
+        int SampleCount,
+        int LiveInstances,
+        bool IsSubscribed);
+}

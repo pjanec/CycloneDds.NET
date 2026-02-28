@@ -1,0 +1,513 @@
+@using System.Collections.Generic
+@using System.Linq
+@using System.Threading
+@using CycloneDDS.Runtime
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@implements IDisposable
+
+@inject ISampleStore SampleStore
+@inject IFilterCompiler FilterCompiler
+@inject IEventBroker EventBroker
+@inject IWindowManager WindowManager
+@inject DdsSettings Settings
+@inject TooltipService TooltipService
+
+@if (TopicMetadata == null)
+{
+    <div class="panel-placeholder-content">
+        <h2>Samples Panel</h2>
+        <p>No topic selected.</p>
+    </div>
+}
+else
+{
+    <div class="samples-panel">
+        <div class="samples-panel__toolbar">
+            <button type="button"
+                    class="samples-panel__track @( _trackMode ? "is-on" : string.Empty)"
+                    @onclick="ToggleTrackMode">
+                Track
+            </button>
+            <button type="button" class="samples-panel__columns" @onclick="ToggleColumnPicker">
+                Columns
+            </button>
+            <div class="samples-panel__filter">
+                <span>Filter:</span>
+                <input type="text"
+                       value="@_filterText"
+                       placeholder="Payload.Field == 42"
+                       @oninput="OnFilterInput" />
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_filterError))
+        {
+            <div class="samples-panel__error">@_filterError</div>
+        }
+
+        <div class="samples-panel__grid">
+            <div class="samples-panel__header">
+                @RenderHeader("Ordinal", OrdinalField)
+                <div class="samples-panel__cell samples-panel__cell--status">Status</div>
+                @RenderHeader("Topic", TopicField)
+                @RenderHeader("Size [B]", _sizeField)
+                @RenderHeader("Timestamp", TimestampField)
+                @RenderHeader("Delay [ms]", _delayField)
+                @foreach (var field in _selectedColumns)
+                {
+                    @RenderHeader(field.DisplayName, field)
+                }
+            </div>
+
+            <Virtualize ItemsProvider="LoadItems" ItemSize="28">
+                <ItemContent Context="sample">
+                    <div class="samples-panel__row @(IsSelected(sample) ? "is-selected" : string.Empty)"
+                         @onclick="() => SelectSample(sample)"
+                         @ondblclick="() => OpenDetail(sample)">
+                        <div class="samples-panel__cell samples-panel__cell--ordinal">@sample.Ordinal</div>
+                        <div class="samples-panel__cell samples-panel__cell--status">
+                            <span class="sample-status @GetStatusClass(sample)">@GetStatusSymbol(sample)</span>
+                        </div>
+                        <div class="samples-panel__cell">@sample.TopicMetadata.ShortName</div>
+                        <div class="samples-panel__cell">@sample.SizeBytes</div>
+                        <div class="samples-panel__cell">@sample.Timestamp.ToString("HH:mm:ss.fff")</div>
+                        <div class="samples-panel__cell">@GetDelayText(sample)</div>
+                        @foreach (var field in _selectedColumns)
+                        {
+                            var value = GetFieldValue(field, sample);
+                            <div class="samples-panel__cell">
+                                @RenderValue(value)
+                            </div>
+                        }
+                    </div>
+                </ItemContent>
+            </Virtualize>
+        </div>
+
+        <div class="samples-panel__status">
+            Showing @_currentCount of @_totalCount matching samples
+        </div>
+
+        @if (_showColumnPicker)
+        {
+            <div class="samples-panel__overlay">
+                <ColumnPickerDialog Title="Columns"
+                                    AvailableFields="@_availableColumns"
+                                    SelectedFields="@_selectedColumns"
+                                    OnApply="ApplyColumns"
+                                    OnCancel="CloseColumnPicker" />
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private const int MinimumUiRefreshHz = 1;
+    private const int MillisecondsPerSecond = 1000;
+    private const string SizeFieldName = "Size [B]";
+    private const string DelayFieldName = "Delay [ms]";
+
+    private static readonly Action<object, object?> SyntheticSetter = (_, __) =>
+        throw new InvalidOperationException("Synthetic fields are read-only.");
+
+    private static readonly FieldMetadata OrdinalField = CreateSyntheticField(
+        "Ordinal",
+        typeof(long),
+        input => ((SampleData)input).Ordinal);
+
+    private static readonly FieldMetadata TopicField = CreateSyntheticField(
+        "Topic",
+        typeof(string),
+        input => ((SampleData)input).TopicMetadata.ShortName);
+
+    private static readonly FieldMetadata TimestampField = CreateSyntheticField(
+        "Timestamp",
+        typeof(DateTime),
+        input => ((SampleData)input).Timestamp);
+
+    private SamplesPanelVirtualizer? _virtualizer;
+    private FieldMetadata? _delayField;
+    private FieldMetadata? _sizeField;
+    private readonly List<FieldMetadata> _selectedColumns = new();
+    private readonly List<FieldMetadata> _availableColumns = new();
+    private string _filterText = string.Empty;
+    private string? _filterError;
+    private Timer? _refreshTimer;
+    private int _currentCount;
+    private int _totalCount;
+    private bool _trackMode = true;
+    private bool _showColumnPicker;
+    private SampleData? _selectedSample;
+    private FieldMetadata? _sortField;
+    private SortDirection _sortDirection = SortDirection.Ascending;
+    private IDisposable? _addColumnSubscription;
+    private Type? _currentTopicType;
+
+    [CascadingParameter]
+    public PanelState? PanelState { get; set; }
+
+    [Parameter]
+    public TopicMetadata? TopicMetadata { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _virtualizer = new SamplesPanelVirtualizer(SampleStore);
+        _addColumnSubscription = EventBroker.Subscribe<AddColumnRequestEvent>(OnAddColumnRequested);
+        StartRefreshTimer();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        if (_currentTopicType != TopicMetadata.TopicType)
+        {
+            _currentTopicType = TopicMetadata.TopicType;
+            InitializeColumns();
+            ApplyFilter();
+        }
+    }
+
+    private void InitializeColumns()
+    {
+        _availableColumns.Clear();
+        _selectedColumns.Clear();
+
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        foreach (var field in TopicMetadata.AllFields)
+        {
+            if (!field.IsSynthetic)
+            {
+                _availableColumns.Add(field);
+            }
+        }
+
+        _selectedColumns.AddRange(_availableColumns.Take(3));
+
+        _sizeField = TopicMetadata.AllFields.FirstOrDefault(field =>
+            string.Equals(field.StructuredName, SizeFieldName, StringComparison.Ordinal));
+
+        _delayField = TopicMetadata.AllFields.FirstOrDefault(field =>
+            string.Equals(field.StructuredName, DelayFieldName, StringComparison.Ordinal));
+    }
+
+    private void StartRefreshTimer()
+    {
+        var refreshHz = Math.Max(MinimumUiRefreshHz, Settings.UiRefreshHz);
+        var interval = MillisecondsPerSecond / refreshHz;
+        _refreshTimer = new Timer(_ => _ = InvokeAsync(RefreshCounts), null, interval, interval);
+    }
+
+    private Task RefreshCounts()
+    {
+        if (TopicMetadata == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var total = SampleStore.GetTopicSamples(TopicMetadata.TopicType).TotalCount;
+        var current = SampleStore.CurrentFilteredCount;
+
+        if (total != _totalCount || current != _currentCount)
+        {
+            _totalCount = total;
+            _currentCount = current;
+            StateHasChanged();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private ValueTask<ItemsProviderResult<SampleData>> LoadItems(ItemsProviderRequest request)
+    {
+        if (_virtualizer == null)
+        {
+            return new ValueTask<ItemsProviderResult<SampleData>>(
+                new ItemsProviderResult<SampleData>(Array.Empty<SampleData>(), 0));
+        }
+
+        var range = _virtualizer.GetRange(request.StartIndex, request.Count);
+        var items = range.ToArray();
+        return new ValueTask<ItemsProviderResult<SampleData>>(
+            new ItemsProviderResult<SampleData>(items, _virtualizer.TotalCount));
+    }
+
+    private void ToggleTrackMode()
+    {
+        _trackMode = !_trackMode;
+    }
+
+    private void ToggleColumnPicker()
+    {
+        _showColumnPicker = !_showColumnPicker;
+    }
+
+    private async Task ApplyColumns(List<FieldMetadata> columns)
+    {
+        _selectedColumns.Clear();
+        _selectedColumns.AddRange(columns);
+        _showColumnPicker = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task CloseColumnPicker()
+    {
+        _showColumnPicker = false;
+        return Task.CompletedTask;
+    }
+
+    private void OnFilterInput(ChangeEventArgs args)
+    {
+        _filterText = args.Value?.ToString() ?? string.Empty;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        Func<SampleData, bool> topicPredicate = sample => sample.TopicMetadata.TopicType == TopicMetadata.TopicType;
+
+        if (string.IsNullOrWhiteSpace(_filterText))
+        {
+            SampleStore.SetFilter(topicPredicate);
+            _filterError = null;
+            return;
+        }
+
+        var result = FilterCompiler.Compile(_filterText, TopicMetadata);
+        if (!result.IsValid || result.Predicate == null)
+        {
+            _filterError = result.ErrorMessage ?? "Invalid filter.";
+            return;
+        }
+
+        _filterError = null;
+        SampleStore.SetFilter(sample => topicPredicate(sample) && result.Predicate(sample));
+    }
+
+    private void SelectSample(SampleData sample)
+    {
+        _selectedSample = sample;
+
+        if (_trackMode)
+        {
+            EventBroker.Publish(new SampleSelectedEvent(GetPanelId(), sample));
+        }
+    }
+
+    private void OpenDetail(SampleData sample)
+    {
+        var panel = WindowManager.SpawnPanel(typeof(DetailPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        {
+            [nameof(DetailPanel.Sample)] = sample,
+            [nameof(DetailPanel.SourcePanelId)] = GetPanelId()
+        });
+
+        panel.Title = $"Detail [{sample.TopicMetadata.ShortName}]";
+    }
+
+    private bool IsSelected(SampleData sample)
+    {
+        return ReferenceEquals(sample, _selectedSample);
+    }
+
+    private RenderFragment RenderHeader(string label, FieldMetadata? field) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", GetHeaderClass(field));
+        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => ToggleSort(field)));
+        builder.AddContent(sequence++, label);
+        builder.AddContent(sequence++, GetSortIndicator(field));
+        builder.CloseElement();
+    };
+
+    private string GetHeaderClass(FieldMetadata? field)
+    {
+        var isSorted = field != null && ReferenceEquals(field, _sortField);
+        return isSorted ? "samples-panel__header-btn is-sorted" : "samples-panel__header-btn";
+    }
+
+    private string GetSortIndicator(FieldMetadata? field)
+    {
+        if (field == null || !ReferenceEquals(field, _sortField))
+        {
+            return string.Empty;
+        }
+
+        return _sortDirection == SortDirection.Ascending ? " ^" : " v";
+    }
+
+    private void ToggleSort(FieldMetadata? field)
+    {
+        if (field == null)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(field, _sortField))
+        {
+            _sortDirection = _sortDirection == SortDirection.Ascending
+                ? SortDirection.Descending
+                : SortDirection.Ascending;
+        }
+        else
+        {
+            _sortField = field;
+            _sortDirection = SortDirection.Ascending;
+        }
+
+        SampleStore.SetSortSpec(_sortField, _sortDirection);
+    }
+
+    private string GetDelayText(SampleData sample)
+    {
+        if (_delayField == null)
+        {
+            return string.Empty;
+        }
+
+        var value = _delayField.Getter(sample);
+        return FormatValue(value);
+    }
+
+    private object? GetFieldValue(FieldMetadata field, SampleData sample)
+    {
+        var target = field.IsSynthetic ? sample : sample.Payload;
+        return field.Getter(target!);
+    }
+
+    private RenderFragment RenderValue(object? value) => builder =>
+    {
+        if (value is string text)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "samples-panel__value is-string");
+            builder.AddAttribute(2, "onmouseenter",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => ShowJsonTooltip(text, args)));
+            builder.AddAttribute(3, "onmouseleave",
+                EventCallback.Factory.Create(this, HideTooltip));
+            builder.AddContent(4, text);
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(5, "span");
+            builder.AddContent(6, FormatValue(value));
+            builder.CloseElement();
+        }
+    };
+
+    private void ShowJsonTooltip(string text, MouseEventArgs args)
+    {
+        if (!JsonTooltipParser.TryFormatJson(text, out var formatted))
+        {
+            return;
+        }
+
+        var html = JsonSyntaxHighlighter.ToHtml(formatted);
+        TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+    }
+
+    private void HideTooltip()
+    {
+        TooltipService.Hide();
+    }
+
+    private string GetStatusClass(SampleData sample)
+    {
+        return sample.SampleInfo.InstanceState switch
+        {
+            DdsInstanceState.Alive => "sample-status--alive",
+            DdsInstanceState.NotAliveDisposed => "sample-status--disposed",
+            _ => "sample-status--no-writers"
+        };
+    }
+
+    private string GetStatusSymbol(SampleData sample)
+    {
+        return sample.SampleInfo.InstanceState switch
+        {
+            DdsInstanceState.Alive => "o",
+            DdsInstanceState.NotAliveDisposed => "!",
+            _ => "x"
+        };
+    }
+
+    private static string FormatValue(object? value)
+    {
+        if (value == null)
+        {
+            return string.Empty;
+        }
+
+        if (value is double number)
+        {
+            return number.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (value is float floatValue)
+        {
+            return floatValue.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return value.ToString() ?? string.Empty;
+    }
+
+    private void OnAddColumnRequested(AddColumnRequestEvent message)
+    {
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        if (!string.Equals(message.TargetPanelId, GetPanelId(), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var field = TopicMetadata.AllFields.FirstOrDefault(meta =>
+            string.Equals(meta.StructuredName, message.FieldPath, StringComparison.Ordinal));
+
+        if (field == null || field.IsSynthetic)
+        {
+            return;
+        }
+
+        if (_selectedColumns.Contains(field))
+        {
+            return;
+        }
+
+        _selectedColumns.Add(field);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private string GetPanelId()
+    {
+        return PanelState?.PanelId ?? "SamplesPanel";
+    }
+
+    private static FieldMetadata CreateSyntheticField(string name, Type valueType, Func<object, object?> getter)
+    {
+        return new FieldMetadata(name, name, valueType, getter, SyntheticSetter, true);
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+        _addColumnSubscription?.Dispose();
+    }
+}

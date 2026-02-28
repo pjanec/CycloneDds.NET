@@ -22,7 +22,7 @@
 - [x] **DMON-011** — InstanceStore (keyed instance tracking) &nbsp; [details](./TASK-DETAIL.md#dmon-011--instancestore-keyed-instance-tracking)
 - [x] **DMON-012** — FilterCompiler (Dynamic LINQ) &nbsp; [details](./TASK-DETAIL.md#dmon-012--filtercompiler-dynamic-linq)
 - [x] **DMON-013** — DdsIngestionService (background worker) &nbsp; [details](./TASK-DETAIL.md#dmon-013--ddsingestionservice-background-worker)
-- [ ] **DMON-014** — Application host & DI wiring &nbsp; [details](./TASK-DETAIL.md#dmon-014--application-host--di-wiring)
+- [x] **DMON-014** — Application host & DI wiring &nbsp; [details](./TASK-DETAIL.md#dmon-014--application-host--di-wiring)
 
 ---
 
@@ -30,12 +30,12 @@
 
 **Goal:** Build the Web Desktop shell and all primary UI panels — Topic Explorer, Data Grid, Inspector, keyboard navigation, theming, and workspace persistence.
 
-- [ ] **DMON-015** — EventBroker (pub/sub) &nbsp; [details](./TASK-DETAIL.md#dmon-015--eventbroker-pubsub)
-- [ ] **DMON-016** — PanelState model & IWindowManager &nbsp; [details](./TASK-DETAIL.md#dmon-016--panelstate-model--iwindowmanager-interface)
-- [ ] **DMON-017** — Desktop.razor shell & panel chrome &nbsp; [details](./TASK-DETAIL.md#dmon-017--desktoprazor-shell--panel-chrome)
-- [ ] **DMON-018** — Topic Explorer panel &nbsp; [details](./TASK-DETAIL.md#dmon-018--topic-explorer-panel)
-- [ ] **DMON-019** — Topic Picker (reusable component) &nbsp; [details](./TASK-DETAIL.md#dmon-019--topic-picker-reusable-component)
-- [ ] **DMON-020** — Column Picker dialog &nbsp; [details](./TASK-DETAIL.md#dmon-020--column-picker-dialog)
+- [x] **DMON-015** — EventBroker (pub/sub) &nbsp; [details](./TASK-DETAIL.md#dmon-015--eventbroker-pubsub)
+- [x] **DMON-016** — PanelState model & IWindowManager &nbsp; [details](./TASK-DETAIL.md#dmon-016--panelstate-model--iwindowmanager-interface)
+- [⚠️] **DMON-017** — Desktop.razor shell & panel chrome *needs fixes: manual verification pending* &nbsp; [details](./TASK-DETAIL.md#dmon-017--desktoprazor-shell--panel-chrome)
+- [x] **DMON-018** — Topic Explorer panel &nbsp; [details](./TASK-DETAIL.md#dmon-018--topic-explorer-panel)
+- [x] **DMON-019** — Topic Picker (reusable component) &nbsp; [details](./TASK-DETAIL.md#dmon-019--topic-picker-reusable-component)
+- [x] **DMON-020** — Column Picker dialog &nbsp; [details](./TASK-DETAIL.md#dmon-020--column-picker-dialog)
 - [ ] **DMON-021** — Samples Panel (virtualized data grid) &nbsp; [details](./TASK-DETAIL.md#dmon-021--samples-panel-virtualized-data-grid)
 - [ ] **DMON-022** — Sample Detail Panel (inspector) &nbsp; [details](./TASK-DETAIL.md#dmon-022--sample-detail-panel-inspector)
 - [ ] **DMON-023** — Hover JSON tooltip &nbsp; [details](./TASK-DETAIL.md#dmon-023--hover-json-tooltip)

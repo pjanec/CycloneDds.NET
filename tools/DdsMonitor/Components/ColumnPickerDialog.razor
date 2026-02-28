@@ -1,0 +1,210 @@
+<div class="column-picker">
+    <div class="column-picker__header">
+        <span>@Title</span>
+        <div class="column-picker__header-actions">
+            <button type="button" class="column-picker__header-btn" @onclick="OnCancelClicked">_</button>
+            <button type="button" class="column-picker__header-btn" @onclick="OnCancelClicked">x</button>
+        </div>
+    </div>
+
+    <div class="column-picker__body">
+        <div class="column-picker__pane">
+            <div class="column-picker__pane-title">Available Fields</div>
+            <input class="column-picker__search" type="text" placeholder="Search available..." @oninput="OnAvailableSearch" />
+            <ul class="column-picker__list">
+                @foreach (var field in FilterAvailable())
+                {
+                    var isSelected = field == _selectedAvailable;
+                    <li class="column-picker__item @(isSelected ? "is-selected" : string.Empty)"
+                        @onclick="() => _selectedAvailable = field">
+                        @field.StructuredName
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <div class="column-picker__controls">
+            <button type="button" class="column-picker__action" @onclick="AddSelected">ADD &gt;</button>
+            <button type="button" class="column-picker__action" @onclick="RemoveSelected">&lt; REMOVE</button>
+        </div>
+
+        <div class="column-picker__pane">
+            <div class="column-picker__pane-title">Selected Columns</div>
+            <input class="column-picker__search" type="text" placeholder="Search selected..." @oninput="OnSelectedSearch" />
+            <ul class="column-picker__list">
+                @foreach (var field in FilterSelected())
+                {
+                    var isSelected = field == _selectedSelected;
+                    <li class="column-picker__item @(isSelected ? "is-selected" : string.Empty)"
+                        draggable="true"
+                        @onclick="() => _selectedSelected = field"
+                        @ondragstart="() => _dragField = field"
+                        @ondragover:preventDefault
+                        @ondrop="() => OnDrop(field)">
+                        @field.StructuredName
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+
+    <div class="column-picker__footer">
+        <button type="button" class="column-picker__footer-btn" @onclick="OnCancelClicked">Cancel</button>
+        <button type="button" class="column-picker__footer-btn primary" @onclick="OnApplyClicked">Apply</button>
+    </div>
+</div>
+
+@code {
+    private ColumnPickerState? _state;
+    private string _availableSearch = string.Empty;
+    private string _selectedSearch = string.Empty;
+    private FieldMetadata? _selectedAvailable;
+    private FieldMetadata? _selectedSelected;
+    private FieldMetadata? _dragField;
+
+    [Parameter]
+    public string Title { get; set; } = "Select Columns";
+
+    [Parameter]
+    public IReadOnlyList<FieldMetadata> AvailableFields { get; set; } = Array.Empty<FieldMetadata>();
+
+    [Parameter]
+    public IReadOnlyList<FieldMetadata> SelectedFields { get; set; } = Array.Empty<FieldMetadata>();
+
+    [Parameter]
+    public EventCallback<List<FieldMetadata>> OnApply { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _state ??= new ColumnPickerState(AvailableFields, SelectedFields);
+    }
+
+    private IEnumerable<FieldMetadata> FilterAvailable()
+    {
+        if (_state == null)
+        {
+            return Array.Empty<FieldMetadata>();
+        }
+
+        if (string.IsNullOrWhiteSpace(_availableSearch))
+        {
+            return _state.AvailableFields;
+        }
+
+        var trimmed = _availableSearch.Trim();
+        var results = new List<FieldMetadata>();
+
+        foreach (var field in _state.AvailableFields)
+        {
+            if (field.StructuredName.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                results.Add(field);
+            }
+        }
+
+        return results;
+    }
+
+    private IEnumerable<FieldMetadata> FilterSelected()
+    {
+        if (_state == null)
+        {
+            return Array.Empty<FieldMetadata>();
+        }
+
+        if (string.IsNullOrWhiteSpace(_selectedSearch))
+        {
+            return _state.SelectedFields;
+        }
+
+        var trimmed = _selectedSearch.Trim();
+        var results = new List<FieldMetadata>();
+
+        foreach (var field in _state.SelectedFields)
+        {
+            if (field.StructuredName.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                results.Add(field);
+            }
+        }
+
+        return results;
+    }
+
+    private void AddSelected()
+    {
+        if (_state == null || _selectedAvailable == null)
+        {
+            return;
+        }
+
+        _state.AddField(_selectedAvailable);
+        _selectedSelected = _selectedAvailable;
+        _selectedAvailable = null;
+    }
+
+    private void RemoveSelected()
+    {
+        if (_state == null || _selectedSelected == null)
+        {
+            return;
+        }
+
+        _state.RemoveField(_selectedSelected);
+        _selectedAvailable = _selectedSelected;
+        _selectedSelected = null;
+    }
+
+    private void OnDrop(FieldMetadata target)
+    {
+        if (_state == null || _dragField == null)
+        {
+            return;
+        }
+
+        var newIndex = FindIndex(_state.SelectedFields, target);
+        _state.MoveSelected(_dragField, newIndex);
+        _dragField = null;
+    }
+
+    private async Task OnApplyClicked()
+    {
+        if (_state == null)
+        {
+            return;
+        }
+
+        await OnApply.InvokeAsync(_state.GetSelectedOrder());
+    }
+
+    private async Task OnCancelClicked()
+    {
+        await OnCancel.InvokeAsync();
+    }
+
+    private void OnAvailableSearch(ChangeEventArgs args)
+    {
+        _availableSearch = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnSelectedSearch(ChangeEventArgs args)
+    {
+        _selectedSearch = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private static int FindIndex(IReadOnlyList<FieldMetadata> fields, FieldMetadata target)
+    {
+        for (var i = 0; i < fields.Count; i++)
+        {
+            if (ReferenceEquals(fields[i], target))
+            {
+                return i;
+            }
+        }
+
+        return 0;
+    }
+}

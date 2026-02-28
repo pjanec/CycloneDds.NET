@@ -67,8 +67,8 @@
     {
         if (WindowManager.ActivePanels.Count == 0)
         {
-            var panel = WindowManager.SpawnPanel(typeof(PlaceholderPanel).AssemblyQualifiedName!);
-            panel.Title = "Welcome";
+            var panel = WindowManager.SpawnPanel(typeof(TopicExplorerPanel).AssemblyQualifiedName!);
+            panel.Title = "Topics";
         }
     }
 
@@ -187,11 +187,18 @@
         var componentType = ResolveComponentType(panel.ComponentTypeName);
         if (componentType != null)
         {
-            builder.OpenComponent(0, componentType);
-            if (panel.ComponentState.Count > 0)
+            builder.OpenComponent<CascadingValue<PanelState>>(0);
+            builder.AddAttribute(1, "Value", panel);
+            builder.AddAttribute(2, "IsFixed", true);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(childBuilder =>
             {
-                builder.AddMultipleAttributes(1, panel.ComponentState);
-            }
+                childBuilder.OpenComponent(0, componentType);
+                if (panel.ComponentState.Count > 0)
+                {
+                    childBuilder.AddMultipleAttributes(1, panel.ComponentState);
+                }
+                childBuilder.CloseComponent();
+            }));
             builder.CloseComponent();
         }
         else

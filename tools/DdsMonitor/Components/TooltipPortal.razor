@@ -1,0 +1,28 @@
+@implements IDisposable
+@inject TooltipService TooltipService
+
+<div class="tooltip-portal">
+@if (TooltipService.Current is { } tooltip)
+{
+    <div class="tooltip-bubble" style="@($"left: {tooltip.X}px; top: {tooltip.Y}px;")">
+        <pre class="tooltip-content">@((MarkupString)tooltip.Html)</pre>
+    </div>
+}
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        TooltipService.OnChanged += HandleChanged;
+    }
+
+    private void HandleChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        TooltipService.OnChanged -= HandleChanged;
+    }
+}
