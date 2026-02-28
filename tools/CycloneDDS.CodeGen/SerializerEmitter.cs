@@ -1054,8 +1054,8 @@ namespace CycloneDDS.CodeGen
              
              if (fieldType != null)
              {
-                 if (fieldType.IsEnum) return 4; 
-                 if (fieldType.IsStruct || fieldType.IsUnion)
+                 if (fieldType.IsEnum) return 4;
+                 if (fieldType.IsStruct || fieldType.IsUnion || fieldType.IsTopic)
                  {
                      int max = 1;
                      foreach(var f in fieldType.Fields)
