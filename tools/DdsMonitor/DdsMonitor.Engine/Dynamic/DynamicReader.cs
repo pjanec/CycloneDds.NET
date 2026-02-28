@@ -51,7 +51,10 @@ public sealed class DynamicReader<T> : IDynamicReader
             var activePartition = partition ?? _initialPartition;
             _reader = new DdsReader<T>(_participant, TopicMetadata.TopicName, partition: activePartition);
             _cancellation = new CancellationTokenSource();
-            _readTask = Task.Run(() => ReadLoop(_reader, _cancellation.Token));
+
+            var reader = _reader;
+            var token = _cancellation.Token;
+            _readTask = Task.Run(() => ReadLoop(reader, token));
         }
     }
 
