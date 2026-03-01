@@ -145,6 +145,11 @@ else
         typeof(DateTime),
         input => ((SampleData)input).Timestamp);
 
+    private static readonly JsonSerializerOptions TooltipJsonOptions = new()
+    {
+        WriteIndented = true
+    };
+
     private readonly List<SampleData> _viewCache = new();
     private Virtualize<IndexedSample>? _virtualizeRef;
     private FieldMetadata? _delayField;
@@ -894,6 +899,22 @@ else
                     builder.AddContent(8, RenderValue(value));
                 }
                 break;
+            case ColumnKind.Actions:
+                builder.OpenElement(9, "div");
+                builder.AddAttribute(10, "class", "instances-panel__actions");
+                builder.OpenElement(11, "button");
+                builder.AddAttribute(12, "type", "button");
+                builder.AddAttribute(13, "class", "instances-panel__action");
+                builder.AddAttribute(14, "title", "Show detail");
+                builder.AddAttribute(15, "onclick", EventCallback.Factory.Create(this, () => OpenDetail(row.Sample)));
+                builder.AddAttribute(16, "onmouseenter",
+                    EventCallback.Factory.Create<MouseEventArgs>(this, args => ShowDetailTooltip(row.Sample, args)));
+                builder.AddAttribute(17, "onmouseleave",
+                    EventCallback.Factory.Create(this, HideTooltip));
+                builder.AddContent(18, "D");
+                builder.CloseElement();
+                builder.CloseElement();
+                break;
         }
     };
 
@@ -927,6 +948,20 @@ else
 
         var html = JsonSyntaxHighlighter.ToHtml(formatted);
         TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+    }
+
+    private void ShowDetailTooltip(SampleData sample, MouseEventArgs args)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(sample.Payload, sample.TopicMetadata.TopicType, TooltipJsonOptions);
+            var html = JsonSyntaxHighlighter.ToHtml(json);
+            TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+        }
+        catch
+        {
+            // Ignore tooltip failures for non-serializable payloads.
+        }
     }
 
     private void HideTooltip()
@@ -1039,6 +1074,8 @@ else
         {
             AddLayoutColumn(field.StructuredName, field.DisplayName, ColumnKind.Field, field, string.Empty, 1.0);
         }
+
+        AddLayoutColumn("Actions", "Act", ColumnKind.Actions, null, "instances-panel__cell--actions", 0.9);
 
         var keys = new HashSet<string>(_layoutColumns.Select(column => column.Key), StringComparer.Ordinal);
         foreach (var key in _columnWeights.Keys.ToList())
@@ -1228,7 +1265,8 @@ else
         Size,
         Timestamp,
         Delay,
-        Field
+        Field,
+        Actions
     }
 
     private sealed class ElementSize
