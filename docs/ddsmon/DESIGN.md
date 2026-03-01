@@ -758,6 +758,79 @@ The topic display filter panel uses cycling tri-state buttons:
 
 ---
 
+
+
+
+Here is the detailed functional specification and wireframe for the **Instances Panel**, which acts as the generic lifecycle tracker for any keyed DDS topic. 
+
+This will serve as **Part 5** of the specification.
+
+---
+
+### 10.12 Instance Management (The Instances Panel)
+
+**Description:**
+While the *Samples Panel* is a firehose showing every single message on the network, the **Instances Panel** tracks the actual *state of the objects* those messages describe. If a topic has `[DdsKey]` fields, CycloneDDS treats it as a stateful object (an "Instance"). 
+
+This panel connects directly to the core **`InstanceStore`**. It groups millions of raw samples down to the actual unique objects currently living on the network, tracking when they are born, updated, or destroyed.
+
+**Wireframe:**
+```text
+[Instances of [RobotState]]                                       [ - ] [ X ]
++---------------------------------------------------------------------------+
+| [🔍 Filter...] [🔃 Sort: New] [🪟 Columns] [ Toggle: Live / History ]     |
++---------------------------------------------------------------------------+
+| Stat | RobotId (Key) | FleetId (Key) | Battery | Time         | Act       |
+|------+---------------+---------------+---------+--------------+-----------|
+| 🌟   | 1042          | "Alpha"       | 98.5    | 14:02:01.123 | [S] [D]   |
+| ✏️   | 1045          | "Alpha"       | 42.1    | 14:02:01.050 | [S] [D]   |
+| 🗑️   | 99            | "Bravo"       | 0.0     | 13:50:00.000 | [S] [D]   |
++---------------------------------------------------------------------------+
+  * Legend: 🌟=Born, ✏️=Updated, 🗑️=Disposed
+  * [S] = Show all samples for this instance. [D] = Show Detail (Linked).
+```
+
+#### Key Features & Interactions:
+
+1.  **Default Key Columns:** Unlike the generic Samples Panel, when the Instances Panel opens, it automatically injects the topic's `[DdsKey]` fields as the first default custom columns (e.g., `RobotId` and `FleetId` above).
+2.  **Live vs. History Toggle:**
+    *   **Live Mode:** Binds to `InstanceStore.InstancesByKey.Values`. It shows exactly one row per unique Key. It only shows instances where `InstanceState == Alive`.
+    *   **History Mode:** Binds to `InstanceStore.Journal`. It acts as a chronological ledger. Every time an instance transitions state (e.g., is first discovered, or gets disposed), a new row appears here.
+3.  **Lifecycle Icons ("Stat" column):**
+    *   🌟 (Sun): **Born** (First time this key was seen, or it resumed publishing after being dead).
+    *   ✏️ (Pencil/Edit): **Updated** (A new sample arrived for an already living instance).
+    *   🗑️ (Garbage Bin / Ghost): **Disposed / No Writers** (The instance was killed on the network).
+4.  **"Show Instance Samples" (`[S]` Button / Context Menu):** 
+    *   This is a massive workflow accelerator. If a user spots a weird state in an instance, clicking this button spawns a brand new `SamplesPanel` (Data Grid).
+    *   The engine automatically constructs a Dynamic LINQ filter locking the grid to that specific instance: `Topic == "RobotState" AND Payload.RobotId == 1042 AND Payload.FleetId == "Alpha"`.
+5.  **Master-Detail Linking:** 
+    *   Just like the Sample Grid, selecting an instance row instantly updates the global "Linked Inspector" pane on the right sidebar, showing the full JSON/Tree view of the `RecentSample` for that instance.
+    *   Hovering over the `[D]` icon pops up the quick JSON tooltip.
+
+---
+
+#### Backend Integration: How it uses the `InstanceStore`
+
+For the reimplementor, it is vital to understand that the UI does *not* do the grouping or state-tracking itself. The UI is completely "dumb" and just renders what the `InstanceStore` provides.
+
+Here is how the data flows from the Core Engine to this panel:
+
+1.  **Key Extraction (Zero Allocation):** 
+    As the ingestion worker reads from the DDS channel, it checks if `TopicMetadata.IsKeyed` is true. If so, it uses `Fasterflect` to extract the key fields into a tightly packed `InstanceKey` record struct (e.g., `new InstanceKey(1042, "Alpha")`).
+2.  **The State Machine (`ProcessSample`):**
+    The `InstanceStore` looks up the `InstanceKey` in a dictionary.
+    *   If missing, it creates an `InstanceData` record, sets `NumSamplesRecent = 0`, marks it as a "Birth", and fires an event.
+    *   If found, it checks the `DdsSampleInfo`. If the sample says `NotAliveDisposed`, it marks the instance dead and records a "Death" event in the Journal.
+    *   If it is a normal update, it just increments `NumSamplesTotal` and replaces `RecentSample` with the new data.
+3.  **UI Virtualization Bridge:**
+    When the user scrolls the Blazor `<Virtualize>` grid in the Instances Panel, the panel asks the `InstanceStore`: *"Give me rows 50 to 80 of the Live Instances array."* The store provides an instant `ReadOnlySpan<InstanceData>`, and the UI extracts the `RecentSample.Payload` to render the custom columns.
+
+#### Summary
+The **Instances Panel** bridges the gap between raw network traffic (Samples) and high-level Domain logic (BDC/TKB Entities). It is the generic, out-of-the-box way to monitor the lifecycle of any keyed DDS object without writing custom plugins.
+
+
+
+
 ## 11. Dynamic Form Architecture
 
 ### 11.1 The Recursive UI Pattern

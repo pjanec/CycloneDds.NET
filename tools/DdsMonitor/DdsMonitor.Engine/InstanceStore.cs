@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using CycloneDDS.Runtime;
 
@@ -34,6 +35,28 @@ public sealed class InstanceStore : IInstanceStore
             }
 
             return instances;
+        }
+    }
+
+    /// <inheritdoc />
+    public InstanceSnapshot GetTopicSnapshot(Type topicType)
+    {
+        if (topicType == null)
+        {
+            throw new ArgumentNullException(nameof(topicType));
+        }
+
+        lock (_sync)
+        {
+            if (!_topics.TryGetValue(topicType, out var instances))
+            {
+                return new InstanceSnapshot(0, Array.Empty<InstanceData>(), Array.Empty<InstanceJournalRecord>());
+            }
+
+            return new InstanceSnapshot(
+                instances.LiveCount,
+                instances.InstancesByKeyInternal.Values.ToArray(),
+                instances.JournalInternal.ToArray());
         }
     }
 

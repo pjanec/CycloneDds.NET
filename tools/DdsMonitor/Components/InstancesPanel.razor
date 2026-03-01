@@ -1,16 +1,1427 @@
-<div class="panel-placeholder-content">
-    <h2>Instances Panel</h2>
-    @if (TopicMetadata == null)
-    {
+@using System.Collections.Generic
+@using System.Globalization
+@using System.Linq
+@using System.Text.Json
+@using System.Threading
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Microsoft.JSInterop
+@implements IDisposable
+
+@inject IInstanceStore InstanceStore
+@inject IFilterCompiler FilterCompiler
+@inject IEventBroker EventBroker
+@inject IWindowManager WindowManager
+@inject IWorkspaceState WorkspaceState
+@inject DdsSettings Settings
+@inject TooltipService TooltipService
+@inject IJSRuntime JSRuntime
+@inject ContextMenuService ContextMenuService
+
+@if (TopicMetadata == null)
+{
+    <div class="panel-placeholder-content">
+        <h2>Instances Panel</h2>
         <p>No topic selected.</p>
-    }
-    else
-    {
-        <p>Topic: @TopicMetadata.ShortName</p>
-    }
-</div>
+    </div>
+}
+else
+{
+    <div class="samples-panel instances-panel" @onmousemove="HandleColumnResize" @onmouseup="EndColumnResize" @onmouseleave="EndColumnResize">
+        <div class="samples-panel__toolbar instances-panel__toolbar">
+            <div class="samples-panel__filter">
+                <span>Filter:</span>
+                <input type="text"
+                       value="@_filterText"
+                       placeholder="Payload.Field == 42"
+                       @oninput="OnFilterInput" />
+            </div>
+            <div class="instances-panel__toolbar-actions">
+                <select class="instances-panel__sort" value="@_sortMode" @onchange="OnSortModeChanged">
+                    <option value="new">Sort: New</option>
+                    <option value="old">Sort: Old</option>
+                    <option value="custom">Sort: Custom</option>
+                </select>
+                <button type="button" class="samples-panel__columns" @onclick="ToggleColumnPicker">Columns</button>
+                <button type="button" class="instances-panel__toggle @(_viewMode == InstanceViewMode.Live ? "is-on" : string.Empty)" @onclick="ToggleViewMode">
+                    @(_viewMode == InstanceViewMode.Live ? "Live" : "History")
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_filterError))
+        {
+            <div class="samples-panel__error">@_filterError</div>
+        }
+
+        <div class="samples-panel__grid instances-panel__grid" tabindex="0" @ref="_gridRef" @onclick="FocusGrid" @onkeydown="OnGridKeyDown" @onkeydown:preventDefault="true">
+            <div class="samples-panel__header" style="@GetGridStyle()">
+                @for (var i = 0; i < _layoutColumns.Count; i++)
+                {
+                    var column = _layoutColumns[i];
+                    var isLast = i == _layoutColumns.Count - 1;
+                    <div class="samples-panel__header-cell">
+                        @if (column.SortField != null)
+                        {
+                            <button type="button" class="@GetHeaderClass(column.SortField)" @onclick="() => ToggleSort(column.SortField)">
+                                @column.Label
+                                @GetSortIndicator(column.SortField)
+                            </button>
+                        }
+                        else
+                        {
+                            <span class="samples-panel__header-label">@column.Label</span>
+                        }
+
+                        @if (!isLast)
+                        {
+                            <div class="samples-panel__resizer"
+                                 @onmousedown="(args) => BeginColumnResize(column.Key, args)"
+                                 @onmousedown:stopPropagation="true"
+                                 @onmousedown:preventDefault="true"></div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <Virtualize @ref="_virtualizeRef" ItemsProvider="LoadItems" ItemSize="RowHeight">
+                <ItemContent Context="row">
+                    <div class="samples-panel__row @(IsSelected(row) ? "is-selected" : string.Empty)" style="@GetGridStyle()"
+                         @onclick="() => SelectInstance(row, true)"
+                         @ondblclick="() => OpenDetail(row.Row.Sample)"
+                         @onmousedown="(args) => HandleRowMouseDown(row, args)"
+                         @oncontextmenu:preventDefault="true">
+                        @foreach (var column in _layoutColumns)
+                        {
+                            <div class="samples-panel__cell @column.CssClass">
+                                @RenderCellValue(column, row)
+                            </div>
+                        }
+                    </div>
+                </ItemContent>
+            </Virtualize>
+        </div>
+
+        <div class="samples-panel__status instances-panel__status">
+            Showing @_currentCount of @_totalCount @(_viewMode == InstanceViewMode.Live ? "live" : "history") instances
+        </div>
+
+        @if (_showColumnPicker)
+        {
+            <div class="samples-panel__overlay">
+                <ColumnPickerDialog Title="Columns"
+                                    AvailableFields="@_availableColumns"
+                                    SelectedFields="@_selectedColumns"
+                                    OnApply="ApplyColumns"
+                                    OnCancel="CloseColumnPicker" />
+            </div>
+        }
+    </div>
+}
 
 @code {
+    private const int RowHeight = 38;
+    private const int MinimumUiRefreshHz = 1;
+    private const int MillisecondsPerSecond = 1000;
+    private const int TrackDebounceMs = 25;
+    private const int RightMouseButton = 2;
+    private const string SelectedColumnsStateKey = "InstancesPanel.SelectedColumns";
+    private const string ColumnWeightsStateKey = "InstancesPanel.ColumnWeights";
+    private const double MinColumnWeight = 0.4;
+
+    private static readonly Action<object, object?> SyntheticSetter = (_, __) =>
+        throw new InvalidOperationException("Synthetic fields are read-only.");
+
+    private static readonly FieldMetadata TimestampField = CreateSyntheticField(
+        "Time",
+        typeof(DateTime),
+        input => ((SampleData)input).Timestamp);
+
+    private static readonly JsonSerializerOptions TooltipJsonOptions = new()
+    {
+        WriteIndented = true
+    };
+
+    private readonly List<InstanceRow> _viewCache = new();
+    private Virtualize<IndexedInstance>? _virtualizeRef;
+    private readonly List<FieldMetadata> _selectedColumns = new();
+    private readonly List<FieldMetadata> _availableColumns = new();
+    private readonly List<ColumnLayout> _layoutColumns = new();
+    private readonly Dictionary<string, double> _columnWeights = new(StringComparer.Ordinal);
+    private string _filterText = string.Empty;
+    private string? _filterError;
+    private Timer? _refreshTimer;
+    private int _currentCount;
+    private int _totalCount;
+    private bool _showColumnPicker;
+    private InstanceRow? _selectedRow;
+    private SampleData? _pendingTrackSample;
+    private int _selectedIndex = -1;
+    private int _lastRequestStartIndex;
+    private int _lastRequestCount = 1;
+    private FieldMetadata? _sortField = TimestampField;
+    private SortDirection _sortDirection = SortDirection.Descending;
+    private string _sortMode = "new";
+    private Type? _currentTopicType;
+    private DebouncedAction? _trackDebouncer;
+    private ElementReference _gridRef;
+    private bool _loadedPanelState;
+    private bool _isColumnResizing;
+    private int _resizeColumnIndex = -1;
+    private double _resizeStartX;
+    private double _resizeStartLeftWeight;
+    private double _resizeStartRightWeight;
+    private double _resizeGridWidth = 1;
+    private List<string>? _savedSelectedColumnKeys;
+    private Dictionary<string, double>? _savedColumnWeights;
+    private Func<SampleData, bool>? _filterPredicate;
+    private bool _viewDirty = true;
+    private long _changeVersion;
+    private long _lastRenderedVersion;
+    private IDisposable? _instanceSubscription;
+    private InstanceViewMode _viewMode = InstanceViewMode.Live;
+
+    [CascadingParameter]
+    public PanelState? PanelState { get; set; }
+
     [Parameter]
     public TopicMetadata? TopicMetadata { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _trackDebouncer = new DebouncedAction(TimeSpan.FromMilliseconds(TrackDebounceMs),
+            () => _ = InvokeAsync(PublishPendingTrackSample));
+        _instanceSubscription = InstanceStore.OnInstanceChanged.Subscribe(new InstanceObserver(this));
+        StartRefreshTimer();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        if (!_loadedPanelState && PanelState != null)
+        {
+            LoadPanelState();
+            _loadedPanelState = true;
+        }
+
+        if (_currentTopicType != TopicMetadata.TopicType)
+        {
+            _currentTopicType = TopicMetadata.TopicType;
+            InitializeColumns();
+            ApplyFilter();
+            _viewDirty = true;
+            _selectedIndex = -1;
+            _selectedRow = null;
+            _ = _virtualizeRef?.RefreshDataAsync();
+        }
+    }
+
+    private void InitializeColumns()
+    {
+        _availableColumns.Clear();
+        _selectedColumns.Clear();
+
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        foreach (var field in TopicMetadata.AllFields)
+        {
+            if (!field.IsSynthetic)
+            {
+                _availableColumns.Add(field);
+            }
+        }
+
+        if (_savedSelectedColumnKeys != null && _savedSelectedColumnKeys.Count > 0)
+        {
+            foreach (var key in _savedSelectedColumnKeys)
+            {
+                var match = _availableColumns.FirstOrDefault(field =>
+                    string.Equals(field.StructuredName, key, StringComparison.Ordinal));
+                if (match != null)
+                {
+                    _selectedColumns.Add(match);
+                }
+            }
+
+            if (_selectedColumns.Count == 0)
+            {
+                AddDefaultColumns();
+            }
+        }
+        else
+        {
+            AddDefaultColumns();
+        }
+
+        RebuildLayoutColumns();
+        SavePanelState();
+    }
+
+    private void AddDefaultColumns()
+    {
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        var selectedSet = new HashSet<FieldMetadata>();
+        foreach (var keyField in TopicMetadata.KeyFields)
+        {
+            _selectedColumns.Add(keyField);
+            selectedSet.Add(keyField);
+        }
+
+        foreach (var field in _availableColumns)
+        {
+            if (selectedSet.Contains(field))
+            {
+                continue;
+            }
+
+            _selectedColumns.Add(field);
+            if (_selectedColumns.Count >= 3)
+            {
+                break;
+            }
+        }
+    }
+
+    private void StartRefreshTimer()
+    {
+        var refreshHz = Math.Max(MinimumUiRefreshHz, Settings.UiRefreshHz);
+        var interval = MillisecondsPerSecond / refreshHz;
+        _refreshTimer = new Timer(_ => _ = InvokeAsync(RefreshCounts), null, interval, interval);
+    }
+
+    private Task RefreshCounts()
+    {
+        if (TopicMetadata == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var version = Interlocked.Read(ref _changeVersion);
+        if (version != _lastRenderedVersion)
+        {
+            _lastRenderedVersion = version;
+            _viewDirty = true;
+        }
+
+        var previousTotal = _totalCount;
+        var previousCurrent = _currentCount;
+        var wasDirty = _viewDirty;
+        EnsureView();
+
+        if (wasDirty || _totalCount != previousTotal || _currentCount != previousCurrent)
+        {
+            _ = _virtualizeRef?.RefreshDataAsync();
+            StateHasChanged();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private ValueTask<ItemsProviderResult<IndexedInstance>> LoadItems(ItemsProviderRequest request)
+    {
+        EnsureView();
+
+        _lastRequestCount = Math.Max(1, request.Count);
+        _lastRequestStartIndex = request.StartIndex;
+        var available = Math.Max(0, _viewCache.Count - request.StartIndex);
+        var sliceCount = Math.Min(request.Count, available);
+        var items = new IndexedInstance[sliceCount];
+        for (var i = 0; i < sliceCount; i++)
+        {
+            items[i] = new IndexedInstance(request.StartIndex + i, _viewCache[request.StartIndex + i]);
+        }
+
+        return new ValueTask<ItemsProviderResult<IndexedInstance>>(
+            new ItemsProviderResult<IndexedInstance>(items, _viewCache.Count));
+    }
+
+    private void ToggleViewMode()
+    {
+        _viewMode = _viewMode == InstanceViewMode.Live ? InstanceViewMode.History : InstanceViewMode.Live;
+        _viewDirty = true;
+        _ = _virtualizeRef?.RefreshDataAsync();
+    }
+
+    private void ToggleColumnPicker()
+    {
+        _showColumnPicker = !_showColumnPicker;
+    }
+
+    private async Task ApplyColumns(List<FieldMetadata> columns)
+    {
+        _selectedColumns.Clear();
+        _selectedColumns.AddRange(columns);
+        _showColumnPicker = false;
+        RebuildLayoutColumns();
+        SavePanelState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task CloseColumnPicker()
+    {
+        _showColumnPicker = false;
+        return Task.CompletedTask;
+    }
+
+    private void OnFilterInput(ChangeEventArgs args)
+    {
+        _filterText = args.Value?.ToString() ?? string.Empty;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_filterText))
+        {
+            _filterPredicate = null;
+            _viewDirty = true;
+            _filterError = null;
+            _ = _virtualizeRef?.RefreshDataAsync();
+            StateHasChanged();
+            return;
+        }
+
+        var result = FilterCompiler.Compile(_filterText, TopicMetadata);
+        if (!result.IsValid || result.Predicate == null)
+        {
+            _filterError = result.ErrorMessage ?? "Invalid filter.";
+            return;
+        }
+
+        _filterError = null;
+        _filterPredicate = result.Predicate;
+        _viewDirty = true;
+        _ = _virtualizeRef?.RefreshDataAsync();
+        StateHasChanged();
+    }
+
+    private void OnSortModeChanged(ChangeEventArgs args)
+    {
+        _sortMode = args.Value?.ToString() ?? "new";
+
+        if (_sortMode == "new")
+        {
+            _sortField = TimestampField;
+            _sortDirection = SortDirection.Descending;
+        }
+        else if (_sortMode == "old")
+        {
+            _sortField = TimestampField;
+            _sortDirection = SortDirection.Ascending;
+        }
+
+        _viewDirty = true;
+        _ = _virtualizeRef?.RefreshDataAsync();
+        StateHasChanged();
+    }
+
+    private async Task FocusGrid()
+    {
+        await _gridRef.FocusAsync();
+    }
+
+    private async Task OnGridKeyDown(KeyboardEventArgs args)
+    {
+        if (!TryGetTotalCount(out var totalCount))
+        {
+            return;
+        }
+
+        var currentIndex = _selectedIndex >= 0 ? _selectedIndex : 0;
+        var nextIndex = currentIndex;
+        var handled = true;
+
+        switch (args.Key)
+        {
+            case "ArrowDown":
+                nextIndex = currentIndex + 1;
+                break;
+            case "ArrowUp":
+                nextIndex = currentIndex - 1;
+                break;
+            case "PageDown":
+                nextIndex = currentIndex + _lastRequestCount;
+                break;
+            case "PageUp":
+                nextIndex = currentIndex - _lastRequestCount;
+                break;
+            case "Home":
+                nextIndex = 0;
+                break;
+            case "End":
+                nextIndex = totalCount - 1;
+                break;
+            case "Enter":
+                if (_selectedRow != null)
+                {
+                    OpenDetail(_selectedRow.Sample);
+                }
+
+                return;
+            default:
+                handled = false;
+                break;
+        }
+
+        if (!handled)
+        {
+            return;
+        }
+
+        nextIndex = Math.Clamp(nextIndex, 0, totalCount - 1);
+        if (TrySelectByIndex(nextIndex))
+        {
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(50);
+            await EnsureSelectionVisibleAsync(nextIndex);
+        }
+    }
+
+    private bool TrySelectByIndex(int index)
+    {
+        EnsureView();
+        if (index < 0 || index >= _viewCache.Count)
+        {
+            return false;
+        }
+
+        var row = new IndexedInstance(index, _viewCache[index]);
+        SelectInstance(row, false);
+        return true;
+    }
+
+    private bool TryGetTotalCount(out int totalCount)
+    {
+        EnsureView();
+        totalCount = _viewCache.Count;
+        return totalCount > 0;
+    }
+
+    private async Task EnsureSelectionVisibleAsync(int index)
+    {
+        await JSRuntime.InvokeVoidAsync("ddsMonitor.ensureRowVisible", _gridRef, index, RowHeight);
+        await Task.Delay(1);
+        await JSRuntime.InvokeVoidAsync("ddsMonitor.ensureSelectedRowVisible", _gridRef);
+    }
+
+    private RenderFragment RenderCellValue(ColumnLayout column, IndexedInstance row) => builder =>
+    {
+        switch (column.Kind)
+        {
+            case ColumnKind.Status:
+                builder.OpenElement(0, "span");
+                builder.AddAttribute(1, "class", $"instance-status {GetStatusClass(row.Row)}");
+                builder.AddContent(2, GetStatusSymbol(row.Row));
+                builder.CloseElement();
+                break;
+            case ColumnKind.Time:
+                builder.AddContent(3, row.Row.Sample.Timestamp.ToString("HH:mm:ss.fff"));
+                break;
+            case ColumnKind.Actions:
+                builder.OpenElement(4, "div");
+                builder.AddAttribute(5, "class", "instances-panel__actions");
+                builder.OpenElement(6, "button");
+                builder.AddAttribute(7, "type", "button");
+                builder.AddAttribute(8, "class", "instances-panel__action");
+                builder.AddAttribute(9, "title", "Show instance samples");
+                builder.AddAttribute(10, "onclick", EventCallback.Factory.Create(this, () => OpenInstanceSamples(row.Row)));
+                builder.AddContent(11, "S");
+                builder.CloseElement();
+                builder.OpenElement(12, "button");
+                builder.AddAttribute(13, "type", "button");
+                builder.AddAttribute(14, "class", "instances-panel__action");
+                builder.AddAttribute(15, "title", "Show detail");
+                builder.AddAttribute(16, "onclick", EventCallback.Factory.Create(this, () => OpenDetail(row.Row.Sample)));
+                builder.AddAttribute(17, "onmouseenter",
+                    EventCallback.Factory.Create<MouseEventArgs>(this, args => ShowDetailTooltip(row.Row.Sample, args)));
+                builder.AddAttribute(18, "onmouseleave",
+                    EventCallback.Factory.Create(this, HideTooltip));
+                builder.AddContent(19, "D");
+                builder.CloseElement();
+                builder.CloseElement();
+                break;
+            case ColumnKind.Field:
+                if (column.Field != null)
+                {
+                    var value = GetFieldValue(column.Field, row.Row.Sample);
+                    builder.AddContent(20, RenderValue(value));
+                }
+                break;
+        }
+    };
+
+    private RenderFragment RenderValue(object? value) => builder =>
+    {
+        if (value is string text)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "samples-panel__value is-string");
+            builder.AddAttribute(2, "onmouseenter",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => ShowJsonTooltip(text, args)));
+            builder.AddAttribute(3, "onmouseleave",
+                EventCallback.Factory.Create(this, HideTooltip));
+            builder.AddContent(4, text);
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(5, "span");
+            builder.AddContent(6, FormatValue(value));
+            builder.CloseElement();
+        }
+    };
+
+    private void ShowJsonTooltip(string text, MouseEventArgs args)
+    {
+        if (!JsonTooltipParser.TryFormatJson(text, out var formatted))
+        {
+            return;
+        }
+
+        var html = JsonSyntaxHighlighter.ToHtml(formatted);
+        TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+    }
+
+    private void ShowDetailTooltip(SampleData sample, MouseEventArgs args)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(sample.Payload, sample.TopicMetadata.TopicType, TooltipJsonOptions);
+            var html = JsonSyntaxHighlighter.ToHtml(json);
+            TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+        }
+        catch
+        {
+            // Ignore tooltip failures for non-serializable payloads.
+        }
+    }
+
+    private void HideTooltip()
+    {
+        TooltipService.Hide();
+    }
+
+    private void SelectInstance(IndexedInstance row, bool publishNow)
+    {
+        _selectedRow = row.Row;
+        _selectedIndex = row.Index;
+
+        _ = FocusGrid();
+
+        if (publishNow)
+        {
+            _pendingTrackSample = row.Row.Sample;
+            EnsureLinkedDetailPanel(row.Row.Sample);
+            _trackDebouncer?.Trigger();
+        }
+    }
+
+    private Task PublishPendingTrackSample()
+    {
+        if (_pendingTrackSample == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        EventBroker.Publish(new SampleSelectedEvent(GetPanelId(), _pendingTrackSample));
+        return Task.CompletedTask;
+    }
+
+    private void EnsureLinkedDetailPanel(SampleData sample)
+    {
+        var detailTypeName = typeof(DetailPanel).AssemblyQualifiedName!;
+        var sourcePanelId = GetPanelId();
+        var detailPanels = WindowManager.ActivePanels
+            .Where(panel => string.Equals(panel.ComponentTypeName, detailTypeName, StringComparison.Ordinal))
+            .ToList();
+
+        var linkedPanel = detailPanels.FirstOrDefault(panel => IsLinkedDetailPanel(panel, sourcePanelId));
+        if (linkedPanel != null)
+        {
+            return;
+        }
+
+        var panel = FindReusableDetailPanel(detailPanels);
+
+        if (panel == null)
+        {
+            panel = WindowManager.SpawnPanel(detailTypeName, new Dictionary<string, object>
+            {
+                [nameof(DetailPanel.Sample)] = sample,
+                [nameof(DetailPanel.SourcePanelId)] = sourcePanelId,
+                [nameof(DetailPanel.IsLinked)] = true
+            });
+        }
+        else
+        {
+            panel.IsHidden = false;
+            panel.IsMinimized = false;
+            panel.ComponentState[nameof(DetailPanel.Sample)] = sample;
+            panel.ComponentState[nameof(DetailPanel.SourcePanelId)] = sourcePanelId;
+            panel.ComponentState[nameof(DetailPanel.IsLinked)] = true;
+            WindowManager.BringToFront(panel.PanelId);
+        }
+
+        panel.Title = $"Detail [{sample.TopicMetadata.ShortName}]";
+    }
+
+    private void OpenDetail(SampleData sample)
+    {
+        var detailTypeName = typeof(DetailPanel).AssemblyQualifiedName!;
+        var sourcePanelId = GetPanelId();
+        var detailPanels = WindowManager.ActivePanels
+            .Where(panel => string.Equals(panel.ComponentTypeName, detailTypeName, StringComparison.Ordinal))
+            .ToList();
+
+        var hasLinked = detailPanels.Any(panel => !panel.IsHidden && !panel.IsMinimized && IsLinkedDetailPanel(panel));
+        var shouldLink = !hasLinked;
+        var panel = FindReusableDetailPanel(detailPanels);
+
+        if (panel == null)
+        {
+            panel = WindowManager.SpawnPanel(detailTypeName, new Dictionary<string, object>
+            {
+                [nameof(DetailPanel.Sample)] = sample,
+                [nameof(DetailPanel.SourcePanelId)] = sourcePanelId,
+                [nameof(DetailPanel.IsLinked)] = shouldLink
+            });
+        }
+        else
+        {
+            panel.IsHidden = false;
+            panel.IsMinimized = false;
+            panel.ComponentState[nameof(DetailPanel.Sample)] = sample;
+            panel.ComponentState[nameof(DetailPanel.SourcePanelId)] = sourcePanelId;
+            panel.ComponentState[nameof(DetailPanel.IsLinked)] = shouldLink;
+            WindowManager.BringToFront(panel.PanelId);
+        }
+
+        panel.Title = $"Detail [{sample.TopicMetadata.ShortName}]";
+    }
+
+    private static bool IsLinkedDetailPanel(PanelState panel)
+    {
+        if (panel.ComponentState.TryGetValue(nameof(DetailPanel.IsLinked), out var linkedObj) &&
+            linkedObj is bool linked)
+        {
+            return linked;
+        }
+
+        return false;
+    }
+
+    private static bool IsLinkedDetailPanel(PanelState panel, string sourcePanelId)
+    {
+        if (!IsLinkedDetailPanel(panel))
+        {
+            return false;
+        }
+
+        if (panel.ComponentState.TryGetValue(nameof(DetailPanel.SourcePanelId), out var sourceObj) &&
+            sourceObj is string source)
+        {
+            return string.Equals(source, sourcePanelId, StringComparison.Ordinal);
+        }
+
+        return false;
+    }
+
+    private static PanelState? FindReusableDetailPanel(List<PanelState> panels)
+    {
+        return panels
+            .Where(panel => panel.IsHidden)
+            .OrderBy(GetPanelIndex)
+            .FirstOrDefault();
+    }
+
+    private static int GetPanelIndex(PanelState panel)
+    {
+        var id = panel.PanelId;
+        var dotIndex = id.LastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == id.Length - 1)
+        {
+            return int.MaxValue;
+        }
+
+        var suffix = id.Substring(dotIndex + 1);
+        return int.TryParse(suffix, out var index) ? index : int.MaxValue;
+    }
+
+    private void OpenInstanceSamples(InstanceRow row)
+    {
+        if (TopicMetadata == null)
+        {
+            return;
+        }
+
+        var filter = BuildInstanceFilter(row);
+        var panel = WindowManager.SpawnPanel(typeof(SamplesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        {
+            [nameof(SamplesPanel.TopicMetadata)] = TopicMetadata,
+            [nameof(SamplesPanel.InitialFilterText)] = filter
+        });
+
+        panel.Title = $"Samples [{TopicMetadata.ShortName}]";
+    }
+
+    private string BuildInstanceFilter(InstanceRow row)
+    {
+        if (TopicMetadata == null)
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string>();
+        foreach (var keyField in TopicMetadata.KeyFields)
+        {
+            var value = keyField.Getter(row.Sample.Payload);
+            var formatted = FormatFilterValue(value);
+            parts.Add($"Payload.{keyField.StructuredName} == {formatted}");
+        }
+
+        return string.Join(" AND ", parts);
+    }
+
+    private static string FormatFilterValue(object? value)
+    {
+        if (value == null)
+        {
+            return "null";
+        }
+
+        if (value is string text)
+        {
+            return $"\"{EscapeString(text)}\"";
+        }
+
+        if (value is char chr)
+        {
+            return $"\"{EscapeString(chr.ToString())}\"";
+        }
+
+        if (value is bool flag)
+        {
+            return flag ? "true" : "false";
+        }
+
+        if (value is Enum enumValue)
+        {
+            return Convert.ToInt64(enumValue, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (value is IFormattable formattable)
+        {
+            return formattable.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty;
+        }
+
+        return value.ToString() ?? string.Empty;
+    }
+
+    private static string EscapeString(string value)
+    {
+        return value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
+    }
+
+    private void OpenRowContextMenu(IndexedInstance row, MouseEventArgs args)
+    {
+        var items = new List<ContextMenuItem>
+        {
+            new("Show Instance Samples", null, () =>
+            {
+                OpenInstanceSamples(row.Row);
+                return Task.CompletedTask;
+            }),
+            new("Show Detail (New Window)", null, () =>
+            {
+                OpenDetail(row.Row.Sample);
+                return Task.CompletedTask;
+            })
+        };
+
+        ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+    }
+
+    private void HandleRowMouseDown(IndexedInstance row, MouseEventArgs args)
+    {
+        if (args.Button != RightMouseButton)
+        {
+            return;
+        }
+
+        OpenRowContextMenu(row, args);
+    }
+
+    private bool IsSelected(IndexedInstance row)
+    {
+        return row.Index == _selectedIndex;
+    }
+
+    private void HandleColumnResize(MouseEventArgs args)
+    {
+        if (!_isColumnResizing || _resizeColumnIndex < 0)
+        {
+            return;
+        }
+
+        var totalWeight = _layoutColumns.Sum(column => GetColumnWeight(column.Key));
+        var deltaX = args.ClientX - _resizeStartX;
+        var deltaWeight = (deltaX / _resizeGridWidth) * totalWeight;
+        var combined = _resizeStartLeftWeight + _resizeStartRightWeight;
+        var newLeft = Math.Clamp(_resizeStartLeftWeight + deltaWeight, MinColumnWeight, combined - MinColumnWeight);
+        var newRight = combined - newLeft;
+
+        var leftKey = _layoutColumns[_resizeColumnIndex].Key;
+        var rightKey = _layoutColumns[_resizeColumnIndex + 1].Key;
+        _columnWeights[leftKey] = newLeft;
+        _columnWeights[rightKey] = newRight;
+
+        StateHasChanged();
+    }
+
+    private async Task BeginColumnResize(string columnKey, MouseEventArgs args)
+    {
+        var index = _layoutColumns.FindIndex(column =>
+            string.Equals(column.Key, columnKey, StringComparison.Ordinal));
+        if (index < 0 || index >= _layoutColumns.Count - 1)
+        {
+            return;
+        }
+
+        var size = await JSRuntime.InvokeAsync<ElementSize?>("ddsMonitor.getElementSize", _gridRef);
+        _resizeGridWidth = size?.Width > 0 ? size.Width : 1;
+
+        _isColumnResizing = true;
+        _resizeColumnIndex = index;
+        _resizeStartX = args.ClientX;
+        _resizeStartLeftWeight = GetColumnWeight(_layoutColumns[index].Key);
+        _resizeStartRightWeight = GetColumnWeight(_layoutColumns[index + 1].Key);
+    }
+
+    private void EndColumnResize()
+    {
+        if (!_isColumnResizing)
+        {
+            return;
+        }
+
+        _isColumnResizing = false;
+        _resizeColumnIndex = -1;
+        SavePanelState();
+    }
+
+    private string GetGridStyle()
+    {
+        if (_layoutColumns.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var parts = _layoutColumns
+            .Select(column => FormattableString.Invariant($"{GetColumnWeight(column.Key):0.###}fr"));
+
+        return FormattableString.Invariant($"grid-template-columns:{string.Join(" ", parts)};");
+    }
+
+    private double GetColumnWeight(string key)
+    {
+        if (_columnWeights.TryGetValue(key, out var weight))
+        {
+            return weight;
+        }
+
+        return 1.0;
+    }
+
+    private void RebuildLayoutColumns()
+    {
+        _layoutColumns.Clear();
+
+        if (_savedColumnWeights != null && _savedColumnWeights.Count > 0)
+        {
+            _columnWeights.Clear();
+            foreach (var entry in _savedColumnWeights)
+            {
+                _columnWeights[entry.Key] = entry.Value;
+            }
+            _savedColumnWeights = null;
+        }
+
+        AddLayoutColumn("Stat", "Stat", ColumnKind.Status, null, "samples-panel__cell--status", 0.6);
+
+        if (TopicMetadata != null)
+        {
+            foreach (var keyField in TopicMetadata.KeyFields)
+            {
+                var label = $"{keyField.DisplayName} (Key)";
+                AddLayoutColumn(keyField.StructuredName, label, ColumnKind.Field, keyField, string.Empty, 1.1);
+            }
+        }
+
+        var keySet = TopicMetadata?.KeyFields.ToHashSet() ?? new HashSet<FieldMetadata>();
+        foreach (var field in _selectedColumns)
+        {
+            if (keySet.Contains(field))
+            {
+                continue;
+            }
+
+            AddLayoutColumn(field.StructuredName, field.DisplayName, ColumnKind.Field, field, string.Empty, 1.0);
+        }
+
+        AddLayoutColumn("Time", "Time", ColumnKind.Time, TimestampField, string.Empty, 1.0);
+        AddLayoutColumn("Actions", "Act", ColumnKind.Actions, null, "instances-panel__cell--actions", 0.9);
+
+        var keys = new HashSet<string>(_layoutColumns.Select(column => column.Key), StringComparer.Ordinal);
+        foreach (var key in _columnWeights.Keys.ToList())
+        {
+            if (!keys.Contains(key))
+            {
+                _columnWeights.Remove(key);
+            }
+        }
+    }
+
+    private void AddLayoutColumn(string key, string label, ColumnKind kind, FieldMetadata? field, string cssClass, double defaultWeight)
+    {
+        _layoutColumns.Add(new ColumnLayout(key, label, kind, field, cssClass));
+
+        if (!_columnWeights.ContainsKey(key))
+        {
+            _columnWeights[key] = defaultWeight;
+        }
+    }
+
+    private string GetHeaderClass(FieldMetadata? field)
+    {
+        var isSorted = field != null && ReferenceEquals(field, _sortField);
+        return isSorted ? "samples-panel__header-btn is-sorted" : "samples-panel__header-btn";
+    }
+
+    private string GetSortIndicator(FieldMetadata? field)
+    {
+        if (field == null || !ReferenceEquals(field, _sortField))
+        {
+            return string.Empty;
+        }
+
+        return _sortDirection == SortDirection.Ascending ? " ^" : " v";
+    }
+
+    private void ToggleSort(FieldMetadata? field)
+    {
+        if (field == null)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(field, _sortField))
+        {
+            _sortDirection = _sortDirection == SortDirection.Ascending
+                ? SortDirection.Descending
+                : SortDirection.Ascending;
+        }
+        else
+        {
+            _sortField = field;
+            _sortDirection = SortDirection.Ascending;
+        }
+
+        _sortMode = ReferenceEquals(field, TimestampField)
+            ? (_sortDirection == SortDirection.Descending ? "new" : "old")
+            : "custom";
+
+        _viewDirty = true;
+        _ = _virtualizeRef?.RefreshDataAsync();
+        StateHasChanged();
+    }
+
+    private void EnsureView()
+    {
+        if (TopicMetadata == null)
+        {
+            _viewCache.Clear();
+            _totalCount = 0;
+            _currentCount = 0;
+            return;
+        }
+
+        if (!_viewDirty)
+        {
+            return;
+        }
+
+        var snapshot = InstanceStore.GetTopicSnapshot(TopicMetadata.TopicType);
+        _viewCache.Clear();
+
+        if (_viewMode == InstanceViewMode.Live)
+        {
+            _totalCount = snapshot.LiveCount;
+            foreach (var instance in snapshot.Instances)
+            {
+                if (instance.State != InstanceState.Alive)
+                {
+                    continue;
+                }
+
+                var kind = instance.NumSamplesRecent <= 1
+                    ? TransitionKind.Added
+                    : TransitionKind.Updated;
+                var row = new InstanceRow(instance, instance.RecentSample, kind);
+                if (_filterPredicate == null || _filterPredicate(row.Sample))
+                {
+                    _viewCache.Add(row);
+                }
+            }
+        }
+        else
+        {
+            _totalCount = snapshot.Journal.Length;
+            foreach (var record in snapshot.Journal)
+            {
+                var row = new InstanceRow(record.Instance, record.Sample, record.Kind);
+                if (_filterPredicate == null || _filterPredicate(row.Sample))
+                {
+                    _viewCache.Add(row);
+                }
+            }
+        }
+
+        if (_sortField != null)
+        {
+            _viewCache.Sort((left, right) => CompareRows(left, right, _sortField, _sortDirection));
+        }
+
+        _currentCount = _viewCache.Count;
+        _viewDirty = false;
+
+        if (_selectedIndex >= _viewCache.Count)
+        {
+            _selectedIndex = -1;
+            _selectedRow = null;
+        }
+    }
+
+    private static int CompareRows(InstanceRow left, InstanceRow right, FieldMetadata sortField, SortDirection direction)
+    {
+        var leftValue = GetSortValue(left, sortField);
+        var rightValue = GetSortValue(right, sortField);
+        var comparison = CompareValues(leftValue, rightValue);
+        return direction == SortDirection.Descending ? -comparison : comparison;
+    }
+
+    private static object? GetSortValue(InstanceRow row, FieldMetadata sortField)
+    {
+        var target = sortField.IsSynthetic ? row.Sample : row.Sample.Payload;
+        return sortField.Getter(target!);
+    }
+
+    private static int CompareValues(object? left, object? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left == null)
+        {
+            return -1;
+        }
+
+        if (right == null)
+        {
+            return 1;
+        }
+
+        if (left is IComparable comparable)
+        {
+            return comparable.CompareTo(right);
+        }
+
+        return string.Compare(left.ToString(), right.ToString(), StringComparison.Ordinal);
+    }
+
+    private object? GetFieldValue(FieldMetadata field, SampleData sample)
+    {
+        var target = field.IsSynthetic ? sample : sample.Payload;
+        return field.Getter(target!);
+    }
+
+    private static string FormatValue(object? value)
+    {
+        if (value == null)
+        {
+            return string.Empty;
+        }
+
+        if (value is double number)
+        {
+            return number.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        if (value is float floatValue)
+        {
+            return floatValue.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        return value.ToString() ?? string.Empty;
+    }
+
+    private string GetStatusClass(InstanceRow row)
+    {
+        return row.Kind switch
+        {
+            TransitionKind.Added => "instance-status--born",
+            TransitionKind.Removed => "instance-status--removed",
+            _ => "instance-status--updated"
+        };
+    }
+
+    private string GetStatusSymbol(InstanceRow row)
+    {
+        return row.Kind switch
+        {
+            TransitionKind.Added => "NEW",
+            TransitionKind.Removed => "DEL",
+            _ => "UPD"
+        };
+    }
+
+    private void LoadPanelState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        if (PanelState.ComponentState.TryGetValue(SelectedColumnsStateKey, out var selectedObj))
+        {
+            _savedSelectedColumnKeys = TryReadStringList(selectedObj);
+        }
+
+        if (PanelState.ComponentState.TryGetValue(ColumnWeightsStateKey, out var weightsObj))
+        {
+            _savedColumnWeights = TryReadDoubleMap(weightsObj);
+        }
+    }
+
+    private void SavePanelState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        PanelState.ComponentState[SelectedColumnsStateKey] = _selectedColumns
+            .Select(field => field.StructuredName)
+            .ToArray();
+        PanelState.ComponentState[ColumnWeightsStateKey] = new Dictionary<string, double>(_columnWeights);
+        PersistWorkspace();
+    }
+
+    private void PersistWorkspace()
+    {
+        var filePath = WorkspaceState.WorkspaceFilePath;
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            WindowManager.SaveWorkspace(filePath);
+        }
+        catch
+        {
+            // Ignore persistence errors to avoid breaking UI interactions.
+        }
+    }
+
+    private static List<string>? TryReadStringList(object? value)
+    {
+        switch (value)
+        {
+            case string[] array:
+                return array.ToList();
+            case List<string> list:
+                return new List<string>(list);
+            case JsonElement element when element.ValueKind == JsonValueKind.Array:
+            {
+                var result = new List<string>();
+                foreach (var item in element.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String)
+                    {
+                        var text = item.GetString();
+                        if (!string.IsNullOrWhiteSpace(text))
+                        {
+                            result.Add(text);
+                        }
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, double>? TryReadDoubleMap(object? value)
+    {
+        switch (value)
+        {
+            case Dictionary<string, double> map:
+                return new Dictionary<string, double>(map, StringComparer.Ordinal);
+            case Dictionary<string, object> objMap:
+            {
+                var result = new Dictionary<string, double>(StringComparer.Ordinal);
+                foreach (var entry in objMap)
+                {
+                    if (TryReadDouble(entry.Value, out var number))
+                    {
+                        result[entry.Key] = number;
+                    }
+                }
+
+                return result;
+            }
+            case JsonElement element when element.ValueKind == JsonValueKind.Object:
+            {
+                var result = new Dictionary<string, double>(StringComparer.Ordinal);
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (TryReadDouble(property.Value, out var number))
+                    {
+                        result[property.Name] = number;
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryReadDouble(object? value, out double number)
+    {
+        switch (value)
+        {
+            case double direct:
+                number = direct;
+                return true;
+            case float single:
+                number = single;
+                return true;
+            case int intValue:
+                number = intValue;
+                return true;
+            case long longValue:
+                number = longValue;
+                return true;
+            case JsonElement element when element.ValueKind == JsonValueKind.Number:
+                return element.TryGetDouble(out number);
+            case JsonElement element when element.ValueKind == JsonValueKind.String:
+                return double.TryParse(element.GetString(), out number);
+        }
+
+        number = 0;
+        return false;
+    }
+
+    private string GetPanelId()
+    {
+        return PanelState?.PanelId ?? "InstancesPanel";
+    }
+
+    private static FieldMetadata CreateSyntheticField(string name, Type valueType, Func<object, object?> getter)
+    {
+        return new FieldMetadata(name, name, valueType, getter, SyntheticSetter, true);
+    }
+
+    private sealed record IndexedInstance(int Index, InstanceRow Row);
+
+    private sealed record InstanceRow(InstanceData Instance, SampleData Sample, TransitionKind Kind);
+
+    private sealed record ColumnLayout(string Key, string Label, ColumnKind Kind, FieldMetadata? Field, string CssClass)
+    {
+        public FieldMetadata? SortField => Kind switch
+        {
+            ColumnKind.Field => Field,
+            ColumnKind.Time => Field,
+            _ => null
+        };
+    }
+
+    private enum ColumnKind
+    {
+        Status,
+        Field,
+        Time,
+        Actions
+    }
+
+    private enum InstanceViewMode
+    {
+        Live,
+        History
+    }
+
+    private sealed class ElementSize
+    {
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+
+    private sealed class InstanceObserver : IObserver<InstanceTransitionEvent>
+    {
+        private readonly InstancesPanel _owner;
+
+        public InstanceObserver(InstancesPanel owner)
+        {
+            _owner = owner;
+        }
+
+        public void OnNext(InstanceTransitionEvent value)
+        {
+            if (_owner._currentTopicType == null ||
+                value.Instance.TopicMetadata.TopicType != _owner._currentTopicType)
+            {
+                return;
+            }
+
+            Interlocked.Increment(ref _owner._changeVersion);
+        }
+
+        public void OnError(Exception error)
+        {
+        }
+
+        public void OnCompleted()
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+        _trackDebouncer?.Dispose();
+        _instanceSubscription?.Dispose();
+    }
 }

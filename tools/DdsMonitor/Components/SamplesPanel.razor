@@ -158,6 +158,7 @@ else
     private Timer? _refreshTimer;
     private int _currentCount;
     private int _totalCount;
+    private bool _initialFilterApplied;
     private bool _trackMode = true;
     private bool _showColumnPicker;
     private SampleData? _selectedSample;
@@ -191,6 +192,9 @@ else
     [Parameter]
     public TopicMetadata? TopicMetadata { get; set; }
 
+    [Parameter]
+    public string? InitialFilterText { get; set; }
+
     protected override void OnInitialized()
     {
         _addColumnSubscription = EventBroker.Subscribe<AddColumnRequestEvent>(OnAddColumnRequested);
@@ -212,6 +216,12 @@ else
         {
             LoadPanelState();
             _loadedPanelState = true;
+        }
+
+        if (!_initialFilterApplied && !string.IsNullOrWhiteSpace(InitialFilterText))
+        {
+            _filterText = InitialFilterText;
+            _initialFilterApplied = true;
         }
 
         if (_currentTopicType != TopicMetadata.TopicType)

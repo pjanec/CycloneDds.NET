@@ -14,6 +14,11 @@ public interface IInstanceStore
     ITopicInstances GetTopicInstances(Type topicType);
 
     /// <summary>
+    /// Gets a snapshot of instances and journal data for the provided topic.
+    /// </summary>
+    InstanceSnapshot GetTopicSnapshot(Type topicType);
+
+    /// <summary>
     /// Gets an observable stream of instance transition events.
     /// </summary>
     IObservable<InstanceTransitionEvent> OnInstanceChanged { get; }
@@ -28,6 +33,11 @@ public interface IInstanceStore
     /// </summary>
     void Clear();
 }
+
+/// <summary>
+/// Provides a thread-safe snapshot of per-topic instance data.
+/// </summary>
+public sealed record InstanceSnapshot(int LiveCount, InstanceData[] Instances, InstanceJournalRecord[] Journal);
 
 /// <summary>
 /// Provides per-topic instance data.
