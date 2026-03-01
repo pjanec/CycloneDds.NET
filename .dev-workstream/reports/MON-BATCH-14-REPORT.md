@@ -10,7 +10,7 @@
 ## ✅ Completion Status
 
 ### Tasks Completed
-- [ ] Task 0: Manual verification (DMON-017/024/025/026) - attempted launch, manual UI checks not completed (see Known Issues)
+- [ ] Task 0: Manual verification (DMON-017/024/025/026) - partial: subscribe flows and panels verified via Playwright; keyboard/context menu pending (see Manual Verification Results)
 - [x] Task 1: Fix Detail panel recursion + test
 - [x] Task 2: Harden Subscribe All against invalid topics + test
 - [ ] Task 3: Context menu and keyboard navigation manual validation - not completed (see Known Issues)
@@ -33,6 +33,55 @@ Warnings:
 ### Integration Tests
 ```
 Not run (not required for this batch).
+```
+
+### Manual UI (Playwright)
+```
+Executed a Playwright-driven session against the running app (HTTP: http://127.0.0.1:58182) to exercise UI flows without a developer certificate.
+
+Actions performed:
+- Clicked `Subscribe All` (bulk subscribe).
+- Clicked each topic's subscription checkbox one-by-one.
+- Double-clicked the first topic row to open the Samples panel.
+- Clicked the Instances button when present to open the Instances panel.
+
+Observed results:
+- `Subscribe All` produced an inline message: "Skipped 2 topic(s) without descriptor ops: SelfTestSimple, SelfTestPose" and left per-topic checkboxes unchecked.
+- Individual topic subscribe (checkbox click) displayed a friendly error for each topic: "Type '...` does not have a public static GetDescriptorOps() method. Did you forget to add [DdsTopic] or [DdsStruct] attribute?" — the checkbox became checked and the UI opened panels.
+- Samples and Instances panels opened successfully for both `SelfTestSimple` and `SelfTestPose`.
+
+Result summary:
+- Topics exercised: SelfTestSimple, SelfTestPose
+- Subscribe All: skipped 2 topics (no descriptor ops)
+- Individual subscribe: error shown per-topic but panels opened (samples and instances)
+```
+
+### Manual UI Observations (additional)
+```
+- Keyboard navigation: `ArrowUp`/`ArrowDown` behave correctly; `PageUp`/`PageDown` also scroll the view. However, after using `PageUp`/`PageDown`, subsequent `ArrowUp`/`ArrowDown` moves the selected row out of the visible viewport (the visual scroll position remains unchanged while selection moves). Example: view shows sample with ordinal ~557 at top; selecting via `ArrowDown` moves selection to ordinal 4 but view remains at 557.
+- Sample detail latency: opening sample detail via double-click or `Enter` exhibits a long delay before the detail window becomes visible. This appears to be caused by an intentional debounce/delay in the UI; the current value is excessive and impairs usability.
+- Topics window lifecycle: after closing the main Topics panel there is no UI control (menu or button) to re-open it. The `WindowManager` still manages panels programmatically, but a main menu or launcher to spawn the Topics panel is missing.
+- Context menu: right-click actions show the browser's default context menu instead of the app context menu. Although `ContextMenu` component exists, its show/hide is not reliably triggered by user right-clicks in the tests — likely an event-binding or `preventDefault` handling issue.
+
+```
+
+### Manual UI Timings
+```
+- Double-click open detail (3 trials): success 3/3 — mean 472 ms, median 367 ms. Raw: 367 ms, 363 ms, 687 ms.
+- Enter key open detail (3 trials): success 2/3 — mean 1200 ms, median 1200 ms. Raw: 2363 ms (success), 10009 ms (timeout/failure), 36 ms (success).
+
+```
+
+### Manual Test Checklist (remaining)
+```
+- Reproduce and capture keyboard navigation issue precisely: sequence of `PageDown`/`PageUp` then `ArrowUp`/`ArrowDown` with sample ordinals and viewport top index.
+- Measure sample-detail open latency: record ms for double-click vs `Enter`; locate debounce value in code (likely in `SamplesPanel` / `DetailPanel`) and propose a shorter default.
+- Reopen Topics panel: confirm absence of main menu; verify whether a UI control should be added (e.g., app toolbar or Spawn button) and check `WindowManager.ActivePanels` after close.
+- Context menu: reproduce right-click on detail value and sample row; verify whether `ContextMenuService.Show` is invoked and why `.context-menu` isn't rendered or visible. Test `oncontextmenu:preventDefault` usage.
+- Panel behaviors: re-run drag/resize/minimize/restore/close interactions manually and confirm deterministic behavior; ensure `panel-strip` entries are created on minimize and restore brings to front.
+- Subscribe UX: test `Subscribe All` with valid descriptor types (if available) to ensure successful bulk subscribe; verify inline error summary truncation behavior when many topics are skipped.
+- Accessibility: keyboard-only flow to open/close Topics, focus Samples grid, and open context menu items via keyboard.
+
 ```
 
 ### Performance Benchmarks (if applicable)

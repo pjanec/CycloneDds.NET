@@ -61,7 +61,8 @@ else
 }
 
 @code {
-    private const int DebounceDelayMs = 50;
+    private const int DebounceDelayMs = 25;
+    private const int RightMouseButton = 2;
     private const int MaxTreeDepth = 32;
 
     private SampleData? _currentSample;
@@ -405,8 +406,8 @@ else
                 EventCallback.Factory.Create<MouseEventArgs>(this, args => ShowJsonTooltip(text, args)));
             builder.AddAttribute(3, "onmouseleave",
                 EventCallback.Factory.Create(this, HideTooltip));
-            builder.AddAttribute(4, "oncontextmenu",
-                EventCallback.Factory.Create<MouseEventArgs>(this, args => OpenValueContextMenu(text, true, args)));
+            builder.AddAttribute(4, "onmousedown",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(text, true, args)));
             builder.AddAttribute(5, "oncontextmenu:preventDefault", true);
             builder.AddContent(6, text);
             builder.CloseElement();
@@ -416,8 +417,8 @@ else
             var content = value?.ToString() ?? string.Empty;
             builder.OpenElement(6, "span");
             builder.AddAttribute(7, "class", "detail-tree__value");
-            builder.AddAttribute(8, "oncontextmenu",
-                EventCallback.Factory.Create<MouseEventArgs>(this, args => OpenValueContextMenu(content, false, args)));
+            builder.AddAttribute(8, "onmousedown",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(content, false, args)));
             builder.AddAttribute(9, "oncontextmenu:preventDefault", true);
             builder.AddContent(10, content);
             builder.CloseElement();
@@ -457,6 +458,16 @@ else
         }
 
         ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+    }
+
+    private void HandleValueMouseDown(string text, bool allowTextView, MouseEventArgs args)
+    {
+        if (args.Button != RightMouseButton)
+        {
+            return;
+        }
+
+        OpenValueContextMenu(text, allowTextView, args);
     }
 
     private Task CopyToClipboardAsync(string text)

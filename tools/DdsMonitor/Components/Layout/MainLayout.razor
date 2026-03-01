@@ -1,5 +1,33 @@
+@using DdsMonitor.Components
 @inherits LayoutComponentBase
 
+@inject IWindowManager WindowManager
+
 <div class="app-shell">
-    @Body
+    <div class="app-toolbar">
+        <button type="button" class="app-toolbar__button" @onclick="OpenTopicsPanel">Topics</button>
+    </div>
+    <div class="app-shell__content">
+        @Body
+    </div>
 </div>
+
+@code {
+    private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
+
+    private void OpenTopicsPanel()
+    {
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, TopicExplorerTypeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var newPanel = WindowManager.SpawnPanel(TopicExplorerTypeName);
+        newPanel.Title = "Topics";
+    }
+}

@@ -1,5 +1,6 @@
 @page "/"
 @rendermode @(new Microsoft.AspNetCore.Components.Web.InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
 
 @inject IWindowManager WindowManager
 
@@ -52,6 +53,7 @@
 @code {
     private const double MinPanelWidth = 220;
     private const double MinPanelHeight = 140;
+    private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
 
     private PanelState? _activePanel;
     private DragMode _dragMode = DragMode.None;
@@ -65,11 +67,27 @@
 
     protected override void OnInitialized()
     {
-        if (WindowManager.ActivePanels.Count == 0)
+        WindowManager.PanelsChanged += HandlePanelsChanged;
+        EnsureTopicsPanel();
+    }
+
+    private void HandlePanelsChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void EnsureTopicsPanel()
+    {
+        foreach (var panel in WindowManager.ActivePanels)
         {
-            var panel = WindowManager.SpawnPanel(typeof(TopicExplorerPanel).AssemblyQualifiedName!);
-            panel.Title = "Topics";
+            if (string.Equals(panel.ComponentTypeName, TopicExplorerTypeName, StringComparison.Ordinal))
+            {
+                return;
+            }
         }
+
+        var panelState = WindowManager.SpawnPanel(TopicExplorerTypeName);
+        panelState.Title = "Topics";
     }
 
     private void BeginDrag(PanelState panel, MouseEventArgs args)
@@ -241,5 +259,10 @@
         Top = 2,
         Right = 4,
         Bottom = 8
+    }
+
+    public void Dispose()
+    {
+        WindowManager.PanelsChanged -= HandlePanelsChanged;
     }
 }

@@ -32,6 +32,9 @@ public sealed class WindowManager : IWindowManager
     public event Action<PanelState>? PanelClosed;
 
     /// <inheritdoc />
+    public event Action? PanelsChanged;
+
+    /// <inheritdoc />
     public IReadOnlyList<PanelState> ActivePanels
     {
         get
@@ -77,6 +80,8 @@ public sealed class WindowManager : IWindowManager
             _activePanels.Add(panel);
         }
 
+        PanelsChanged?.Invoke();
+
         return panel;
     }
 
@@ -106,6 +111,7 @@ public sealed class WindowManager : IWindowManager
         if (removed != null)
         {
             PanelClosed?.Invoke(removed);
+            PanelsChanged?.Invoke();
         }
     }
 
@@ -203,6 +209,8 @@ public sealed class WindowManager : IWindowManager
             _activePanels.Clear();
             _activePanels.AddRange(loaded);
         }
+
+        PanelsChanged?.Invoke();
     }
 
     private int GetNextZIndex()

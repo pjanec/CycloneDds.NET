@@ -3,8 +3,8 @@
 
 @if (ContextMenuService.Current is { } menu)
 {
-    <div class="context-menu-overlay" tabindex="0" @ref="_overlayRef" @onmousedown="Close" @onkeydown="HandleKeyDown">
-        <div class="context-menu" style="@GetMenuStyle(menu)" @onmousedown:stopPropagation="true">
+    <div class="context-menu-overlay" tabindex="0" @ref="_overlayRef" @onmousedown="Close" @onkeydown="HandleKeyDown" @oncontextmenu="Close" @oncontextmenu:preventDefault="true">
+        <div class="context-menu" style="@GetMenuStyle(menu)" @onmousedown:stopPropagation="true" @oncontextmenu:preventDefault="true" @oncontextmenu:stopPropagation="true">
             @foreach (var item in menu.Items)
             {
                 <button type="button" class="context-menu__item" @onclick="() => Execute(item)">

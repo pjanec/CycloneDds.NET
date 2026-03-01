@@ -14,6 +14,11 @@ public interface IWindowManager
     event Action<PanelState>? PanelClosed;
 
     /// <summary>
+    /// Raised when the active panel list changes.
+    /// </summary>
+    event Action? PanelsChanged;
+
+    /// <summary>
     /// Gets the active panels.
     /// </summary>
     IReadOnlyList<PanelState> ActivePanels { get; }

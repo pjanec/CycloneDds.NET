@@ -123,11 +123,6 @@ public sealed class DynamicReader<T> : IDynamicReader
 
                 foreach (var sample in loan)
                 {
-                    if (!sample.IsValid)
-                    {
-                        continue;
-                    }
-
                     EmitSample(sample);
                 }
             }
