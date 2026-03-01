@@ -81,13 +81,18 @@ else
     [Parameter]
     public string? SourcePanelId { get; set; }
 
+    [Parameter]
+    public bool? IsLinked { get; set; }
+
     protected override void OnInitialized()
     {
         if (Sample != null)
         {
             _currentSample = Sample;
-            _linked = false;
         }
+
+        _linked = IsLinked ?? Sample == null;
+        PersistPanelState();
 
         if (!string.IsNullOrWhiteSpace(SourcePanelId))
         {
@@ -100,7 +105,13 @@ else
 
     protected override void OnParametersSet()
     {
-        if (!_linked && Sample != null)
+        if (IsLinked.HasValue)
+        {
+            _linked = IsLinked.Value;
+            PersistPanelState();
+        }
+
+        if (Sample != null && (_linked || !_linked))
         {
             _currentSample = Sample;
         }
@@ -132,6 +143,17 @@ else
     private void ToggleLinkMode()
     {
         _linked = !_linked;
+        PersistPanelState();
+    }
+
+    private void PersistPanelState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        PanelState.ComponentState[nameof(IsLinked)] = _linked;
     }
 
     private RenderFragment RenderTab(DetailTab tab, string label) => builder =>

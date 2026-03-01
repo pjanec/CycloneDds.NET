@@ -17,7 +17,7 @@ window.ddsMonitor.ensureRowVisible = function (element, rowIndex, rowHeight) {
     var headerHeight = header ? header.offsetHeight : 0;
     var rowElement = element.querySelector('.samples-panel__row');
     var measuredRowHeight = rowElement ? rowElement.offsetHeight : 0;
-    var safeRowHeight = rowHeight > 0 ? rowHeight : (measuredRowHeight > 0 ? measuredRowHeight : 1);
+    var safeRowHeight = measuredRowHeight > 0 ? measuredRowHeight : (rowHeight > 0 ? rowHeight : 1);
     var rowTop = rowIndex * safeRowHeight;
     var rowBottom = rowTop + safeRowHeight;
     rowTop += headerHeight;
@@ -41,4 +41,29 @@ window.ddsMonitor.getElementSize = function (element) {
         width: element.clientWidth,
         height: element.clientHeight
     };
+};
+
+window.ddsMonitor.ensureSelectedRowVisible = function (element) {
+    if (!element) {
+        return;
+    }
+
+    var selected = element.querySelector('.samples-panel__row.is-selected');
+    if (!selected) {
+        return;
+    }
+
+    var header = element.querySelector('.samples-panel__header');
+    var headerHeight = header ? header.getBoundingClientRect().height : 0;
+    var elementRect = element.getBoundingClientRect();
+    var selectedRect = selected.getBoundingClientRect();
+
+    var visibleTop = elementRect.top + headerHeight;
+    var visibleBottom = elementRect.bottom;
+
+    if (selectedRect.top < visibleTop) {
+        element.scrollTop -= (visibleTop - selectedRect.top);
+    } else if (selectedRect.bottom > visibleBottom) {
+        element.scrollTop += (selectedRect.bottom - visibleBottom);
+    }
 };

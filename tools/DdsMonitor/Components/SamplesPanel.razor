@@ -184,7 +184,6 @@ else
     private bool _viewDirty = true;
     private int _lastAllSamplesCount = -1;
     private Action? _viewRebuiltHandler;
-    private int _pendingScrollIndex = -1;
 
     [CascadingParameter]
     public PanelState? PanelState { get; set; }
@@ -412,13 +411,68 @@ else
 
     private void OpenDetail(SampleData sample)
     {
-        var panel = WindowManager.SpawnPanel(typeof(DetailPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        var detailTypeName = typeof(DetailPanel).AssemblyQualifiedName!;
+        var sourcePanelId = GetPanelId();
+        var detailPanels = WindowManager.ActivePanels
+            .Where(panel => string.Equals(panel.ComponentTypeName, detailTypeName, StringComparison.Ordinal))
+            .ToList();
+
+        var hasLinked = detailPanels.Any(panel => !panel.IsHidden && !panel.IsMinimized && IsLinkedDetailPanel(panel));
+        var shouldLink = !hasLinked;
+        var panel = FindReusableDetailPanel(detailPanels);
+
+        if (panel == null)
         {
-            [nameof(DetailPanel.Sample)] = sample,
-            [nameof(DetailPanel.SourcePanelId)] = GetPanelId()
-        });
+            panel = WindowManager.SpawnPanel(detailTypeName, new Dictionary<string, object>
+            {
+                [nameof(DetailPanel.Sample)] = sample,
+                [nameof(DetailPanel.SourcePanelId)] = sourcePanelId,
+                [nameof(DetailPanel.IsLinked)] = shouldLink
+            });
+        }
+        else
+        {
+            panel.IsHidden = false;
+            panel.IsMinimized = false;
+            panel.ComponentState[nameof(DetailPanel.Sample)] = sample;
+            panel.ComponentState[nameof(DetailPanel.SourcePanelId)] = sourcePanelId;
+            panel.ComponentState[nameof(DetailPanel.IsLinked)] = shouldLink;
+            WindowManager.BringToFront(panel.PanelId);
+        }
 
         panel.Title = $"Detail [{sample.TopicMetadata.ShortName}]";
+    }
+
+    private static bool IsLinkedDetailPanel(PanelState panel)
+    {
+        if (panel.ComponentState.TryGetValue(nameof(DetailPanel.IsLinked), out var linkedObj) &&
+            linkedObj is bool linked)
+        {
+            return linked;
+        }
+
+        return false;
+    }
+
+    private static PanelState? FindReusableDetailPanel(List<PanelState> panels)
+    {
+        return panels
+            .Where(panel => panel.IsHidden)
+            .OrderBy(GetPanelIndex)
+            .FirstOrDefault();
+    }
+
+    private static int GetPanelIndex(PanelState panel)
+    {
+        var id = panel.PanelId;
+        var dotIndex = id.LastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == id.Length - 1)
+        {
+            return int.MaxValue;
+        }
+
+        var suffix = id.Substring(dotIndex + 1);
+        return int.TryParse(suffix, out var index) ? index : int.MaxValue;
     }
 
     private void OpenRowContextMenu(IndexedSample row, MouseEventArgs args)
@@ -471,7 +525,7 @@ else
         await _gridRef.FocusAsync();
     }
 
-    private void OnGridKeyDown(KeyboardEventArgs args)
+    private async Task OnGridKeyDown(KeyboardEventArgs args)
     {
         if (!TryGetTotalCount(out var totalCount))
         {
@@ -522,21 +576,10 @@ else
         nextIndex = Math.Clamp(nextIndex, 0, totalCount - 1);
         if (TrySelectByIndex(nextIndex))
         {
-            _pendingScrollIndex = nextIndex;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(50);
+            await EnsureSelectionVisibleAsync(nextIndex);
         }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (_pendingScrollIndex < 0)
-        {
-            return;
-        }
-
-        var index = _pendingScrollIndex;
-        _pendingScrollIndex = -1;
-        await EnsureSelectionVisibleAsync(index);
     }
 
     private bool TrySelectByIndex(int index)
@@ -559,9 +602,11 @@ else
         return totalCount > 0;
     }
 
-    private ValueTask EnsureSelectionVisibleAsync(int index)
+    private async Task EnsureSelectionVisibleAsync(int index)
     {
-        return JSRuntime.InvokeVoidAsync("ddsMonitor.ensureRowVisible", _gridRef, index, RowHeight);
+        await JSRuntime.InvokeVoidAsync("ddsMonitor.ensureRowVisible", _gridRef, index, RowHeight);
+        await Task.Delay(1);
+        await JSRuntime.InvokeVoidAsync("ddsMonitor.ensureSelectedRowVisible", _gridRef);
     }
 
     private RenderFragment RenderHeader(string label, FieldMetadata? field) => builder =>

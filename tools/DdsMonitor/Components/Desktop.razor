@@ -5,6 +5,7 @@
 @using Microsoft.JSInterop
 @using System.Reflection
 @using System.IO
+@using System.Text.Json
 
 @inject IWindowManager WindowManager
 @inject IWorkspaceState WorkspaceState
@@ -433,33 +434,124 @@
     private static Dictionary<string, object> FilterComponentParameters(Type componentType, Dictionary<string, object> state)
     {
         var result = new Dictionary<string, object>(StringComparer.Ordinal);
-        var parameters = GetParameterNames(componentType);
+        var parameters = GetParameterProperties(componentType);
 
         foreach (var entry in state)
         {
-            if (parameters.Contains(entry.Key))
+            if (!parameters.TryGetValue(entry.Key, out var property))
             {
-                result[entry.Key] = entry.Value;
+                continue;
+            }
+
+            if (TryConvertParameterValue(entry.Value, property.PropertyType, out var converted))
+            {
+                result[entry.Key] = converted!;
             }
         }
 
         return result;
     }
 
-    private static HashSet<string> GetParameterNames(Type componentType)
+    private static Dictionary<string, PropertyInfo> GetParameterProperties(Type componentType)
     {
-        var set = new HashSet<string>(StringComparer.Ordinal);
+        var set = new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
         foreach (var property in componentType.GetProperties(flags))
         {
             if (property.GetCustomAttribute<ParameterAttribute>() != null)
             {
-                set.Add(property.Name);
+                set[property.Name] = property;
             }
         }
 
         return set;
+    }
+
+    private static bool TryConvertParameterValue(object? value, Type targetType, out object? converted)
+    {
+        if (value == null)
+        {
+            converted = null;
+            return IsNullableType(targetType);
+        }
+
+        if (targetType.IsInstanceOfType(value))
+        {
+            converted = value;
+            return true;
+        }
+
+        if (value is JsonElement element)
+        {
+            return TryConvertJsonElement(element, targetType, out converted);
+        }
+
+        try
+        {
+            var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+            converted = Convert.ChangeType(value, underlying);
+            return true;
+        }
+        catch
+        {
+            converted = null;
+            return false;
+        }
+    }
+
+    private static bool TryConvertJsonElement(JsonElement element, Type targetType, out object? converted)
+    {
+        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+        if (underlying == typeof(string))
+        {
+            converted = element.ValueKind == JsonValueKind.String ? element.GetString() : element.ToString();
+            return true;
+        }
+
+        if (underlying == typeof(bool) && element.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            converted = element.GetBoolean();
+            return true;
+        }
+
+        if (underlying == typeof(int) && element.TryGetInt32(out var intValue))
+        {
+            converted = intValue;
+            return true;
+        }
+
+        if (underlying == typeof(long) && element.TryGetInt64(out var longValue))
+        {
+            converted = longValue;
+            return true;
+        }
+
+        if (underlying == typeof(double) && element.TryGetDouble(out var doubleValue))
+        {
+            converted = doubleValue;
+            return true;
+        }
+
+        if (underlying == typeof(float) && element.TryGetSingle(out var floatValue))
+        {
+            converted = floatValue;
+            return true;
+        }
+
+        converted = null;
+        return false;
+    }
+
+    private static bool IsNullableType(Type type)
+    {
+        if (!type.IsValueType)
+        {
+            return true;
+        }
+
+        return Nullable.GetUnderlyingType(type) != null;
     }
 
     private static string GetPanelStyle(PanelState panel)

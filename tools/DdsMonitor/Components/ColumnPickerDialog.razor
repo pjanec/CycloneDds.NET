@@ -16,7 +16,8 @@
                 {
                     var isSelected = field == _selectedAvailable;
                     <li class="column-picker__item @(isSelected ? "is-selected" : string.Empty)"
-                        @onclick="() => _selectedAvailable = field">
+                        @onclick="() => _selectedAvailable = field"
+                        @ondblclick="() => AddFieldFromAvailable(field)">
                         @field.StructuredName
                     </li>
                 }
@@ -38,6 +39,7 @@
                     <li class="column-picker__item @(isSelected ? "is-selected" : string.Empty)"
                         draggable="true"
                         @onclick="() => _selectedSelected = field"
+                        @ondblclick="() => RemoveFieldFromSelected(field)"
                         @ondragstart="() => _dragField = field"
                         @ondragover:preventDefault
                         @ondrop="() => OnDrop(field)">
@@ -193,6 +195,30 @@
     private void OnSelectedSearch(ChangeEventArgs args)
     {
         _selectedSearch = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private void AddFieldFromAvailable(FieldMetadata field)
+    {
+        if (_state == null)
+        {
+            return;
+        }
+
+        _state.AddField(field);
+        _selectedSelected = field;
+        _selectedAvailable = null;
+    }
+
+    private void RemoveFieldFromSelected(FieldMetadata field)
+    {
+        if (_state == null)
+        {
+            return;
+        }
+
+        _state.RemoveField(field);
+        _selectedAvailable = field;
+        _selectedSelected = null;
     }
 
     private static int FindIndex(IReadOnlyList<FieldMetadata> fields, FieldMetadata target)
