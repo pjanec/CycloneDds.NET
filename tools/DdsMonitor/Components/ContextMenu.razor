@@ -1,0 +1,78 @@
+@implements IDisposable
+@inject ContextMenuService ContextMenuService
+
+@if (ContextMenuService.Current is { } menu)
+{
+    <div class="context-menu-overlay" tabindex="0" @ref="_overlayRef" @onmousedown="Close" @onkeydown="HandleKeyDown">
+        <div class="context-menu" style="@GetMenuStyle(menu)" @onmousedown:stopPropagation="true">
+            @foreach (var item in menu.Items)
+            {
+                <button type="button" class="context-menu__item" @onclick="() => Execute(item)">
+                    @if (!string.IsNullOrWhiteSpace(item.Icon))
+                    {
+                        <span class="context-menu__icon">@item.Icon</span>
+                    }
+                    <span>@item.Label</span>
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private ElementReference _overlayRef;
+    private bool _focusRequested;
+
+    protected override void OnInitialized()
+    {
+        ContextMenuService.OnChanged += HandleChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusRequested)
+        {
+            _focusRequested = false;
+            await _overlayRef.FocusAsync();
+        }
+    }
+
+    private void HandleChanged()
+    {
+        if (ContextMenuService.Current != null)
+        {
+            _focusRequested = true;
+        }
+
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Close()
+    {
+        ContextMenuService.Hide();
+    }
+
+    private async Task Execute(ContextMenuItem item)
+    {
+        await item.Action();
+        ContextMenuService.Hide();
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Escape", StringComparison.Ordinal))
+        {
+            ContextMenuService.Hide();
+        }
+    }
+
+    private static string GetMenuStyle(ContextMenuState state)
+    {
+        return FormattableString.Invariant($"left:{state.X}px; top:{state.Y}px;");
+    }
+
+    public void Dispose()
+    {
+        ContextMenuService.OnChanged -= HandleChanged;
+    }
+}

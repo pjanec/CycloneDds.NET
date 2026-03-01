@@ -3,6 +3,7 @@
 @using System.Threading
 @using CycloneDDS.Runtime
 @using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Microsoft.JSInterop
 @implements IDisposable
 
 @inject ISampleStore SampleStore
@@ -11,6 +12,8 @@
 @inject IWindowManager WindowManager
 @inject DdsSettings Settings
 @inject TooltipService TooltipService
+@inject IJSRuntime JSRuntime
+@inject ContextMenuService ContextMenuService
 
 @if (TopicMetadata == null)
 {
@@ -45,7 +48,7 @@ else
             <div class="samples-panel__error">@_filterError</div>
         }
 
-        <div class="samples-panel__grid">
+        <div class="samples-panel__grid" tabindex="0" @ref="_gridRef" @onclick="FocusGrid" @onkeydown="OnGridKeyDown" @onkeydown:preventDefault="true">
             <div class="samples-panel__header">
                 @RenderHeader("Ordinal", OrdinalField)
                 <div class="samples-panel__cell samples-panel__cell--status">Status</div>
@@ -59,22 +62,24 @@ else
                 }
             </div>
 
-            <Virtualize ItemsProvider="LoadItems" ItemSize="28">
-                <ItemContent Context="sample">
-                    <div class="samples-panel__row @(IsSelected(sample) ? "is-selected" : string.Empty)"
-                         @onclick="() => SelectSample(sample)"
-                         @ondblclick="() => OpenDetail(sample)">
-                        <div class="samples-panel__cell samples-panel__cell--ordinal">@sample.Ordinal</div>
+            <Virtualize ItemsProvider="LoadItems" ItemSize="RowHeight">
+                <ItemContent Context="row">
+                    <div class="samples-panel__row @(IsSelected(row) ? "is-selected" : string.Empty)"
+                         @onclick="() => SelectSample(row, true)"
+                         @ondblclick="() => OpenDetail(row.Sample)"
+                         @oncontextmenu:preventDefault="true"
+                         @oncontextmenu="(args) => OpenRowContextMenu(row, args)">
+                        <div class="samples-panel__cell samples-panel__cell--ordinal">@row.Sample.Ordinal</div>
                         <div class="samples-panel__cell samples-panel__cell--status">
-                            <span class="sample-status @GetStatusClass(sample)">@GetStatusSymbol(sample)</span>
+                            <span class="sample-status @GetStatusClass(row.Sample)">@GetStatusSymbol(row.Sample)</span>
                         </div>
-                        <div class="samples-panel__cell">@sample.TopicMetadata.ShortName</div>
-                        <div class="samples-panel__cell">@sample.SizeBytes</div>
-                        <div class="samples-panel__cell">@sample.Timestamp.ToString("HH:mm:ss.fff")</div>
-                        <div class="samples-panel__cell">@GetDelayText(sample)</div>
+                        <div class="samples-panel__cell">@row.Sample.TopicMetadata.ShortName</div>
+                        <div class="samples-panel__cell">@row.Sample.SizeBytes</div>
+                        <div class="samples-panel__cell">@row.Sample.Timestamp.ToString("HH:mm:ss.fff")</div>
+                        <div class="samples-panel__cell">@GetDelayText(row.Sample)</div>
                         @foreach (var field in _selectedColumns)
                         {
-                            var value = GetFieldValue(field, sample);
+                            var value = GetFieldValue(field, row.Sample);
                             <div class="samples-panel__cell">
                                 @RenderValue(value)
                             </div>
@@ -102,10 +107,12 @@ else
 }
 
 @code {
+    private const int RowHeight = 28;
     private const int MinimumUiRefreshHz = 1;
     private const int MillisecondsPerSecond = 1000;
     private const string SizeFieldName = "Size [B]";
     private const string DelayFieldName = "Delay [ms]";
+    private const int TrackDebounceMs = 50;
 
     private static readonly Action<object, object?> SyntheticSetter = (_, __) =>
         throw new InvalidOperationException("Synthetic fields are read-only.");
@@ -138,10 +145,15 @@ else
     private bool _trackMode = true;
     private bool _showColumnPicker;
     private SampleData? _selectedSample;
+    private SampleData? _pendingTrackSample;
+    private int _selectedIndex = -1;
+    private int _lastRequestCount = 1;
     private FieldMetadata? _sortField;
     private SortDirection _sortDirection = SortDirection.Ascending;
     private IDisposable? _addColumnSubscription;
     private Type? _currentTopicType;
+    private DebouncedAction? _trackDebouncer;
+    private ElementReference _gridRef;
 
     [CascadingParameter]
     public PanelState? PanelState { get; set; }
@@ -153,6 +165,8 @@ else
     {
         _virtualizer = new SamplesPanelVirtualizer(SampleStore);
         _addColumnSubscription = EventBroker.Subscribe<AddColumnRequestEvent>(OnAddColumnRequested);
+        _trackDebouncer = new DebouncedAction(TimeSpan.FromMilliseconds(TrackDebounceMs),
+            () => _ = InvokeAsync(PublishPendingTrackSample));
         StartRefreshTimer();
     }
 
@@ -225,18 +239,24 @@ else
         return Task.CompletedTask;
     }
 
-    private ValueTask<ItemsProviderResult<SampleData>> LoadItems(ItemsProviderRequest request)
+    private ValueTask<ItemsProviderResult<IndexedSample>> LoadItems(ItemsProviderRequest request)
     {
         if (_virtualizer == null)
         {
-            return new ValueTask<ItemsProviderResult<SampleData>>(
-                new ItemsProviderResult<SampleData>(Array.Empty<SampleData>(), 0));
+            return new ValueTask<ItemsProviderResult<IndexedSample>>(
+                new ItemsProviderResult<IndexedSample>(Array.Empty<IndexedSample>(), 0));
         }
 
+        _lastRequestCount = Math.Max(1, request.Count);
         var range = _virtualizer.GetRange(request.StartIndex, request.Count);
-        var items = range.ToArray();
-        return new ValueTask<ItemsProviderResult<SampleData>>(
-            new ItemsProviderResult<SampleData>(items, _virtualizer.TotalCount));
+        var items = new IndexedSample[range.Length];
+        for (var i = 0; i < range.Length; i++)
+        {
+            items[i] = new IndexedSample(request.StartIndex + i, range.Span[i]);
+        }
+
+        return new ValueTask<ItemsProviderResult<IndexedSample>>(
+            new ItemsProviderResult<IndexedSample>(items, _virtualizer.TotalCount));
     }
 
     private void ToggleTrackMode()
@@ -296,13 +316,24 @@ else
         SampleStore.SetFilter(sample => topicPredicate(sample) && result.Predicate(sample));
     }
 
-    private void SelectSample(SampleData sample)
+    private void SelectSample(IndexedSample row, bool publishNow)
     {
-        _selectedSample = sample;
+        _selectedSample = row.Sample;
+        _selectedIndex = row.Index;
+
+        _ = FocusGrid();
 
         if (_trackMode)
         {
-            EventBroker.Publish(new SampleSelectedEvent(GetPanelId(), sample));
+            if (publishNow)
+            {
+                EventBroker.Publish(new SampleSelectedEvent(GetPanelId(), row.Sample));
+            }
+            else
+            {
+                _pendingTrackSample = row.Sample;
+                _trackDebouncer?.Trigger();
+            }
         }
     }
 
@@ -317,9 +348,130 @@ else
         panel.Title = $"Detail [{sample.TopicMetadata.ShortName}]";
     }
 
-    private bool IsSelected(SampleData sample)
+    private void OpenRowContextMenu(IndexedSample row, MouseEventArgs args)
     {
-        return ReferenceEquals(sample, _selectedSample);
+        var items = new List<ContextMenuItem>
+        {
+            new("Show Detail (New Window)", null, () =>
+            {
+                OpenDetail(row.Sample);
+                return Task.CompletedTask;
+            }),
+            new("Clone to Send/Emulator", null, () =>
+            {
+                EventBroker.Publish(new CloneAndSendRequestEvent(row.Sample.TopicMetadata, row.Sample.Payload));
+                return Task.CompletedTask;
+            })
+        };
+
+        ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+    }
+
+    private bool IsSelected(IndexedSample row)
+    {
+        return row.Index == _selectedIndex;
+    }
+
+    private Task PublishPendingTrackSample()
+    {
+        if (_pendingTrackSample == null || !_trackMode)
+        {
+            return Task.CompletedTask;
+        }
+
+        EventBroker.Publish(new SampleSelectedEvent(GetPanelId(), _pendingTrackSample));
+        return Task.CompletedTask;
+    }
+
+    private async Task FocusGrid()
+    {
+        await _gridRef.FocusAsync();
+    }
+
+    private void OnGridKeyDown(KeyboardEventArgs args)
+    {
+        if (_virtualizer == null)
+        {
+            return;
+        }
+
+        if (!TryGetTotalCount(out var totalCount))
+        {
+            return;
+        }
+
+        var currentIndex = _selectedIndex >= 0 ? _selectedIndex : 0;
+        var nextIndex = currentIndex;
+        var handled = true;
+
+        switch (args.Key)
+        {
+            case "ArrowDown":
+                nextIndex = currentIndex + 1;
+                break;
+            case "ArrowUp":
+                nextIndex = currentIndex - 1;
+                break;
+            case "PageDown":
+                nextIndex = currentIndex + _lastRequestCount;
+                break;
+            case "PageUp":
+                nextIndex = currentIndex - _lastRequestCount;
+                break;
+            case "Home":
+                nextIndex = 0;
+                break;
+            case "End":
+                nextIndex = totalCount - 1;
+                break;
+            case "Enter":
+                if (_selectedSample != null)
+                {
+                    OpenDetail(_selectedSample);
+                }
+
+                return;
+            default:
+                handled = false;
+                break;
+        }
+
+        if (!handled)
+        {
+            return;
+        }
+
+        nextIndex = Math.Clamp(nextIndex, 0, totalCount - 1);
+        if (TrySelectByIndex(nextIndex))
+        {
+            _ = ScrollToIndexAsync(nextIndex);
+            StateHasChanged();
+        }
+    }
+
+    private bool TrySelectByIndex(int index)
+    {
+        var view = SampleStore.GetVirtualView(index, 1);
+        if (view.Length == 0)
+        {
+            return false;
+        }
+
+        var row = new IndexedSample(index, view.Span[0]);
+        SelectSample(row, false);
+        return true;
+    }
+
+    private bool TryGetTotalCount(out int totalCount)
+    {
+        totalCount = _virtualizer?.TotalCount ?? 0;
+        return totalCount > 0;
+    }
+
+    private ValueTask ScrollToIndexAsync(int index)
+    {
+        var scrollTop = index * RowHeight;
+        return JSRuntime.InvokeVoidAsync("ddsMonitor.setScrollTop", _gridRef, scrollTop);
     }
 
     private RenderFragment RenderHeader(string label, FieldMetadata? field) => builder =>
@@ -505,9 +657,12 @@ else
         return new FieldMetadata(name, name, valueType, getter, SyntheticSetter, true);
     }
 
+    private sealed record IndexedSample(int Index, SampleData Sample);
+
     public void Dispose()
     {
         _refreshTimer?.Dispose();
         _addColumnSubscription?.Dispose();
+        _trackDebouncer?.Dispose();
     }
 }

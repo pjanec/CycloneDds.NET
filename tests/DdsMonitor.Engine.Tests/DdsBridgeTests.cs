@@ -1,3 +1,6 @@
+using System.Reflection;
+using System.Reflection.Emit;
+using CycloneDDS.Schema;
 using Xunit;
 
 namespace DdsMonitor.Engine.Tests;
@@ -48,5 +51,42 @@ public sealed class DdsBridgeTests
         Assert.True(bridge.ActiveReaders.TryGetValue(metadataB.TopicType, out var newReaderB));
         Assert.NotSame(readerA, newReaderA);
         Assert.NotSame(readerB, newReaderB);
+    }
+
+    [Fact]
+    public void DdsBridge_Subscribe_InvalidTopic_DoesNotThrow()
+    {
+        var invalidType = CreateInvalidTopicType();
+        var metadata = new TopicMetadata(invalidType);
+        using var bridge = new DdsBridge();
+
+        var reader = bridge.Subscribe(metadata);
+
+        Assert.Equal(invalidType, reader.TopicType);
+        Assert.False(bridge.ActiveReaders.ContainsKey(invalidType));
+    }
+
+    private static Type CreateInvalidTopicType()
+    {
+        var assemblyName = new AssemblyName("DdsBridgeInvalidTopicTests");
+        var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
+        var moduleBuilder = assemblyBuilder.DefineDynamicModule("Main");
+        var typeBuilder = moduleBuilder.DefineType(
+            "InvalidTopic",
+            TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.SequentialLayout,
+            typeof(ValueType));
+
+        typeBuilder.DefineField("Id", typeof(int), FieldAttributes.Public);
+
+        var attributeConstructor = typeof(DdsTopicAttribute).GetConstructor(new[] { typeof(string) });
+        if (attributeConstructor == null)
+        {
+            throw new InvalidOperationException("Unable to locate DdsTopicAttribute constructor.");
+        }
+
+        var attribute = new CustomAttributeBuilder(attributeConstructor, new object[] { "InvalidTopic" });
+        typeBuilder.SetCustomAttribute(attribute);
+
+        return typeBuilder.CreateTypeInfo()!.AsType();
     }
 }

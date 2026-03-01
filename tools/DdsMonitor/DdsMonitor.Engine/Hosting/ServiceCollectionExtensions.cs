@@ -35,6 +35,12 @@ public static class ServiceCollectionExtensions
         discovery.Discover(settings.PluginDirectories);
         services.AddSingleton<ITopicRegistry>(topicRegistry);
 
+        if (settings.SelfSendEnabled)
+        {
+            SelfSendTopics.Register(topicRegistry);
+            services.AddHostedService<SelfSendService>();
+        }
+
         services.AddSingleton<IDdsBridge, DdsBridge>();
         services.AddSingleton<ISampleStore, SampleStore>();
         services.AddSingleton<IInstanceStore, InstanceStore>();

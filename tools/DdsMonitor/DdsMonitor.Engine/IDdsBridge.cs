@@ -25,6 +25,11 @@ public interface IDdsBridge : IDisposable
     IDynamicReader Subscribe(TopicMetadata meta);
 
     /// <summary>
+    /// Attempts to subscribe to the topic and returns an error message on failure.
+    /// </summary>
+    bool TrySubscribe(TopicMetadata meta, out IDynamicReader? reader, out string? errorMessage);
+
+    /// <summary>
     /// Unsubscribes from the topic and releases its reader.
     /// </summary>
     void Unsubscribe(TopicMetadata meta);

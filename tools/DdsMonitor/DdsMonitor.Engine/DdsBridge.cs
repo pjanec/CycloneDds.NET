@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using CycloneDDS.Runtime;
 
 namespace DdsMonitor.Engine;
@@ -45,6 +46,14 @@ public sealed class DdsBridge : IDdsBridge
     /// <inheritdoc />
     public IDynamicReader Subscribe(TopicMetadata meta)
     {
+        return TrySubscribe(meta, out var reader, out var errorMessage)
+            ? reader!
+            : new NullDynamicReader(meta, errorMessage);
+    }
+
+    /// <inheritdoc />
+    public bool TrySubscribe(TopicMetadata meta, out IDynamicReader? reader, out string? errorMessage)
+    {
         if (meta == null)
         {
             throw new ArgumentNullException(nameof(meta));
@@ -54,15 +63,29 @@ public sealed class DdsBridge : IDdsBridge
         {
             ThrowIfDisposed();
 
+            reader = null;
+            errorMessage = null;
+
             if (_activeReaders.TryGetValue(meta.TopicType, out var existing))
             {
-                return existing;
+                reader = existing;
+                return true;
             }
 
-            var reader = CreateReader(meta);
-            reader.Start(CurrentPartition);
-            _activeReaders[meta.TopicType] = reader;
-            return reader;
+            try
+            {
+                reader = CreateReader(meta);
+                reader.Start(CurrentPartition);
+                _activeReaders[meta.TopicType] = reader;
+                return true;
+            }
+            catch (Exception ex) when (TryGetDescriptorError(ex, out var message))
+            {
+                reader?.Dispose();
+                reader = null;
+                errorMessage = message;
+                return false;
+            }
         }
     }
 
@@ -189,5 +212,22 @@ public sealed class DdsBridge : IDdsBridge
         {
             throw new ObjectDisposedException(nameof(DdsBridge));
         }
+    }
+
+    private static bool TryGetDescriptorError(Exception exception, out string? message)
+    {
+        if (exception is TargetInvocationException invocationException && invocationException.InnerException != null)
+        {
+            return TryGetDescriptorError(invocationException.InnerException, out message);
+        }
+
+        if (exception is InvalidOperationException invalidOperationException)
+        {
+            message = invalidOperationException.Message;
+            return true;
+        }
+
+        message = null;
+        return false;
     }
 }

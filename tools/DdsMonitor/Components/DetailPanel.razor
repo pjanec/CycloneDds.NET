@@ -3,11 +3,14 @@
 @using System.Reflection
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components.Rendering
+@using Microsoft.JSInterop
 @implements IDisposable
 
 @inject IEventBroker EventBroker
 @inject IWindowManager WindowManager
 @inject TooltipService TooltipService
+@inject ContextMenuService ContextMenuService
+@inject IJSRuntime JSRuntime
 
 @if (_currentSample == null)
 {
@@ -59,6 +62,7 @@ else
 
 @code {
     private const int DebounceDelayMs = 50;
+    private const int MaxTreeDepth = 32;
 
     private SampleData? _currentSample;
     private SampleData? _pendingSample;
@@ -147,9 +151,10 @@ else
             return;
         }
 
+        var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
         builder.OpenElement(0, "div");
         builder.AddAttribute(1, "class", "detail-tree");
-        builder.AddContent(2, RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty));
+        builder.AddContent(2, RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty, traversal, 0));
         builder.CloseElement();
     };
 
@@ -260,16 +265,32 @@ else
         builder.CloseElement();
     };
 
-    private RenderFragment RenderNode(object? value, string label, string path) => builder =>
+    private RenderFragment RenderNode(object? value, string label, string path, HashSet<object> traversal, int depth) => builder =>
     {
         var sequence = 0;
         var type = value?.GetType();
-        var isLeaf = type == null || IsLeafType(type);
+        var isReferenceType = type != null && !type.IsValueType;
+        var isCycle = isReferenceType && traversal.Contains(value!);
+        var isMaxDepth = depth >= MaxTreeDepth;
+        var isLeaf = type == null || IsLeafType(type) || isCycle || isMaxDepth;
         var isRoot = string.IsNullOrEmpty(path) && _currentSample != null &&
             string.Equals(label, _currentSample.TopicMetadata.ShortName, StringComparison.Ordinal);
         var nextPath = isRoot
             ? string.Empty
             : (string.IsNullOrEmpty(path) ? label : $"{path}.{label}");
+        var displayValue = value;
+        var displayType = type;
+
+        if (isCycle)
+        {
+            displayValue = "(cycle)";
+            displayType = typeof(string);
+        }
+        else if (isMaxDepth)
+        {
+            displayValue = "(max depth)";
+            displayType = typeof(string);
+        }
 
         builder.OpenElement(sequence++, "div");
         builder.AddAttribute(sequence++, "class", "detail-tree__node");
@@ -282,8 +303,8 @@ else
         builder.CloseElement();
 
         builder.OpenElement(sequence++, "span");
-        builder.AddAttribute(sequence++, "class", GetValueClass(type));
-        builder.AddContent(sequence++, RenderValue(value));
+        builder.AddAttribute(sequence++, "class", GetValueClass(displayType));
+        builder.AddContent(sequence++, RenderValue(displayValue));
         builder.CloseElement();
 
         if (isLeaf)
@@ -294,6 +315,12 @@ else
 
         builder.CloseElement();
 
+        var addedToTraversal = false;
+        if (!isLeaf && isReferenceType && value != null)
+        {
+            addedToTraversal = traversal.Add(value);
+        }
+
         if (!isLeaf && value != null)
         {
             var nonNullType = type!;
@@ -302,9 +329,14 @@ else
             foreach (var member in GetMembers(nonNullType))
             {
                 var memberValue = GetMemberValue(member, value);
-                builder.AddContent(sequence++, RenderNode(memberValue, member.Name, nextPath));
+                builder.AddContent(sequence++, RenderNode(memberValue, member.Name, nextPath, traversal, depth + 1));
             }
             builder.CloseElement();
+        }
+
+        if (addedToTraversal)
+        {
+            traversal.Remove(value!);
         }
 
         builder.CloseElement();
@@ -373,12 +405,22 @@ else
                 EventCallback.Factory.Create<MouseEventArgs>(this, args => ShowJsonTooltip(text, args)));
             builder.AddAttribute(3, "onmouseleave",
                 EventCallback.Factory.Create(this, HideTooltip));
-            builder.AddContent(4, text);
+            builder.AddAttribute(4, "oncontextmenu",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => OpenValueContextMenu(text, true, args)));
+            builder.AddAttribute(5, "oncontextmenu:preventDefault", true);
+            builder.AddContent(6, text);
             builder.CloseElement();
         }
         else
         {
-            builder.AddContent(5, value?.ToString() ?? string.Empty);
+            var content = value?.ToString() ?? string.Empty;
+            builder.OpenElement(6, "span");
+            builder.AddAttribute(7, "class", "detail-tree__value");
+            builder.AddAttribute(8, "oncontextmenu",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => OpenValueContextMenu(content, false, args)));
+            builder.AddAttribute(9, "oncontextmenu:preventDefault", true);
+            builder.AddContent(10, content);
+            builder.CloseElement();
         }
     };
 
@@ -396,6 +438,30 @@ else
     private void HideTooltip()
     {
         TooltipService.Hide();
+    }
+
+    private void OpenValueContextMenu(string text, bool allowTextView, MouseEventArgs args)
+    {
+        var items = new List<ContextMenuItem>
+        {
+            new("Copy to Clipboard", null, () => CopyToClipboardAsync(text))
+        };
+
+        if (allowTextView)
+        {
+            items.Add(new("Show in Separate Window", null, () =>
+            {
+                OpenTextView(text);
+                return Task.CompletedTask;
+            }));
+        }
+
+        ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+    }
+
+    private Task CopyToClipboardAsync(string text)
+    {
+        return JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text).AsTask();
     }
 
     private static string? SerializePayload(object payload)
@@ -503,6 +569,60 @@ else
         return "detail-tree__value";
     }
 
+    // Test helper for verifying recursion guards without rendering.
+    internal static TraversalSummary AnalyzeTraversal(object? value)
+    {
+        var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var summary = new TraversalSummary();
+        AnalyzeTraversal(value, traversal, 0, summary);
+        return summary;
+    }
+
+    private static void AnalyzeTraversal(object? value, HashSet<object> traversal, int depth, TraversalSummary summary)
+    {
+        summary.NodeCount++;
+
+        if (value == null)
+        {
+            return;
+        }
+
+        var type = value.GetType();
+        var isReferenceType = !type.IsValueType;
+        if (isReferenceType && traversal.Contains(value))
+        {
+            summary.HitCycle = true;
+            return;
+        }
+
+        if (depth >= MaxTreeDepth)
+        {
+            summary.HitMaxDepth = true;
+            return;
+        }
+
+        if (IsLeafType(type))
+        {
+            return;
+        }
+
+        var addedToTraversal = false;
+        if (isReferenceType)
+        {
+            addedToTraversal = traversal.Add(value);
+        }
+
+        foreach (var member in GetMembers(type))
+        {
+            AnalyzeTraversal(GetMemberValue(member, value), traversal, depth + 1, summary);
+        }
+
+        if (addedToTraversal)
+        {
+            traversal.Remove(value);
+        }
+    }
+
     public void Dispose()
     {
         _subscription?.Dispose();
@@ -516,5 +636,14 @@ else
         Json,
         SampleInfo,
         Sender
+    }
+
+    internal sealed class TraversalSummary
+    {
+        public int NodeCount { get; set; }
+
+        public bool HitCycle { get; set; }
+
+        public bool HitMaxDepth { get; set; }
     }
 }

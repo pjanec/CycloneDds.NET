@@ -27,6 +27,11 @@
         </div>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(_subscriptionError))
+    {
+        <div class="topic-explorer__error">@_subscriptionError</div>
+    }
+
     <table class="topic-explorer__table">
         <thead>
             <tr>
@@ -66,11 +71,13 @@
 @code {
     private const int MinimumUiRefreshHz = 1;
     private const int MillisecondsPerSecond = 1000;
+    private const int MaxErrorTopicNames = 3;
 
     private readonly TopicExplorerFilterState _filters = new();
     private IReadOnlyList<TopicExplorerTopicSnapshot> _topics = Array.Empty<TopicExplorerTopicSnapshot>();
     private string _searchText = string.Empty;
     private Timer? _refreshTimer;
+    private string? _subscriptionError;
 
     protected override void OnInitialized()
     {
@@ -198,10 +205,14 @@
             return;
         }
 
+        _subscriptionError = null;
         var isChecked = args.Value is bool value && value;
         if (isChecked)
         {
-            DdsBridge.Subscribe(metadata);
+            if (!DdsBridge.TrySubscribe(metadata, out _, out var errorMessage))
+            {
+                _subscriptionError = errorMessage ?? $"Topic '{metadata.ShortName}' cannot be subscribed.";
+            }
         }
         else
         {
@@ -215,6 +226,7 @@
     {
         var isChecked = args.Value is bool value && value;
         var activeReaders = DdsBridge.ActiveReaders;
+        var invalidTopics = new List<string>();
 
         foreach (var topic in TopicRegistry.AllTopics)
         {
@@ -222,7 +234,10 @@
 
             if (isChecked && !subscribed)
             {
-                DdsBridge.Subscribe(topic);
+                if (!DdsBridge.TrySubscribe(topic, out _, out _))
+                {
+                    invalidTopics.Add(topic.ShortName);
+                }
             }
             else if (!isChecked && subscribed)
             {
@@ -230,7 +245,27 @@
             }
         }
 
+        _subscriptionError = BuildSubscriptionErrorMessage(invalidTopics);
+
         RefreshTopics();
+    }
+
+    private static string? BuildSubscriptionErrorMessage(IReadOnlyList<string> invalidTopics)
+    {
+        if (invalidTopics.Count == 0)
+        {
+            return null;
+        }
+
+        var displayed = invalidTopics.Take(MaxErrorTopicNames).ToArray();
+        var message = $"Skipped {invalidTopics.Count} topic(s) without descriptor ops: {string.Join(", ", displayed)}";
+
+        if (invalidTopics.Count > MaxErrorTopicNames)
+        {
+            message += $" and {invalidTopics.Count - MaxErrorTopicNames} more.";
+        }
+
+        return message;
     }
 
     private bool AreAllSubscribed

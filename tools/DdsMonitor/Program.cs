@@ -9,6 +9,7 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddDdsMonitorServices(builder.Configuration);
 builder.Services.AddSingleton<TooltipService>();
+builder.Services.AddSingleton<ContextMenuService>();
 
 var app = builder.Build();
 

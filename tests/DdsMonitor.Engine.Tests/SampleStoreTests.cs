@@ -113,27 +113,23 @@ public sealed class SampleStoreTests
         store.SetSortSpec(sortField, SortDirection.Ascending);
 
         var initial = new[] { 10, 30, 20 };
-        var initialWait = WaitForViewRebuilt(store);
         foreach (var ordinal in initial)
         {
             store.Append(CreateSample(metadata, ordinal));
         }
 
-        var initialCompleted = await Task.WhenAny(initialWait, Task.Delay(SortTimeoutMs));
-        Assert.Same(initialWait, initialCompleted);
+        await WaitForViewCountAsync(store, initial.Length);
 
         var initialView = store.GetVirtualView(0, initial.Length).ToArray();
         Assert.Equal(new long[] { 10, 20, 30 }, initialView.Select(sample => sample.Ordinal));
 
         var newArrivals = new[] { 25, 5 };
-        var mergeWait = WaitForViewRebuilt(store);
         foreach (var ordinal in newArrivals)
         {
             store.Append(CreateSample(metadata, ordinal));
         }
 
-        var mergeCompleted = await Task.WhenAny(mergeWait, Task.Delay(SortTimeoutMs));
-        Assert.Same(mergeWait, mergeCompleted);
+        await WaitForViewCountAsync(store, initial.Length + newArrivals.Length);
 
         var mergedView = store.GetVirtualView(0, initial.Length + newArrivals.Length).ToArray();
         var expected = initial.Concat(newArrivals).OrderBy(value => value).Select(value => (long)value).ToArray();
@@ -271,5 +267,39 @@ public sealed class SampleStoreTests
 
         store.OnViewRebuilt += Handler;
         return tcs.Task;
+    }
+
+    private static async Task WaitForViewCountAsync(SampleStore store, int expectedCount)
+    {
+        if (store.GetVirtualView(0, expectedCount).Length == expectedCount)
+        {
+            return;
+        }
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void Handler()
+        {
+            if (store.GetVirtualView(0, expectedCount).Length != expectedCount)
+            {
+                return;
+            }
+
+            store.OnViewRebuilt -= Handler;
+            tcs.TrySetResult(true);
+        }
+
+        store.OnViewRebuilt += Handler;
+
+        if (store.GetVirtualView(0, expectedCount).Length == expectedCount)
+        {
+            store.OnViewRebuilt -= Handler;
+            return;
+        }
+
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(SortTimeoutMs));
+        store.OnViewRebuilt -= Handler;
+
+        Assert.Same(tcs.Task, completed);
     }
 }

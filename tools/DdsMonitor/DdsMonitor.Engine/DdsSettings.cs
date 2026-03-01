@@ -34,4 +34,19 @@ public sealed class DdsSettings
     /// Gets or sets the UI refresh frequency in Hz.
     /// </summary>
     public int UiRefreshHz { get; set; } = DefaultUiRefreshHz;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the monitor should generate self-send samples.
+    /// </summary>
+    public bool SelfSendEnabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets the self-send sample rate per topic in Hz.
+    /// </summary>
+    public int SelfSendRateHz { get; set; } = 2;
+
+    /// <summary>
+    /// Gets or sets the number of distinct key values generated for self-send topics.
+    /// </summary>
+    public int SelfSendKeyCount { get; set; } = 6;
 }
