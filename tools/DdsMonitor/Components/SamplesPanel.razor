@@ -1,6 +1,7 @@
 @using System.Collections.Generic
 @using System.Linq
 @using System.Threading
+@using System.Text.Json
 @using CycloneDDS.Runtime
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Microsoft.JSInterop
@@ -10,6 +11,7 @@
 @inject IFilterCompiler FilterCompiler
 @inject IEventBroker EventBroker
 @inject IWindowManager WindowManager
+@inject IWorkspaceState WorkspaceState
 @inject DdsSettings Settings
 @inject TooltipService TooltipService
 @inject IJSRuntime JSRuntime
@@ -24,7 +26,7 @@
 }
 else
 {
-    <div class="samples-panel">
+    <div class="samples-panel" @onmousemove="HandleColumnResize" @onmouseup="EndColumnResize" @onmouseleave="EndColumnResize">
         <div class="samples-panel__toolbar">
             <button type="button"
                     class="samples-panel__track @( _trackMode ? "is-on" : string.Empty)"
@@ -49,39 +51,46 @@ else
         }
 
         <div class="samples-panel__grid" tabindex="0" @ref="_gridRef" @onclick="FocusGrid" @onkeydown="OnGridKeyDown" @onkeydown:preventDefault="true">
-            <div class="samples-panel__header">
-                @RenderHeader("Ordinal", OrdinalField)
-                <div class="samples-panel__cell samples-panel__cell--status">Status</div>
-                @RenderHeader("Topic", TopicField)
-                @RenderHeader("Size [B]", _sizeField)
-                @RenderHeader("Timestamp", TimestampField)
-                @RenderHeader("Delay [ms]", _delayField)
-                @foreach (var field in _selectedColumns)
+            <div class="samples-panel__header" style="@GetGridStyle()">
+                @for (var i = 0; i < _layoutColumns.Count; i++)
                 {
-                    @RenderHeader(field.DisplayName, field)
+                    var column = _layoutColumns[i];
+                    var isLast = i == _layoutColumns.Count - 1;
+                    <div class="samples-panel__header-cell">
+                        @if (column.SortField != null)
+                        {
+                            <button type="button" class="@GetHeaderClass(column.SortField)" @onclick="() => ToggleSort(column.SortField)">
+                                @column.Label
+                                @GetSortIndicator(column.SortField)
+                            </button>
+                        }
+                        else
+                        {
+                            <span class="samples-panel__header-label">@column.Label</span>
+                        }
+
+                        @if (!isLast)
+                        {
+                            <div class="samples-panel__resizer"
+                                 @onmousedown="(args) => BeginColumnResize(column.Key, args)"
+                                 @onmousedown:stopPropagation="true"
+                                 @onmousedown:preventDefault="true"></div>
+                        }
+                    </div>
                 }
             </div>
 
-            <Virtualize ItemsProvider="LoadItems" ItemSize="RowHeight">
+            <Virtualize @ref="_virtualizeRef" ItemsProvider="LoadItems" ItemSize="RowHeight">
                 <ItemContent Context="row">
-                    <div class="samples-panel__row @(IsSelected(row) ? "is-selected" : string.Empty)"
+                    <div class="samples-panel__row @(IsSelected(row) ? "is-selected" : string.Empty)" style="@GetGridStyle()"
                         @onclick="() => SelectSample(row, true)"
                         @ondblclick="() => OpenDetail(row.Sample)"
                         @onmousedown="(args) => HandleRowMouseDown(row, args)"
                         @oncontextmenu:preventDefault="true">
-                        <div class="samples-panel__cell samples-panel__cell--ordinal">@row.Sample.Ordinal</div>
-                        <div class="samples-panel__cell samples-panel__cell--status">
-                            <span class="sample-status @GetStatusClass(row.Sample)">@GetStatusSymbol(row.Sample)</span>
-                        </div>
-                        <div class="samples-panel__cell">@row.Sample.TopicMetadata.ShortName</div>
-                        <div class="samples-panel__cell">@row.Sample.SizeBytes</div>
-                        <div class="samples-panel__cell">@row.Sample.Timestamp.ToString("HH:mm:ss.fff")</div>
-                        <div class="samples-panel__cell">@GetDelayText(row.Sample)</div>
-                        @foreach (var field in _selectedColumns)
+                        @foreach (var column in _layoutColumns)
                         {
-                            var value = GetFieldValue(field, row.Sample);
-                            <div class="samples-panel__cell">
-                                @RenderValue(value)
+                            <div class="samples-panel__cell @column.CssClass">
+                                @RenderCellValue(column, row)
                             </div>
                         }
                     </div>
@@ -107,13 +116,16 @@ else
 }
 
 @code {
-    private const int RowHeight = 28;
+    private const int RowHeight = 38;
     private const int MinimumUiRefreshHz = 1;
     private const int MillisecondsPerSecond = 1000;
     private const string SizeFieldName = "Size [B]";
     private const string DelayFieldName = "Delay [ms]";
     private const int TrackDebounceMs = 25;
     private const int RightMouseButton = 2;
+    private const string SelectedColumnsStateKey = "SamplesPanel.SelectedColumns";
+    private const string ColumnWeightsStateKey = "SamplesPanel.ColumnWeights";
+    private const double MinColumnWeight = 0.4;
 
     private static readonly Action<object, object?> SyntheticSetter = (_, __) =>
         throw new InvalidOperationException("Synthetic fields are read-only.");
@@ -133,11 +145,14 @@ else
         typeof(DateTime),
         input => ((SampleData)input).Timestamp);
 
-    private SamplesPanelVirtualizer? _virtualizer;
+    private readonly List<SampleData> _viewCache = new();
+    private Virtualize<IndexedSample>? _virtualizeRef;
     private FieldMetadata? _delayField;
     private FieldMetadata? _sizeField;
     private readonly List<FieldMetadata> _selectedColumns = new();
     private readonly List<FieldMetadata> _availableColumns = new();
+    private readonly List<ColumnLayout> _layoutColumns = new();
+    private readonly Dictionary<string, double> _columnWeights = new(StringComparer.Ordinal);
     private string _filterText = string.Empty;
     private string? _filterError;
     private Timer? _refreshTimer;
@@ -156,6 +171,20 @@ else
     private Type? _currentTopicType;
     private DebouncedAction? _trackDebouncer;
     private ElementReference _gridRef;
+    private bool _loadedPanelState;
+    private bool _isColumnResizing;
+    private int _resizeColumnIndex = -1;
+    private double _resizeStartX;
+    private double _resizeStartLeftWeight;
+    private double _resizeStartRightWeight;
+    private double _resizeGridWidth = 1;
+    private List<string>? _savedSelectedColumnKeys;
+    private Dictionary<string, double>? _savedColumnWeights;
+    private Func<SampleData, bool>? _filterPredicate;
+    private bool _viewDirty = true;
+    private int _lastAllSamplesCount = -1;
+    private Action? _viewRebuiltHandler;
+    private int _pendingScrollIndex = -1;
 
     [CascadingParameter]
     public PanelState? PanelState { get; set; }
@@ -165,10 +194,11 @@ else
 
     protected override void OnInitialized()
     {
-        _virtualizer = new SamplesPanelVirtualizer(SampleStore);
         _addColumnSubscription = EventBroker.Subscribe<AddColumnRequestEvent>(OnAddColumnRequested);
         _trackDebouncer = new DebouncedAction(TimeSpan.FromMilliseconds(TrackDebounceMs),
             () => _ = InvokeAsync(PublishPendingTrackSample));
+        _viewRebuiltHandler = () => _ = InvokeAsync(HandleViewRebuiltAsync);
+        SampleStore.OnViewRebuilt += _viewRebuiltHandler;
         StartRefreshTimer();
     }
 
@@ -179,11 +209,19 @@ else
             return;
         }
 
+        if (!_loadedPanelState && PanelState != null)
+        {
+            LoadPanelState();
+            _loadedPanelState = true;
+        }
+
         if (_currentTopicType != TopicMetadata.TopicType)
         {
             _currentTopicType = TopicMetadata.TopicType;
             InitializeColumns();
             ApplyFilter();
+            _viewDirty = true;
+            _ = _virtualizeRef?.RefreshDataAsync();
         }
     }
 
@@ -205,13 +243,36 @@ else
             }
         }
 
-        _selectedColumns.AddRange(_availableColumns.Take(3));
+        if (_savedSelectedColumnKeys != null && _savedSelectedColumnKeys.Count > 0)
+        {
+            foreach (var key in _savedSelectedColumnKeys)
+            {
+                var match = _availableColumns.FirstOrDefault(field =>
+                    string.Equals(field.StructuredName, key, StringComparison.Ordinal));
+                if (match != null)
+                {
+                    _selectedColumns.Add(match);
+                }
+            }
+
+            if (_selectedColumns.Count == 0)
+            {
+                _selectedColumns.AddRange(_availableColumns.Take(3));
+            }
+        }
+        else
+        {
+            _selectedColumns.AddRange(_availableColumns.Take(3));
+        }
 
         _sizeField = TopicMetadata.AllFields.FirstOrDefault(field =>
             string.Equals(field.StructuredName, SizeFieldName, StringComparison.Ordinal));
 
         _delayField = TopicMetadata.AllFields.FirstOrDefault(field =>
             string.Equals(field.StructuredName, DelayFieldName, StringComparison.Ordinal));
+
+        RebuildLayoutColumns();
+        SavePanelState();
     }
 
     private void StartRefreshTimer()
@@ -228,13 +289,17 @@ else
             return Task.CompletedTask;
         }
 
-        var total = SampleStore.GetTopicSamples(TopicMetadata.TopicType).TotalCount;
-        var current = SampleStore.CurrentFilteredCount;
+        var previousTotal = _totalCount;
+        var previousCurrent = _currentCount;
+        EnsureView();
+        var total = _totalCount;
+        var current = _currentCount;
 
-        if (total != _totalCount || current != _currentCount)
+        if (total != previousTotal || current != previousCurrent)
         {
             _totalCount = total;
             _currentCount = current;
+            _ = _virtualizeRef?.RefreshDataAsync();
             StateHasChanged();
         }
 
@@ -243,23 +308,20 @@ else
 
     private ValueTask<ItemsProviderResult<IndexedSample>> LoadItems(ItemsProviderRequest request)
     {
-        if (_virtualizer == null)
-        {
-            return new ValueTask<ItemsProviderResult<IndexedSample>>(
-                new ItemsProviderResult<IndexedSample>(Array.Empty<IndexedSample>(), 0));
-        }
+        EnsureView();
 
         _lastRequestCount = Math.Max(1, request.Count);
         _lastRequestStartIndex = request.StartIndex;
-        var range = _virtualizer.GetRange(request.StartIndex, request.Count);
-        var items = new IndexedSample[range.Length];
-        for (var i = 0; i < range.Length; i++)
+        var available = Math.Max(0, _viewCache.Count - request.StartIndex);
+        var sliceCount = Math.Min(request.Count, available);
+        var items = new IndexedSample[sliceCount];
+        for (var i = 0; i < sliceCount; i++)
         {
-            items[i] = new IndexedSample(request.StartIndex + i, range.Span[i]);
+            items[i] = new IndexedSample(request.StartIndex + i, _viewCache[request.StartIndex + i]);
         }
 
         return new ValueTask<ItemsProviderResult<IndexedSample>>(
-            new ItemsProviderResult<IndexedSample>(items, _virtualizer.TotalCount));
+            new ItemsProviderResult<IndexedSample>(items, _viewCache.Count));
     }
 
     private void ToggleTrackMode()
@@ -277,6 +339,8 @@ else
         _selectedColumns.Clear();
         _selectedColumns.AddRange(columns);
         _showColumnPicker = false;
+        RebuildLayoutColumns();
+        SavePanelState();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -303,8 +367,11 @@ else
 
         if (string.IsNullOrWhiteSpace(_filterText))
         {
-            SampleStore.SetFilter(topicPredicate);
+            _filterPredicate = topicPredicate;
+            _viewDirty = true;
             _filterError = null;
+            _ = _virtualizeRef?.RefreshDataAsync();
+            StateHasChanged();
             return;
         }
 
@@ -316,7 +383,10 @@ else
         }
 
         _filterError = null;
-        SampleStore.SetFilter(sample => topicPredicate(sample) && result.Predicate(sample));
+        _filterPredicate = sample => topicPredicate(sample) && result.Predicate(sample);
+        _viewDirty = true;
+        _ = _virtualizeRef?.RefreshDataAsync();
+        StateHasChanged();
     }
 
     private void SelectSample(IndexedSample row, bool publishNow)
@@ -403,11 +473,6 @@ else
 
     private void OnGridKeyDown(KeyboardEventArgs args)
     {
-        if (_virtualizer == null)
-        {
-            return;
-        }
-
         if (!TryGetTotalCount(out var totalCount))
         {
             return;
@@ -457,37 +522,45 @@ else
         nextIndex = Math.Clamp(nextIndex, 0, totalCount - 1);
         if (TrySelectByIndex(nextIndex))
         {
-            _ = EnsureSelectionVisibleAsync(nextIndex);
+            _pendingScrollIndex = nextIndex;
             StateHasChanged();
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingScrollIndex < 0)
+        {
+            return;
+        }
+
+        var index = _pendingScrollIndex;
+        _pendingScrollIndex = -1;
+        await EnsureSelectionVisibleAsync(index);
+    }
+
     private bool TrySelectByIndex(int index)
     {
-        var view = SampleStore.GetVirtualView(index, 1);
-        if (view.Length == 0)
+        EnsureView();
+        if (index < 0 || index >= _viewCache.Count)
         {
             return false;
         }
 
-        var row = new IndexedSample(index, view.Span[0]);
+        var row = new IndexedSample(index, _viewCache[index]);
         SelectSample(row, false);
         return true;
     }
 
     private bool TryGetTotalCount(out int totalCount)
     {
-        totalCount = _virtualizer?.TotalCount ?? 0;
+        EnsureView();
+        totalCount = _viewCache.Count;
         return totalCount > 0;
     }
 
     private ValueTask EnsureSelectionVisibleAsync(int index)
     {
-        if (index >= _lastRequestStartIndex && index < _lastRequestStartIndex + _lastRequestCount)
-        {
-            return ValueTask.CompletedTask;
-        }
-
         return JSRuntime.InvokeVoidAsync("ddsMonitor.ensureRowVisible", _gridRef, index, RowHeight);
     }
 
@@ -538,7 +611,85 @@ else
             _sortDirection = SortDirection.Ascending;
         }
 
-        SampleStore.SetSortSpec(_sortField, _sortDirection);
+        _viewDirty = true;
+        _ = _virtualizeRef?.RefreshDataAsync();
+        StateHasChanged();
+    }
+
+    private string GetGridStyle()
+    {
+        if (_layoutColumns.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var parts = _layoutColumns
+            .Select(column => FormattableString.Invariant($"{GetColumnWeight(column.Key):0.###}fr"));
+
+        return FormattableString.Invariant($"grid-template-columns:{string.Join(" ", parts)};");
+    }
+
+    private double GetColumnWeight(string key)
+    {
+        if (_columnWeights.TryGetValue(key, out var weight))
+        {
+            return weight;
+        }
+
+        return 1.0;
+    }
+
+    private async Task BeginColumnResize(string columnKey, MouseEventArgs args)
+    {
+        var index = _layoutColumns.FindIndex(column =>
+            string.Equals(column.Key, columnKey, StringComparison.Ordinal));
+        if (index < 0 || index >= _layoutColumns.Count - 1)
+        {
+            return;
+        }
+
+        var size = await JSRuntime.InvokeAsync<ElementSize?>("ddsMonitor.getElementSize", _gridRef);
+        _resizeGridWidth = size?.Width > 0 ? size.Width : 1;
+
+        _isColumnResizing = true;
+        _resizeColumnIndex = index;
+        _resizeStartX = args.ClientX;
+        _resizeStartLeftWeight = GetColumnWeight(_layoutColumns[index].Key);
+        _resizeStartRightWeight = GetColumnWeight(_layoutColumns[index + 1].Key);
+    }
+
+    private void HandleColumnResize(MouseEventArgs args)
+    {
+        if (!_isColumnResizing || _resizeColumnIndex < 0)
+        {
+            return;
+        }
+
+        var totalWeight = _layoutColumns.Sum(column => GetColumnWeight(column.Key));
+        var deltaX = args.ClientX - _resizeStartX;
+        var deltaWeight = (deltaX / _resizeGridWidth) * totalWeight;
+        var combined = _resizeStartLeftWeight + _resizeStartRightWeight;
+        var newLeft = Math.Clamp(_resizeStartLeftWeight + deltaWeight, MinColumnWeight, combined - MinColumnWeight);
+        var newRight = combined - newLeft;
+
+        var leftKey = _layoutColumns[_resizeColumnIndex].Key;
+        var rightKey = _layoutColumns[_resizeColumnIndex + 1].Key;
+        _columnWeights[leftKey] = newLeft;
+        _columnWeights[rightKey] = newRight;
+
+        StateHasChanged();
+    }
+
+    private void EndColumnResize()
+    {
+        if (!_isColumnResizing)
+        {
+            return;
+        }
+
+        _isColumnResizing = false;
+        _resizeColumnIndex = -1;
+        SavePanelState();
     }
 
     private string GetDelayText(SampleData sample)
@@ -557,6 +708,139 @@ else
         var target = field.IsSynthetic ? sample : sample.Payload;
         return field.Getter(target!);
     }
+
+    private Task HandleViewRebuiltAsync()
+    {
+        _viewDirty = true;
+        _ = _virtualizeRef?.RefreshDataAsync();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void EnsureView()
+    {
+        if (TopicMetadata == null)
+        {
+            _viewCache.Clear();
+            _totalCount = 0;
+            _currentCount = 0;
+            return;
+        }
+
+        var snapshot = SampleStore.AllSamples;
+        if (!_viewDirty && snapshot.Count == _lastAllSamplesCount)
+        {
+            return;
+        }
+
+        _lastAllSamplesCount = snapshot.Count;
+        _viewCache.Clear();
+
+        var topicType = TopicMetadata.TopicType;
+        var total = 0;
+
+        foreach (var sample in snapshot)
+        {
+            if (sample.TopicMetadata.TopicType != topicType)
+            {
+                continue;
+            }
+
+            total++;
+
+            if (_filterPredicate == null || _filterPredicate(sample))
+            {
+                _viewCache.Add(sample);
+            }
+        }
+
+        if (_sortField != null)
+        {
+            _viewCache.Sort((left, right) => CompareSamples(left, right, _sortField, _sortDirection));
+        }
+
+        _totalCount = total;
+        _currentCount = _viewCache.Count;
+        _viewDirty = false;
+    }
+
+    private static int CompareSamples(
+        SampleData left,
+        SampleData right,
+        FieldMetadata sortField,
+        SortDirection direction)
+    {
+        var leftValue = GetSortValue(left, sortField);
+        var rightValue = GetSortValue(right, sortField);
+        var comparison = CompareValues(leftValue, rightValue);
+        return direction == SortDirection.Descending ? -comparison : comparison;
+    }
+
+    private static object? GetSortValue(SampleData sample, FieldMetadata sortField)
+    {
+        var target = sortField.IsSynthetic ? sample : sample.Payload;
+        return sortField.Getter(target!);
+    }
+
+    private static int CompareValues(object? left, object? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left == null)
+        {
+            return -1;
+        }
+
+        if (right == null)
+        {
+            return 1;
+        }
+
+        if (left is IComparable comparable)
+        {
+            return comparable.CompareTo(right);
+        }
+
+        return string.Compare(left.ToString(), right.ToString(), StringComparison.Ordinal);
+    }
+
+    private RenderFragment RenderCellValue(ColumnLayout column, IndexedSample row) => builder =>
+    {
+        switch (column.Kind)
+        {
+            case ColumnKind.Ordinal:
+                builder.AddContent(0, row.Sample.Ordinal);
+                break;
+            case ColumnKind.Status:
+                builder.OpenElement(1, "span");
+                builder.AddAttribute(2, "class", $"sample-status {GetStatusClass(row.Sample)}");
+                builder.AddContent(3, GetStatusSymbol(row.Sample));
+                builder.CloseElement();
+                break;
+            case ColumnKind.Topic:
+                builder.AddContent(4, row.Sample.TopicMetadata.ShortName);
+                break;
+            case ColumnKind.Size:
+                builder.AddContent(5, row.Sample.SizeBytes);
+                break;
+            case ColumnKind.Timestamp:
+                builder.AddContent(6, row.Sample.Timestamp.ToString("HH:mm:ss.fff"));
+                break;
+            case ColumnKind.Delay:
+                builder.AddContent(7, GetDelayText(row.Sample));
+                break;
+            case ColumnKind.Field:
+                if (column.Field != null)
+                {
+                    var value = GetFieldValue(column.Field, row.Sample);
+                    builder.AddContent(8, RenderValue(value));
+                }
+                break;
+        }
+    };
 
     private RenderFragment RenderValue(object? value) => builder =>
     {
@@ -661,7 +945,207 @@ else
         }
 
         _selectedColumns.Add(field);
+        RebuildLayoutColumns();
+        SavePanelState();
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void RebuildLayoutColumns()
+    {
+        _layoutColumns.Clear();
+
+        if (_savedColumnWeights != null && _savedColumnWeights.Count > 0)
+        {
+            _columnWeights.Clear();
+            foreach (var entry in _savedColumnWeights)
+            {
+                _columnWeights[entry.Key] = entry.Value;
+            }
+            _savedColumnWeights = null;
+        }
+
+        AddLayoutColumn("Ordinal", "Ordinal", ColumnKind.Ordinal, OrdinalField, "samples-panel__cell--ordinal", 0.7);
+        AddLayoutColumn("Status", "Status", ColumnKind.Status, null, "samples-panel__cell--status", 0.5);
+        AddLayoutColumn("Topic", "Topic", ColumnKind.Topic, TopicField, string.Empty, 1.2);
+
+        if (_sizeField != null)
+        {
+            AddLayoutColumn(SizeFieldName, SizeFieldName, ColumnKind.Size, _sizeField, string.Empty, 0.8);
+        }
+
+        AddLayoutColumn("Timestamp", "Timestamp", ColumnKind.Timestamp, TimestampField, string.Empty, 1.0);
+
+        if (_delayField != null)
+        {
+            AddLayoutColumn(DelayFieldName, DelayFieldName, ColumnKind.Delay, _delayField, string.Empty, 0.9);
+        }
+
+        foreach (var field in _selectedColumns)
+        {
+            AddLayoutColumn(field.StructuredName, field.DisplayName, ColumnKind.Field, field, string.Empty, 1.0);
+        }
+
+        var keys = new HashSet<string>(_layoutColumns.Select(column => column.Key), StringComparer.Ordinal);
+        foreach (var key in _columnWeights.Keys.ToList())
+        {
+            if (!keys.Contains(key))
+            {
+                _columnWeights.Remove(key);
+            }
+        }
+    }
+
+    private void AddLayoutColumn(string key, string label, ColumnKind kind, FieldMetadata? field, string cssClass, double defaultWeight)
+    {
+        _layoutColumns.Add(new ColumnLayout(key, label, kind, field, cssClass));
+
+        if (!_columnWeights.ContainsKey(key))
+        {
+            _columnWeights[key] = defaultWeight;
+        }
+    }
+
+    private void LoadPanelState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        if (PanelState.ComponentState.TryGetValue(SelectedColumnsStateKey, out var selectedObj))
+        {
+            _savedSelectedColumnKeys = TryReadStringList(selectedObj);
+        }
+
+        if (PanelState.ComponentState.TryGetValue(ColumnWeightsStateKey, out var weightsObj))
+        {
+            _savedColumnWeights = TryReadDoubleMap(weightsObj);
+        }
+    }
+
+    private void SavePanelState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        PanelState.ComponentState[SelectedColumnsStateKey] = _selectedColumns
+            .Select(field => field.StructuredName)
+            .ToArray();
+        PanelState.ComponentState[ColumnWeightsStateKey] = new Dictionary<string, double>(_columnWeights);
+        PersistWorkspace();
+    }
+
+    private void PersistWorkspace()
+    {
+        var filePath = WorkspaceState.WorkspaceFilePath;
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            WindowManager.SaveWorkspace(filePath);
+        }
+        catch
+        {
+            // Ignore persistence errors to avoid breaking UI interactions.
+        }
+    }
+
+    private static List<string>? TryReadStringList(object? value)
+    {
+        switch (value)
+        {
+            case string[] array:
+                return array.ToList();
+            case List<string> list:
+                return new List<string>(list);
+            case JsonElement element when element.ValueKind == JsonValueKind.Array:
+            {
+                var result = new List<string>();
+                foreach (var item in element.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String)
+                    {
+                        var text = item.GetString();
+                        if (!string.IsNullOrWhiteSpace(text))
+                        {
+                            result.Add(text);
+                        }
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, double>? TryReadDoubleMap(object? value)
+    {
+        switch (value)
+        {
+            case Dictionary<string, double> map:
+                return new Dictionary<string, double>(map, StringComparer.Ordinal);
+            case Dictionary<string, object> objMap:
+            {
+                var result = new Dictionary<string, double>(StringComparer.Ordinal);
+                foreach (var entry in objMap)
+                {
+                    if (TryReadDouble(entry.Value, out var number))
+                    {
+                        result[entry.Key] = number;
+                    }
+                }
+
+                return result;
+            }
+            case JsonElement element when element.ValueKind == JsonValueKind.Object:
+            {
+                var result = new Dictionary<string, double>(StringComparer.Ordinal);
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (TryReadDouble(property.Value, out var number))
+                    {
+                        result[property.Name] = number;
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryReadDouble(object? value, out double number)
+    {
+        switch (value)
+        {
+            case double direct:
+                number = direct;
+                return true;
+            case float single:
+                number = single;
+                return true;
+            case int intValue:
+                number = intValue;
+                return true;
+            case long longValue:
+                number = longValue;
+                return true;
+            case JsonElement element when element.ValueKind == JsonValueKind.Number:
+                return element.TryGetDouble(out number);
+            case JsonElement element when element.ValueKind == JsonValueKind.String:
+                return double.TryParse(element.GetString(), out number);
+        }
+
+        number = 0;
+        return false;
     }
 
     private string GetPanelId()
@@ -676,10 +1160,36 @@ else
 
     private sealed record IndexedSample(int Index, SampleData Sample);
 
+    private sealed record ColumnLayout(string Key, string Label, ColumnKind Kind, FieldMetadata? Field, string CssClass)
+    {
+        public FieldMetadata? SortField => Field;
+    }
+
+    private enum ColumnKind
+    {
+        Ordinal,
+        Status,
+        Topic,
+        Size,
+        Timestamp,
+        Delay,
+        Field
+    }
+
+    private sealed class ElementSize
+    {
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+
     public void Dispose()
     {
         _refreshTimer?.Dispose();
         _addColumnSubscription?.Dispose();
         _trackDebouncer?.Dispose();
+        if (_viewRebuiltHandler != null)
+        {
+            SampleStore.OnViewRebuilt -= _viewRebuiltHandler;
+        }
     }
 }

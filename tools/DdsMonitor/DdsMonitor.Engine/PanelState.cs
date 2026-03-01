@@ -53,6 +53,11 @@ public sealed class PanelState
     public bool IsMinimized { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the panel is hidden (closed but restorable).
+    /// </summary>
+    public bool IsHidden { get; set; }
+
+    /// <summary>
     /// Gets or sets the component-specific state payload.
     /// </summary>
     public Dictionary<string, object> ComponentState { get; set; } = new(StringComparer.Ordinal);

@@ -39,6 +39,11 @@ public interface IWindowManager
     void BringToFront(string panelId);
 
     /// <summary>
+    /// Clears all active panels.
+    /// </summary>
+    void ClearPanels();
+
+    /// <summary>
     /// Registers a component type for lookup by name.
     /// </summary>
     void RegisterPanelType(string typeName, Type blazorComponentType);

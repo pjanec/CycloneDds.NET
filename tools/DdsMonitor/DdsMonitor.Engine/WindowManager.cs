@@ -93,25 +93,19 @@ public sealed class WindowManager : IWindowManager
             throw new ArgumentException("Panel identifier is required.", nameof(panelId));
         }
 
-        PanelState? removed = null;
-
         lock (_sync)
         {
             for (var i = 0; i < _activePanels.Count; i++)
             {
                 if (string.Equals(_activePanels[i].PanelId, panelId, StringComparison.Ordinal))
                 {
-                    removed = _activePanels[i];
-                    _activePanels.RemoveAt(i);
-                    break;
+                    _activePanels[i].IsHidden = true;
+                    _activePanels[i].IsMinimized = false;
+                    PanelClosed?.Invoke(_activePanels[i]);
+                    PanelsChanged?.Invoke();
+                    return;
                 }
             }
-        }
-
-        if (removed != null)
-        {
-            PanelClosed?.Invoke(removed);
-            PanelsChanged?.Invoke();
         }
     }
 
@@ -143,6 +137,17 @@ public sealed class WindowManager : IWindowManager
 
             panel.ZIndex = GetHighestZIndex() + ZIndexIncrement;
         }
+    }
+
+    /// <inheritdoc />
+    public void ClearPanels()
+    {
+        lock (_sync)
+        {
+            _activePanels.Clear();
+        }
+
+        PanelsChanged?.Invoke();
     }
 
     /// <inheritdoc />
@@ -179,7 +184,8 @@ public sealed class WindowManager : IWindowManager
             snapshot = _activePanels.ToArray();
         }
 
-        var json = JsonSerializer.Serialize(snapshot, WorkspaceSerializerOptions);
+        var filtered = FilterPersistableState(snapshot);
+        var json = JsonSerializer.Serialize(filtered, WorkspaceSerializerOptions);
         File.WriteAllText(filePath, json);
     }
 
@@ -211,6 +217,129 @@ public sealed class WindowManager : IWindowManager
         }
 
         PanelsChanged?.Invoke();
+    }
+
+    private static List<PanelState> FilterPersistableState(IEnumerable<PanelState> panels)
+    {
+        var result = new List<PanelState>();
+
+        foreach (var panel in panels)
+        {
+            if (panel == null)
+            {
+                continue;
+            }
+
+            var clone = new PanelState
+            {
+                PanelId = panel.PanelId,
+                Title = panel.Title,
+                ComponentTypeName = panel.ComponentTypeName,
+                X = panel.X,
+                Y = panel.Y,
+                Width = panel.Width,
+                Height = panel.Height,
+                ZIndex = panel.ZIndex,
+                IsMinimized = panel.IsMinimized,
+                IsHidden = panel.IsHidden
+            };
+
+            var filteredState = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (var entry in panel.ComponentState)
+            {
+                if (TrySanitizeValue(entry.Value, out var sanitized))
+                {
+                    filteredState[entry.Key] = sanitized!;
+                }
+            }
+
+            clone.ComponentState = filteredState;
+            result.Add(clone);
+        }
+
+        return result;
+    }
+
+    private static bool TrySanitizeValue(object? value, out object? sanitized)
+    {
+        if (value == null)
+        {
+            sanitized = null;
+            return true;
+        }
+
+        switch (value)
+        {
+            case string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                sanitized = value;
+                return true;
+            case DateTime or DateTimeOffset:
+                sanitized = value;
+                return true;
+        }
+
+        if (value is string[] stringArray)
+        {
+            sanitized = stringArray;
+            return true;
+        }
+
+        if (value is double[] doubleArray)
+        {
+            sanitized = doubleArray;
+            return true;
+        }
+
+        if (value is int[] intArray)
+        {
+            sanitized = intArray;
+            return true;
+        }
+
+        if (value is Dictionary<string, double> doubleMap)
+        {
+            sanitized = new Dictionary<string, double>(doubleMap, StringComparer.Ordinal);
+            return true;
+        }
+
+        if (value is Dictionary<string, string> stringMap)
+        {
+            sanitized = new Dictionary<string, string>(stringMap, StringComparer.Ordinal);
+            return true;
+        }
+
+        if (value is Dictionary<string, object> objectMap)
+        {
+            var result = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (var entry in objectMap)
+            {
+                if (TrySanitizeValue(entry.Value, out var inner))
+                {
+                    result[entry.Key] = inner!;
+                }
+            }
+
+            sanitized = result;
+            return result.Count > 0;
+        }
+
+        if (value is IEnumerable<object> list)
+        {
+            var result = new List<object>();
+            foreach (var item in list)
+            {
+                if (TrySanitizeValue(item, out var inner))
+                {
+                    result.Add(inner!);
+                }
+            }
+
+            sanitized = result;
+            return result.Count > 0;
+        }
+
+        sanitized = null;
+        return false;
     }
 
     private int GetNextZIndex()

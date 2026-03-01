@@ -1,11 +1,15 @@
 @using DdsMonitor.Components
 @inherits LayoutComponentBase
 
+@using System.IO
+
 @inject IWindowManager WindowManager
+@inject IWorkspaceState WorkspaceState
 
 <div class="app-shell">
     <div class="app-toolbar">
         <button type="button" class="app-toolbar__button" @onclick="OpenTopicsPanel">Topics</button>
+        <button type="button" class="app-toolbar__button" @onclick="ResetLayout">Reset Layout</button>
     </div>
     <div class="app-shell__content">
         @Body
@@ -22,6 +26,7 @@
             if (string.Equals(panel.ComponentTypeName, TopicExplorerTypeName, StringComparison.Ordinal))
             {
                 panel.IsMinimized = false;
+                panel.IsHidden = false;
                 WindowManager.BringToFront(panel.PanelId);
                 return;
             }
@@ -29,5 +34,23 @@
 
         var newPanel = WindowManager.SpawnPanel(TopicExplorerTypeName);
         newPanel.Title = "Topics";
+    }
+
+    private void ResetLayout()
+    {
+        var filePath = WorkspaceState.WorkspaceFilePath;
+        if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
+
+        WindowManager.ClearPanels();
+        var newPanel = WindowManager.SpawnPanel(TopicExplorerTypeName);
+        newPanel.Title = "Topics";
+
+        if (!string.IsNullOrWhiteSpace(filePath))
+        {
+            WindowManager.SaveWorkspace(filePath);
+        }
     }
 }

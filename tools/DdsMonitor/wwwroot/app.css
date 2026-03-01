@@ -35,7 +35,9 @@ body {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  width: 100vw;
   display: flex;
   flex-direction: column;
   background: radial-gradient(circle at 15% 20%, rgba(79, 195, 247, 0.2), transparent 45%),
@@ -70,14 +72,19 @@ body {
 }
 
 .app-shell__content {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  position: relative;
+  display: flex;
+  height: calc(100vh - var(--app-toolbar-height));
 }
 
 .desktop {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: calc(100vh - var(--app-toolbar-height));
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 16px;
   overflow: hidden;
 }
@@ -718,6 +725,8 @@ body {
   color: var(--panel-text);
   text-align: left;
   cursor: pointer;
+  flex: 1;
+  min-width: 0;
 }
 
 .samples-panel__header-btn.is-sorted {
@@ -728,6 +737,35 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.samples-panel__header-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.samples-panel__header-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.samples-panel__resizer {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+}
+
+.samples-panel__resizer:hover {
+  background: rgba(79, 195, 247, 0.12);
 }
 
 .samples-panel__cell--ordinal {

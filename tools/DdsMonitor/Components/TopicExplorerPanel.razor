@@ -299,6 +299,23 @@
 
     private void OpenSamplesPanel(TopicMetadata metadata)
     {
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(existingPanel.ComponentTypeName, typeof(SamplesPanel).AssemblyQualifiedName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (existingPanel.ComponentState.TryGetValue(nameof(SamplesPanel.TopicMetadata), out var stored) &&
+                stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+        }
+
         var panel = WindowManager.SpawnPanel(typeof(SamplesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
         {
             [nameof(SamplesPanel.TopicMetadata)] = metadata
@@ -309,6 +326,23 @@
 
     private void OpenInstancesPanel(TopicMetadata metadata)
     {
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(existingPanel.ComponentTypeName, typeof(InstancesPanel).AssemblyQualifiedName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (existingPanel.ComponentState.TryGetValue(nameof(InstancesPanel.TopicMetadata), out var stored) &&
+                stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+        }
+
         var panel = WindowManager.SpawnPanel(typeof(InstancesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
         {
             [nameof(InstancesPanel.TopicMetadata)] = metadata

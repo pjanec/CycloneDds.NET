@@ -1,13 +1,19 @@
 @page "/"
-@rendermode @(new Microsoft.AspNetCore.Components.Web.InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 
-@inject IWindowManager WindowManager
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@using System.Reflection
+@using System.IO
 
-<div class="desktop" @onmousemove="HandleMouseMove" @onmouseup="EndDrag" @onmouseleave="EndDrag">
+@inject IWindowManager WindowManager
+@inject IWorkspaceState WorkspaceState
+@inject IJSRuntime JSRuntime
+
+<div class="desktop" @ref="_desktopRef" @onmousemove="HandleMouseMove" @onmouseup="EndDrag" @onmouseleave="EndDrag">
     @foreach (var panel in WindowManager.ActivePanels)
     {
-        if (panel.IsMinimized)
+        if (panel.IsMinimized || panel.IsHidden)
         {
             continue;
         }
@@ -38,7 +44,7 @@
     <div class="panel-strip">
         @foreach (var panel in WindowManager.ActivePanels)
         {
-            if (!panel.IsMinimized)
+            if (!panel.IsMinimized || panel.IsHidden)
             {
                 continue;
             }
@@ -64,16 +70,67 @@
     private double _startY;
     private double _startWidth;
     private double _startHeight;
+    private ElementReference _desktopRef;
+    private DesktopSize? _desktopSize;
+    private bool _pendingClamp = true;
+    private bool _isLoadingWorkspace;
 
     protected override void OnInitialized()
     {
         WindowManager.PanelsChanged += HandlePanelsChanged;
+        LoadWorkspace();
         EnsureTopicsPanel();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _pendingClamp)
+        {
+            _pendingClamp = false;
+            await EnsurePanelsVisibleAsync();
+        }
     }
 
     private void HandlePanelsChanged()
     {
-        _ = InvokeAsync(StateHasChanged);
+        // Ensure panels are visible after changes (e.g. loading workspace or restore)
+        _ = InvokeAsync(async () =>
+        {
+            await EnsurePanelsVisibleAsync();
+            StateHasChanged();
+        });
+
+        if (!_isLoadingWorkspace)
+        {
+            SaveWorkspace();
+        }
+    }
+
+    private async Task EnsurePanelsVisibleAsync()
+    {
+        if (!await RefreshDesktopSizeAsync())
+        {
+            return;
+        }
+
+        const double minMargin = 12;
+
+        var maxWidth = Math.Max(MinPanelWidth, _desktopSize!.Width - (minMargin * 2));
+        var maxHeight = Math.Max(MinPanelHeight, _desktopSize!.Height - (minMargin * 2));
+
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (panel == null || panel.IsHidden)
+            {
+                continue;
+            }
+
+            panel.Width = ClampSize(panel.Width, MinPanelWidth, maxWidth);
+            panel.Height = ClampSize(panel.Height, MinPanelHeight, maxHeight);
+
+            panel.X = Clamp(panel.X, minMargin, _desktopSize.Width - panel.Width - minMargin);
+            panel.Y = Clamp(panel.Y, minMargin, _desktopSize.Height - panel.Height - minMargin);
+        }
     }
 
     private void EnsureTopicsPanel()
@@ -88,6 +145,7 @@
 
         var panelState = WindowManager.SpawnPanel(TopicExplorerTypeName);
         panelState.Title = "Topics";
+        SaveWorkspace();
     }
 
     private void BeginDrag(PanelState panel, MouseEventArgs args)
@@ -145,9 +203,21 @@
             return;
         }
 
+        var panel = _activePanel;
+
         _dragMode = DragMode.None;
         _resizeEdge = ResizeEdge.None;
         _activePanel = null;
+
+        if (panel != null)
+        {
+            _ = InvokeAsync(async () =>
+            {
+                await ClampPanelToDesktopAsync(panel);
+                SaveWorkspace();
+                StateHasChanged();
+            });
+        }
     }
 
     private void ApplyResize(PanelState panel, double deltaX, double deltaY)
@@ -187,17 +257,135 @@
     private void ToggleMinimize(PanelState panel)
     {
         panel.IsMinimized = !panel.IsMinimized;
+        SaveWorkspace();
     }
 
     private void RestorePanel(PanelState panel)
     {
         panel.IsMinimized = false;
+        // Ensure restored panels have their titlebar visible
+        const double minMargin = 12;
+        if (double.IsNaN(panel.X) || panel.X < minMargin) panel.X = minMargin;
+        if (double.IsNaN(panel.Y) || panel.Y < minMargin) panel.Y = minMargin;
         BringToFront(panel);
+        SaveWorkspace();
+    }
+
+    private async Task ClampPanelToDesktopAsync(PanelState panel)
+    {
+        if (panel == null)
+        {
+            return;
+        }
+
+        if (!await RefreshDesktopSizeAsync())
+        {
+            return;
+        }
+
+        const double minMargin = 12;
+        var maxWidth = Math.Max(MinPanelWidth, _desktopSize!.Width - (minMargin * 2));
+        var maxHeight = Math.Max(MinPanelHeight, _desktopSize!.Height - (minMargin * 2));
+
+        panel.Width = ClampSize(panel.Width, MinPanelWidth, maxWidth);
+        panel.Height = ClampSize(panel.Height, MinPanelHeight, maxHeight);
+        panel.X = Clamp(panel.X, minMargin, _desktopSize.Width - panel.Width - minMargin);
+        panel.Y = Clamp(panel.Y, minMargin, _desktopSize.Height - panel.Height - minMargin);
+    }
+
+    private async Task<bool> RefreshDesktopSizeAsync()
+    {
+        var size = await JSRuntime.InvokeAsync<DesktopSize?>("ddsMonitor.getElementSize", _desktopRef);
+        if (size == null || size.Width <= 0 || size.Height <= 0)
+        {
+            return false;
+        }
+
+        _desktopSize = size;
+        return true;
+    }
+
+    private static double Clamp(double value, double min, double max)
+    {
+        if (double.IsNaN(value))
+        {
+            return min;
+        }
+
+        if (max < min)
+        {
+            return min;
+        }
+
+        if (value < min)
+        {
+            return min;
+        }
+
+        return value > max ? max : value;
+    }
+
+    private static double ClampSize(double value, double min, double max)
+    {
+        if (double.IsNaN(value) || value <= 0)
+        {
+            return min;
+        }
+
+        if (max < min)
+        {
+            return min;
+        }
+
+        if (value < min)
+        {
+            return min;
+        }
+
+        return value > max ? max : value;
     }
 
     private void ClosePanel(PanelState panel)
     {
         WindowManager.ClosePanel(panel.PanelId);
+        SaveWorkspace();
+    }
+
+    private void LoadWorkspace()
+    {
+        var filePath = WorkspaceState.WorkspaceFilePath;
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            _isLoadingWorkspace = true;
+            WindowManager.LoadWorkspace(filePath);
+        }
+        finally
+        {
+            _isLoadingWorkspace = false;
+        }
+    }
+
+    private void SaveWorkspace()
+    {
+        var filePath = WorkspaceState.WorkspaceFilePath;
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            WindowManager.SaveWorkspace(filePath);
+        }
+        catch
+        {
+            // Ignore persistence errors to avoid breaking the UI loop.
+        }
     }
 
     private RenderFragment RenderPanelBody(PanelState panel) => builder =>
@@ -213,7 +401,11 @@
                 childBuilder.OpenComponent(0, componentType);
                 if (panel.ComponentState.Count > 0)
                 {
-                    childBuilder.AddMultipleAttributes(1, panel.ComponentState);
+                    var parameters = FilterComponentParameters(componentType, panel.ComponentState);
+                    if (parameters.Count > 0)
+                    {
+                        childBuilder.AddMultipleAttributes(1, parameters);
+                    }
                 }
                 childBuilder.CloseComponent();
             }));
@@ -238,6 +430,38 @@
         return Type.GetType(componentTypeName);
     }
 
+    private static Dictionary<string, object> FilterComponentParameters(Type componentType, Dictionary<string, object> state)
+    {
+        var result = new Dictionary<string, object>(StringComparer.Ordinal);
+        var parameters = GetParameterNames(componentType);
+
+        foreach (var entry in state)
+        {
+            if (parameters.Contains(entry.Key))
+            {
+                result[entry.Key] = entry.Value;
+            }
+        }
+
+        return result;
+    }
+
+    private static HashSet<string> GetParameterNames(Type componentType)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+        foreach (var property in componentType.GetProperties(flags))
+        {
+            if (property.GetCustomAttribute<ParameterAttribute>() != null)
+            {
+                set.Add(property.Name);
+            }
+        }
+
+        return set;
+    }
+
     private static string GetPanelStyle(PanelState panel)
     {
         return FormattableString.Invariant(
@@ -259,6 +483,12 @@
         Top = 2,
         Right = 4,
         Bottom = 8
+    }
+
+    private sealed class DesktopSize
+    {
+        public double Width { get; set; }
+        public double Height { get; set; }
     }
 
     public void Dispose()

@@ -5,4 +5,8 @@ namespace DdsMonitor.Engine;
 /// </summary>
 public interface IWorkspaceState
 {
+	/// <summary>
+	/// Gets the workspace settings file path for the current user.
+	/// </summary>
+	string WorkspaceFilePath { get; }
 }

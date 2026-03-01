@@ -8,9 +8,9 @@
     <HeadOutlet />
 </head>
 <body>
-    <Routes />
-    <TooltipPortal />
-    <ContextMenu />
+    <Routes @rendermode="new Microsoft.AspNetCore.Components.Web.InteractiveServerRenderMode(prerender: false)" />
+    <TooltipPortal @rendermode="new Microsoft.AspNetCore.Components.Web.InteractiveServerRenderMode(prerender: false)" />
+    <ContextMenu @rendermode="new Microsoft.AspNetCore.Components.Web.InteractiveServerRenderMode(prerender: false)" />
     <script src="app.js"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
