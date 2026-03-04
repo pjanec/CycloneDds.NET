@@ -128,6 +128,8 @@ public sealed class DdsIngestionServiceTests
 
         public ITopicInstances GetTopicInstances(Type topicType) => throw new NotSupportedException();
 
+        public InstanceSnapshot GetTopicSnapshot(Type topicType) => throw new NotSupportedException();
+
         public void ProcessSample(SampleData sample)
         {
             ProcessedCount++;

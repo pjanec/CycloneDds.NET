@@ -9,6 +9,7 @@
 
 @inject IWindowManager WindowManager
 @inject IWorkspaceState WorkspaceState
+@inject WorkspacePersistenceService WorkspacePersistence
 @inject IJSRuntime JSRuntime
 
 <div class="desktop" @ref="_desktopRef" @onmousemove="HandleMouseMove" @onmouseup="EndDrag" @onmouseleave="EndDrag">
@@ -363,7 +364,7 @@
         try
         {
             _isLoadingWorkspace = true;
-            WindowManager.LoadWorkspace(filePath);
+            WorkspacePersistence.LoadDefault();
         }
         finally
         {
@@ -373,20 +374,7 @@
 
     private void SaveWorkspace()
     {
-        var filePath = WorkspaceState.WorkspaceFilePath;
-        if (string.IsNullOrWhiteSpace(filePath))
-        {
-            return;
-        }
-
-        try
-        {
-            WindowManager.SaveWorkspace(filePath);
-        }
-        catch
-        {
-            // Ignore persistence errors to avoid breaking the UI loop.
-        }
+        WorkspacePersistence.RequestSave();
     }
 
     private RenderFragment RenderPanelBody(PanelState panel) => builder =>

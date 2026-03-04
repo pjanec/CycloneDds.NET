@@ -1,0 +1,163 @@
+@using System.Threading
+@implements IDisposable
+
+<div class="field-picker">
+    <input class="field-picker__input"
+           type="text"
+           value="@_query"
+           placeholder="@Placeholder"
+           @oninput="OnInput"
+           @onkeydown="OnKeyDown" />
+
+    @if (_filteredFields.Count > 0)
+    {
+        <ul class="field-picker__results">
+            @for (var i = 0; i < _filteredFields.Count; i++)
+            {
+                var field = _filteredFields[i];
+                var isActive = i == _highlightIndex;
+                <li class="field-picker__row @(isActive ? "is-active" : string.Empty)"
+                    @onclick="() => SelectField(field)">
+                    <span class="field-picker__name">@field.DisplayName</span>
+                    <span class="field-picker__type">@field.ValueType.Name</span>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private const int DebounceDelayMs = 100;
+    private const int NoSelection = -1;
+
+    private readonly List<FieldMetadata> _filteredFields = new();
+    private string _query = string.Empty;
+    private int _highlightIndex = NoSelection;
+    private CancellationTokenSource? _debounceCts;
+    private string? _lastSelectedKey;
+
+    [Parameter]
+    public IReadOnlyList<FieldMetadata> Fields { get; set; } = Array.Empty<FieldMetadata>();
+
+    [Parameter]
+    public FieldMetadata? SelectedField { get; set; }
+
+    [Parameter]
+    public string Placeholder { get; set; } = "Search fields...";
+
+    [Parameter]
+    public EventCallback<FieldMetadata> OnFieldSelected { get; set; }
+
+    [Parameter]
+    public EventCallback OnClosed { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (SelectedField != null && !string.Equals(_lastSelectedKey, SelectedField.StructuredName, StringComparison.Ordinal))
+        {
+            _query = SelectedField.StructuredName;
+            _lastSelectedKey = SelectedField.StructuredName;
+        }
+
+        ApplyFilter();
+    }
+
+    private async Task OnInput(ChangeEventArgs args)
+    {
+        _query = args.Value?.ToString() ?? string.Empty;
+
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+
+        var cts = new CancellationTokenSource();
+        _debounceCts = cts;
+
+        try
+        {
+            await Task.Delay(DebounceDelayMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!cts.IsCancellationRequested)
+        {
+            ApplyFilter();
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        _filteredFields.Clear();
+        _filteredFields.AddRange(FieldPickerFilter.FilterFields(Fields, _query));
+        _highlightIndex = _filteredFields.Count > 0 ? 0 : NoSelection;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "ArrowDown")
+        {
+            MoveHighlight(1);
+            return;
+        }
+
+        if (args.Key == "ArrowUp")
+        {
+            MoveHighlight(-1);
+            return;
+        }
+
+        if (args.Key == "Enter")
+        {
+            if (_highlightIndex >= 0 && _highlightIndex < _filteredFields.Count)
+            {
+                await SelectField(_filteredFields[_highlightIndex]);
+            }
+
+            return;
+        }
+
+        if (args.Key == "Escape")
+        {
+            _query = string.Empty;
+            ApplyFilter();
+            await OnClosed.InvokeAsync();
+        }
+    }
+
+    private void MoveHighlight(int delta)
+    {
+        if (_filteredFields.Count == 0)
+        {
+            _highlightIndex = NoSelection;
+            return;
+        }
+
+        var nextIndex = _highlightIndex + delta;
+        if (nextIndex < 0)
+        {
+            nextIndex = 0;
+        }
+        else if (nextIndex >= _filteredFields.Count)
+        {
+            nextIndex = _filteredFields.Count - 1;
+        }
+
+        _highlightIndex = nextIndex;
+    }
+
+    private async Task SelectField(FieldMetadata field)
+    {
+        _lastSelectedKey = field.StructuredName;
+        _query = field.StructuredName;
+        await OnFieldSelected.InvokeAsync(field);
+    }
+
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+    }
+}

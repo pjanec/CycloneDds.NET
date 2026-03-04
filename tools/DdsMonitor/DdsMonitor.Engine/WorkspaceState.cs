@@ -8,7 +8,7 @@ namespace DdsMonitor.Engine;
 /// </summary>
 public sealed class WorkspaceState : IWorkspaceState
 {
-	private const string WorkspaceFileName = "ddsmon-settings.json";
+	private const string WorkspaceFileName = "workspace.json";
 
 	public WorkspaceState()
 	{

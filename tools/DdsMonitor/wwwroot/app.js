@@ -67,3 +67,72 @@ window.ddsMonitor.ensureSelectedRowVisible = function (element) {
         element.scrollTop += (selectedRect.bottom - visibleBottom);
     }
 };
+
+window.ddsMonitor.getTheme = function () {
+    var stored = null;
+    try {
+        stored = window.localStorage.getItem("ddsMonitor.theme");
+    } catch (err) {
+        stored = null;
+    }
+
+    var html = document.documentElement;
+    var current = html.getAttribute("data-theme");
+    if (stored) {
+        return stored;
+    }
+
+    return current || "dark";
+};
+
+window.ddsMonitor.setTheme = function (theme) {
+    if (!theme) {
+        return "dark";
+    }
+
+    var value = theme === "light" ? "light" : "dark";
+    var html = document.documentElement;
+    html.setAttribute("data-theme", value);
+
+    try {
+        window.localStorage.setItem("ddsMonitor.theme", value);
+    } catch (err) {
+        // Ignore storage failures.
+    }
+
+    return value;
+};
+
+window.ddsMonitor.toggleTheme = function () {
+    var current = window.ddsMonitor.getTheme();
+    var next = current === "dark" ? "light" : "dark";
+    return window.ddsMonitor.setTheme(next);
+};
+
+window.ddsMonitor.applyStoredTheme = function () {
+    var theme = window.ddsMonitor.getTheme();
+    return window.ddsMonitor.setTheme(theme);
+};
+
+window.ddsMonitor.downloadTextFile = function (fileName, content, contentType) {
+    var type = contentType || "application/json";
+    var blob = new Blob([content || ""], { type: type });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = fileName || "download.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () {
+        URL.revokeObjectURL(url);
+    }, 0);
+};
+
+window.ddsMonitor.clickElement = function (element) {
+    if (!element) {
+        return;
+    }
+
+    element.click();
+};

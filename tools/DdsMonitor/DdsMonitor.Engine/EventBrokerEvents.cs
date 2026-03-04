@@ -21,3 +21,8 @@ public sealed record SpawnPanelEvent(string PanelTypeName, Dictionary<string, ob
 /// Requests adding a column to a target panel.
 /// </summary>
 public sealed record AddColumnRequestEvent(string TargetPanelId, string FieldPath);
+
+/// <summary>
+/// Requests applying a filter to a target samples panel.
+/// </summary>
+public sealed record ApplyFilterRequestEvent(string TargetPanelId, string FilterText);

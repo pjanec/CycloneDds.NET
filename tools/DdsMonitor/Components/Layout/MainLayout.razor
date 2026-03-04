@@ -2,15 +2,24 @@
 @inherits LayoutComponentBase
 
 @using System.IO
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
 
 @inject IWindowManager WindowManager
 @inject IWorkspaceState WorkspaceState
+@inject IJSRuntime JSRuntime
+@inject WorkspacePersistenceService WorkspacePersistence
 
 <div class="app-shell">
     <div class="app-toolbar">
         <button type="button" class="app-toolbar__button" @onclick="OpenTopicsPanel">Topics</button>
+        <button type="button" class="app-toolbar__button" @onclick="OpenFilterBuilder">Filter Builder</button>
         <button type="button" class="app-toolbar__button" @onclick="ResetLayout">Reset Layout</button>
+        <button type="button" class="app-toolbar__button" @onclick="ExportWorkspace">Export Layout</button>
+        <label class="app-toolbar__button" for="workspaceImport">Import Layout</label>
+        <button type="button" class="app-toolbar__button" @onclick="ToggleTheme">@GetThemeLabel()</button>
     </div>
+    <InputFile id="workspaceImport" OnChange="ImportWorkspace" style="display:none" accept=".workspace,application/json" />
     <div class="app-shell__content">
         @Body
     </div>
@@ -18,6 +27,9 @@
 
 @code {
     private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
+    private static readonly string FilterBuilderTypeName = typeof(FilterBuilderPanel).AssemblyQualifiedName!;
+    private const string WorkspaceExportFileName = "ddsmon.workspace";
+    private string _theme = "dark";
 
     private void OpenTopicsPanel()
     {
@@ -36,6 +48,23 @@
         newPanel.Title = "Topics";
     }
 
+    private void OpenFilterBuilder()
+    {
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, FilterBuilderTypeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var newPanel = WindowManager.SpawnPanel(FilterBuilderTypeName);
+        newPanel.Title = "Filter Builder";
+    }
+
     private void ResetLayout()
     {
         var filePath = WorkspaceState.WorkspaceFilePath;
@@ -48,9 +77,53 @@
         var newPanel = WindowManager.SpawnPanel(TopicExplorerTypeName);
         newPanel.Title = "Topics";
 
-        if (!string.IsNullOrWhiteSpace(filePath))
+        WorkspacePersistence.SaveNow();
+    }
+
+    private async Task ExportWorkspace()
+    {
+        var json = WorkspacePersistence.ExportWorkspaceJson();
+        await JSRuntime.InvokeVoidAsync("ddsMonitor.downloadTextFile", WorkspaceExportFileName, json, "application/json");
+    }
+
+    private async Task ImportWorkspace(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file == null)
         {
-            WindowManager.SaveWorkspace(filePath);
+            return;
         }
+
+        using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        var json = await reader.ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return;
+        }
+
+        WorkspacePersistence.ImportWorkspaceJson(json);
+        WorkspacePersistence.SaveNow();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _theme = await JSRuntime.InvokeAsync<string>("ddsMonitor.applyStoredTheme");
+        StateHasChanged();
+    }
+
+    private async Task ToggleTheme()
+    {
+        _theme = await JSRuntime.InvokeAsync<string>("ddsMonitor.toggleTheme");
+    }
+
+    private string GetThemeLabel()
+    {
+        return _theme == "light" ? "Theme: Light" : "Theme: Dark";
     }
 }

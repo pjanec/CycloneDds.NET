@@ -54,7 +54,17 @@ public interface IWindowManager
     void SaveWorkspace(string filePath);
 
     /// <summary>
+    /// Serializes the current workspace to JSON.
+    /// </summary>
+    string SaveWorkspaceToJson();
+
+    /// <summary>
     /// Loads a workspace from disk.
     /// </summary>
     void LoadWorkspace(string filePath);
+
+    /// <summary>
+    /// Loads a workspace from JSON.
+    /// </summary>
+    void LoadWorkspaceFromJson(string json);
 }

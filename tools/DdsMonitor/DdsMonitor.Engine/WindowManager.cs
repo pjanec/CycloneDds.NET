@@ -99,9 +99,11 @@ public sealed class WindowManager : IWindowManager
             {
                 if (string.Equals(_activePanels[i].PanelId, panelId, StringComparison.Ordinal))
                 {
-                    _activePanels[i].IsHidden = true;
-                    _activePanels[i].IsMinimized = false;
-                    PanelClosed?.Invoke(_activePanels[i]);
+                    var closedPanel = _activePanels[i];
+                    closedPanel.IsHidden = true;
+                    closedPanel.IsMinimized = false;
+                    PanelClosed?.Invoke(closedPanel);
+                    _activePanels.RemoveAt(i);
                     PanelsChanged?.Invoke();
                     return;
                 }
@@ -177,6 +179,13 @@ public sealed class WindowManager : IWindowManager
             throw new ArgumentException("File path is required.", nameof(filePath));
         }
 
+        var json = SaveWorkspaceToJson();
+        File.WriteAllText(filePath, json);
+    }
+
+    /// <inheritdoc />
+    public string SaveWorkspaceToJson()
+    {
         PanelState[] snapshot;
 
         lock (_sync)
@@ -185,8 +194,7 @@ public sealed class WindowManager : IWindowManager
         }
 
         var filtered = FilterPersistableState(snapshot);
-        var json = JsonSerializer.Serialize(filtered, WorkspaceSerializerOptions);
-        File.WriteAllText(filePath, json);
+        return JsonSerializer.Serialize(filtered, WorkspaceSerializerOptions);
     }
 
     /// <inheritdoc />
@@ -203,6 +211,17 @@ public sealed class WindowManager : IWindowManager
         }
 
         var json = File.ReadAllText(filePath);
+        LoadWorkspaceFromJson(json);
+    }
+
+    /// <inheritdoc />
+    public void LoadWorkspaceFromJson(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new ArgumentException("Workspace JSON is required.", nameof(json));
+        }
+
         var loaded = JsonSerializer.Deserialize<List<PanelState>>(json, WorkspaceSerializerOptions) ?? new List<PanelState>();
 
         foreach (var panel in loaded)

@@ -12,6 +12,8 @@
 @inject IEventBroker EventBroker
 @inject IWindowManager WindowManager
 @inject IWorkspaceState WorkspaceState
+@inject WorkspacePersistenceService WorkspacePersistence
+@inject ITopicRegistry TopicRegistry
 @inject DdsSettings Settings
 @inject TooltipService TooltipService
 @inject IJSRuntime JSRuntime
@@ -126,6 +128,7 @@ else
     private const int RightMouseButton = 2;
     private const string SelectedColumnsStateKey = "InstancesPanel.SelectedColumns";
     private const string ColumnWeightsStateKey = "InstancesPanel.ColumnWeights";
+    private const string TopicTypeNameStateKey = "InstancesPanel.TopicTypeName";
     private const double MinColumnWeight = 0.4;
 
     private static readonly Action<object, object?> SyntheticSetter = (_, __) =>
@@ -196,6 +199,7 @@ else
 
     protected override void OnParametersSet()
     {
+        TryResolveTopicMetadataFromState();
         if (TopicMetadata == null)
         {
             return;
@@ -1231,25 +1235,46 @@ else
             .Select(field => field.StructuredName)
             .ToArray();
         PanelState.ComponentState[ColumnWeightsStateKey] = new Dictionary<string, double>(_columnWeights);
+        if (TopicMetadata != null)
+        {
+            PanelState.ComponentState[TopicTypeNameStateKey] = TopicMetadata.TopicType.AssemblyQualifiedName ?? string.Empty;
+        }
         PersistWorkspace();
     }
 
-    private void PersistWorkspace()
+    private void TryResolveTopicMetadataFromState()
     {
-        var filePath = WorkspaceState.WorkspaceFilePath;
-        if (string.IsNullOrWhiteSpace(filePath))
+        if (TopicMetadata != null || PanelState == null)
         {
             return;
         }
 
-        try
+        if (!PanelState.ComponentState.TryGetValue(TopicTypeNameStateKey, out var typeObj))
         {
-            WindowManager.SaveWorkspace(filePath);
+            return;
         }
-        catch
+
+        if (!TryReadString(typeObj, out var typeName) || string.IsNullOrWhiteSpace(typeName))
         {
-            // Ignore persistence errors to avoid breaking UI interactions.
+            return;
         }
+
+        var type = Type.GetType(typeName);
+        if (type == null)
+        {
+            return;
+        }
+
+        var metadata = TopicRegistry.GetByType(type);
+        if (metadata != null)
+        {
+            TopicMetadata = metadata;
+        }
+    }
+
+    private void PersistWorkspace()
+    {
+        WorkspacePersistence.RequestSave();
     }
 
     private static List<string>? TryReadStringList(object? value)
@@ -1280,6 +1305,22 @@ else
         }
 
         return null;
+    }
+
+    private static bool TryReadString(object? value, out string? text)
+    {
+        switch (value)
+        {
+            case string direct:
+                text = direct;
+                return true;
+            case JsonElement element when element.ValueKind == JsonValueKind.String:
+                text = element.GetString();
+                return true;
+        }
+
+        text = null;
+        return false;
     }
 
     private static Dictionary<string, double>? TryReadDoubleMap(object? value)

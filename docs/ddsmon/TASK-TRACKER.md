@@ -32,18 +32,18 @@
 
 - [x] **DMON-015** — EventBroker (pub/sub) &nbsp; [details](./TASK-DETAIL.md#dmon-015--eventbroker-pubsub)
 - [x] **DMON-016** — PanelState model & IWindowManager &nbsp; [details](./TASK-DETAIL.md#dmon-016--panelstate-model--iwindowmanager-interface)
-- [x] **DMON-017** — Desktop.razor shell & panel chrome *needs fixes: manual verification pending* &nbsp; [details](./TASK-DETAIL.md#dmon-017--desktoprazor-shell--panel-chrome)
+- [x] **DMON-017** — Desktop.razor shell & panel chrome &nbsp; [details](./TASK-DETAIL.md#dmon-017--desktoprazor-shell--panel-chrome)
 - [x] **DMON-018** — Topic Explorer panel &nbsp; [details](./TASK-DETAIL.md#dmon-018--topic-explorer-panel)
 - [x] **DMON-019** — Topic Picker (reusable component) &nbsp; [details](./TASK-DETAIL.md#dmon-019--topic-picker-reusable-component)
 - [x] **DMON-020** — Column Picker dialog &nbsp; [details](./TASK-DETAIL.md#dmon-020--column-picker-dialog)
 - [x] **DMON-021** — Samples Panel (virtualized data grid) &nbsp; [details](./TASK-DETAIL.md#dmon-021--samples-panel-virtualized-data-grid)
 - [x] **DMON-022** — Sample Detail Panel (inspector) &nbsp; [details](./TASK-DETAIL.md#dmon-022--sample-detail-panel-inspector)
 - [x] **DMON-023** — Hover JSON tooltip &nbsp; [details](./TASK-DETAIL.md#dmon-023--hover-json-tooltip)
-- [⚠️] **DMON-024** — Text View Panel *needs fixes: manual verification pending* &nbsp; [details](./TASK-DETAIL.md#dmon-024--text-view-panel)
-- [⚠️] **DMON-025** — Keyboard navigation *needs fixes: manual verification pending* &nbsp; [details](./TASK-DETAIL.md#dmon-025--keyboard-navigation)
-- [⚠️] **DMON-026** — Context menu system *needs fixes: manual verification pending* &nbsp; [details](./TASK-DETAIL.md#dmon-026--context-menu-system)
-- [ ] **DMON-027** — Dark/light theme toggle &nbsp; [details](./TASK-DETAIL.md#dmon-027--darklight-theme-toggle)
-- [ ] **DMON-028** — Workspace persistence (save/load layout) &nbsp; [details](./TASK-DETAIL.md#dmon-028--workspace-persistence-saveload-layout)
+- [x] **DMON-024** — Text View Panel &nbsp; [details](./TASK-DETAIL.md#dmon-024--text-view-panel)
+- [x] **DMON-025** — Keyboard navigation &nbsp; [details](./TASK-DETAIL.md#dmon-025--keyboard-navigation)
+- [x] **DMON-026** — Context menu system &nbsp; [details](./TASK-DETAIL.md#dmon-026--context-menu-system)
+- [⚠️] **DMON-027** — Dark/light theme toggle *needs fixes: manual verification failed* &nbsp; [details](./TASK-DETAIL.md#dmon-027--darklight-theme-toggle)
+- [x] **DMON-028** — Workspace persistence (save/load layout) &nbsp; [details](./TASK-DETAIL.md#dmon-028--workspace-persistence-saveload-layout)
 
 ---
 
@@ -51,7 +51,7 @@
 
 **Goal:** Visual Filter Builder, Expand All mode, grid settings export, sparklines, and quick-add columns.
 
-- [ ] **DMON-029** — Visual Filter Builder &nbsp; [details](./TASK-DETAIL.md#dmon-029--visual-filter-builder)
+- [⚠️] **DMON-029** — Visual Filter Builder *needs fixes: manual verification failed* &nbsp; [details](./TASK-DETAIL.md#dmon-029--visual-filter-builder)
 - [ ] **DMON-030** — Expand All mode (JSON tree per row) &nbsp; [details](./TASK-DETAIL.md#dmon-030--expand-all-mode-json-tree-per-row)
 - [ ] **DMON-031** — Grid settings export/import &nbsp; [details](./TASK-DETAIL.md#dmon-031--grid-settings-exportimport)
 - [ ] **DMON-032** — Sparkline charts in Topic Explorer &nbsp; [details](./TASK-DETAIL.md#dmon-032--sparkline-charts-in-topic-explorer)
