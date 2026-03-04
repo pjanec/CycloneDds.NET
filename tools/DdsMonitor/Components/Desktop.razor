@@ -62,6 +62,7 @@
     private const double MinPanelWidth = 220;
     private const double MinPanelHeight = 140;
     private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
+    private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
 
     private PanelState? _activePanel;
     private DragMode _dragMode = DragMode.None;
@@ -122,7 +123,7 @@
 
         foreach (var panel in WindowManager.ActivePanels)
         {
-            if (panel == null || panel.IsHidden)
+            if (panel == null || panel.IsHidden || panel.IsMinimized)
             {
                 continue;
             }
@@ -137,16 +138,41 @@
 
     private void EnsureTopicsPanel()
     {
+        var hasTopics = false;
+        var hasAllSamples = false;
+
         foreach (var panel in WindowManager.ActivePanels)
         {
             if (string.Equals(panel.ComponentTypeName, TopicExplorerTypeName, StringComparison.Ordinal))
             {
-                return;
+                hasTopics = true;
+            }
+
+            // The global All Samples panel is a SamplesPanel that has no stored topic type.
+            if (string.Equals(panel.ComponentTypeName, SamplesPanelTypeName, StringComparison.Ordinal) &&
+                !panel.ComponentState.ContainsKey("SamplesPanel.TopicTypeName"))
+            {
+                hasAllSamples = true;
             }
         }
 
-        var panelState = WindowManager.SpawnPanel(TopicExplorerTypeName);
-        panelState.Title = "Topics";
+        if (!hasTopics)
+        {
+            var panelState = WindowManager.SpawnPanel(TopicExplorerTypeName);
+            panelState.Title = "Topics";
+        }
+
+        if (!hasAllSamples)
+        {
+            var allPanel = WindowManager.SpawnPanel(SamplesPanelTypeName);
+            allPanel.PanelId = "SamplesPanel.0"; // Reserve index 0 for the global All Samples panel.
+            allPanel.Title = "All Samples";
+            allPanel.X = 480;
+            allPanel.Y = 40;
+            allPanel.Width = 560;
+            allPanel.Height = 360;
+        }
+
         SaveWorkspace();
     }
 
@@ -349,8 +375,24 @@
 
     private void ClosePanel(PanelState panel)
     {
+        // SamplesPanel and FilterBuilderPanel windows are hidden on close instead of removed,
+        // so their position, size, and column state are preserved across re-opens.
+        if (IsHideOnClosePanel(panel))
+        {
+            panel.IsHidden = true;
+            SaveWorkspace();
+            StateHasChanged();
+            return;
+        }
+
         WindowManager.ClosePanel(panel.PanelId);
         SaveWorkspace();
+    }
+
+    private static bool IsHideOnClosePanel(PanelState panel)
+    {
+        return panel.ComponentTypeName.Contains("SamplesPanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("FilterBuilderPanel", StringComparison.Ordinal);
     }
 
     private void LoadWorkspace()

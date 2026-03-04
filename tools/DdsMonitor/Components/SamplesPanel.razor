@@ -2,9 +2,12 @@
 @using System.Linq
 @using System.Threading
 @using System.Text.Json
+@using System.IO
 @using CycloneDDS.Runtime
+@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Microsoft.JSInterop
+@using DdsMonitor.Engine.Ui
 @implements IDisposable
 
 @inject ISampleStore SampleStore
@@ -19,33 +22,40 @@
 @inject IJSRuntime JSRuntime
 @inject ContextMenuService ContextMenuService
 
-@if (TopicMetadata == null)
-{
-    <div class="panel-placeholder-content">
-        <h2>Samples Panel</h2>
-        <p>No topic selected.</p>
-    </div>
-}
-else
-{
-    <div class="samples-panel" @onmousemove="HandleColumnResize" @onmouseup="EndColumnResize" @onmouseleave="EndColumnResize">
-        <div class="samples-panel__toolbar">
-            <button type="button"
-                    class="samples-panel__track @( _trackMode ? "is-on" : string.Empty)"
-                    @onclick="ToggleTrackMode">
-                Track
-            </button>
-            <button type="button" class="samples-panel__columns" @onclick="ToggleColumnPicker">
-                Columns
-            </button>
-            <div class="samples-panel__filter">
-                <span>Filter:</span>
-                <input type="text"
-                       value="@_filterText"
-                       placeholder="Payload.Field == 42"
-                       @oninput="OnFilterInput" />
-            </div>
+<div class="samples-panel" @onmousemove="HandleColumnResize" @onmouseup="EndColumnResize" @onmouseleave="EndColumnResize">
+    <div class="samples-panel__toolbar">
+        <button type="button"
+                title="Toggle track mode \u2013 auto-selects the latest sample"
+                class="samples-panel__track @( _trackMode ? "is-on" : string.Empty)"
+                @onclick="ToggleTrackMode">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button type="button" title="Choose visible columns" class="samples-panel__columns" @onclick="ToggleColumnPicker">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="18" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+        </button>
+        <button type="button"
+                title="Toggle expanded card view"
+                class="samples-panel__expand-btn @(_expandAll ? "is-on" : string.Empty)"
+                @onclick="ToggleExpandAll">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        </button>
+        <button type="button" title="Open filter builder" class="samples-panel__filter-btn" @onclick="OpenFilterBuilder">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        </button>
+        <button type="button" title="Save grid settings to file" class="samples-panel__settings-btn" @onclick="SaveGridSettingsAsync">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <label title="Load grid settings from file" class="samples-panel__settings-btn" @onclick:stopPropagation="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <InputFile OnChange="LoadGridSettingsAsync" style="display:none" accept=".samplepanelsettings,application/json" />
+        </label>
+        <div class="samples-panel__filter">
+            <input type="text"
+                   value="@_filterText"
+                   placeholder="Filter: Payload.Field == 42"
+                   @oninput="OnFilterInput" />
         </div>
+    </div>
 
         @if (!string.IsNullOrWhiteSpace(_filterError))
         {
@@ -82,20 +92,34 @@ else
                 }
             </div>
 
-            <Virtualize @ref="_virtualizeRef" ItemsProvider="LoadItems" ItemSize="RowHeight">
+            <Virtualize @ref="_virtualizeRef" ItemsProvider="LoadItems" ItemSize="@(_expandAll ? ExpandedRowHeight : RowHeight)">
                 <ItemContent Context="row">
-                    <div class="samples-panel__row @(IsSelected(row) ? "is-selected" : string.Empty)" style="@GetGridStyle()"
-                        @onclick="() => SelectSample(row, true)"
-                        @ondblclick="() => OpenDetail(row.Sample)"
-                        @onmousedown="(args) => HandleRowMouseDown(row, args)"
-                        @oncontextmenu:preventDefault="true">
-                        @foreach (var column in _layoutColumns)
-                        {
-                            <div class="samples-panel__cell @column.CssClass">
-                                @RenderCellValue(column, row)
+                    @if (_expandAll)
+                    {
+                        <div class="samples-panel__expand-card" style="height:@(ExpandedRowHeight)px">
+                            <div class="samples-panel__expand-card-header">
+                                <span class="samples-panel__cell samples-panel__col-ordinal">#@row.Sample.Ordinal</span>
+                                <span class="samples-panel__cell samples-panel__col-timestamp">@row.Sample.Timestamp.ToString("HH:mm:ss.fff")</span>
+                                <span class="samples-panel__cell @GetStatusClass(row.Sample)" title="@GetStatusSymbol(row.Sample)">@GetStatusSymbol(row.Sample)</span>
                             </div>
-                        }
-                    </div>
+                            <pre class="samples-panel__expand-json">@GetPayloadJsonSafe(row.Sample)</pre>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="samples-panel__row @(IsSelected(row) ? "is-selected" : string.Empty)" style="@GetGridStyle()"
+                            @onclick="() => SelectSample(row, true)"
+                            @ondblclick="() => OpenDetail(row.Sample)"
+                            @onmousedown="(args) => HandleRowMouseDown(row, args)"
+                            @oncontextmenu:preventDefault="true">
+                            @foreach (var column in _layoutColumns)
+                            {
+                                <div class="samples-panel__cell @column.CssClass">
+                                    @RenderCellValue(column, row)
+                                </div>
+                            }
+                        </div>
+                    }
                 </ItemContent>
             </Virtualize>
         </div>
@@ -104,21 +128,21 @@ else
             Showing @_currentCount of @_totalCount matching samples
         </div>
 
-        @if (_showColumnPicker)
-        {
-            <div class="samples-panel__overlay">
-                <ColumnPickerDialog Title="Columns"
-                                    AvailableFields="@_availableColumns"
-                                    SelectedFields="@_selectedColumns"
-                                    OnApply="ApplyColumns"
-                                    OnCancel="CloseColumnPicker" />
-            </div>
-        }
-    </div>
-}
+    @if (_showColumnPicker)
+    {
+        <div class="samples-panel__overlay">
+            <ColumnPickerDialog Title="Columns"
+                                AvailableFields="@_availableColumns"
+                                SelectedFields="@_selectedColumns"
+                                OnApply="ApplyColumns"
+                                OnCancel="CloseColumnPicker" />
+        </div>
+    }
+</div>
 
 @code {
     private const int RowHeight = 38;
+    private const int ExpandedRowHeight = 200;
     private const int MinimumUiRefreshHz = 1;
     private const int MillisecondsPerSecond = 1000;
     private const string SizeFieldName = "Size [B]";
@@ -169,6 +193,7 @@ else
     private int _totalCount;
     private bool _initialFilterApplied;
     private bool _trackMode = true;
+    private bool _expandAll;
     private bool _showColumnPicker;
     private SampleData? _selectedSample;
     private SampleData? _pendingTrackSample;
@@ -183,6 +208,7 @@ else
     private DebouncedAction? _trackDebouncer;
     private ElementReference _gridRef;
     private bool _loadedPanelState;
+    private bool _columnsInitialized;
     private bool _isColumnResizing;
     private int _resizeColumnIndex = -1;
     private double _resizeStartX;
@@ -219,10 +245,6 @@ else
     protected override void OnParametersSet()
     {
         TryResolveTopicMetadataFromState();
-        if (TopicMetadata == null)
-        {
-            return;
-        }
 
         if (!_loadedPanelState && PanelState != null)
         {
@@ -230,15 +252,17 @@ else
             _loadedPanelState = true;
         }
 
-        if (!_initialFilterApplied && !string.IsNullOrWhiteSpace(InitialFilterText))
+        if (!_initialFilterApplied && TopicMetadata != null && !string.IsNullOrWhiteSpace(InitialFilterText))
         {
             _filterText = InitialFilterText;
             _initialFilterApplied = true;
         }
 
-        if (_currentTopicType != TopicMetadata.TopicType)
+        var newTopicType = TopicMetadata?.TopicType;
+        if (!_columnsInitialized || _currentTopicType != newTopicType)
         {
-            _currentTopicType = TopicMetadata.TopicType;
+            _columnsInitialized = true;
+            _currentTopicType = newTopicType;
             InitializeColumns();
             ApplyFilter();
             _viewDirty = true;
@@ -253,6 +277,11 @@ else
 
         if (TopicMetadata == null)
         {
+            // All-topics mode: no payload columns; structural columns are added by RebuildLayoutColumns.
+            _sizeField = null;
+            _delayField = null;
+            RebuildLayoutColumns();
+            SavePanelState();
             return;
         }
 
@@ -305,11 +334,6 @@ else
 
     private Task RefreshCounts()
     {
-        if (TopicMetadata == null)
-        {
-            return Task.CompletedTask;
-        }
-
         var previousTotal = _totalCount;
         var previousCurrent = _currentCount;
         EnsureView();
@@ -355,6 +379,131 @@ else
         _showColumnPicker = !_showColumnPicker;
     }
 
+    private async Task ToggleExpandAll()
+    {
+        _expandAll = !_expandAll;
+        if (_virtualizeRef != null)
+        {
+            await _virtualizeRef.RefreshDataAsync();
+        }
+    }
+
+    private void OpenFilterBuilder()
+    {
+        var filterTypeName = typeof(FilterBuilderPanel).AssemblyQualifiedName!;
+        var sourcePanelId = GetPanelId();
+
+        // Reuse an existing hidden filter panel for this samples panel (preserves its screen position).
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(existingPanel.ComponentTypeName, filterTypeName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (existingPanel.ComponentState.TryGetValue(nameof(FilterBuilderPanel.LockedTargetPanelId), out var locked) &&
+                string.Equals(locked?.ToString(), sourcePanelId, StringComparison.Ordinal))
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+        }
+
+        var spawnState = new Dictionary<string, object>
+        {
+            [nameof(FilterBuilderPanel.LockedTargetPanelId)] = sourcePanelId
+        };
+
+        if (TopicMetadata != null)
+        {
+            spawnState[nameof(FilterBuilderPanel.PreloadedTopicMetadata)] = TopicMetadata;
+        }
+
+        var panel = WindowManager.SpawnPanel(filterTypeName, spawnState);
+        panel.Title = TopicMetadata != null
+            ? $"Filter [{TopicMetadata.ShortName}]"
+            : "Filter [All Topics]";
+        panel.Width = 520;
+        panel.Height = 480;
+    }
+
+    private async Task SaveGridSettingsAsync()
+    {
+        var settings = new GridSettings
+        {
+            FilterText = _filterText,
+            ColumnKeys = _selectedColumns.Select(c => c.StructuredName).ToList(),
+            ColumnWeights = new Dictionary<string, double>(_columnWeights),
+            SortFieldKey = _sortField?.StructuredName,
+            SortDirection = _sortDirection
+        };
+
+        var json = settings.ToJson();
+        var topicLabel = TopicMetadata?.ShortName?.Replace(' ', '_') ?? "all-samples";
+        var fileName = $"{topicLabel}.samplepanelsettings";
+        await JSRuntime.InvokeVoidAsync("ddsMonitor.downloadTextFile", fileName, json, "application/json");
+    }
+
+    private async Task LoadGridSettingsAsync(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 65536);
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            var settings = GridSettings.FromJson(json);
+            if (settings == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(settings.FilterText))
+            {
+                _filterText = settings.FilterText;
+                ApplyFilter();
+            }
+
+            if (settings.ColumnKeys?.Count > 0)
+            {
+                _savedSelectedColumnKeys = settings.ColumnKeys;
+            }
+
+            if (settings.ColumnWeights?.Count > 0)
+            {
+                _savedColumnWeights = settings.ColumnWeights;
+            }
+
+            if (!string.IsNullOrEmpty(settings.SortFieldKey) && TopicMetadata != null)
+            {
+                _sortField = TopicMetadata.AllFields
+                    .FirstOrDefault(f => string.Equals(f.StructuredName, settings.SortFieldKey, StringComparison.Ordinal));
+                _sortDirection = settings.SortDirection;
+            }
+
+            RebuildLayoutColumns();
+            SavePanelState();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Ignore malformed settings files.
+        }
+    }
+
+    private string GetPayloadJsonSafe(SampleData sample)
+    {
+        try
+        {
+            return JsonSerializer.Serialize(sample.Payload, sample.TopicMetadata.TopicType, TooltipJsonOptions);
+        }
+        catch
+        {
+            return "(serialization error)";
+        }
+    }
+
     private async Task ApplyColumns(List<FieldMetadata> columns)
     {
         _selectedColumns.Clear();
@@ -382,6 +531,29 @@ else
     {
         if (TopicMetadata == null)
         {
+            // All-topics mode: filter all samples without restricting by topic type.
+            if (string.IsNullOrWhiteSpace(_filterText))
+            {
+                _filterPredicate = null;
+                _viewDirty = true;
+                _filterError = null;
+                _ = _virtualizeRef?.RefreshDataAsync();
+                StateHasChanged();
+                return;
+            }
+
+            var allResult = FilterCompiler.Compile(_filterText, null);
+            if (!allResult.IsValid || allResult.Predicate == null)
+            {
+                _filterError = allResult.ErrorMessage ?? "Invalid filter.";
+                return;
+            }
+
+            _filterError = null;
+            _filterPredicate = allResult.Predicate;
+            _viewDirty = true;
+            _ = _virtualizeRef?.RefreshDataAsync();
+            StateHasChanged();
             return;
         }
 
@@ -787,14 +959,6 @@ else
 
     private void EnsureView()
     {
-        if (TopicMetadata == null)
-        {
-            _viewCache.Clear();
-            _totalCount = 0;
-            _currentCount = 0;
-            return;
-        }
-
         var snapshot = SampleStore.AllSamples;
         if (!_viewDirty && snapshot.Count == _lastAllSamplesCount)
         {
@@ -803,6 +967,23 @@ else
 
         _lastAllSamplesCount = snapshot.Count;
         _viewCache.Clear();
+
+        if (TopicMetadata == null)
+        {
+            // All-topics mode: include every sample without a topic-type filter.
+            foreach (var sample in snapshot)
+            {
+                if (_filterPredicate == null || _filterPredicate(sample))
+                {
+                    _viewCache.Add(sample);
+                }
+            }
+
+            _totalCount = snapshot.Count;
+            _currentCount = _viewCache.Count;
+            _viewDirty = false;
+            return;
+        }
 
         var topicType = TopicMetadata.TopicType;
         var total = 0;

@@ -72,4 +72,41 @@ public sealed class FilterNodeTests
 
         Assert.Equal("!(Payload.Active == true)", result);
     }
+
+    [Fact]
+    public void FilterNode_ToDynamicLinq_EnumValue_EmitsIntegerLiteral()
+    {
+        // SampleStatus.Active == 1; the LINQ expression must not contain a namespaced
+        // enum identifier that Dynamic LINQ cannot resolve.
+        var node = new FilterConditionNode
+        {
+            FieldPath = "Payload.Status",
+            Operator = FilterComparisonOperator.Equals,
+            ValueText = "Active",
+            ValueTypeName = typeof(SampleStatus).AssemblyQualifiedName
+        };
+
+        var result = node.ToDynamicLinqString();
+
+        // Must emit the integer value, not the fully-qualified name.
+        Assert.Equal("Payload.Status == 1", result);
+        Assert.DoesNotContain("DdsMonitor", result);
+        Assert.DoesNotContain("SampleStatus", result);
+    }
+
+    [Fact]
+    public void FilterNode_ToDynamicLinq_EnumValue_UnknownName_EmitsZero()
+    {
+        var node = new FilterConditionNode
+        {
+            FieldPath = "Payload.Status",
+            Operator = FilterComparisonOperator.Equals,
+            ValueText = "NotARealEnumMember",
+            ValueTypeName = typeof(SampleStatus).AssemblyQualifiedName
+        };
+
+        var result = node.ToDynamicLinqString();
+
+        Assert.Equal("Payload.Status == 0", result);
+    }
 }

@@ -139,7 +139,19 @@ public sealed class FilterConditionNode : FilterNode
 
         if (valueType.IsEnum)
         {
-            return $"{valueType.FullName}.{ValueText}";
+            // Dynamic LINQ cannot resolve arbitrary namespaced enum literals such as
+            // "Company.DDS.Level.Ok" because it has no reference to that assembly.
+            // Instead we emit the underlying integer value which is always resolvable
+            // when compared to an enum-typed Dynamic LINQ parameter.
+            try
+            {
+                var parsed = Enum.Parse(valueType, ValueText, ignoreCase: true);
+                return Convert.ToInt32(parsed).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return "0";
+            }
         }
 
         if (TryFormatNumber(ValueText, out var formatted))

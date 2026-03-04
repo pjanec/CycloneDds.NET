@@ -1,4 +1,5 @@
 @using System.Threading
+@using DdsMonitor.Engine.Ui
 @implements IDisposable
 
 @inject ITopicRegistry TopicRegistry
@@ -38,6 +39,7 @@
                 <th>Sub</th>
                 <th>Name</th>
                 <th>Samples</th>
+                <th>Freq</th>
                 <th>Instances</th>
                 <th>Actions</th>
             </tr>
@@ -54,12 +56,19 @@
                         <div class="topic-explorer__namespace">@topic.Metadata.Namespace</div>
                     </td>
                     <td>@topic.SampleCount</td>
+                    <td class="topic-explorer__sparkline-cell">
+                        @RenderSparkline(topic.Metadata.TopicType)
+                    </td>
                     <td>@topic.LiveInstances</td>
                     <td>
-                        <button type="button" class="topic-explorer__action" @onclick="() => OpenSamplesPanel(topic.Metadata)">Grid</button>
+                        <button type="button" class="topic-explorer__action" title="Open samples grid" @onclick="() => OpenSamplesPanel(topic.Metadata)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        </button>
                         @if (topic.Metadata.IsKeyed)
                         {
-                            <button type="button" class="topic-explorer__action" @onclick="() => OpenInstancesPanel(topic.Metadata)">Instances</button>
+                            <button type="button" class="topic-explorer__action" title="Open instances view" @onclick="() => OpenInstancesPanel(topic.Metadata)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            </button>
                         }
                     </td>
                 </tr>
@@ -72,17 +81,23 @@
     private const int MinimumUiRefreshHz = 1;
     private const int MillisecondsPerSecond = 1000;
     private const int MaxErrorTopicNames = 3;
+    private const int SparklineSlots = 10;
+    private const int SparklineFlushIntervalMs = 1000;
 
     private readonly TopicExplorerFilterState _filters = new();
     private IReadOnlyList<TopicExplorerTopicSnapshot> _topics = Array.Empty<TopicExplorerTopicSnapshot>();
+    private readonly Dictionary<Type, RingBuffer> _sparklines = new();
+    private readonly Dictionary<Type, int> _lastSampleCounts = new();
     private string _searchText = string.Empty;
     private Timer? _refreshTimer;
+    private Timer? _sparklineTimer;
     private string? _subscriptionError;
 
     protected override void OnInitialized()
     {
         RefreshTopics();
         StartRefreshTimer();
+        StartSparklineTimer();
     }
 
     private void StartRefreshTimer()
@@ -90,6 +105,38 @@
         var refreshHz = Math.Max(MinimumUiRefreshHz, Settings.UiRefreshHz);
         var interval = MillisecondsPerSecond / refreshHz;
         _refreshTimer = new Timer(_ => _ = InvokeAsync(RefreshAndRender), null, interval, interval);
+    }
+
+    private void StartSparklineTimer()
+    {
+        _sparklineTimer = new Timer(_ => FlushSparklines(), null, SparklineFlushIntervalMs, SparklineFlushIntervalMs);
+    }
+
+    private void FlushSparklines()
+    {
+        foreach (var topic in TopicRegistry.AllTopics)
+        {
+            var topicSamples = SampleStore.GetTopicSamples(topic.TopicType);
+            var currentCount = topicSamples.TotalCount;
+
+            if (!_sparklines.TryGetValue(topic.TopicType, out var buffer))
+            {
+                buffer = new RingBuffer(SparklineSlots);
+                _sparklines[topic.TopicType] = buffer;
+            }
+
+            if (_lastSampleCounts.TryGetValue(topic.TopicType, out var previousCount))
+            {
+                var delta = Math.Max(0, currentCount - previousCount);
+                for (var i = 0; i < delta; i++)
+                {
+                    buffer.Increment();
+                }
+            }
+
+            _lastSampleCounts[topic.TopicType] = currentCount;
+            buffer.Flush();
+        }
     }
 
     private Task RefreshAndRender()
@@ -115,6 +162,56 @@
 
         _topics = snapshots;
     }
+
+    private RenderFragment RenderSparkline(Type topicType) => builder =>
+    {
+        if (!_sparklines.TryGetValue(topicType, out var buffer))
+        {
+            return;
+        }
+
+        var values = buffer.GetSnapshot();
+        var maxVal = 1;
+        foreach (var v in values)
+        {
+            if (v > maxVal)
+            {
+                maxVal = v;
+            }
+        }
+
+        const int svgWidth = 60;
+        const int svgHeight = 20;
+        var step = (double)svgWidth / (values.Length - 1);
+        var points = new System.Text.StringBuilder();
+
+        for (var i = 0; i < values.Length; i++)
+        {
+            var x = i * step;
+            var y = svgHeight - (((double)values[i] / maxVal) * (svgHeight - 2)) - 1;
+            if (i > 0) points.Append(' ');
+            points.Append(FormattableString.Invariant($"{x:0.#},{y:0.#}"));
+        }
+
+        var sequence = 0;
+        builder.OpenElement(sequence++, "svg");
+        builder.AddAttribute(sequence++, "class", "topic-explorer__sparkline");
+        builder.AddAttribute(sequence++, "viewBox", FormattableString.Invariant($"0 0 {svgWidth} {svgHeight}"));
+        builder.AddAttribute(sequence++, "width", svgWidth);
+        builder.AddAttribute(sequence++, "height", svgHeight);
+
+        builder.OpenElement(sequence++, "polyline");
+        builder.AddAttribute(sequence++, "class", "topic-explorer__sparkline-line");
+        builder.AddAttribute(sequence++, "points", points.ToString());
+        builder.AddAttribute(sequence++, "fill", "none");
+        builder.AddAttribute(sequence++, "stroke", "var(--accent-2)");
+        builder.AddAttribute(sequence++, "stroke-width", "1.5");
+        builder.AddAttribute(sequence++, "stroke-linecap", "round");
+        builder.AddAttribute(sequence++, "stroke-linejoin", "round");
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
 
     private IEnumerable<TopicExplorerTopicSnapshot> FilteredTopics
     {
@@ -354,6 +451,7 @@
     public void Dispose()
     {
         _refreshTimer?.Dispose();
+        _sparklineTimer?.Dispose();
     }
 
     private sealed record TopicExplorerTopicSnapshot(

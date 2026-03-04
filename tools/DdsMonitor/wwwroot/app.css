@@ -14,6 +14,9 @@
   --toolbar-bg: rgba(255, 255, 255, 0.85);
   --toolbar-border: #c9d3e6;
   --toolbar-button-bg: rgba(255, 255, 255, 0.9);
+  --input-bg: rgba(240, 244, 252, 0.9);
+  --dropdown-bg: rgba(245, 248, 255, 0.98);
+  --grid-bg: rgba(240, 244, 252, 0.8);
   --shadow: 0 18px 34px rgba(32, 45, 70, 0.18);
   --panel-radius: 12px;
   --title-height: 34px;
@@ -35,6 +38,9 @@
   --toolbar-bg: rgba(15, 20, 32, 0.85);
   --toolbar-border: #2a3550;
   --toolbar-button-bg: rgba(30, 38, 56, 0.85);
+  --input-bg: rgba(20, 26, 40, 0.8);
+  --dropdown-bg: rgba(15, 20, 32, 0.9);
+  --grid-bg: rgba(20, 26, 40, 0.6);
   --shadow: 0 20px 40px rgba(10, 16, 28, 0.45);
 }
 
@@ -189,7 +195,7 @@ body {
   gap: 8px;
   padding: 8px;
   border-radius: 12px;
-  background: rgba(16, 20, 31, 0.8);
+  background: var(--toolbar-bg);
   border: 1px solid var(--panel-border);
   backdrop-filter: blur(10px);
 }
@@ -198,7 +204,7 @@ body {
   padding: 6px 14px;
   border-radius: 999px;
   border: 1px solid transparent;
-  background: rgba(30, 37, 54, 0.8);
+  background: var(--input-bg);
   color: var(--panel-text);
   cursor: pointer;
 }
@@ -315,31 +321,40 @@ body {
 
 .topic-explorer__filters {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 2px;
 }
 
 .tri-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 3px;
+  padding: 2px 7px;
   border-radius: 999px;
   border: 1px solid var(--panel-border);
-  background: rgba(30, 37, 54, 0.7);
-  color: var(--panel-text);
+  background: transparent;
+  color: var(--panel-muted);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  transition: border-color 0.12s;
 }
 
 .tri-toggle__state {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 0.6rem;
   background: rgba(255, 255, 255, 0.08);
   color: var(--panel-muted);
 }
@@ -385,7 +400,7 @@ body {
 }
 
 .topic-explorer__search input {
-  background: rgba(20, 26, 40, 0.6);
+  background: var(--input-bg);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   color: var(--panel-text);
@@ -443,7 +458,7 @@ body {
 .topic-picker__input {
   border-radius: 10px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.6);
+  background: var(--input-bg);
   color: var(--panel-text);
   padding: 8px 12px;
 }
@@ -454,7 +469,7 @@ body {
   margin: 0;
   border: 1px solid var(--panel-border);
   border-radius: 12px;
-  background: rgba(15, 20, 32, 0.9);
+  background: var(--dropdown-bg);
   max-height: 220px;
   overflow: auto;
 }
@@ -490,7 +505,7 @@ body {
 .field-picker__input {
   border-radius: 10px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.6);
+  background: var(--input-bg);
   color: var(--panel-text);
   padding: 6px 10px;
   font-size: 0.85rem;
@@ -502,7 +517,7 @@ body {
   margin: 0;
   border: 1px solid var(--panel-border);
   border-radius: 12px;
-  background: rgba(15, 20, 32, 0.9);
+  background: var(--dropdown-bg);
   max-height: 200px;
   overflow: auto;
 }
@@ -535,7 +550,7 @@ body {
   flex-direction: column;
   border: 1px solid var(--panel-border);
   border-radius: 14px;
-  background: rgba(16, 20, 31, 0.9);
+  background: var(--panel-bg);
   box-shadow: var(--shadow);
 }
 
@@ -618,7 +633,7 @@ body {
 .filter-builder__select {
   border-radius: 10px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.6);
+  background: var(--input-bg);
   color: var(--panel-text);
   padding: 6px 10px;
   font-size: 0.85rem;
@@ -627,7 +642,7 @@ body {
 .filter-builder__input {
   border-radius: 10px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.6);
+  background: var(--input-bg);
   color: var(--panel-text);
   padding: 6px 10px;
   font-size: 0.85rem;
@@ -643,7 +658,7 @@ body {
 .filter-builder__group {
   border: 1px solid var(--panel-border);
   border-radius: 14px;
-  background: rgba(16, 20, 31, 0.85);
+  background: var(--panel-bg);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -700,7 +715,7 @@ body {
 .column-picker__search {
   border-radius: 8px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.6);
+  background: var(--input-bg);
   color: var(--panel-text);
   padding: 6px 10px;
 }
@@ -780,7 +795,7 @@ body {
   max-width: 520px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(20, 26, 40, 0.95);
+  background: var(--dropdown-bg);
   border: 1px solid var(--panel-border);
   box-shadow: var(--shadow);
   color: var(--panel-text);
@@ -830,12 +845,15 @@ body {
 
 .samples-panel__track,
 .samples-panel__columns {
-  padding: 6px 12px;
+  padding: 5px 9px;
   border-radius: 10px;
   border: 1px solid var(--panel-border);
   background: transparent;
   color: var(--panel-text);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .samples-panel__track.is-on {
@@ -854,7 +872,7 @@ body {
   padding: 6px 10px;
   border-radius: 10px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.8);
+  background: var(--input-bg);
   color: var(--panel-text);
 }
 
@@ -868,7 +886,7 @@ body {
   overflow: auto;
   border: 1px solid var(--panel-border);
   border-radius: 10px;
-  background: rgba(20, 26, 40, 0.6);
+  background: var(--grid-bg);
 }
 
 .samples-panel__grid:focus {
@@ -998,7 +1016,7 @@ body {
   padding: 6px 12px;
   border-radius: 10px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.8);
+  background: var(--input-bg);
   color: var(--panel-text);
 }
 
@@ -1110,12 +1128,20 @@ body {
 
 .detail-panel__link,
 .detail-panel__clone {
-  padding: 6px 12px;
+  padding: 5px 9px;
   border-radius: 10px;
   border: 1px solid var(--panel-border);
   background: transparent;
   color: var(--panel-text);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detail-panel__link.is-on {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
 }
 
 .detail-panel__tabs {
@@ -1232,7 +1258,7 @@ body {
   padding: 6px;
   border-radius: 12px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.98);
+  background: var(--dropdown-bg);
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
@@ -1319,7 +1345,7 @@ body {
   min-height: 240px;
   border-radius: 10px;
   border: 1px solid var(--panel-border);
-  background: rgba(20, 26, 40, 0.8);
+  background: var(--input-bg);
   color: var(--panel-text);
   padding: 10px;
   font-family: "JetBrains Mono", "Consolas", "Courier New", monospace;
@@ -1333,4 +1359,96 @@ body {
   background: transparent;
   color: var(--accent);
   cursor: pointer;
+}
+
+/* ── Sparkline (DMON-032) ───────────────────────────────────────── */
+
+.topic-explorer__sparkline-cell {
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+
+.topic-explorer__sparkline {
+  display: block;
+  overflow: visible;
+}
+
+/* ── Expand-All mode (DMON-030) ─────────────────────────────────── */
+
+.samples-panel__expand-all-list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.samples-panel__expand-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel-bg);
+  padding: 10px 14px;
+}
+
+.samples-panel__expand-card-header {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: var(--panel-muted);
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.samples-panel__expand-card-header span {
+  white-space: nowrap;
+}
+
+.samples-panel__expand-json {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--panel-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  max-height: calc(100% - 40px);
+  overflow-y: auto;
+}
+
+/* ── All Samples Panel ──────────────────────────────────────────── */
+
+.all-samples-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+/* ── Grid Settings toolbar buttons ─────────────────────────────── */
+
+.samples-panel__settings-btn,
+.samples-panel__expand-btn,
+.samples-panel__filter-btn {
+  padding: 5px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--panel-text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.samples-panel__settings-btn:hover,
+.samples-panel__expand-btn:hover,
+.samples-panel__filter-btn:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.samples-panel__expand-btn.is-on {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
 }

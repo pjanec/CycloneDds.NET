@@ -3,7 +3,7 @@
 
 @if (ContextMenuService.Current is { } menu)
 {
-    <div class="context-menu-overlay" tabindex="0" @ref="_overlayRef" @onmousedown="Close" @onkeydown="HandleKeyDown" @oncontextmenu="Close" @oncontextmenu:preventDefault="true">
+    <div class="context-menu-overlay" tabindex="0" @ref="_overlayRef" @onmouseup="HandleOverlayMouseUp" @onkeydown="HandleKeyDown" @oncontextmenu:preventDefault="true" @oncontextmenu="HandleOverlayContextMenu">
         <div class="context-menu" style="@GetMenuStyle(menu)" @onmousedown:stopPropagation="true" @oncontextmenu:preventDefault="true" @oncontextmenu:stopPropagation="true">
             @foreach (var item in menu.Items)
             {
@@ -22,6 +22,11 @@
 @code {
     private ElementReference _overlayRef;
     private bool _focusRequested;
+    // When the menu first appears the right-mouse button has not yet been released.
+    // Two separate guards ensure the opening mouseup AND contextmenu events are each
+    // independently absorbed without cascading into one another.
+    private bool _ignoreNextMouseUp;
+    private bool _ignoreNextContextMenu;
 
     protected override void OnInitialized()
     {
@@ -42,9 +47,35 @@
         if (ContextMenuService.Current != null)
         {
             _focusRequested = true;
+            // Arm both guards so neither the mouseup nor the contextmenu event fired by
+            // the opening right-click can immediately close the newly shown menu.
+            _ignoreNextMouseUp = true;
+            _ignoreNextContextMenu = true;
         }
 
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleOverlayMouseUp()
+    {
+        if (_ignoreNextMouseUp)
+        {
+            _ignoreNextMouseUp = false;
+            return;
+        }
+
+        ContextMenuService.Hide();
+    }
+
+    private void HandleOverlayContextMenu()
+    {
+        if (_ignoreNextContextMenu)
+        {
+            _ignoreNextContextMenu = false;
+            return;
+        }
+
+        ContextMenuService.Hide();
     }
 
     private void Close()

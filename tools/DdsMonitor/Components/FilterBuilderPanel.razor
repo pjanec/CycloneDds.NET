@@ -25,16 +25,19 @@
             <span class="filter-builder__label">Topic</span>
             <TopicPicker Topics="TopicRegistry.AllTopics" Placeholder="Search topics..." OnTopicSelected="SelectTopic" OnClosed="OnPickerClosed" />
         </div>
-        <div class="filter-builder__selector">
-            <span class="filter-builder__label">Target Panel</span>
-            <select class="filter-builder__select" value="@_targetPanelId" @onchange="OnTargetChanged">
-                <option value="">Select samples panel...</option>
-                @foreach (var panel in GetSamplesPanels())
-                {
-                    <option value="@panel.PanelId">@panel.Title</option>
-                }
-            </select>
-        </div>
+        @if (string.IsNullOrWhiteSpace(LockedTargetPanelId))
+        {
+            <div class="filter-builder__selector">
+                <span class="filter-builder__label">Target Panel</span>
+                <select class="filter-builder__select" value="@_targetPanelId" @onchange="OnTargetChanged">
+                    <option value="">Select samples panel...</option>
+                    @foreach (var panel in GetSamplesPanels())
+                    {
+                        <option value="@panel.PanelId">@panel.Title</option>
+                    }
+                </select>
+            </div>
+        }
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_errorMessage))
@@ -57,12 +60,48 @@
     private TopicMetadata? _topicMetadata;
     private string? _targetPanelId;
     private string? _errorMessage;
+    private bool _initialised;
+
+    [CascadingParameter]
+    public PanelState? PanelState { get; set; }
+
+    /// <summary>
+    /// When set, the Filter Builder will target this specific panel and not allow changing the target.
+    /// </summary>
+    [Parameter]
+    public string? LockedTargetPanelId { get; set; }
+
+    /// <summary>
+    /// When set, pre-loads the topic metadata for building conditions.
+    /// </summary>
+    [Parameter]
+    public TopicMetadata? PreloadedTopicMetadata { get; set; }
 
     protected override void OnInitialized()
     {
         WindowManager.PanelsChanged += HandlePanelsChanged;
         EnsureDefaultTarget();
         EnsureRootNodes();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_initialised)
+        {
+            return;
+        }
+
+        _initialised = true;
+
+        if (PreloadedTopicMetadata != null)
+        {
+            _topicMetadata = PreloadedTopicMetadata;
+        }
+
+        if (!string.IsNullOrWhiteSpace(LockedTargetPanelId))
+        {
+            _targetPanelId = LockedTargetPanelId;
+        }
     }
 
     private void HandlePanelsChanged()
@@ -73,7 +112,7 @@
 
     private void EnsureDefaultTarget()
     {
-        if (!string.IsNullOrWhiteSpace(_targetPanelId))
+        if (!string.IsNullOrWhiteSpace(LockedTargetPanelId) || !string.IsNullOrWhiteSpace(_targetPanelId))
         {
             return;
         }
@@ -155,19 +194,9 @@
 
     private void AddCondition(FilterGroupNode group)
     {
+        // Start with an empty condition so the user must choose the field from the picker.
+        // Avoid auto-selecting the first field, which previously caused the "id" pre-fill bug.
         var condition = new FilterConditionNode();
-        var fields = GetAvailableFields();
-        var firstField = fields.FirstOrDefault();
-        if (firstField != null)
-        {
-            ApplyField(condition, firstField);
-        }
-        else
-        {
-            condition.FieldPath = "Payload.Field";
-            condition.ValueText = "0";
-        }
-
         group.Children.Add(condition);
     }
 
@@ -434,7 +463,8 @@
     {
         _errorMessage = null;
 
-        if (string.IsNullOrWhiteSpace(_targetPanelId))
+        var targetId = string.IsNullOrWhiteSpace(LockedTargetPanelId) ? _targetPanelId : LockedTargetPanelId;
+        if (string.IsNullOrWhiteSpace(targetId))
         {
             _errorMessage = "Select a target samples panel.";
             return;
@@ -448,7 +478,7 @@
             return;
         }
 
-        EventBroker.Publish(new ApplyFilterRequestEvent(_targetPanelId, expression));
+        EventBroker.Publish(new ApplyFilterRequestEvent(targetId, expression));
     }
 
     private void ClearFilter()
@@ -457,9 +487,10 @@
         AddCondition(_root);
         _errorMessage = null;
 
-        if (!string.IsNullOrWhiteSpace(_targetPanelId))
+        var targetId = string.IsNullOrWhiteSpace(LockedTargetPanelId) ? _targetPanelId : LockedTargetPanelId;
+        if (!string.IsNullOrWhiteSpace(targetId))
         {
-            EventBroker.Publish(new ApplyFilterRequestEvent(_targetPanelId, string.Empty));
+            EventBroker.Publish(new ApplyFilterRequestEvent(targetId, string.Empty));
         }
     }
 

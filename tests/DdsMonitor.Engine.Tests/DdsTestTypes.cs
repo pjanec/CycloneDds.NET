@@ -75,3 +75,17 @@ public partial struct OtherTopic
 {
     public int Id;
 }
+
+public enum SampleStatus
+{
+    Unknown = 0,
+    Active = 1,
+    Inactive = 2
+}
+
+[DdsTopic("StatusTopic")]
+public partial struct StatusTopic
+{
+    public int Id;
+    public SampleStatus Status;
+}

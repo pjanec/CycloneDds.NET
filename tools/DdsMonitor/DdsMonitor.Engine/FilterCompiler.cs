@@ -52,7 +52,11 @@ public sealed class FilterCompiler : IFilterCompiler
             var parameters = new List<ParameterExpression> { parameter };
             for (var i = 0; i < payloadFields.Count; i++)
             {
-                parameters.Add(Expression.Parameter(payloadFields[i].ValueType, GetPayloadParameterName(i)));
+                // Enum fields are promoted to int so that integer literals emitted by
+                // FilterConditionNode.FormatValue() can be compared without Dynamic LINQ
+                // needing to resolve the fully-qualified enum type name.
+                var paramType = payloadFields[i].ValueType.IsEnum ? typeof(int) : payloadFields[i].ValueType;
+                parameters.Add(Expression.Parameter(paramType, GetPayloadParameterName(i)));
             }
 
             var payloadLambda = DynamicExpressionParser.ParseLambda(
@@ -123,7 +127,14 @@ public sealed class FilterCompiler : IFilterCompiler
     private static object? GetFieldValue(SampleData sample, FieldMetadata field)
     {
         var target = field.IsSynthetic ? sample : sample.Payload;
-        return field.Getter(target!);
+        var value = field.Getter(target!);
+        // Enum values are promoted to int to match the Dynamic LINQ parameter type.
+        if (value != null && value.GetType().IsEnum)
+        {
+            return Convert.ToInt32(value);
+        }
+
+        return value;
     }
 
 }

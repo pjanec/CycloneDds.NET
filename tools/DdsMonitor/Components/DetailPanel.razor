@@ -23,10 +23,22 @@ else
 {
     <div class="detail-panel">
         <div class="detail-panel__toolbar">
-            <button type="button" class="detail-panel__link" @onclick="ToggleLinkMode">
-                @(_linked ? "Linked" : "Detached")
+            <button type="button"
+                    title="@(_linked ? "Linked \u2013 follows sample selection" : "Detached \u2013 pinned to this sample")"
+                    class="detail-panel__link @(_linked ? "is-on" : string.Empty)"
+                    @onclick="ToggleLinkMode">
+                @if (_linked)
+                {
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                }
+                else
+                {
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.72-1.71"/><line x1="8" y1="2" x2="8" y2="5"/><line x1="2" y1="8" x2="5" y2="8"/><line x1="16" y1="19" x2="16" y2="22"/><line x1="19" y1="16" x2="22" y2="16"/></svg>
+                }
             </button>
-            <button type="button" class="detail-panel__clone" @onclick="CloneToSend">Clone to Send</button>
+            <button type="button" title="Clone this sample payload to the Sender" class="detail-panel__clone" @onclick="CloneToSend">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
         </div>
 
         <div class="detail-panel__tabs">
