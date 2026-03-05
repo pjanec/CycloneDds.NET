@@ -332,7 +332,7 @@
             <div class="filter-builder__group-actions">
                 <button type="button" class="filter-builder__btn" @onclick="() => AddCondition(group)">+ Condition</button>
                 <button type="button" class="filter-builder__btn" @onclick="() => AddGroup(group)">+ Sub-Group</button>
-                <button type="button" class="filter-builder__btn" @onclick="() => ToggleNegation(group)">!</button>
+                <button type="button" class="filter-builder__btn filter-builder__negate @(group.IsNegated ? "is-active" : string.Empty)" @onclick="() => ToggleNegation(group)">!</button>
                 @if (!isRoot)
                 {
                     <button type="button" class="filter-builder__btn" @onclick="() => RemoveNodeFromParent(group)">X</button>
@@ -361,7 +361,7 @@
                         <div class="filter-builder__value">
                             @RenderValueEditor(condition)
                         </div>
-                        <button type="button" class="filter-builder__btn" @onclick="() => ToggleNegation(condition)">!</button>
+                        <button type="button" class="filter-builder__btn filter-builder__negate @(condition.IsNegated ? "is-active" : string.Empty)" @onclick="() => ToggleNegation(condition)">!</button>
                         <button type="button" class="filter-builder__btn" @onclick="() => RemoveNode(group, condition)">X</button>
                     </div>
                 }

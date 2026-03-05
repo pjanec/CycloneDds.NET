@@ -160,6 +160,7 @@
         {
             var panelState = WindowManager.SpawnPanel(TopicExplorerTypeName);
             panelState.Title = "Topics";
+            panelState.Width = 840;
         }
 
         if (!hasAllSamples)
@@ -169,7 +170,7 @@
             allPanel.Title = "All Samples";
             allPanel.X = 480;
             allPanel.Y = 40;
-            allPanel.Width = 560;
+            allPanel.Width = 1120;
             allPanel.Height = 360;
         }
 
@@ -392,7 +393,10 @@
     private static bool IsHideOnClosePanel(PanelState panel)
     {
         return panel.ComponentTypeName.Contains("SamplesPanel", StringComparison.Ordinal) ||
-               panel.ComponentTypeName.Contains("FilterBuilderPanel", StringComparison.Ordinal);
+               panel.ComponentTypeName.Contains("FilterBuilderPanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("DetailPanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("TopicExplorerPanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("InstancesPanel", StringComparison.Ordinal);
     }
 
     private void LoadWorkspace()

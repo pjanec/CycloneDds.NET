@@ -131,7 +131,8 @@
     @if (_showColumnPicker)
     {
         <div class="samples-panel__overlay">
-            <ColumnPickerDialog Title="Columns"
+            <ColumnPickerDialog @key="_columnPickerRevision"
+                                Title="Columns"
                                 AvailableFields="@_availableColumns"
                                 SelectedFields="@_selectedColumns"
                                 OnApply="ApplyColumns"
@@ -221,6 +222,8 @@
     private bool _viewDirty = true;
     private int _lastAllSamplesCount = -1;
     private Action? _viewRebuiltHandler;
+    private readonly Dictionary<FieldMetadata, Type> _fieldTopicTypes = new();
+    private int _columnPickerRevision;
 
     [CascadingParameter]
     public PanelState? PanelState { get; set; }
@@ -274,12 +277,29 @@
     {
         _availableColumns.Clear();
         _selectedColumns.Clear();
+        _fieldTopicTypes.Clear();
 
         if (TopicMetadata == null)
         {
-            // All-topics mode: no payload columns; structural columns are added by RebuildLayoutColumns.
+            // All-topics mode: aggregate non-synthetic fields from all registered topics.
             _sizeField = null;
             _delayField = null;
+            PopulateAllTopicsAvailableColumns();
+
+            // Restore previously selected columns by matching structured names.
+            if (_savedSelectedColumnKeys != null && _savedSelectedColumnKeys.Count > 0)
+            {
+                foreach (var key in _savedSelectedColumnKeys)
+                {
+                    var match = _availableColumns.FirstOrDefault(field =>
+                        string.Equals(field.StructuredName, key, StringComparison.Ordinal));
+                    if (match != null)
+                    {
+                        _selectedColumns.Add(match);
+                    }
+                }
+            }
+
             RebuildLayoutColumns();
             SavePanelState();
             return;
@@ -323,6 +343,29 @@
 
         RebuildLayoutColumns();
         SavePanelState();
+    }
+
+    /// <summary>
+    /// Builds _availableColumns and _fieldTopicTypes from all currently registered topics.
+    /// Deduplicates by StructuredName, keeping the first-encountered field.
+    /// </summary>
+    private void PopulateAllTopicsAvailableColumns()
+    {
+        _availableColumns.Clear();
+        _fieldTopicTypes.Clear();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var topic in TopicRegistry.AllTopics)
+        {
+            foreach (var field in topic.AllFields)
+            {
+                if (!field.IsSynthetic && seen.Add(field.StructuredName))
+                {
+                    _availableColumns.Add(field);
+                    _fieldTopicTypes[field] = topic.TopicType;
+                }
+            }
+        }
     }
 
     private void StartRefreshTimer()
@@ -376,6 +419,13 @@
 
     private void ToggleColumnPicker()
     {
+        if (!_showColumnPicker && TopicMetadata == null)
+        {
+            // Always refresh the master field list from the live topic registry before showing the picker.
+            PopulateAllTopicsAvailableColumns();
+            _columnPickerRevision++;
+        }
+
         _showColumnPicker = !_showColumnPicker;
     }
 
@@ -425,7 +475,7 @@
         panel.Title = TopicMetadata != null
             ? $"Filter [{TopicMetadata.ShortName}]"
             : "Filter [All Topics]";
-        panel.Width = 520;
+        panel.Width = 1040;
         panel.Height = 480;
     }
 
@@ -624,6 +674,7 @@
                 [nameof(DetailPanel.SourcePanelId)] = sourcePanelId,
                 [nameof(DetailPanel.IsLinked)] = shouldLink
             });
+            panel.Width = 546;
         }
         else
         {
@@ -945,8 +996,28 @@
 
     private object? GetFieldValue(FieldMetadata field, SampleData sample)
     {
-        var target = field.IsSynthetic ? sample : sample.Payload;
-        return field.Getter(target!);
+        var target = field.IsSynthetic ? (object)sample : sample.Payload;
+        if (target == null)
+        {
+            return null;
+        }
+
+        // In all-topics mode, skip fields that belong to a different topic type to avoid
+        // casting exceptions when the getter is invoked on an incompatible payload.
+        if (_fieldTopicTypes.TryGetValue(field, out var expectedTopicType) &&
+            expectedTopicType != sample.TopicMetadata.TopicType)
+        {
+            return null;
+        }
+
+        try
+        {
+            return field.Getter(target);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private Task HandleViewRebuiltAsync()

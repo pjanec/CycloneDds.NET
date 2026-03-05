@@ -16,6 +16,9 @@ public sealed class DdsBridge : IDdsBridge
     private readonly Dictionary<Type, IDynamicReader> _activeReaders = new();
     private bool _disposed;
 
+    /// <inheritdoc />
+    public event Action? ReadersChanged;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="DdsBridge"/> class.
     /// </summary>
@@ -77,6 +80,7 @@ public sealed class DdsBridge : IDdsBridge
                 reader = CreateReader(meta);
                 reader.Start(CurrentPartition);
                 _activeReaders[meta.TopicType] = reader;
+                ReadersChanged?.Invoke();
                 return true;
             }
             catch (Exception ex) when (TryGetDescriptorError(ex, out var message))
@@ -108,6 +112,7 @@ public sealed class DdsBridge : IDdsBridge
 
             _activeReaders.Remove(meta.TopicType);
             reader.Dispose();
+            ReadersChanged?.Invoke();
         }
     }
 

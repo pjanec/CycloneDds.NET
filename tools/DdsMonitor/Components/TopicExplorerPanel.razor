@@ -96,6 +96,7 @@
     protected override void OnInitialized()
     {
         RefreshTopics();
+        DdsBridge.ReadersChanged += HandleReadersChanged;
         StartRefreshTimer();
         StartSparklineTimer();
     }
@@ -144,6 +145,11 @@
         RefreshTopics();
         StateHasChanged();
         return Task.CompletedTask;
+    }
+
+    private void HandleReadersChanged()
+    {
+        _ = InvokeAsync(RefreshAndRender);
     }
 
     private void RefreshTopics()
@@ -419,13 +425,31 @@
         });
 
         panel.Title = $"Samples [{metadata.ShortName}]";
+        panel.Width = 840;
     }
 
     private void OpenInstancesPanel(TopicMetadata metadata)
     {
+        const string instancesTopicTypeKey = "InstancesPanel.TopicTypeName";
+        var instanceTypeName = typeof(InstancesPanel).AssemblyQualifiedName!;
+        var stableId = GetStableInstancesPanelId(metadata);
+
+        // First: look for a panel with the stable ID (fastest path after first creation).
         foreach (var existingPanel in WindowManager.ActivePanels)
         {
-            if (!string.Equals(existingPanel.ComponentTypeName, typeof(InstancesPanel).AssemblyQualifiedName, StringComparison.Ordinal))
+            if (string.Equals(existingPanel.PanelId, stableId, StringComparison.Ordinal))
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+        }
+
+        // Second: look for any matching InstancesPanel by live TopicMetadata or stored type name.
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(existingPanel.ComponentTypeName, instanceTypeName, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -438,18 +462,57 @@
                 WindowManager.BringToFront(existingPanel.PanelId);
                 return;
             }
+
+            if (existingPanel.ComponentState.TryGetValue(instancesTopicTypeKey, out var typeObj))
+            {
+                var typeName = typeObj is System.Text.Json.JsonElement el
+                    ? el.GetString()
+                    : typeObj?.ToString();
+                if (!string.IsNullOrWhiteSpace(typeName))
+                {
+                    var resolved = Type.GetType(typeName);
+                    if (resolved == metadata.TopicType)
+                    {
+                        existingPanel.IsHidden = false;
+                        existingPanel.IsMinimized = false;
+                        WindowManager.BringToFront(existingPanel.PanelId);
+                        return;
+                    }
+                }
+            }
         }
 
-        var panel = WindowManager.SpawnPanel(typeof(InstancesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        // Create a new panel with a stable PanelId.
+        var panel = WindowManager.SpawnPanel(instanceTypeName, new Dictionary<string, object>
         {
             [nameof(InstancesPanel.TopicMetadata)] = metadata
         });
 
+        panel.PanelId = stableId;
         panel.Title = $"Instances [{metadata.ShortName}]";
+        panel.Width = 840;
+    }
+
+    private static string GetStableInstancesPanelId(TopicMetadata metadata)
+    {
+        var key = metadata.TopicType.FullName ?? metadata.ShortName;
+        unchecked
+        {
+            // FNV-1a hash: deterministic across sessions (unlike string.GetHashCode()).
+            var hash = 2166136261u;
+            foreach (var c in key)
+            {
+                hash ^= (uint)c;
+                hash *= 16777619u;
+            }
+
+            return FormattableString.Invariant($"InstancesPanel.T{hash:X8}");
+        }
     }
 
     public void Dispose()
     {
+        DdsBridge.ReadersChanged -= HandleReadersChanged;
         _refreshTimer?.Dispose();
         _sparklineTimer?.Dispose();
     }

@@ -48,4 +48,9 @@ public interface IDdsBridge : IDisposable
     /// Gets the current map of active readers by topic type.
     /// </summary>
     IReadOnlyDictionary<Type, IDynamicReader> ActiveReaders { get; }
+
+    /// <summary>
+    /// Raised when the set of active readers changes (subscribe or unsubscribe).
+    /// </summary>
+    event Action? ReadersChanged;
 }

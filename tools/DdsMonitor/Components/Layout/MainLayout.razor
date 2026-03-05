@@ -10,15 +10,34 @@
 @inject IJSRuntime JSRuntime
 @inject WorkspacePersistenceService WorkspacePersistence
 
-<div class="app-shell">
-    <div class="app-toolbar">
-        <button type="button" class="app-toolbar__button" @onclick="OpenTopicsPanel">Topics</button>
-        <button type="button" class="app-toolbar__button" @onclick="OpenFilterBuilder">Filter Builder</button>
-        <button type="button" class="app-toolbar__button" @onclick="ResetLayout">Reset Layout</button>
-        <button type="button" class="app-toolbar__button" @onclick="ExportWorkspace">Export Layout</button>
-        <label class="app-toolbar__button" for="workspaceImport">Import Layout</label>
-        <button type="button" class="app-toolbar__button" @onclick="ToggleTheme">@GetThemeLabel()</button>
-    </div>
+<div class="app-shell" @onclick="CloseMenus">
+    <nav class="app-menu" @onclick:stopPropagation="true">
+        <span class="app-menu__brand">DDS Monitor</span>
+
+        <div class="app-menu__item @(_openMenu == "file" ? "is-open" : string.Empty)">
+            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("file")'>File</button>
+            <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="ResetLayout">Reset Layout</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="ExportWorkspace">Export Layout</button>
+                <label class="app-menu__dropdown-item" for="workspaceImport" @onclick="CloseMenus">Import Layout</label>
+            </div>
+        </div>
+
+        <div class="app-menu__item @(_openMenu == "view" ? "is-open" : string.Empty)">
+            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("view")'>View</button>
+            <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="ToggleTheme">@GetThemeLabel()</button>
+            </div>
+        </div>
+
+        <div class="app-menu__item @(_openMenu == "windows" ? "is-open" : string.Empty)">
+            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("windows")'>Windows</button>
+            <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicsPanel">Topics</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenAllSamplesPanel">All Samples</button>
+            </div>
+        </div>
+    </nav>
     <InputFile id="workspaceImport" OnChange="ImportWorkspace" style="display:none" accept=".workspace,application/json" />
     <div class="app-shell__content">
         @Body
@@ -27,12 +46,29 @@
 
 @code {
     private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
-    private static readonly string FilterBuilderTypeName = typeof(FilterBuilderPanel).AssemblyQualifiedName!;
+    private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
     private const string WorkspaceExportFileName = "ddsmon.workspace";
+    private const string AllSamplesTopicTypeKey = "SamplesPanel.TopicTypeName";
     private string _theme = "dark";
+    private string? _openMenu;
+
+    private void ToggleMenu(string menuName)
+    {
+        _openMenu = string.Equals(_openMenu, menuName, StringComparison.Ordinal) ? null : menuName;
+    }
+
+    private void CloseMenus()
+    {
+        if (_openMenu != null)
+        {
+            _openMenu = null;
+            StateHasChanged();
+        }
+    }
 
     private void OpenTopicsPanel()
     {
+        CloseMenus();
         foreach (var panel in WindowManager.ActivePanels)
         {
             if (string.Equals(panel.ComponentTypeName, TopicExplorerTypeName, StringComparison.Ordinal))
@@ -46,13 +82,16 @@
 
         var newPanel = WindowManager.SpawnPanel(TopicExplorerTypeName);
         newPanel.Title = "Topics";
+        newPanel.Width = 840;
     }
 
-    private void OpenFilterBuilder()
+    private void OpenAllSamplesPanel()
     {
+        CloseMenus();
         foreach (var panel in WindowManager.ActivePanels)
         {
-            if (string.Equals(panel.ComponentTypeName, FilterBuilderTypeName, StringComparison.Ordinal))
+            if (string.Equals(panel.ComponentTypeName, SamplesPanelTypeName, StringComparison.Ordinal) &&
+                !panel.ComponentState.ContainsKey(AllSamplesTopicTypeKey))
             {
                 panel.IsMinimized = false;
                 panel.IsHidden = false;
@@ -61,12 +100,18 @@
             }
         }
 
-        var newPanel = WindowManager.SpawnPanel(FilterBuilderTypeName);
-        newPanel.Title = "Filter Builder";
+        var allPanel = WindowManager.SpawnPanel(SamplesPanelTypeName);
+        allPanel.PanelId = "SamplesPanel.0";
+        allPanel.Title = "All Samples";
+        allPanel.X = 480;
+        allPanel.Y = 40;
+        allPanel.Width = 1120;
+        allPanel.Height = 360;
     }
 
     private void ResetLayout()
     {
+        CloseMenus();
         var filePath = WorkspaceState.WorkspaceFilePath;
         if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
         {
@@ -82,6 +127,7 @@
 
     private async Task ExportWorkspace()
     {
+        CloseMenus();
         var json = WorkspacePersistence.ExportWorkspaceJson();
         await JSRuntime.InvokeVoidAsync("ddsMonitor.downloadTextFile", WorkspaceExportFileName, json, "application/json");
     }
@@ -119,6 +165,7 @@
 
     private async Task ToggleTheme()
     {
+        CloseMenus();
         _theme = await JSRuntime.InvokeAsync<string>("ddsMonitor.toggleTheme");
     }
 
