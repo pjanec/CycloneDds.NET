@@ -9,6 +9,11 @@ namespace DdsMonitor.Engine;
 public interface ITopicRegistry
 {
     /// <summary>
+    /// Event raised when the topic registry changes (e.g. new topics added).
+    /// </summary>
+    event Action? Changed;
+
+    /// <summary>
     /// Gets all registered topics.
     /// </summary>
     IReadOnlyList<TopicMetadata> AllTopics { get; }

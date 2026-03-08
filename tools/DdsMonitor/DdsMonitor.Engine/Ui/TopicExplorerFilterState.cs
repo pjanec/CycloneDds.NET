@@ -57,22 +57,22 @@ public sealed class TopicExplorerFilterState
     /// <summary>
     /// Gets the received filter state.
     /// </summary>
-    public TriStateFilter Received { get; private set; } = TriStateFilter.Ignore;
+    public TriStateFilter Received { get; set; } = TriStateFilter.Ignore;
 
     /// <summary>
     /// Gets the subscribed filter state.
     /// </summary>
-    public TriStateFilter Subscribed { get; private set; } = TriStateFilter.Ignore;
+    public TriStateFilter Subscribed { get; set; } = TriStateFilter.Ignore;
 
     /// <summary>
     /// Gets the keyed filter state.
     /// </summary>
-    public TriStateFilter Keyed { get; private set; } = TriStateFilter.Ignore;
+    public TriStateFilter Keyed { get; set; } = TriStateFilter.Ignore;
 
     /// <summary>
     /// Gets the alive filter state.
     /// </summary>
-    public TriStateFilter Alive { get; private set; } = TriStateFilter.Ignore;
+    public TriStateFilter Alive { get; set; } = TriStateFilter.Ignore;
 
     /// <summary>
     /// Advances the specified filter through Ignore -> Include -> Exclude -> Ignore.

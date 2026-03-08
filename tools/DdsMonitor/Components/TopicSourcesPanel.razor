@@ -1,0 +1,245 @@
+@implements IDisposable
+
+@inject IAssemblySourceService AssemblySourceService
+
+@* ──────────────────────────────────────────────────────────────────────────
+   TopicSourcesPanel.razor
+   Master-detail panel for managing external DLL assemblies whose DDS topic
+   types are loaded into the monitor's topic registry.
+
+   Top half  – selectable list of configured assemblies with Add / Remove /
+               Move Up / Move Down controls and a per-row topic count.
+   Bottom half – grid listing every topic type extracted from the selected
+               assembly.
+   ────────────────────────────────────────────────────────────────────────── *@
+
+<div class="topic-sources">
+
+    <!-- ── Toolbar ───────────────────────────────────────────────── -->
+    <div class="topic-sources__toolbar">
+        <span class="topic-sources__title">Assemblies</span>
+        <button class="topic-sources__btn" title="Add DLL assembly" @onclick="OpenAddDialog">
+            <!-- Plus icon -->
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add
+        </button>
+        <button class="topic-sources__btn" title="Remove selected assembly"
+                disabled="@(_selectedIndex < 0)"
+                @onclick="RemoveSelected">
+            <!-- Trash icon -->
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6"/>
+                <path d="M14 11v6"/>
+            </svg>
+            Remove
+        </button>
+        <button class="topic-sources__btn" title="Move up"
+                disabled="@(_selectedIndex <= 0)"
+                @onclick="MoveSelectedUp">↑</button>
+        <button class="topic-sources__btn" title="Move down"
+                disabled="@(_selectedIndex < 0 || _selectedIndex >= _entries.Count - 1)"
+                @onclick="MoveSelectedDown">↓</button>
+    </div>
+
+    <!-- ── Assembly list ─────────────────────────────────────────── -->
+    <div class="topic-sources__assembly-list">
+        @for (var i = 0; i < _entries.Count; i++)
+        {
+            var idx = i;
+            var entry = _entries[i];
+            var isSelected = idx == _selectedIndex;
+            var rowClass = "topic-sources__assembly-row" + (isSelected ? " is-selected" : string.Empty);
+            var statusClass = entry.LoadError != null ? " topic-sources__badge--error" : string.Empty;
+
+            <div class="@rowClass" @onclick="() => SelectEntry(idx)">
+                <span class="topic-sources__assembly-path" title="@entry.Path">@entry.Path</span>
+                <span class="topic-sources__badge@statusClass" title="@(entry.LoadError ?? string.Empty)">
+                    @(entry.LoadError != null
+                        ? "Error"
+                        : entry.TopicCount < 0
+                            ? "—"
+                            : $"{entry.TopicCount} topic{(entry.TopicCount == 1 ? string.Empty : "s")}")
+                </span>
+            </div>
+        }
+
+        @if (_entries.Count == 0)
+        {
+            <div class="topic-sources__empty">
+                No assemblies configured. Click <strong>Add</strong> to link a DLL.
+            </div>
+        }
+    </div>
+
+    <!-- ── Topic detail list ─────────────────────────────────────── -->
+    <div class="topic-sources__detail-header">
+        Topics in selected assembly
+        @if (_selectedIndex >= 0)
+        {
+            <span class="topic-sources__detail-count">(@_selectedTopics.Count)</span>
+        }
+    </div>
+    <div class="topic-sources__detail-list">
+        @if (_selectedIndex < 0)
+        {
+            <div class="topic-sources__empty">Select an assembly above to inspect its topics.</div>
+        }
+        else if (_selectedTopics.Count == 0)
+        {
+            <div class="topic-sources__empty">No DDS topic types were found in this assembly.</div>
+        }
+        else
+        {
+            <table class="topic-sources__detail-table">
+                <thead>
+                    <tr>
+                        <th>Topic Name</th>
+                        <th>CLR Type</th>
+                        <th>Keyed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var topic in _selectedTopics)
+                    {
+                        <tr>
+                            <td>@topic.TopicName</td>
+                            <td>@topic.TopicType.Name</td>
+                            <td>@(topic.IsKeyed ? "✓" : string.Empty)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+</div>
+
+<!-- ── File dialog for DLL picker ────────────────────────────────────── -->
+<FileDialog IsOpen="_fileDialogOpen"
+            Mode="FileDialogMode.Open"
+            Filter="*.dll"
+            InitialPath="@_lastOpenedPath"
+            OnResult="OnFileDialogResult" />
+
+@code {
+    private IReadOnlyList<AssemblySourceEntry> _entries = Array.Empty<AssemblySourceEntry>();
+    private IReadOnlyList<TopicMetadata> _selectedTopics = Array.Empty<TopicMetadata>();
+    private int _selectedIndex = -1;
+    private bool _fileDialogOpen;
+    private static string _lastOpenedPath = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        AssemblySourceService.Changed += OnServiceChanged;
+        Refresh();
+    }
+
+    private void OnServiceChanged(object? sender, EventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            Refresh();
+            StateHasChanged();
+        });
+    }
+
+    private void Refresh()
+    {
+        _entries = AssemblySourceService.Entries;
+
+        // Clamp selected index.
+        if (_selectedIndex >= _entries.Count)
+        {
+            _selectedIndex = _entries.Count - 1;
+        }
+
+        RefreshSelectedTopics();
+    }
+
+    private void RefreshSelectedTopics()
+    {
+        _selectedTopics = _selectedIndex >= 0
+            ? AssemblySourceService.GetTopicsForEntry(_selectedIndex)
+            : Array.Empty<TopicMetadata>();
+    }
+
+    private void SelectEntry(int index)
+    {
+        _selectedIndex = index;
+        RefreshSelectedTopics();
+    }
+
+    private void OpenAddDialog()
+    {
+        _fileDialogOpen = true;
+    }
+
+    private void OnFileDialogResult(string? result)
+    {
+        _fileDialogOpen = false;
+        if (!string.IsNullOrWhiteSpace(result))
+        {
+            try
+            {
+                _lastOpenedPath = System.IO.Path.GetDirectoryName(result) ?? string.Empty;
+            }
+            catch
+            {
+                // Fall back.
+            }
+            AssemblySourceService.Add(result);
+        }
+    }
+
+    private void RemoveSelected()
+    {
+        if (_selectedIndex < 0)
+        {
+            return;
+        }
+
+        var idx = _selectedIndex;
+        if (idx >= _entries.Count - 1)
+        {
+            _selectedIndex = _entries.Count - 2; // will be clamped after refresh
+        }
+
+        AssemblySourceService.Remove(idx);
+    }
+
+    private void MoveSelectedUp()
+    {
+        if (_selectedIndex <= 0)
+        {
+            return;
+        }
+
+        AssemblySourceService.MoveUp(_selectedIndex);
+        _selectedIndex--;
+        RefreshSelectedTopics();
+    }
+
+    private void MoveSelectedDown()
+    {
+        if (_selectedIndex < 0 || _selectedIndex >= _entries.Count - 1)
+        {
+            return;
+        }
+
+        AssemblySourceService.MoveDown(_selectedIndex);
+        _selectedIndex++;
+        RefreshSelectedTopics();
+    }
+
+    public void Dispose()
+    {
+        AssemblySourceService.Changed -= OnServiceChanged;
+    }
+}

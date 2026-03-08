@@ -12,6 +12,8 @@ public sealed class TopicRegistry : ITopicRegistry
     private readonly List<TopicMetadata> _topics = new();
     private readonly Dictionary<Type, TopicMetadata> _topicsByType = new();
     private readonly Dictionary<string, TopicMetadata> _topicsByName = new(StringComparer.Ordinal);
+    
+    public event Action? Changed;
 
     /// <inheritdoc />
     public IReadOnlyList<TopicMetadata> AllTopics
@@ -74,5 +76,7 @@ public sealed class TopicRegistry : ITopicRegistry
             _topicsByType[meta.TopicType] = meta;
             _topicsByName[meta.TopicName] = meta;
         }
+        
+        Changed?.Invoke();
     }
 }

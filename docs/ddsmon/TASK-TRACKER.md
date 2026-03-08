@@ -109,3 +109,4 @@
 - [ ] **DMON-056** — Keyboard shortcut system &nbsp; [details](./TASK-DETAIL.md#dmon-056--keyboard-shortcut-system)
 - [ ] **DMON-057** — Performance metrics dashboard &nbsp; [details](./TASK-DETAIL.md#dmon-057--performance-metrics-dashboard)
 - [x] **DMON-058** — Replay UI & Storage Polish (SampleState, Scrubber live update) &nbsp; [details](./TASK-DETAIL.md#dmon-058--replay-ui-and-storage-polish)
+- [x] **DMON-059** — Dynamic Topic Assembly Scanning & UI &nbsp; [details](./TASK-DETAIL.md#dmon-059--dynamic-topic-assembly-scanning)

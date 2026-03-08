@@ -9,6 +9,7 @@
 @inject IWorkspaceState WorkspaceState
 @inject IJSRuntime JSRuntime
 @inject WorkspacePersistenceService WorkspacePersistence
+@inject DevelSettings DevelSettings
 
 <div class="app-shell" @onclick="CloseMenus">
     <nav class="app-menu" @onclick:stopPropagation="true">
@@ -17,6 +18,8 @@
         <div class="app-menu__item @(_openMenu == "file" ? "is-open" : string.Empty)">
             <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("file")'>File</button>
             <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicSourcesPanel">Topic Sources…</button>
+                <div class="app-menu__dropdown-separator"></div>
                 <button type="button" class="app-menu__dropdown-item" @onclick="ResetLayout">Reset Layout</button>
                 <button type="button" class="app-menu__dropdown-item" @onclick="ExportWorkspace">Export Layout</button>
                 <label class="app-menu__dropdown-item" for="workspaceImport" @onclick="CloseMenus">Import Layout</label>
@@ -27,6 +30,15 @@
             <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("view")'>View</button>
             <div class="app-menu__dropdown">
                 <button type="button" class="app-menu__dropdown-item" @onclick="ToggleTheme">@GetThemeLabel()</button>
+            </div>
+        </div>
+
+        <div class="app-menu__item @(_openMenu == "devel" ? "is-open" : string.Empty)">
+            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("devel")'>Devel</button>
+            <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="ToggleSelfSending">
+                    @(DevelSettings.SelfSendEnabled ? "✓ " : string.Empty)Enable Self-Sending
+                </button>
             </div>
         </div>
 
@@ -51,6 +63,7 @@
     private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
     private static readonly string SendSamplePanelTypeName = typeof(SendSamplePanel).AssemblyQualifiedName!;
     private static readonly string ReplayPanelTypeName = typeof(ReplayPanel).AssemblyQualifiedName!;
+    private static readonly string TopicSourcesPanelTypeName = typeof(TopicSourcesPanel).AssemblyQualifiedName!;
     private const string WorkspaceExportFileName = "ddsmon.workspace";
     private const string AllSamplesTopicTypeKey = "SamplesPanel.TopicTypeName";
     private string _theme = "dark";
@@ -68,6 +81,34 @@
             _openMenu = null;
             StateHasChanged();
         }
+    }
+
+    private void OpenTopicSourcesPanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, TopicSourcesPanelTypeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var topicSourcesPanel = WindowManager.SpawnPanel(TopicSourcesPanelTypeName);
+        topicSourcesPanel.Title = "Topic Sources";
+        topicSourcesPanel.Width = 720;
+        topicSourcesPanel.Height = 520;
+        topicSourcesPanel.X = 200;
+        topicSourcesPanel.Y = 80;
+    }
+
+    private void ToggleSelfSending()
+    {
+        CloseMenus();
+        DevelSettings.SelfSendEnabled = !DevelSettings.SelfSendEnabled;
     }
 
     private void OpenTopicsPanel()

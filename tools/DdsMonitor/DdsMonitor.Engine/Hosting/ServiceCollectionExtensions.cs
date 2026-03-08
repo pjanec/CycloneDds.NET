@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Channels;
+using DdsMonitor.Engine.AssemblyScanner;
 using DdsMonitor.Engine.Export;
 using DdsMonitor.Engine.Import;
 using DdsMonitor.Engine.Replay;
@@ -33,16 +34,23 @@ public static class ServiceCollectionExtensions
         var settings = configuration.GetSection(DdsSettings.SectionName).Get<DdsSettings>() ?? new DdsSettings();
         services.AddSingleton(settings);
 
-        var topicRegistry = new TopicRegistry();
-        var discovery = new TopicDiscoveryService(topicRegistry);
-        discovery.Discover(settings.PluginDirectories);
-        services.AddSingleton<ITopicRegistry>(topicRegistry);
+        // Runtime developer/debug settings (live-togglable from the UI).
+        services.AddSingleton<DevelSettings>();
 
-        if (settings.SelfSendEnabled)
-        {
-            SelfSendTopics.Register(topicRegistry);
-            services.AddHostedService<SelfSendService>();
-        }
+        var topicRegistry = new TopicRegistry();
+        var discoveryService = new TopicDiscoveryService(topicRegistry);
+        discoveryService.Discover(settings.PluginDirectories);
+        services.AddSingleton<ITopicRegistry>(topicRegistry);
+        services.AddSingleton(discoveryService);
+
+        // Assembly source service: loads persisted DLL paths and scans them on start.
+        services.AddSingleton<IAssemblySourceService>(sp =>
+            new AssemblySourceService(
+                sp.GetRequiredService<ITopicRegistry>(),
+                sp.GetRequiredService<TopicDiscoveryService>()));
+
+        // SelfSendService is always registered; it stays dormant until DevelSettings.SelfSendEnabled is set.
+        services.AddHostedService<SelfSendService>();
 
         services.AddSingleton<IDdsBridge, DdsBridge>();
         services.AddSingleton<ISampleStore, SampleStore>();

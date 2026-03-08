@@ -17,14 +17,45 @@
         @RenderFilterButton("Alive", TopicFilterKind.Alive, _filters.Alive)
     </div>
 
+    @{
+        var allTopicCount = TopicRegistry.AllTopics.Count;
+    }
+
+    @if (allTopicCount == 0)
+    {
+        <div class="topic-explorer__no-topics-warning">
+            <strong>No topic models have been imported!</strong>
+            Open <strong>File → Topic Sources</strong> to link CycloneDDS DLL assemblies.
+            <button type="button" class="topic-explorer__no-topics-btn" @onclick="OpenTopicSourcesPanel">Open Topic Sources</button>
+        </div>
+    }
+
     <div class="topic-explorer__toolbar">
         <label class="topic-explorer__bulk">
             <input type="checkbox" checked="@AreAllSubscribed" @onchange="ToggleAllSubscriptions" />
             <span>Subscribe All</span>
         </label>
+        <span class="topic-explorer__count">@allTopicCount topic@(allTopicCount == 1 ? string.Empty : "s")</span>
+        <button type="button" class="topic-explorer__action topic-explorer__sources-btn"
+                title="Open Topic Sources" @onclick="OpenTopicSourcesPanel">
+            <!-- Gear / settings icon -->
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
+                         a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
+                         A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
+                         l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
+                         A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
+                         l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
+                         a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
+                         l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
+                         a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+        </button>
         <div class="topic-explorer__search">
             <span>Search:</span>
-            <input type="text" value="@_searchText" @oninput="OnSearchChanged" placeholder="type to filter topics..." />
+            <input type="text" value="@_searchText" @oninput="OnSearchChanged" placeholder="type to filter topics…" />
         </div>
     </div>
 
@@ -99,6 +130,11 @@
     protected override void OnInitialized()
     {
         DdsBridge.ReadersChanged += HandleReadersChanged;
+        TopicRegistry.Changed += HandleRegistryChanged;
+
+        // Auto-configure default UI filters
+        _filters.Received = TriStateFilter.Include;
+
         // Auto-subscribe all known topics at startup so the All Samples panel populates
         // immediately and the subscription checkboxes begin in the correct checked state.
         AutoSubscribeAll();
@@ -165,6 +201,34 @@
     private void HandleReadersChanged()
     {
         _ = InvokeAsync(RefreshAndRender);
+    }
+
+    private void HandleRegistryChanged()
+    {
+        AutoSubscribeAll();
+        _ = InvokeAsync(RefreshAndRender);
+    }
+
+    private void OpenTopicSourcesPanel()
+    {
+        var typeName = typeof(TopicSourcesPanel).AssemblyQualifiedName!;
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, typeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var topicSourcesPanel = WindowManager.SpawnPanel(typeName);
+        topicSourcesPanel.Title = "Topic Sources";
+        topicSourcesPanel.Width = 720;
+        topicSourcesPanel.Height = 520;
+        topicSourcesPanel.X = 200;
+        topicSourcesPanel.Y = 80;
     }
 
     private void RefreshTopics()
@@ -563,6 +627,7 @@
     public void Dispose()
     {
         DdsBridge.ReadersChanged -= HandleReadersChanged;
+        TopicRegistry.Changed -= HandleRegistryChanged;
         _refreshTimer?.Dispose();
         _sparklineTimer?.Dispose();
     }

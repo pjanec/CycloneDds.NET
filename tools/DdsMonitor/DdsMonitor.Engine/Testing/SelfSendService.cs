@@ -10,48 +10,31 @@ public sealed class SelfSendService : BackgroundService
 {
     private const int MinimumRateHz = 1;
     private const int SamplesPerPayload = 5;
+    private const int IdleCheckMs = 500;
 
     private readonly IDdsBridge _bridge;
     private readonly ITopicRegistry _topicRegistry;
     private readonly DdsSettings _settings;
+    private readonly DevelSettings _develSettings;
     private readonly Random _random = new();
 
     public SelfSendService(
         IDdsBridge bridge,
         ITopicRegistry topicRegistry,
-        DdsSettings settings)
+        DdsSettings settings,
+        DevelSettings develSettings)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _topicRegistry = topicRegistry ?? throw new ArgumentNullException(nameof(topicRegistry));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _develSettings = develSettings ?? throw new ArgumentNullException(nameof(develSettings));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_settings.SelfSendEnabled)
-        {
-            return;
-        }
-
-        var topics = GetSelfSendTopics();
-        if (topics.Count == 0)
-        {
-            return;
-        }
-
-        // Subscribe first so DynamicReaders exist and are wired to the ingestion channel.
-        foreach (var topic in topics)
-        {
-            _bridge.Subscribe(topic);
-        }
-
-        // Create DDS writers – samples flow through the real DDS middleware
-        // and are received by the DynamicReaders created above.
-        var writers = new List<IDynamicWriter>(topics.Count);
-        foreach (var topic in topics)
-        {
-            writers.Add(_bridge.GetWriter(topic));
-        }
+        List<IDynamicWriter>? writers = null;
+        bool registered = false;
+        bool wasEnabled = false;
 
         var rateHz = Math.Max(MinimumRateHz, _settings.SelfSendRateHz);
         var delay = TimeSpan.FromMilliseconds(1000d / rateHz);
@@ -62,23 +45,77 @@ public sealed class SelfSendService : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                for (var i = 0; i < topics.Count; i++)
+                var isEnabled = _develSettings.SelfSendEnabled;
+
+                if (isEnabled && !wasEnabled)
                 {
-                    var payload = CreatePayload(topics[i].TopicType, keyIndex);
-                    writers[i].Write(payload);
+                    // Turning on: lazily register topics and create DDS writers.
+                    if (!registered)
+                    {
+                        SelfSendTopics.Register(_topicRegistry);
+                        registered = true;
+                    }
+
+                    var topics = GetSelfSendTopics();
+                    if (topics.Count > 0)
+                    {
+                        foreach (var topic in topics)
+                        {
+                            _bridge.Subscribe(topic);
+                        }
+
+                        writers = new List<IDynamicWriter>(topics.Count);
+                        foreach (var topic in topics)
+                        {
+                            writers.Add(_bridge.GetWriter(topic));
+                        }
+                    }
+                }
+                else if (!isEnabled && wasEnabled)
+                {
+                    // Turning off: dispose writers.
+                    DisposeWriters(ref writers);
                 }
 
-                keyIndex = (keyIndex + 1) % keyCount;
-                await Task.Delay(delay, stoppingToken);
+                wasEnabled = isEnabled;
+
+                if (isEnabled && writers != null && writers.Count > 0)
+                {
+                    var topics = GetSelfSendTopics();
+                    for (var i = 0; i < Math.Min(topics.Count, writers.Count); i++)
+                    {
+                        var payload = CreatePayload(topics[i].TopicType, keyIndex);
+                        writers[i].Write(payload);
+                    }
+
+                    keyIndex = (keyIndex + 1) % keyCount;
+                    await Task.Delay(delay, stoppingToken);
+                }
+                else
+                {
+                    await Task.Delay(IdleCheckMs, stoppingToken);
+                }
             }
         }
         finally
         {
-            foreach (var writer in writers)
-            {
-                writer.Dispose();
-            }
+            DisposeWriters(ref writers);
         }
+    }
+
+    private static void DisposeWriters(ref List<IDynamicWriter>? writers)
+    {
+        if (writers == null)
+        {
+            return;
+        }
+
+        foreach (var writer in writers)
+        {
+            writer.Dispose();
+        }
+
+        writers = null;
     }
 
     private IReadOnlyList<TopicMetadata> GetSelfSendTopics()
