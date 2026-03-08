@@ -36,6 +36,7 @@
                 <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicsPanel">Topics</button>
                 <button type="button" class="app-menu__dropdown-item" @onclick="OpenAllSamplesPanel">All Samples</button>
                 <button type="button" class="app-menu__dropdown-item" @onclick="OpenSendSamplePanel">Send Sample</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenReplayPanel">Replay</button>
             </div>
         </div>
     </nav>
@@ -49,6 +50,7 @@
     private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
     private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
     private static readonly string SendSamplePanelTypeName = typeof(SendSamplePanel).AssemblyQualifiedName!;
+    private static readonly string ReplayPanelTypeName = typeof(ReplayPanel).AssemblyQualifiedName!;
     private const string WorkspaceExportFileName = "ddsmon.workspace";
     private const string AllSamplesTopicTypeKey = "SamplesPanel.TopicTypeName";
     private string _theme = "dark";
@@ -132,6 +134,28 @@
         newPanel.Height = 520;
         newPanel.X = 300;
         newPanel.Y = 80;
+    }
+
+    private void OpenReplayPanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, ReplayPanelTypeName, StringComparison.Ordinal))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var newPanel = WindowManager.SpawnPanel(ReplayPanelTypeName);
+        newPanel.Title = "Replay";
+        newPanel.Width = 540;
+        newPanel.Height = 340;
+        newPanel.X = 320;
+        newPanel.Y = 100;
     }
 
     private void ResetLayout()

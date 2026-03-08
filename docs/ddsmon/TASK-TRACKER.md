@@ -66,10 +66,10 @@
 - [x] **DMON-034** — Send Sample panel (message emulator) &nbsp; [details](./TASK-DETAIL.md#dmon-034--send-sample-panel-message-emulator)
 - [x] **DMON-035** — Dynamic form components (recursive editors) &nbsp; [details](./TASK-DETAIL.md#dmon-035--dynamic-form-components-recursive-editors)
 - [x] **DMON-036** — Custom Type Drawer registry &nbsp; [details](./TASK-DETAIL.md#dmon-036--custom-type-drawer-registry)
-- [ ] **DMON-037** — Export service (streaming JSON write) &nbsp; [details](./TASK-DETAIL.md#dmon-037--export-service-streaming-json-write)
-- [ ] **DMON-038** — Import service (streaming JSON read) &nbsp; [details](./TASK-DETAIL.md#dmon-038--import-service-streaming-json-read)
-- [ ] **DMON-039** — Replay Engine &nbsp; [details](./TASK-DETAIL.md#dmon-039--replay-engine)
-- [ ] **DMON-040** — Replay Panel UI &nbsp; [details](./TASK-DETAIL.md#dmon-040--replay-panel-ui)
+- [x] **DMON-037** — Export service (streaming JSON write) &nbsp; [details](./TASK-DETAIL.md#dmon-037--export-service-streaming-json-write)
+- [x] **DMON-038** — Import service (streaming JSON read) &nbsp; [details](./TASK-DETAIL.md#dmon-038--import-service-streaming-json-read)
+- [x] **DMON-039** — Replay Engine &nbsp; [details](./TASK-DETAIL.md#dmon-039--replay-engine)
+- [x] **DMON-040** — Replay Panel UI &nbsp; [details](./TASK-DETAIL.md#dmon-040--replay-panel-ui)
 
 ---
 
@@ -108,3 +108,4 @@
 - [ ] **DMON-055** — Sample diff view &nbsp; [details](./TASK-DETAIL.md#dmon-055--sample-diff-view)
 - [ ] **DMON-056** — Keyboard shortcut system &nbsp; [details](./TASK-DETAIL.md#dmon-056--keyboard-shortcut-system)
 - [ ] **DMON-057** — Performance metrics dashboard &nbsp; [details](./TASK-DETAIL.md#dmon-057--performance-metrics-dashboard)
+- [x] **DMON-058** — Replay UI & Storage Polish (SampleState, Scrubber live update) &nbsp; [details](./TASK-DETAIL.md#dmon-058--replay-ui-and-storage-polish)

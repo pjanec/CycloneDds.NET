@@ -21,6 +21,7 @@
 @inject TooltipService TooltipService
 @inject IJSRuntime JSRuntime
 @inject ContextMenuService ContextMenuService
+@inject DdsMonitor.Engine.Export.IExportService ExportService
 
 <div class="samples-panel" @onmousemove="HandleColumnResize" @onmouseup="EndColumnResize" @onmouseleave="EndColumnResize">
     <div class="samples-panel__toolbar">
@@ -41,6 +42,9 @@
         </button>
         <button type="button" title="Open filter builder" class="samples-panel__filter-btn" @onclick="OpenFilterBuilder">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        </button>
+        <button type="button" title="Export visible samples to file" class="samples-panel__export-btn" @onclick="ExportFilteredSamplesAsync">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         </button>
         <button type="button" title="Save grid settings to file" class="samples-panel__settings-btn" @onclick="SaveGridSettingsAsync">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -100,7 +104,7 @@
                             <div class="samples-panel__expand-card-header">
                                 <span class="samples-panel__cell samples-panel__col-ordinal">#@row.Sample.Ordinal</span>
                                 <span class="samples-panel__cell samples-panel__col-timestamp">@row.Sample.Timestamp.ToString("HH:mm:ss.fff")</span>
-                                <span class="samples-panel__cell @GetStatusClass(row.Sample)" title="@GetStatusSymbol(row.Sample)">@GetStatusSymbol(row.Sample)</span>
+                                <span class="samples-panel__cell @GetStatusClass(row.Sample)" title="@GetStatusTooltip(row.Sample)">@GetStatusSymbol(row.Sample)</span>
                             </div>
                             <pre class="samples-panel__expand-json">@GetPayloadJsonSafe(row.Sample)</pre>
                         </div>
@@ -139,6 +143,10 @@
                                 OnCancel="CloseColumnPicker" />
         </div>
     }
+    <FileDialog IsOpen="_showExportDialog"
+                Mode="FileDialogMode.Save"
+                Filter="*.json"
+                OnResult="OnExportDialogResult" />
 </div>
 
 @code {
@@ -176,7 +184,8 @@
 
     private static readonly JsonSerializerOptions TooltipJsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        IncludeFields = true
     };
 
     private readonly List<SampleData> _viewCache = new();
@@ -224,6 +233,7 @@
     private Action? _viewRebuiltHandler;
     private readonly Dictionary<FieldMetadata, Type> _fieldTopicTypes = new();
     private int _columnPickerRevision;
+    private bool _showExportDialog;
 
     [CascadingParameter]
     public PanelState? PanelState { get; set; }
@@ -233,6 +243,21 @@
 
     [Parameter]
     public string? InitialFilterText { get; set; }
+
+    /// <summary>
+    /// When set the panel displays this fixed list instead of the live <see cref="ISampleStore"/>.
+    /// Intended for the Replay Samples browser.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<SampleData>? FixedSamples { get; set; }
+
+    /// <summary>
+    /// Invoked whenever the panel's filter predicate changes, passing the new predicate
+    /// (or <c>null</c> when the filter is cleared).  Used by the Replay Engine to sync
+    /// its playback filter with this panel.
+    /// </summary>
+    [Parameter]
+    public EventCallback<Func<SampleData, bool>?> OnFilterChanged { get; set; }
 
     protected override void OnInitialized()
     {
@@ -587,6 +612,7 @@
                 _filterPredicate = null;
                 _viewDirty = true;
                 _filterError = null;
+                NotifyFilterChanged();
                 _ = _virtualizeRef?.RefreshDataAsync();
                 StateHasChanged();
                 return;
@@ -602,6 +628,7 @@
             _filterError = null;
             _filterPredicate = allResult.Predicate;
             _viewDirty = true;
+            NotifyFilterChanged();
             _ = _virtualizeRef?.RefreshDataAsync();
             StateHasChanged();
             return;
@@ -614,6 +641,7 @@
             _filterPredicate = topicPredicate;
             _viewDirty = true;
             _filterError = null;
+            NotifyFilterChanged();
             _ = _virtualizeRef?.RefreshDataAsync();
             StateHasChanged();
             return;
@@ -629,8 +657,50 @@
         _filterError = null;
         _filterPredicate = sample => topicPredicate(sample) && result.Predicate(sample);
         _viewDirty = true;
+        NotifyFilterChanged();
         _ = _virtualizeRef?.RefreshDataAsync();
         StateHasChanged();
+    }
+
+    private void ExportFilteredSamplesAsync()
+    {
+        _showExportDialog = true;
+    }
+
+    /// <summary>
+    /// Notifies subscribers that the active filter predicate has changed.
+    /// When this panel is showing a fixed sample set (Replay mode), the predicate
+    /// is also published via the <see cref="IEventBroker"/> so the Replay Engine
+    /// can update its own filter without a direct callback reference.
+    /// </summary>
+    private void NotifyFilterChanged()
+    {
+        _ = OnFilterChanged.InvokeAsync(_filterPredicate);
+
+        if (FixedSamples != null)
+        {
+            EventBroker.Publish(new ReplayFilterChangedEvent(_filterPredicate));
+        }
+    }
+
+    private async Task OnExportDialogResult(string? path)
+    {
+        _showExportDialog = false;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        // Capture the current view so the export runs against a consistent snapshot.
+        var snapshot = _viewCache.ToList();
+        try
+        {
+            await ExportService.ExportSamplesAsync(path, snapshot);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Export failed: {ex.Message}");
+        }
     }
 
     private void SelectSample(IndexedSample row, bool publishNow)
@@ -1030,6 +1100,36 @@
 
     private void EnsureView()
     {
+        // ── Fixed-samples mode (Replay filter panel) ──────────────────────
+        var fixedSamples = FixedSamples;
+        if (fixedSamples != null)
+        {
+            if (!_viewDirty)
+            {
+                return;
+            }
+
+            _viewCache.Clear();
+            foreach (var sample in fixedSamples)
+            {
+                if (_filterPredicate == null || _filterPredicate(sample))
+                {
+                    _viewCache.Add(sample);
+                }
+            }
+
+            if (_sortField != null)
+            {
+                _viewCache.Sort((left, right) => CompareSamples(left, right, _sortField, _sortDirection));
+            }
+
+            _totalCount = fixedSamples.Count;
+            _currentCount = _viewCache.Count;
+            _viewDirty = false;
+            return;
+        }
+
+        // ── Live store mode ───────────────────────────────────────────────
         var snapshot = SampleStore.AllSamples;
         if (!_viewDirty && snapshot.Count == _lastAllSamplesCount)
         {
@@ -1246,6 +1346,16 @@
             DdsInstanceState.Alive => "o",
             DdsInstanceState.NotAliveDisposed => "!",
             _ => "x"
+        };
+    }
+
+    private static string GetStatusTooltip(SampleData sample)
+    {
+        return sample.SampleInfo.InstanceState switch
+        {
+            DdsInstanceState.Alive => "Alive",
+            DdsInstanceState.NotAliveDisposed => "Disposed (Not Alive)",
+            _ => "No Writers"
         };
     }
 

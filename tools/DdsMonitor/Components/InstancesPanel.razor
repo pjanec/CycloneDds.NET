@@ -141,7 +141,8 @@ else
 
     private static readonly JsonSerializerOptions TooltipJsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        IncludeFields = true
     };
 
     private readonly List<InstanceRow> _viewCache = new();

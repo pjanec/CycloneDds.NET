@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace DdsMonitor.Engine;
@@ -26,3 +27,10 @@ public sealed record AddColumnRequestEvent(string TargetPanelId, string FieldPat
 /// Requests applying a filter to a target samples panel.
 /// </summary>
 public sealed record ApplyFilterRequestEvent(string TargetPanelId, string FilterText);
+
+/// <summary>
+/// Emitted by a Replay-Samples panel whenever its filter predicate changes.
+/// The Replay Engine subscribes to this to restrict which samples are played back.
+/// </summary>
+public sealed record ReplayFilterChangedEvent(Func<SampleData, bool>? Predicate);
+

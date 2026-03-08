@@ -1,0 +1,411 @@
+@using System.IO
+@using System.Runtime.InteropServices
+
+@* ──────────────────────────────────────────────────────────────────────────
+   FileDialog.razor
+   A server-side file-browser modal.  Because this is a Blazor Server app,
+   the backend has direct access to the local filesystem.  The dialog allows
+   the user to browse drives / folders, navigate up and down the directory
+   tree, and either pick an existing file (Open mode) or nominate a target
+   path (Save mode).
+
+   Parameters
+   ──────────
+   IsOpen          – controls visibility
+   Mode            – FileDialogMode.Open or FileDialogMode.Save
+   InitialPath     – pre-populated path (file or folder)
+   Filter          – optional wildcard filter applied in Save mode (e.g. "*.json")
+   OnResult        – callback: null → cancelled; non-null → selected absolute path
+   ────────────────────────────────────────────────────────────────────────── *@
+
+@if (IsOpen)
+{
+    <div class="file-dialog__backdrop" @onclick="Cancel">
+        <div class="file-dialog__window" @onclick:stopPropagation="true">
+
+            <!-- ── Title bar ─────────────────────────────────────── -->
+            <div class="file-dialog__titlebar">
+                <span class="file-dialog__title">@(Mode == FileDialogMode.Save ? "Save File" : "Open File")</span>
+                <button type="button" class="file-dialog__close" @onclick="Cancel" title="Cancel">✕</button>
+            </div>
+
+            <!-- ── Path / address bar ────────────────────────────── -->
+            <div class="file-dialog__addressbar">
+                <button type="button" class="file-dialog__nav-btn" title="Go up one folder"
+                        disabled="@(!CanGoUp)"
+                        @onclick="NavigateUp">
+                    ↑ Up
+                </button>
+                <input class="file-dialog__path-input"
+                       type="text"
+                       value="@_currentDir"
+                       @onchange="OnAddressBarChanged"
+                       placeholder="Type a folder path…"
+                       spellcheck="false" />
+                <button type="button" class="file-dialog__nav-btn" @onclick="() => Navigate(_currentDir)">Go</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_navError))
+            {
+                <div class="file-dialog__nav-error">@_navError</div>
+            }
+
+            <!-- ── Drive selector (Windows only) ─────────────────── -->
+            @if (_drives.Count > 0)
+            {
+                <div class="file-dialog__drives">
+                    @foreach (var drive in _drives)
+                    {
+                        <button type="button"
+                                class="@GetDriveBtnClass(drive)"
+                                @onclick="() => Navigate(drive)">
+                            @drive
+                        </button>
+                    }
+                </div>
+            }
+
+            <!-- ── Directory listing ──────────────────────────────── -->
+            <div class="file-dialog__listing">
+                @foreach (var entry in _entries)
+                {
+                    var isDir = entry.IsDirectory;
+                    var icon = isDir ? "📁" : "📄";
+                    var activeClass = string.Equals(entry.FullPath, _selectedFile, StringComparison.OrdinalIgnoreCase) ? " is-selected" : string.Empty;
+
+                    <div class="file-dialog__entry@(activeClass)"
+                         @onclick="() => OnEntryClick(entry)"
+                         @ondblclick="() => OnEntryDblClick(entry)">
+                        <span class="file-dialog__entry-icon">@icon</span>
+                        <span class="file-dialog__entry-name">@entry.Name</span>
+                        @if (!isDir)
+                        {
+                            <span class="file-dialog__entry-size">@FormatSize(entry.SizeBytes)</span>
+                        }
+                    </div>
+                }
+
+                @if (_entries.Count == 0 && !_isLoading)
+                {
+                    <div class="file-dialog__empty">No items found.</div>
+                }
+
+                @if (_isLoading)
+                {
+                    <div class="file-dialog__loading">Loading…</div>
+                }
+            </div>
+
+            <!-- ── File-name input + actions ─────────────────────── -->
+            <div class="file-dialog__footer">
+                <label class="file-dialog__footer-label">
+                    @(Mode == FileDialogMode.Save ? "File name:" : "Selected:")
+                </label>
+                <input class="file-dialog__filename-input"
+                       type="text"
+                       value="@_fileNameInput"
+                       @oninput="OnFileNameInput"
+                       placeholder="@(Mode == FileDialogMode.Save ? "output.json" : "Select a file above…")"
+                       spellcheck="false" />
+                <button type="button"
+                        class="file-dialog__ok-btn"
+                        disabled="@(!CanConfirm)"
+                        @onclick="Confirm">
+                    @(Mode == FileDialogMode.Save ? "Save" : "Open")
+                </button>
+                <button type="button" class="file-dialog__cancel-btn" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ── Parameters ──────────────────────────────────────────────────────────
+
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public FileDialogMode Mode { get; set; } = FileDialogMode.Open;
+    [Parameter] public string InitialPath { get; set; } = string.Empty;
+    [Parameter] public string Filter { get; set; } = "*.*";
+    [Parameter] public EventCallback<string?> OnResult { get; set; }
+
+    // ── State ────────────────────────────────────────────────────────────────
+
+    private string _currentDir = string.Empty;
+    private string? _selectedFile;
+    private string _fileNameInput = string.Empty;
+    private string? _navError;
+    private bool _isLoading;
+    private List<FileEntry> _entries = new();
+    private List<string> _drives = new();
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        if (!IsOpen)
+        {
+            return;
+        }
+
+        // Populate on first open (or when caller supplies a new InitialPath).
+        var dir = ResolveInitialDir(InitialPath);
+        if (!string.Equals(dir, _currentDir, StringComparison.OrdinalIgnoreCase))
+        {
+            _currentDir = dir;
+            _fileNameInput = ResolveInitialFilename(InitialPath);
+            _selectedFile = null;
+            _navError = null;
+            LoadDrives();
+            LoadDirectory(_currentDir);
+        }
+    }
+
+    // ── Navigation ───────────────────────────────────────────────────────────
+
+    private bool CanGoUp => !string.IsNullOrWhiteSpace(_currentDir)
+                            && Directory.GetParent(_currentDir) != null;
+
+    private void NavigateUp()
+    {
+        var parent = Directory.GetParent(_currentDir);
+        if (parent != null)
+        {
+            Navigate(parent.FullName);
+        }
+    }
+
+    private void Navigate(string path)
+    {
+        _navError = null;
+        var trimmed = path.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return;
+        }
+
+        if (Directory.Exists(trimmed))
+        {
+            _currentDir = trimmed;
+            _selectedFile = null;
+            LoadDirectory(_currentDir);
+        }
+        else
+        {
+            _navError = $"Folder not found: {trimmed}";
+        }
+    }
+
+    private void OnAddressBarChanged(ChangeEventArgs e)
+    {
+        _currentDir = e.Value?.ToString() ?? _currentDir;
+    }
+
+    private void OnEntryClick(FileEntry entry)
+    {
+        if (entry.IsDirectory)
+        {
+            return;
+        }
+
+        _selectedFile = entry.FullPath;
+        _fileNameInput = entry.FullPath;
+    }
+
+    private void OnEntryDblClick(FileEntry entry)
+    {
+        if (entry.IsDirectory)
+        {
+            Navigate(entry.FullPath);
+        }
+        else
+        {
+            _selectedFile = entry.FullPath;
+            _fileNameInput = entry.FullPath;
+            _ = ConfirmAsync(_fileNameInput);
+        }
+    }
+
+    private void OnFileNameInput(ChangeEventArgs e)
+    {
+        _fileNameInput = e.Value?.ToString() ?? string.Empty;
+        _selectedFile = null; // User is typing freely; clear the grid selection.
+    }
+
+    // ── Confirmation / Cancellation ──────────────────────────────────────────
+
+    private bool CanConfirm => !string.IsNullOrWhiteSpace(_fileNameInput);
+
+    private void Confirm()
+    {
+        _ = ConfirmAsync(_fileNameInput);
+    }
+
+    private async Task ConfirmAsync(string rawPath)
+    {
+        var path = rawPath.Trim();
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        // For relative filename entry in Save mode, combine with current dir.
+        if (!Path.IsPathRooted(path))
+        {
+            path = Path.Combine(_currentDir, path);
+        }
+
+        // In Open mode, insist the file actually exists.
+        if (Mode == FileDialogMode.Open && !File.Exists(path))
+        {
+            _navError = $"File not found: {path}";
+            return;
+        }
+
+        // Ensure target directory exists in Save mode.
+        if (Mode == FileDialogMode.Save)
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                _navError = $"Directory does not exist: {dir}";
+                return;
+            }
+        }
+
+        await OnResult.InvokeAsync(path);
+    }
+
+    private void Cancel()
+    {
+        _ = OnResult.InvokeAsync(null);
+    }
+
+    // ── Filesystem helpers ───────────────────────────────────────────────────
+
+    private void LoadDrives()
+    {
+        _drives.Clear();
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                if (drive.IsReady)
+                {
+                    _drives.Add(drive.Name);
+                }
+            }
+        }
+        catch
+        {
+            // Non-critical; skip.
+        }
+    }
+
+    private void LoadDirectory(string dir)
+    {
+        _isLoading = true;
+        _entries.Clear();
+        _navError = null;
+
+        try
+        {
+            if (!Directory.Exists(dir))
+            {
+                _navError = $"Directory not found: {dir}";
+                return;
+            }
+
+            var list = new List<FileEntry>();
+
+            // Folders first.
+            foreach (var sub in Directory.EnumerateDirectories(dir).OrderBy(d => d))
+            {
+                list.Add(new FileEntry(Path.GetFileName(sub) ?? sub, sub, true, 0));
+            }
+
+            // Then files matching the filter.
+            var pattern = string.IsNullOrWhiteSpace(Filter) ? "*.*" : Filter;
+            foreach (var file in Directory.EnumerateFiles(dir, pattern).OrderBy(f => f))
+            {
+                var info = new FileInfo(file);
+                list.Add(new FileEntry(info.Name, file, false, info.Length));
+            }
+
+            _entries = list;
+        }
+        catch (Exception ex)
+        {
+            _navError = $"Access error: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string ResolveInitialDir(string rawPath)
+    {
+        if (!string.IsNullOrWhiteSpace(rawPath))
+        {
+            try
+            {
+                if (Directory.Exists(rawPath))
+                {
+                    return rawPath;
+                }
+
+                var parent = Path.GetDirectoryName(rawPath);
+                if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+                {
+                    return parent;
+                }
+            }
+            catch
+            {
+                // Fall through.
+            }
+        }
+
+        // Default: user home or root.
+        return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+               is { Length: > 0 } home ? home : Path.GetPathRoot(AppContext.BaseDirectory) ?? "/";
+    }
+
+    private static string ResolveInitialFilename(string rawPath)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return File.Exists(rawPath) ? rawPath : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private bool IsCurrentDrive(string drive)
+    {
+        return _currentDir.StartsWith(drive, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetDriveBtnClass(string drive) =>
+        IsCurrentDrive(drive) ? "file-dialog__drive-btn is-active" : "file-dialog__drive-btn";
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1_024)           return $"{bytes} B";
+        if (bytes < 1_048_576)       return $"{bytes / 1024.0:0.0} KB";
+        if (bytes < 1_073_741_824)   return $"{bytes / 1_048_576.0:0.0} MB";
+        return $"{bytes / 1_073_741_824.0:0.0} GB";
+    }
+}

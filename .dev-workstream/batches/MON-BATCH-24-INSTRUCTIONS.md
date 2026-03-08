@@ -1,7 +1,7 @@
 # BATCH-24: Export/Import Tooling & Streaming Extensibility
 
 **Batch Number:** MON-BATCH-24  
-**Tasks:** JSON Export Service, JSON Import Service, Replay Engine wiring  
+**Tasks:** JSON Export Service, JSON Import Service, Replay Engine wiring, Replay Engine UI
 **Phase:** Phase 4 (Operational Tools)  
 **Estimated Effort:** 5-7 hours  
 **Priority:** NORMAL  
@@ -35,7 +35,12 @@ Welcome back! With the Send Sample panel merged and Operational Tools now taking
 
 ### Task 3: Replay Engine Skeleton (DMON-039)
 - **Implement:** `IReplayEngine` logic that allows users to ingest an import loop and either route those samples locally (feeding them into the `SampleStore` for localized GUI investigation) or globally (pushing them up via `DdsBridge.GetWriter()` out to the distributed WAN).
-- **Requirement:** Do NOT build the UI (`ReplayPanel.razor`) for it yet; only structure the dependency injection layout, the service interface, and the functional testing suite.
+- **Requirement:** Structure the dependency injection layout, the service interface, and the functional testing suite. It should be able to control playback speed (1x, 2x, etc.) and loop.
+
+### Task 4: Replay Panel UI (DMON-040)
+- **Implement:** A new desktop panel `ReplayPanel.razor` that exposes the `IReplayEngine` functionality.
+- **Requirement:** Include UI controls for: selecting an imported JSON file, Play/Pause/Stop, a scrubber/progress bar, and speed controls.
+- **Requirement:** Integrate this panel to be accessible via the the main Windows dropdown menu.
 
 ---
 
@@ -54,5 +59,6 @@ This batch is DONE when:
 - [ ] Implement `IExportService` streaming infrastructure without memory spikes.
 - [ ] Implement `IImportService` asynchronous token parsing for rebuilding runtime samples.
 - [ ] Implement foundational `IReplayEngine` routing capabilities (GUI sink vs DDS push target).
+- [ ] Implement `ReplayPanel.razor` UI with playback controls (play, pause, stop, speed, progress).
 - [ ] Maintain 100% test coverage bridging serialize/deserialize accuracy paths.
 - [ ] Ensure all code adheres to previous structural layout rules!

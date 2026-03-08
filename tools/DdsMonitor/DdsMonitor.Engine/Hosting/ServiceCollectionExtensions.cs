@@ -1,5 +1,8 @@
 using System;
 using System.Threading.Channels;
+using DdsMonitor.Engine.Export;
+using DdsMonitor.Engine.Import;
+using DdsMonitor.Engine.Replay;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -50,6 +53,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(sp => Channel.CreateUnbounded<SampleData>());
         services.AddSingleton(sp => sp.GetRequiredService<Channel<SampleData>>().Reader);
         services.AddSingleton(sp => sp.GetRequiredService<Channel<SampleData>>().Writer);
+
+        services.AddSingleton<IExportService, ExportService>();
+        services.AddSingleton<IImportService, ImportService>();
+        services.AddScoped<IReplayEngine, ReplayEngine>();
 
         services.AddScoped<IWindowManager, WindowManager>();
         services.AddScoped<IWorkspaceState, WorkspaceState>();

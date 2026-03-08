@@ -1,0 +1,511 @@
+@using System.IO
+@using System.Collections.Generic
+@using System.Globalization
+@using DdsMonitor.Engine.Replay
+@using DdsMonitor.Engine
+@implements IDisposable
+
+@inject IReplayEngine ReplayEngine
+@inject IWindowManager WindowManager
+@inject IEventBroker EventBroker
+
+<!-- ── Replay Panel ────────────────────────────────────────────────────── -->
+<div class="replay-panel">
+
+    <!-- ── File Section ───────────────────────────────────────── -->
+    <div class="replay-panel__section">
+        <div class="replay-panel__section-title">Recording File</div>
+
+        <div class="replay-panel__file-row">
+            <input class="replay-panel__file-input"
+                   type="text"
+                   readonly
+                   placeholder="Click Browse… to select a JSON export file"
+                   value="@_filePath" />
+            <button type="button" class="replay-panel__btn" @onclick="OpenFileBrowser">Browse…</button>
+            <button type="button" class="replay-panel__btn" @onclick="LoadFile" disabled="@(!CanLoad)">Load</button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_loadError))
+        {
+            <div class="replay-panel__error" style="margin-top:6px;">@_loadError</div>
+        }
+        @if (_isLoading)
+        {
+            <div class="replay-panel__loading">Loading…</div>
+        }
+    </div>
+
+    @if (ReplayEngine.TotalSamples > 0)
+    {
+        <!-- ── Transport Controls ──────────────────────────────── -->
+        <div class="replay-panel__section">
+            <div class="replay-panel__section-title">Transport</div>
+
+            <div class="replay-panel__transport">
+                @if (ReplayEngine.Status == ReplayStatus.Playing)
+                {
+                    <button type="button" class="replay-panel__btn replay-panel__btn--pause" @onclick="Pause">⏸ Pause</button>
+                }
+                else
+                {
+                    <button type="button" class="replay-panel__btn replay-panel__btn--play" @onclick="Play">▶ Play</button>
+                }
+
+                <button type="button"
+                        class="replay-panel__btn replay-panel__btn--stop"
+                        @onclick="Stop"
+                        disabled="@(ReplayEngine.Status == ReplayStatus.Idle && ReplayEngine.CurrentIndex == 0)">
+                    ⏹ Stop
+                </button>
+
+                <button type="button"
+                        class="replay-panel__btn replay-panel__btn--step"
+                        @onclick="Step"
+                        disabled="@(ReplayEngine.Status == ReplayStatus.Playing || ReplayEngine.CurrentIndex >= ReplayEngine.FilteredTotalCount)">
+                    ⏭ Step
+                </button>
+
+                <span class="replay-panel__status-badge @GetStatusClass()">@ReplayEngine.Status</span>
+            </div>
+        </div>
+
+        <!-- ── Scrubber & Mode ─────────────────────────────────── -->
+        <div class="replay-panel__section">
+            <div class="replay-panel__section-title">Position</div>
+
+            <!-- Mode toggle -->
+            <div class="replay-panel__mode-toggle" style="margin-bottom:8px;">
+                <button type="button"
+                        class="replay-panel__mode-btn @(ReplayEngine.PlaybackMode == ReplayPlaybackMode.Frames ? "is-active" : string.Empty)"
+                        @onclick="() => SetMode(ReplayPlaybackMode.Frames)">
+                    Frames
+                </button>
+                <button type="button"
+                        class="replay-panel__mode-btn @(ReplayEngine.PlaybackMode == ReplayPlaybackMode.Time ? "is-active" : string.Empty)"
+                        @onclick="() => SetMode(ReplayPlaybackMode.Time)">
+                    Time
+                </button>
+            </div>
+
+            <!-- Scrubber -->
+            <div class="replay-panel__scrubber-row">
+                <input type="range"
+                       class="replay-panel__scrubber"
+                       min="0"
+                       max="@GetScrubberMax()"
+                       step="1"
+                       value="@GetScrubberValue()"
+                       @oninput="OnScrubberChanged"
+                       disabled="@(ReplayEngine.Status == ReplayStatus.Playing || ReplayEngine.FilteredTotalCount == 0)" />
+                <span class="replay-panel__scrubber-label">@GetScrubberLabel()</span>
+            </div>
+
+            <!-- Jump-to -->
+            <div class="replay-panel__jump-row" style="margin-top:8px;">
+                <input class="replay-panel__jump-input"
+                       type="text"
+                       placeholder="@(ReplayEngine.PlaybackMode == ReplayPlaybackMode.Frames ? "Frame index…" : "e.g. 00:01:30.5 or 90.5")"
+                       @bind="_jumpInput"
+                       @bind:event="oninput" />
+                <button type="button" class="replay-panel__btn" @onclick="JumpTo">Jump</button>
+            </div>
+        </div>
+
+        <!-- ── Playback Settings ───────────────────────────────── -->
+        <div class="replay-panel__section">
+            <div class="replay-panel__section-title">Settings</div>
+
+            <div class="replay-panel__controls-grid">
+                <span class="replay-panel__label">Speed</span>
+                <select class="replay-panel__select" value="@ReplayEngine.SpeedMultiplier.ToString("G", CultureInfo.InvariantCulture)" @onchange="OnSpeedChanged">
+                    <option value="0.25">0.25×</option>
+                    <option value="0.5">0.5×</option>
+                    <option value="1">1×</option>
+                    <option value="2">2×</option>
+                    <option value="4">4×</option>
+                    <option value="8">8×</option>
+                </select>
+
+                <span class="replay-panel__label">Loop</span>
+                <input type="checkbox" checked="@ReplayEngine.Loop" @onchange="OnLoopChanged" />
+            </div>
+        </div>
+
+        <!-- ── Time Metrics ────────────────────────────────────── -->
+        <div class="replay-panel__section">
+            <div class="replay-panel__section-title">Recording Metrics</div>
+
+            <div class="replay-panel__metrics">
+                <span class="replay-panel__metric-label">Total samples</span>
+                <span class="replay-panel__metric-value">@ReplayEngine.TotalSamples (@ReplayEngine.FilteredTotalCount active)</span>
+
+                <span class="replay-panel__metric-label">Start time</span>
+                <span class="replay-panel__metric-value">@FormatTimestamp(ReplayEngine.StartTime)</span>
+
+                <span class="replay-panel__metric-label">End time</span>
+                <span class="replay-panel__metric-value">@FormatTimestamp(ReplayEngine.EndTime)</span>
+
+                <span class="replay-panel__metric-label">Duration</span>
+                <span class="replay-panel__metric-value">@FormatDuration(ReplayEngine.TotalDuration)</span>
+
+                <span class="replay-panel__metric-label">Current clock</span>
+                <span class="replay-panel__metric-value is-emphasis">@FormatTimestamp(ReplayEngine.CurrentTimestamp)</span>
+
+                <span class="replay-panel__metric-label">Elapsed</span>
+                <span class="replay-panel__metric-value is-emphasis">@FormatDuration(ReplayEngine.CurrentRelativeTime)</span>
+
+                @if (ReplayEngine.Status != ReplayStatus.Playing)
+                {
+                    <span class="replay-panel__metric-label">Next sample</span>
+                    <span class="replay-panel__metric-value">@FormatTimestamp(ReplayEngine.NextSampleTimestamp)</span>
+                }
+            </div>
+        </div>
+        <!-- ── Next Sample Preview (paused only) ────────────────── -->
+        @if (ReplayEngine.Status != ReplayStatus.Playing && ReplayEngine.NextSample is { } pending)
+        {
+            <div class="replay-panel__section">
+                <div class="replay-panel__section-title">Next Sample</div>
+                <div class="replay-panel__next-sample">
+                    <span class="replay-panel__next-ordinal">#@pending.Ordinal</span>
+                    <span class="replay-panel__next-type" title="@pending.TopicMetadata.TopicType.FullName">@pending.TopicMetadata.ShortName</span>
+                    <button type="button"
+                            class="replay-panel__toolbar-btn"
+                            title="Open Detail Panel for this sample"
+                            @onclick="() => OpenPendingSampleDetail(pending)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg>
+                    </button>
+                </div>
+            </div>
+        }
+        <!-- ── Filter Integration ──────────────────────────────── -->
+        <div class="replay-panel__section">
+            <div class="replay-panel__section-title">Filter</div>
+
+            <div class="replay-panel__transport">
+                <button type="button" class="replay-panel__btn" @onclick="OpenReplaySamplesPanel">
+                    Browse &amp; filter replay samples
+                </button>
+                @if (_filterActive)
+                {
+                    <button type="button" class="replay-panel__btn" @onclick="ClearFilter" title="Remove the active filter">
+                        ✕ Clear Filter
+                    </button>
+                    <span style="font-size:11px;color:var(--warning,#f9e2af);">Filter active: @ReplayEngine.FilteredTotalCount / @ReplayEngine.TotalSamples samples</span>
+                }
+                else
+                {
+                    <span style="font-size:11px;color:var(--panel-muted);">No filter active.</span>
+                }
+            </div>
+        </div>
+    }
+    else if (!_isLoading)
+    {
+        <div class="replay-panel__empty">
+            Browse and load a JSON export file to begin replay.
+        </div>
+    }
+
+    <!-- FileDialog for loading a recording -->
+    <FileDialog IsOpen="_showFileBrowser"
+                Mode="FileDialogMode.Open"
+                Filter="*.json"
+                OnResult="OnFileBrowserResult" />
+</div>
+
+@code {
+    private string _filePath = string.Empty;
+    private string? _loadError;
+    private bool _isLoading;
+    private bool _showFileBrowser;
+    private string _jumpInput = string.Empty;
+    private bool _filterActive;
+    private IDisposable? _replayFilterSubscription;
+    private SampleData? _lastNextSample;
+
+    [CascadingParameter]
+    public PanelState? PanelState { get; set; }
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        ReplayEngine.StateChanged += OnEngineStateChanged;
+        _replayFilterSubscription = EventBroker.Subscribe<ReplayFilterChangedEvent>(OnReplayFilterChanged);
+    }
+
+    public void Dispose()
+    {
+        ReplayEngine.StateChanged -= OnEngineStateChanged;
+        _replayFilterSubscription?.Dispose();
+    }
+
+    private void OnEngineStateChanged()
+    {
+        if (PanelState != null && ReplayEngine.Status != ReplayStatus.Playing)
+        {
+            var next = ReplayEngine.NextSample;
+            if (next != _lastNextSample)
+            {
+                _lastNextSample = next;
+                if (next != null)
+                {
+                    EventBroker.Publish(new SampleSelectedEvent(PanelState.PanelId, next));
+                }
+            }
+        }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnReplayFilterChanged(ReplayFilterChangedEvent evt)
+    {
+        _filterActive = evt.Predicate != null;
+        ReplayEngine.SetFilter(evt.Predicate);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    // ── File loading ─────────────────────────────────────────────────────────
+
+    private bool CanLoad => !string.IsNullOrWhiteSpace(_filePath) && !_isLoading;
+
+    private void OpenFileBrowser()
+    {
+        _showFileBrowser = true;
+    }
+
+    private async Task OnFileBrowserResult(string? path)
+    {
+        _showFileBrowser = false;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            _filePath = path;
+            await LoadFile();
+        }
+    }
+
+    private async Task LoadFile()
+    {
+        _loadError = null;
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            await ReplayEngine.LoadAsync(_filePath);
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // ── Transport ────────────────────────────────────────────────────────────
+
+    private void Play()  => ReplayEngine.Play(ReplayTarget.DdsNetwork);
+    private void Pause() => ReplayEngine.Pause();
+    private void Stop()  => ReplayEngine.Stop();
+    private void Step()  => ReplayEngine.Step(ReplayTarget.DdsNetwork);
+
+    // ── Scrubber ─────────────────────────────────────────────────────────────
+
+    private void SetMode(ReplayPlaybackMode mode)
+    {
+        ReplayEngine.PlaybackMode = mode;
+        StateHasChanged();
+    }
+
+    private int GetScrubberMax()
+    {
+        if (ReplayEngine.PlaybackMode == ReplayPlaybackMode.Frames)
+        {
+            return Math.Max(0, ReplayEngine.FilteredTotalCount - 1);
+        }
+
+        // Time mode: represent duration in tenths-of-a-second ticks for slider resolution.
+        return (int)Math.Max(0, ReplayEngine.TotalDuration.TotalSeconds * 10);
+    }
+
+    private int GetScrubberValue()
+    {
+        if (ReplayEngine.PlaybackMode == ReplayPlaybackMode.Frames)
+        {
+            return ReplayEngine.CurrentIndex;
+        }
+
+        return (int)(ReplayEngine.CurrentRelativeTime.TotalSeconds * 10);
+    }
+
+    private string GetScrubberLabel()
+    {
+        if (ReplayEngine.PlaybackMode == ReplayPlaybackMode.Frames)
+        {
+            return $"{ReplayEngine.CurrentIndex} / {Math.Max(0, ReplayEngine.FilteredTotalCount - 1)}";
+        }
+
+        return $"{FormatDuration(ReplayEngine.CurrentRelativeTime)} / {FormatDuration(ReplayEngine.TotalDuration)}";
+    }
+
+    private void OnScrubberChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var value))
+        {
+            return;
+        }
+
+        if (ReplayEngine.PlaybackMode == ReplayPlaybackMode.Frames)
+        {
+            ReplayEngine.SeekToFrame(value);
+        }
+        else
+        {
+            ReplayEngine.SeekToTime(TimeSpan.FromSeconds(value / 10.0));
+        }
+    }
+
+    // ── Jump-to ──────────────────────────────────────────────────────────────
+
+    private void JumpTo()
+    {
+        if (string.IsNullOrWhiteSpace(_jumpInput))
+        {
+            return;
+        }
+
+        if (ReplayEngine.PlaybackMode == ReplayPlaybackMode.Frames)
+        {
+            if (int.TryParse(_jumpInput.Trim(), out var frame))
+            {
+                ReplayEngine.SeekToFrame(frame);
+            }
+        }
+        else
+        {
+            // Try TimeSpan.Parse first ("hh:mm:ss.fff"),
+            // then fall back to treating the value as seconds.
+            var raw = _jumpInput.Trim();
+            if (TimeSpan.TryParse(raw, CultureInfo.InvariantCulture, out var ts))
+            {
+                ReplayEngine.SeekToTime(ts);
+            }
+            else if (double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var secs))
+            {
+                ReplayEngine.SeekToTime(TimeSpan.FromSeconds(secs));
+            }
+        }
+    }
+
+    // ── Settings ─────────────────────────────────────────────────────────────
+
+    private void OnSpeedChanged(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var speed))
+        {
+            ReplayEngine.SpeedMultiplier = speed;
+        }
+    }
+
+    private void OnLoopChanged(ChangeEventArgs e)
+    {
+        if (e.Value is bool b)
+        {
+            ReplayEngine.Loop = b;
+        }
+    }
+
+    // ── Filter Integration ────────────────────────────────────────────────────
+
+    private void OpenReplaySamplesPanel()
+    {
+        if (ReplayEngine.TotalSamples == 0)
+        {
+            return;
+        }
+
+        // Capture the full unfiltered sample list via the concrete engine snapshot helper.
+        // The SamplesPanel will display this list and broadcast filter changes
+        // via ReplayFilterChangedEvent so the engine can synchronise.
+        var sampleTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
+        var panel = WindowManager.SpawnPanel(sampleTypeName, new System.Collections.Generic.Dictionary<string, object>
+        {
+            // Pass the samples snapshot; Desktop.RenderPanelBody will convert via TryConvertParameterValue.
+            [nameof(SamplesPanel.FixedSamples)] = BuildReplaySamplesSnapshot()
+        });
+        panel.Title = $"Replay Samples [{System.IO.Path.GetFileName(_filePath)}]";
+        panel.Width = 900;
+        panel.Height = 480;
+    }
+
+    private void ClearFilter()
+    {
+        _filterActive = false;
+        ReplayEngine.SetFilter(null);
+    }
+
+    private void OpenPendingSampleDetail(SampleData sample)
+    {
+        var detailTypeName = typeof(DetailPanel).AssemblyQualifiedName!;
+        var panel = WindowManager.SpawnPanel(detailTypeName, new System.Collections.Generic.Dictionary<string, object>
+        {
+            [nameof(DetailPanel.Sample)] = sample,
+            [nameof(DetailPanel.IsLinked)] = true,
+            [nameof(DetailPanel.SourcePanelId)] = PanelState?.PanelId
+        });
+        panel.Title = $"Detail [{sample.TopicMetadata.ShortName}] (Replay Preview)";
+        panel.Width = 546;
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private IReadOnlyList<SampleData> BuildReplaySamplesSnapshot()
+    {
+        // ReplayEngine exposes TotalSamples count but not the raw list through the interface.
+        // We reconstruct a representative snapshot by performing a dry-run seek to each frame.
+        // Since the engine stores samples internally and exposes them through CurrentIndex /
+        // FilteredTotalCount, the safest portable approach is to temporarily unset the filter
+        // and step through – however that would mutate state.
+        //
+        // Instead, we accept that the FixedSamples list for the browsing panel is derived
+        // from the filtered (currently active) view, which is exposed via FilteredTotalCount
+        // and GetNextSampleTimestamp.  A richer IReplayEngine.AllSamples property would make
+        // this cleaner; that is left as a future improvement.
+        //
+        // For Batch 25 the engine stores the full unfiltered list in _filteredSamples when no
+        // filter is active.  The panel opener below captures "all" via a static cast fallback.
+        if (ReplayEngine is ReplayEngine concreteEngine)
+        {
+            return concreteEngine.GetSnapshotForBrowsing();
+        }
+
+        return System.Array.Empty<SampleData>();
+    }
+
+    private string GetStatusClass() => ReplayEngine.Status switch
+    {
+        ReplayStatus.Playing => "is-playing",
+        ReplayStatus.Paused  => "is-paused",
+        _                    => "is-idle"
+    };
+
+    private static string FormatTimestamp(DateTime ts)
+    {
+        if (ts == DateTime.MinValue) return "—";
+        return ts.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatDuration(TimeSpan ts)
+    {
+        if (ts == TimeSpan.Zero) return "0s";
+        if (ts.TotalHours >= 1)
+            return ts.ToString(@"h\:mm\:ss\.fff");
+        if (ts.TotalMinutes >= 1)
+            return ts.ToString(@"m\:ss\.fff");
+        return ts.ToString(@"s\.fff\s");
+    }
+}
