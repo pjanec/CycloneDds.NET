@@ -16,7 +16,8 @@ public sealed class FieldMetadata
         Type valueType,
         Func<object, object?> getter,
         Action<object, object?> setter,
-        bool isSynthetic)
+        bool isSynthetic,
+        bool isWrapperField = false)
     {
         StructuredName = structuredName ?? throw new ArgumentNullException(nameof(structuredName));
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
@@ -24,6 +25,7 @@ public sealed class FieldMetadata
         Getter = getter ?? throw new ArgumentNullException(nameof(getter));
         Setter = setter ?? throw new ArgumentNullException(nameof(setter));
         IsSynthetic = isSynthetic;
+        IsWrapperField = isWrapperField;
     }
 
     /// <summary>
@@ -55,4 +57,11 @@ public sealed class FieldMetadata
     /// Gets a value indicating whether this field is synthetic (computed).
     /// </summary>
     public bool IsSynthetic { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether this synthetic field is a top-level <see cref="SampleData"/>
+    /// wrapper property (e.g. Timestamp, Ordinal) rather than a payload-derived display metric.
+    /// Wrapper fields are exposed in the filter builder UI in addition to normal payload fields.
+    /// </summary>
+    public bool IsWrapperField { get; }
 }

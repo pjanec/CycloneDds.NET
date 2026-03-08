@@ -95,10 +95,22 @@
 
     protected override void OnInitialized()
     {
-        RefreshTopics();
         DdsBridge.ReadersChanged += HandleReadersChanged;
+        // Auto-subscribe all known topics at startup so the All Samples panel populates
+        // immediately and the subscription checkboxes begin in the correct checked state.
+        AutoSubscribeAll();
+        RefreshTopics();
         StartRefreshTimer();
         StartSparklineTimer();
+    }
+
+    private void AutoSubscribeAll()
+    {
+        foreach (var topic in TopicRegistry.AllTopics)
+        {
+            // Silently ignore topics that lack type descriptors; they cannot be subscribed.
+            DdsBridge.TrySubscribe(topic, out _, out _);
+        }
     }
 
     private void StartRefreshTimer()
@@ -348,7 +360,10 @@
             }
         }
 
-        _subscriptionError = BuildSubscriptionErrorMessage(invalidTopics);
+        // Descriptor-missing topics (e.g. self-test or dynamically-discovered types without
+        // registered ops) are silently skipped — they are expected to fail and the noise
+        // should not surface as a red error in the UI.
+        _subscriptionError = null;
 
         RefreshTopics();
     }

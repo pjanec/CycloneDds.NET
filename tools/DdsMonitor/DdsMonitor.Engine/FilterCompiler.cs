@@ -17,6 +17,17 @@ public sealed class FilterCompiler : IFilterCompiler
         "\\bPayload\\.([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
         RegexOptions.Compiled);
 
+    /// <summary>
+    /// String method names that may be appended after a field path and must not be treated
+    /// as part of the field's structured name (e.g. <c>Payload.Message.Contains("x")</c>).
+    /// </summary>
+    private static readonly string[] StringMethodSuffixes =
+    {
+        ".Contains",
+        ".StartsWith",
+        ".EndsWith"
+    };
+
     /// <inheritdoc />
     public FilterResult Compile(string expression, TopicMetadata? topicMeta)
     {
@@ -105,6 +116,22 @@ public sealed class FilterCompiler : IFilterCompiler
         var rewritten = PayloadFieldRegex.Replace(expression, match =>
         {
             var fieldPath = match.Groups[1].Value;
+
+            // The greedy regex may capture string method names (e.g. ".Contains") as part of the
+            // field path when expressions like Payload.Message.Contains("x") are encountered.
+            // Strip such suffixes and re-append them to the substituted parameter name so that
+            // Dynamic LINQ can resolve them as proper method calls on the typed parameter.
+            string? strippedMethodSuffix = null;
+            foreach (var methodSuffix in StringMethodSuffixes)
+            {
+                if (fieldPath.EndsWith(methodSuffix, StringComparison.Ordinal))
+                {
+                    strippedMethodSuffix = methodSuffix;
+                    fieldPath = fieldPath.Substring(0, fieldPath.Length - methodSuffix.Length);
+                    break;
+                }
+            }
+
             if (!fieldMap.TryGetValue(fieldPath, out var field))
             {
                 if (topicMeta == null)
@@ -127,7 +154,7 @@ public sealed class FilterCompiler : IFilterCompiler
                 fields.Add(field);
             }
 
-            return GetPayloadParameterName(fields.IndexOf(field));
+            return GetPayloadParameterName(fields.IndexOf(field)) + (strippedMethodSuffix ?? string.Empty);
         });
 
         return (rewritten, fields);

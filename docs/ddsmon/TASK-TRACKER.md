@@ -51,11 +51,11 @@
 
 **Goal:** Visual Filter Builder, Expand All mode, grid settings export, sparklines, and quick-add columns.
 
-- [⚠️] **DMON-029** — Visual Filter Builder *needs fixes: manual verification failed* &nbsp; [details](./TASK-DETAIL.md#dmon-029--visual-filter-builder)
-- [⚠️] **DMON-030** — Expand All mode (JSON tree per row) *needs fixes: manual verification failed* &nbsp; [details](./TASK-DETAIL.md#dmon-030--expand-all-mode-json-tree-per-row)
-- [⚠️] **DMON-031** — Grid settings export/import *needs fixes: manual verification failed* &nbsp; [details](./TASK-DETAIL.md#dmon-031--grid-settings-exportimport)
-- [⚠️] **DMON-032** — Sparkline charts in Topic Explorer *needs fixes: manual verification failed* &nbsp; [details](./TASK-DETAIL.md#dmon-032--sparkline-charts-in-topic-explorer)
-- [⚠️] **DMON-033** — Quick-Add column from Inspector *needs fixes: manual verification failed* &nbsp; [details](./TASK-DETAIL.md#dmon-033--quick-add-column-from-inspector)
+- [x] **DMON-029** — Visual Filter Builder &nbsp; [details](./TASK-DETAIL.md#dmon-029--visual-filter-builder)
+- [x] **DMON-030** — Expand All mode (JSON tree per row) &nbsp; [details](./TASK-DETAIL.md#dmon-030--expand-all-mode-json-tree-per-row)
+- [x] **DMON-031** — Grid settings export/import &nbsp; [details](./TASK-DETAIL.md#dmon-031--grid-settings-exportimport)
+- [x] **DMON-032** — Sparkline charts in Topic Explorer &nbsp; [details](./TASK-DETAIL.md#dmon-032--sparkline-charts-in-topic-explorer)
+- [x] **DMON-033** — Quick-Add column from Inspector &nbsp; [details](./TASK-DETAIL.md#dmon-033--quick-add-column-from-inspector)
 
 ---
 

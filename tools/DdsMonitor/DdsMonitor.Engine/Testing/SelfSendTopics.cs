@@ -26,7 +26,8 @@ public static class SelfSendTopics
 }
 
 [DdsTopic("SelfTest.Simple")]
-public sealed class SelfTestSimple
+[DdsManaged]
+public partial class SelfTestSimple
 {
     [DdsKey]
     public int Id { get; set; }
@@ -39,7 +40,8 @@ public sealed class SelfTestSimple
 }
 
 [DdsTopic("SelfTest.Pose")]
-public sealed class SelfTestPose
+[DdsManaged]
+public partial class SelfTestPose
 {
     [DdsKey]
     public int Id { get; set; }
@@ -51,14 +53,16 @@ public sealed class SelfTestPose
     public StatusLevel Level { get; set; }
 }
 
-public struct Pose
+[DdsStruct]
+public partial struct Pose
 {
     public Vector3 Position { get; set; }
 
     public Vector3 Velocity { get; set; }
 }
 
-public struct Vector3
+[DdsStruct]
+public partial struct Vector3
 {
     public float X { get; set; }
 

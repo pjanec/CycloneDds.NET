@@ -220,9 +220,16 @@ public sealed class TopicMetadata
         });
 
         var sizeGetter = new Func<object, object?>(input => ((SampleData)input).SizeBytes);
+        var timestampGetter = new Func<object, object?>(input => ((SampleData)input).Timestamp);
+        var ordinalGetter = new Func<object, object?>(input => ((SampleData)input).Ordinal);
 
-        allFields.Add(new FieldMetadata(DelayFieldName, DelayFieldName, typeof(double), delayGetter, SyntheticSetter, true));
-        allFields.Add(new FieldMetadata(SizeFieldName, SizeFieldName, typeof(int), sizeGetter, SyntheticSetter, true));
+        // Wrapper fields: top-level SampleData properties exposed as filterable fields.
+        allFields.Add(new FieldMetadata("Timestamp", "Timestamp", typeof(DateTime), timestampGetter, SyntheticSetter, isSynthetic: true, isWrapperField: true));
+        allFields.Add(new FieldMetadata("Ordinal", "Ordinal", typeof(long), ordinalGetter, SyntheticSetter, isSynthetic: true, isWrapperField: true));
+
+        // Display-only synthetic fields (not filterable via the standard field picker).
+        allFields.Add(new FieldMetadata(DelayFieldName, DelayFieldName, typeof(double), delayGetter, SyntheticSetter, isSynthetic: true));
+        allFields.Add(new FieldMetadata(SizeFieldName, SizeFieldName, typeof(int), sizeGetter, SyntheticSetter, isSynthetic: true));
     }
 
     private sealed class MemberAccessor

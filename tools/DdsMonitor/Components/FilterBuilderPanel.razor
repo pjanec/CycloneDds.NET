@@ -138,7 +138,10 @@
             return Array.Empty<FieldMetadata>();
         }
 
-        return _topicMetadata.AllFields.Where(field => !field.IsSynthetic).ToList();
+        // Include normal payload fields AND synthetic wrapper fields (e.g. Timestamp, Ordinal).
+        // Display-only synthetic fields (Delay, Size) have special-char names that are not valid
+        // LINQ identifiers and are intentionally excluded from the filter builder.
+        return _topicMetadata.AllFields.Where(field => !field.IsSynthetic || field.IsWrapperField).ToList();
     }
 
     private void EnsureRootNodes()

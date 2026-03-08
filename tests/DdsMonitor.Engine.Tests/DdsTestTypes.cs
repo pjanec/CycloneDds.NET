@@ -89,3 +89,11 @@ public partial struct StatusTopic
     public int Id;
     public SampleStatus Status;
 }
+
+[DdsTopic("StringTopic")]
+[DdsManaged]
+public partial struct StringTopic
+{
+    public int Id;
+    public string Message;
+}
