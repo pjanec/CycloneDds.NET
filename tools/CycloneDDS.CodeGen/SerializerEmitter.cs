@@ -503,7 +503,13 @@ namespace CycloneDDS.CodeGen
         {
             sb.AppendLine($"        public static unsafe void MarshalFromNative(IntPtr nativeData, out {type.Name} managedData)");
             sb.AppendLine("        {");
-            sb.AppendLine($"            managedData = default;");
+            sb.AppendLine("            if (nativeData == IntPtr.Zero)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                managedData = default;");
+            sb.AppendLine("                return;");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine($"            managedData = new {type.Name}();");
             sb.AppendLine($"            MarshalFromNative(ref managedData, in System.Runtime.CompilerServices.Unsafe.AsRef<{type.Name}_Native>((void*)nativeData));");
             sb.AppendLine("        }");
             sb.AppendLine();
