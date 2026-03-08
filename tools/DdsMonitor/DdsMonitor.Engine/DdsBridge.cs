@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading.Channels;
 using CycloneDDS.Runtime;
 
 namespace DdsMonitor.Engine;
@@ -14,6 +15,7 @@ public sealed class DdsBridge : IDdsBridge
 
     private readonly object _sync = new();
     private readonly Dictionary<Type, IDynamicReader> _activeReaders = new();
+    private readonly ChannelWriter<SampleData> _channelWriter;
     private bool _disposed;
 
     /// <inheritdoc />
@@ -22,8 +24,9 @@ public sealed class DdsBridge : IDdsBridge
     /// <summary>
     /// Initializes a new instance of the <see cref="DdsBridge"/> class.
     /// </summary>
-    public DdsBridge(string? initialPartition = null)
+    public DdsBridge(ChannelWriter<SampleData> channelWriter, string? initialPartition = null)
     {
+        _channelWriter = channelWriter ?? throw new ArgumentNullException(nameof(channelWriter));
         Participant = new DdsParticipant();
         CurrentPartition = initialPartition;
     }
@@ -77,7 +80,7 @@ public sealed class DdsBridge : IDdsBridge
 
             try
             {
-                reader = CreateReader(meta);
+                reader = CreateAndWireReader(meta);
                 reader.Start(CurrentPartition);
                 _activeReaders[meta.TopicType] = reader;
                 ReadersChanged?.Invoke();
@@ -156,7 +159,7 @@ public sealed class DdsBridge : IDdsBridge
 
             foreach (var meta in metas)
             {
-                var reader = CreateReader(meta);
+                var reader = CreateAndWireReader(meta);
                 reader.Start(CurrentPartition);
                 _activeReaders[meta.TopicType] = reader;
             }
@@ -196,6 +199,13 @@ public sealed class DdsBridge : IDdsBridge
         }
 
         return (IDynamicReader)instance;
+    }
+
+    private IDynamicReader CreateAndWireReader(TopicMetadata meta)
+    {
+        var reader = CreateReader(meta);
+        reader.OnSampleReceived += sample => _channelWriter.TryWrite(sample);
+        return reader;
     }
 
     private IDynamicWriter CreateWriter(TopicMetadata meta)

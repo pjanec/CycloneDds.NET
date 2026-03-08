@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
-using CycloneDDS.Runtime;
-using CycloneDDS.Runtime.Interop;
 using Microsoft.Extensions.Hosting;
 
 namespace DdsMonitor.Engine;
@@ -14,18 +11,17 @@ public sealed class SelfSendService : BackgroundService
     private const int MinimumRateHz = 1;
     private const int SamplesPerPayload = 5;
 
-    private readonly ChannelWriter<SampleData> _writer;
+    private readonly IDdsBridge _bridge;
     private readonly ITopicRegistry _topicRegistry;
     private readonly DdsSettings _settings;
     private readonly Random _random = new();
-    private long _nextOrdinal;
 
     public SelfSendService(
-        ChannelWriter<SampleData> writer,
+        IDdsBridge bridge,
         ITopicRegistry topicRegistry,
         DdsSettings settings)
     {
-        _writer = writer ?? throw new ArgumentNullException(nameof(writer));
+        _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _topicRegistry = topicRegistry ?? throw new ArgumentNullException(nameof(topicRegistry));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
     }
@@ -43,22 +39,45 @@ public sealed class SelfSendService : BackgroundService
             return;
         }
 
+        // Subscribe first so DynamicReaders exist and are wired to the ingestion channel.
+        foreach (var topic in topics)
+        {
+            _bridge.Subscribe(topic);
+        }
+
+        // Create DDS writers – samples flow through the real DDS middleware
+        // and are received by the DynamicReaders created above.
+        var writers = new List<IDynamicWriter>(topics.Count);
+        foreach (var topic in topics)
+        {
+            writers.Add(_bridge.GetWriter(topic));
+        }
+
         var rateHz = Math.Max(MinimumRateHz, _settings.SelfSendRateHz);
         var delay = TimeSpan.FromMilliseconds(1000d / rateHz);
         var keyCount = Math.Max(1, _settings.SelfSendKeyCount);
         var keyIndex = 0;
 
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            foreach (var topic in topics)
+            while (!stoppingToken.IsCancellationRequested)
             {
-                var payload = CreatePayload(topic.TopicType, keyIndex);
-                var sample = CreateSample(topic, payload);
-                await _writer.WriteAsync(sample, stoppingToken);
-            }
+                for (var i = 0; i < topics.Count; i++)
+                {
+                    var payload = CreatePayload(topics[i].TopicType, keyIndex);
+                    writers[i].Write(payload);
+                }
 
-            keyIndex = (keyIndex + 1) % keyCount;
-            await Task.Delay(delay, stoppingToken);
+                keyIndex = (keyIndex + 1) % keyCount;
+                await Task.Delay(delay, stoppingToken);
+            }
+        }
+        finally
+        {
+            foreach (var writer in writers)
+            {
+                writer.Dispose();
+            }
         }
     }
 
@@ -135,34 +154,6 @@ public sealed class SelfSendService : BackgroundService
             },
             Samples = samples,
             Level = (StatusLevel)(_random.Next(0, 3))
-        };
-    }
-
-    private SampleData CreateSample(TopicMetadata metadata, object payload)
-    {
-        var now = DateTime.UtcNow;
-        var info = new DdsApi.DdsSampleInfo
-        {
-            SampleState = DdsSampleState.NotRead,
-            ViewState = DdsViewState.New,
-            InstanceState = DdsInstanceState.Alive,
-            ValidData = 1,
-            SourceTimestamp = now.Ticks
-        };
-
-        return new SampleData
-        {
-            Ordinal = Interlocked.Increment(ref _nextOrdinal),
-            Payload = payload,
-            TopicMetadata = metadata,
-            SampleInfo = info,
-            Timestamp = now,
-            SizeBytes = 0,
-            Sender = new SenderIdentity
-            {
-                ProcessId = (uint)Environment.ProcessId,
-                MachineName = Environment.MachineName
-            }
         };
     }
 }
