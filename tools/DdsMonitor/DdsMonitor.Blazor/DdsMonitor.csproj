@@ -13,12 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="DdsMonitor.Engine\**\*.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
-    <ProjectReference Include="DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
+    <ProjectReference Include="..\..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
+    <ProjectReference Include="..\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
   </ItemGroup>
 
 </Project>

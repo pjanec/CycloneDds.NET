@@ -17,7 +17,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CycloneDDS.Compiler.Common"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CycloneDDS.IdlImporter", "tools\CycloneDDS.IdlImporter\CycloneDDS.IdlImporter.csproj", "{643461F2-41C0-4FE1-A5B2-31A07EA9D7C0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DdsMonitor", "tools\DdsMonitor\DdsMonitor.csproj", "{2E2D8B61-8D11-4E68-9A5A-4EB9E6B4F1C0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DdsMonitor.Blazor", "tools\DdsMonitor\DdsMonitor.Blazor\DdsMonitor.csproj", "{2E2D8B61-8D11-4E68-9A5A-4EB9E6B4F1C0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DdsMonitor.Engine", "tools\DdsMonitor\DdsMonitor.Engine\DdsMonitor.Engine.csproj", "{8E45B8B6-47C7-4C03-9AF2-2B01F5C5F6A2}"
 EndProject
