@@ -63,9 +63,9 @@
 
 **Goal:** Send Sample emulator, Import/Export, and the Replay Engine.
 
-- [ ] **DMON-034** — Send Sample panel (message emulator) &nbsp; [details](./TASK-DETAIL.md#dmon-034--send-sample-panel-message-emulator)
-- [ ] **DMON-035** — Dynamic form components (recursive editors) &nbsp; [details](./TASK-DETAIL.md#dmon-035--dynamic-form-components-recursive-editors)
-- [ ] **DMON-036** — Custom Type Drawer registry &nbsp; [details](./TASK-DETAIL.md#dmon-036--custom-type-drawer-registry)
+- [x] **DMON-034** — Send Sample panel (message emulator) &nbsp; [details](./TASK-DETAIL.md#dmon-034--send-sample-panel-message-emulator)
+- [x] **DMON-035** — Dynamic form components (recursive editors) &nbsp; [details](./TASK-DETAIL.md#dmon-035--dynamic-form-components-recursive-editors)
+- [x] **DMON-036** — Custom Type Drawer registry &nbsp; [details](./TASK-DETAIL.md#dmon-036--custom-type-drawer-registry)
 - [ ] **DMON-037** — Export service (streaming JSON write) &nbsp; [details](./TASK-DETAIL.md#dmon-037--export-service-streaming-json-write)
 - [ ] **DMON-038** — Import service (streaming JSON read) &nbsp; [details](./TASK-DETAIL.md#dmon-038--import-service-streaming-json-read)
 - [ ] **DMON-039** — Replay Engine &nbsp; [details](./TASK-DETAIL.md#dmon-039--replay-engine)

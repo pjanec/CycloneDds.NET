@@ -30,13 +30,13 @@ public static class SelfSendTopics
 public partial class SelfTestSimple
 {
     [DdsKey]
-    public int Id { get; set; }
+    public int Id;
 
-    public string Message { get; set; } = string.Empty;
+    public string Message;
 
-    public double Value { get; set; }
+    public double Value;
 
-    public DateTime Timestamp { get; set; }
+    public DateTime Timestamp;
 }
 
 [DdsTopic("SelfTest.Pose")]
@@ -44,31 +44,30 @@ public partial class SelfTestSimple
 public partial class SelfTestPose
 {
     [DdsKey]
-    public int Id { get; set; }
+    public int Id;
 
-    public Pose Pose { get; set; }
+    public Pose Pose;
 
-    public float[] Samples { get; set; } = Array.Empty<float>();
-
-    public StatusLevel Level { get; set; }
+    public System.Collections.Generic.List<float> Samples;
+    public StatusLevel Level;
 }
 
 [DdsStruct]
 public partial struct Pose
 {
-    public Vector3 Position { get; set; }
+    public Vector3 Position;
 
-    public Vector3 Velocity { get; set; }
+    public Vector3 Velocity;
 }
 
 [DdsStruct]
 public partial struct Vector3
 {
-    public float X { get; set; }
+    public float X;
 
-    public float Y { get; set; }
+    public float Y;
 
-    public float Z { get; set; }
+    public float Z;
 }
 
 public enum StatusLevel

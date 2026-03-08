@@ -106,10 +106,13 @@ public sealed class SelfSendService : BackgroundService
 
     private SelfTestPose CreatePosePayload(int keyIndex)
     {
-        var samples = new float[SamplesPerPayload];
-        for (var i = 0; i < samples.Length; i++)
+        var samples = new System.Collections.Generic.List<float>(SamplesPerPayload);
+        var angle = _random.NextDouble() * Math.PI * 2;
+        var baseZ = (float)(_random.NextDouble() * 10);
+        for (var i = 0; i < SamplesPerPayload; i++)
         {
-            samples[i] = (float)(_random.NextDouble() * 10);
+            var offset = Math.Sin(angle + (i * 0.5));
+            samples.Add(baseZ + (float)offset);
         }
 
         return new SelfTestPose

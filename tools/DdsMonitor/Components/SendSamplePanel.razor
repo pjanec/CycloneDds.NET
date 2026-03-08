@@ -1,0 +1,241 @@
+@using System.Collections.Generic
+@using System.Linq
+@using DdsMonitor.Engine.Ui
+@implements IDisposable
+
+@inject ITopicRegistry TopicRegistry
+@inject IDdsBridge DdsBridge
+@inject ITypeDrawerRegistry DrawerRegistry
+
+<div class="send-sample-panel">
+    <div class="send-sample-panel__toolbar">
+        <label class="send-sample-panel__label">Topic:</label>
+        <select class="send-sample-panel__topic-select" value="@_selectedTypeName" @onchange="OnTopicSelected">
+            <option value="">— select a topic —</option>
+            @foreach (var meta in TopicRegistry.AllTopics)
+            {
+                <option value="@meta.TopicType.AssemblyQualifiedName">
+                    @meta.ShortName
+                    @if (!string.IsNullOrEmpty(meta.Namespace))
+                    {
+                        <text> (@meta.Namespace)</text>
+                    }
+                </option>
+            }
+        </select>
+    </div>
+
+    @if (_selectedMeta != null && _payload != null)
+    {
+        <div class="send-sample-panel__form-area">
+            <DynamicForm Meta="@_selectedMeta" Payload="@_payload" />
+        </div>
+
+        <div class="send-sample-panel__footer">
+            @if (!string.IsNullOrWhiteSpace(_sendError))
+            {
+                <span class="send-sample-panel__error">@_sendError</span>
+            }
+            @if (_sendSuccess)
+            {
+                <span class="send-sample-panel__success">Sample sent.</span>
+            }
+            <button type="button" class="send-sample-panel__send-btn" @onclick="SendSample">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+                Send
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="send-sample-panel__empty">
+            <span>Select a topic to begin editing a sample payload.</span>
+        </div>
+    }
+</div>
+
+@code {
+    private const string SendSampleTopicTypeKey = "SendSamplePanel.TopicTypeName";
+
+    private TopicMetadata? _selectedMeta;
+    private object? _payload;
+    private string? _selectedTypeName;
+    private string? _sendError;
+    private bool _sendSuccess;
+    private IDynamicWriter? _cachedWriter;
+
+    /// <summary>
+    /// Optional initial topic to pre-select when the panel opens.
+    /// Passed from the Topic Explorer "Send Sample" action button.
+    /// </summary>
+    [Parameter]
+    public TopicMetadata? InitialTopic { get; set; }
+
+    [CascadingParameter]
+    private PanelState? PanelState { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // If an initial topic was injected via parameter, apply it.
+        if (InitialTopic != null)
+        {
+            SelectTopic(InitialTopic);
+            return;
+        }
+
+        // Try to restore from persisted panel state (workspace load).
+        TryRestoreFromState();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (InitialTopic != null && _selectedMeta?.TopicType != InitialTopic.TopicType)
+        {
+            SelectTopic(InitialTopic);
+        }
+    }
+
+    private void OnTopicSelected(ChangeEventArgs args)
+    {
+        _sendError = null;
+        _sendSuccess = false;
+
+        var typeName = args.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            _selectedMeta = null;
+            _payload = null;
+            _selectedTypeName = string.Empty;
+            return;
+        }
+
+        var type = Type.GetType(typeName);
+        if (type == null)
+        {
+            _sendError = $"Could not resolve type '{typeName}'.";
+            return;
+        }
+
+        var meta = TopicRegistry.GetByType(type);
+        if (meta == null)
+        {
+            _sendError = $"No metadata registered for type '{type.Name}'.";
+            return;
+        }
+
+        SelectTopic(meta);
+        PersistState();
+    }
+
+    private void SelectTopic(TopicMetadata meta)
+    {
+        // Dispose previous writer before switching topics.
+        _cachedWriter?.Dispose();
+        _cachedWriter = null;
+
+        _selectedMeta = meta;
+        _selectedTypeName = meta.TopicType.AssemblyQualifiedName;
+        _payload = CreateDefaultPayload(meta.TopicType);
+        _sendError = null;
+        _sendSuccess = false;
+    }
+
+    private static object? CreateDefaultPayload(Type topicType)
+    {
+        try
+        {
+            return Activator.CreateInstance(topicType);
+        }
+        catch (Exception ex)
+        {
+            _ = ex;
+            return null;
+        }
+    }
+
+    private void SendSample()
+    {
+        _sendError = null;
+        _sendSuccess = false;
+
+        if (_selectedMeta == null || _payload == null)
+        {
+            _sendError = "No topic or payload to send.";
+            return;
+        }
+
+        try
+        {
+            // Lazily create and cache the writer for this topic so that it stays
+            // alive between sends.  Disposing a DDS writer causes an
+            // UNREGISTER_INSTANCE lifecycle event that the reader would see as a
+            // sample with ValidData == 0, which can crash MarshalFromNative.
+            _cachedWriter ??= DdsBridge.GetWriter(_selectedMeta);
+            _cachedWriter.Write(_payload);
+            _sendSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            var actualEx = ex;
+            while (actualEx is System.Reflection.TargetInvocationException tie && tie.InnerException != null)
+            {
+                actualEx = tie.InnerException;
+            }
+            _sendError = $"Send failed: {actualEx.Message}";
+        }
+    }
+
+    private void TryRestoreFromState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        if (!PanelState.ComponentState.TryGetValue(SendSampleTopicTypeKey, out var typeObj))
+        {
+            return;
+        }
+
+        var typeName = typeObj is System.Text.Json.JsonElement el
+            ? el.GetString()
+            : typeObj?.ToString();
+
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            return;
+        }
+
+        var type = Type.GetType(typeName);
+        if (type == null)
+        {
+            return;
+        }
+
+        var meta = TopicRegistry.GetByType(type);
+        if (meta != null)
+        {
+            SelectTopic(meta);
+        }
+    }
+
+    private void PersistState()
+    {
+        if (PanelState == null || _selectedMeta == null)
+        {
+            return;
+        }
+
+        PanelState.ComponentState[SendSampleTopicTypeKey] = _selectedMeta.TopicType.AssemblyQualifiedName!;
+    }
+
+    public void Dispose()
+    {
+        _cachedWriter?.Dispose();
+        _cachedWriter = null;
+    }
+}

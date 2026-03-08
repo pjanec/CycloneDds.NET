@@ -64,6 +64,9 @@
                         <button type="button" class="topic-explorer__action" title="Open samples grid" @onclick="() => OpenSamplesPanel(topic.Metadata)">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                         </button>
+                        <button type="button" class="topic-explorer__action" title="Send sample to this topic" @onclick="() => OpenSendSamplePanel(topic.Metadata)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </button>
                         @if (topic.Metadata.IsKeyed)
                         {
                             <button type="button" class="topic-explorer__action" title="Open instances view" @onclick="() => OpenInstancesPanel(topic.Metadata)">
@@ -523,6 +526,38 @@
 
             return FormattableString.Invariant($"InstancesPanel.T{hash:X8}");
         }
+    }
+
+    private void OpenSendSamplePanel(TopicMetadata metadata)
+    {
+        var sendSampleTypeName = typeof(SendSamplePanel).AssemblyQualifiedName!;
+
+        foreach (var existingPanel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(existingPanel.ComponentTypeName, sendSampleTypeName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // Re-use an existing Send Sample panel pre-loaded with this exact topic.
+            if (existingPanel.ComponentState.TryGetValue(nameof(SendSamplePanel.InitialTopic), out var stored) &&
+                stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
+            {
+                existingPanel.IsHidden = false;
+                existingPanel.IsMinimized = false;
+                WindowManager.BringToFront(existingPanel.PanelId);
+                return;
+            }
+        }
+
+        var panel = WindowManager.SpawnPanel(sendSampleTypeName, new Dictionary<string, object>
+        {
+            [nameof(SendSamplePanel.InitialTopic)] = metadata
+        });
+
+        panel.Title = $"Send Sample [{metadata.ShortName}]";
+        panel.Width = 480;
+        panel.Height = 520;
     }
 
     public void Dispose()

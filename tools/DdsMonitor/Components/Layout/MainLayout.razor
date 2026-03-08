@@ -35,6 +35,7 @@
             <div class="app-menu__dropdown">
                 <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicsPanel">Topics</button>
                 <button type="button" class="app-menu__dropdown-item" @onclick="OpenAllSamplesPanel">All Samples</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenSendSamplePanel">Send Sample</button>
             </div>
         </div>
     </nav>
@@ -47,6 +48,7 @@
 @code {
     private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
     private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
+    private static readonly string SendSamplePanelTypeName = typeof(SendSamplePanel).AssemblyQualifiedName!;
     private const string WorkspaceExportFileName = "ddsmon.workspace";
     private const string AllSamplesTopicTypeKey = "SamplesPanel.TopicTypeName";
     private string _theme = "dark";
@@ -107,6 +109,29 @@
         allPanel.Y = 40;
         allPanel.Width = 1120;
         allPanel.Height = 360;
+    }
+
+    private void OpenSendSamplePanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, SendSamplePanelTypeName, StringComparison.Ordinal) &&
+                !panel.ComponentState.ContainsKey("SendSamplePanel.TopicTypeName"))
+            {
+                panel.IsMinimized = false;
+                panel.IsHidden = false;
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var newPanel = WindowManager.SpawnPanel(SendSamplePanelTypeName);
+        newPanel.Title = "Send Sample";
+        newPanel.Width = 480;
+        newPanel.Height = 520;
+        newPanel.X = 300;
+        newPanel.Y = 80;
     }
 
     private void ResetLayout()
