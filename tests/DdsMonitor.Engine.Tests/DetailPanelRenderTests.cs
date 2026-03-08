@@ -46,16 +46,23 @@ public sealed class DetailPanelRenderTests
 
         while (directory != null)
         {
-            var debugPath = Path.Combine(directory.FullName, "tools", "DdsMonitor", "bin", "Debug", "net8.0", "DdsMonitor.dll");
+            var debugPath = Path.Combine(directory.FullName, "tools", "DdsMonitor", "DdsMonitor.Blazor", "bin", "Debug", "net8.0", "DdsMonitor.dll");
             if (File.Exists(debugPath))
             {
                 return Assembly.LoadFrom(debugPath);
             }
 
-            var releasePath = Path.Combine(directory.FullName, "tools", "DdsMonitor", "bin", "Release", "net8.0", "DdsMonitor.dll");
+            var releasePath = Path.Combine(directory.FullName, "tools", "DdsMonitor", "DdsMonitor.Blazor", "bin", "Release", "net8.0", "DdsMonitor.dll");
             if (File.Exists(releasePath))
             {
                 return Assembly.LoadFrom(releasePath);
+            }
+
+            // Fallback for previous location
+            var oldDebugPath = Path.Combine(directory.FullName, "tools", "DdsMonitor", "bin", "Debug", "net8.0", "DdsMonitor.dll");
+            if (File.Exists(oldDebugPath))
+            {
+                return Assembly.LoadFrom(oldDebugPath);
             }
 
             directory = directory.Parent;

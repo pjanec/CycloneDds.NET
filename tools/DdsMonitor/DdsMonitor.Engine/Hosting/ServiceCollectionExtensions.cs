@@ -40,14 +40,13 @@ public static class ServiceCollectionExtensions
         var topicRegistry = new TopicRegistry();
         var discoveryService = new TopicDiscoveryService(topicRegistry);
         discoveryService.Discover(settings.PluginDirectories);
+
+        // Eagerly instantiate to ensure saved dynamic DLLs are loaded immediately on startup.
+        var assemblySourceService = new AssemblySourceService(topicRegistry, discoveryService);
+
         services.AddSingleton<ITopicRegistry>(topicRegistry);
         services.AddSingleton(discoveryService);
-
-        // Assembly source service: loads persisted DLL paths and scans them on start.
-        services.AddSingleton<IAssemblySourceService>(sp =>
-            new AssemblySourceService(
-                sp.GetRequiredService<ITopicRegistry>(),
-                sp.GetRequiredService<TopicDiscoveryService>()));
+        services.AddSingleton<IAssemblySourceService>(assemblySourceService);
 
         // SelfSendService is always registered; it stays dormant until DevelSettings.SelfSendEnabled is set.
         services.AddHostedService<SelfSendService>();

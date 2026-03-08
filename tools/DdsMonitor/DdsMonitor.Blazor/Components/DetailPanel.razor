@@ -83,6 +83,7 @@ else
 
     private SampleData? _currentSample;
     private SampleData? _pendingSample;
+    private SampleData? _lastParameterSample;
     private bool _linked = true;
     private DetailTab _activeTab = DetailTab.Tree;
     private DebouncedAction? _debouncer;
@@ -127,8 +128,9 @@ else
             PersistPanelState();
         }
 
-        if (Sample != null && (_linked || !_linked))
+        if (Sample != null && Sample != _lastParameterSample)
         {
+            _lastParameterSample = Sample;
             _currentSample = Sample;
         }
     }
