@@ -65,6 +65,39 @@ namespace CycloneDDS.CodeGen.Emitters
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Returns the ref struct definition without a namespace wrapper, using a single-level indent.
+        /// Used by CodeGenerator to compose a single combined output file per type.
+        /// </summary>
+        public string EmitViewStructInsideNamespace(TypeInfo type, GlobalTypeRegistry? registry)
+        {
+            var sb = new StringBuilder();
+            var indent = "    ";
+
+            sb.AppendLine($"{indent}public ref struct {type.Name}View");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    private unsafe readonly {type.Name}_Native* _ptr;");
+            sb.AppendLine();
+
+            sb.AppendLine($"{indent}    public unsafe {type.Name}View({type.Name}_Native* ptr)");
+            sb.AppendLine($"{indent}    {{");
+            sb.AppendLine($"{indent}        _ptr = ptr;");
+            sb.AppendLine($"{indent}    }}");
+            sb.AppendLine();
+
+            foreach (var field in type.Fields)
+            {
+                ProcessField(sb, field, indent + "    ", registry, type.IsUnion);
+            }
+
+            sb.AppendLine();
+
+            GenerateToManagedMethod(sb, type, registry, indent + "    ");
+            sb.AppendLine($"{indent}}}"); // End struct
+
+            return sb.ToString();
+        }
+
         private void ProcessField(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry? registry, bool isUnion)
         {
             Stack<string> nativeFieldPath = new Stack<string>();

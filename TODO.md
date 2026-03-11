@@ -2,8 +2,6 @@
 
 [TODO] Remove cyclone dds cxx submodule, not used fo arnything.
 
-[IMPROVEMENT] CodeGen runs on every build, slowing down unit testing etc. Better if it runs only on change, i.e. if sources are newer than generated files.
-
-[IMPROVEMENT] There might be just one generated cs file per dds struct, combining view, serializers etc. Nice to have. Low priority.
+[IMPROVEMENT] The single generated cs file per dds struct, combining view, marshaller etc. Now it defines the partial class multiple times - once for marhallers, once for view etc. Refactor to generate one single partial class with all the content.
 
 
