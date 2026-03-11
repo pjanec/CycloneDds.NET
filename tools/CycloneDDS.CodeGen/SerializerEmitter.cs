@@ -65,6 +65,37 @@ namespace CycloneDDS.CodeGen
             
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Returns only the body members of the partial class (no namespace or class wrapper).
+        /// Used by CodeGenerator to compose a single combined partial class definition.
+        /// </summary>
+        public string EmitSerializerClassBody(TypeInfo type, GlobalTypeRegistry registry)
+        {
+            _registry = registry;
+            var sb = new StringBuilder();
+            EmitNativeSizer(sb, type);
+            EmitMarshaller(sb, type);
+            EmitUnmarshalFromNative(sb, type);
+            EmitNativeToManaged(sb, type);
+            if (type.Fields.Any(f => f.HasAttribute("DdsKey")))
+            {
+                EmitKeyNativeSizer(sb, type);
+                EmitKeyMarshaller(sb, type);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Returns the ghost struct definitions for a type without a namespace wrapper.
+        /// Used by CodeGenerator to compose a single combined output file.
+        /// </summary>
+        public string EmitGhostStructContent(TypeInfo type)
+        {
+            var sb = new StringBuilder();
+            EmitGhostStruct(sb, type);
+            return sb.ToString();
+        }
         
         private bool IsAppendable(TypeInfo type)
         {
