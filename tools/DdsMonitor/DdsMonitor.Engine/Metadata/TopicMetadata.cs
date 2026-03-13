@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CycloneDDS.Schema;
 
 namespace DdsMonitor.Engine;
@@ -106,6 +108,20 @@ public sealed class TopicMetadata
 
             var nextPath = new List<MemberInfo>(memberPath) { member };
 
+            // ── Fixed-size C# buffer (public unsafe fixed T Name[N]) ─────────
+            // Must be detected BEFORE IsFlattenable, because the compiler-generated
+            // FixedBuffer nested struct would otherwise be incorrectly flattened.
+            if (member is FieldInfo fieldInfo)
+            {
+                var fixedAttr = fieldInfo.GetCustomAttribute<FixedBufferAttribute>();
+                if (fixedAttr != null)
+                {
+                    AppendFixedBufferField(
+                        fieldInfo, fixedAttr, structuredName, memberPath, allFields);
+                    continue;
+                }
+            }
+
             if (IsFlattenable(memberType))
             {
                 AppendFields(topicType, memberType, nextPath, structuredName, allFields, keyFields, visited);
@@ -115,7 +131,35 @@ public sealed class TopicMetadata
             var getter = MemberAccessorFactory.CreateGetter(nextPath);
             var setter = MemberAccessorFactory.CreateSetter(nextPath);
 
-            var fieldMetadata = new FieldMetadata(structuredName, structuredName, memberType, getter, setter, false);
+            // ── Determine array metadata ──────────────────────────────────────
+            bool isArrayField = false;
+            Type? elementType = null;
+
+            if (memberType.IsArray)
+            {
+                isArrayField = true;
+                elementType = memberType.GetElementType();
+            }
+            else if (memberType.IsGenericType &&
+                     memberType.GetGenericTypeDefinition() == typeof(List<>))
+            {
+                isArrayField = true;
+                elementType = memberType.GetGenericArguments()[0];
+            }
+
+            var fieldMetadata = new FieldMetadata(
+                structuredName,
+                structuredName,
+                memberType,
+                getter,
+                setter,
+                isSynthetic: false,
+                isWrapperField: false,
+                isArrayField: isArrayField,
+                isFixedSizeArray: false,
+                elementType: elementType,
+                fixedArrayLength: -1);
+
             allFields.Add(fieldMetadata);
 
             if (member.GetCustomAttribute<DdsKeyAttribute>() != null)
@@ -202,6 +246,12 @@ public sealed class TopicMetadata
             return true;
         }
 
+        // Generic List<T> (DDS sequence) – treated as a single leaf field
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+        {
+            return true;
+        }
+
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
         {
             return true;
@@ -210,8 +260,204 @@ public sealed class TopicMetadata
         return false;
     }
 
-    private static void AppendSyntheticFields(ICollection<FieldMetadata> allFields)
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Fixed-size buffer support
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a single <see cref="FieldMetadata"/> that exposes a C# fixed-size buffer
+    /// field as a <c>T[]</c> value (snapshot copy on read, element-by-element copy on write).
+    /// </summary>
+    private static void AppendFixedBufferField(
+        FieldInfo bufField,
+        FixedBufferAttribute fixedAttr,
+        string structuredName,
+        IReadOnlyList<MemberInfo> parentPath,
+        ICollection<FieldMetadata> allFields)
     {
+        var elementType = fixedAttr.ElementType;
+        var length = fixedAttr.Length;
+        var arrayType = elementType.MakeArrayType(); // T[]
+
+        var getter = CreateFixedBufferGetter(parentPath, bufField, elementType, length);
+        var setter = CreateFixedBufferSetter(parentPath, bufField, elementType, length);
+
+        var meta = new FieldMetadata(
+            structuredName,
+            structuredName,
+            arrayType,
+            getter,
+            setter,
+            isSynthetic: false,
+            isWrapperField: false,
+            isArrayField: false,
+            isFixedSizeArray: true,
+            elementType: elementType,
+            fixedArrayLength: length);
+
+        allFields.Add(meta);
+    }
+
+    private static Func<object, object?> CreateFixedBufferGetter(
+        IReadOnlyList<MemberInfo> parentPath,
+        FieldInfo bufField,
+        Type elementType,
+        int length)
+    {
+        var parentAccessors = parentPath.Select(m => new MemberAccessor(m)).ToArray();
+        int elemSize = Marshal.SizeOf(elementType);
+
+        return target =>
+        {
+            // Navigate to the struct that directly contains the fixed buffer field.
+            object boxedParent = target;
+            foreach (var acc in parentAccessors)
+            {
+                var next = acc.Getter(boxedParent);
+                if (next == null)
+                {
+                    return Array.CreateInstance(elementType, length);
+                }
+
+                boxedParent = next;
+            }
+
+            // GetValue returns a boxed copy of the compiler-generated FixedBuffer struct.
+            var bufInstance = bufField.GetValue(boxedParent);
+            if (bufInstance == null)
+            {
+                return Array.CreateInstance(elementType, length);
+            }
+
+            var result = Array.CreateInstance(elementType, length);
+            var handle = GCHandle.Alloc(bufInstance, GCHandleType.Pinned);
+            try
+            {
+                var ptr = handle.AddrOfPinnedObject();
+                for (int i = 0; i < length; i++)
+                {
+                    result.SetValue(ReadMarshalElement(ptr + (i * elemSize), elementType), i);
+                }
+            }
+            finally
+            {
+                handle.Free();
+            }
+
+            return result;
+        };
+    }
+
+    private static Action<object, object?> CreateFixedBufferSetter(
+        IReadOnlyList<MemberInfo> parentPath,
+        FieldInfo bufField,
+        Type elementType,
+        int length)
+    {
+        var parentAccessors = parentPath.Select(m => new MemberAccessor(m)).ToArray();
+        int elemSize = Marshal.SizeOf(elementType);
+
+        return (target, value) =>
+        {
+            if (value is not Array srcArray)
+            {
+                return;
+            }
+
+            // Navigate to parent, tracking the chain for back-propagation.
+            var parentStack = new List<(object Obj, MemberAccessor Acc)>(parentAccessors.Length);
+            object boxedParent = target;
+
+            for (int pi = 0; pi < parentAccessors.Length; pi++)
+            {
+                var acc = parentAccessors[pi];
+                parentStack.Add((boxedParent, acc));
+                var next = acc.Getter(boxedParent);
+                if (next == null)
+                {
+                    return;
+                }
+
+                boxedParent = next;
+            }
+
+            // Get a boxed copy of the FixedBuffer struct, modify it, then write it back.
+            var bufInstance = bufField.GetValue(boxedParent);
+            if (bufInstance == null)
+            {
+                return;
+            }
+
+            var handle = GCHandle.Alloc(bufInstance, GCHandleType.Pinned);
+            try
+            {
+                var ptr = handle.AddrOfPinnedObject();
+                int count = Math.Min(srcArray.Length, length);
+                for (int i = 0; i < count; i++)
+                {
+                    WriteMarshalElement(ptr + (i * elemSize), srcArray.GetValue(i), elementType);
+                }
+            }
+            finally
+            {
+                handle.Free();
+            }
+
+            // Write the modified FixedBuffer struct back into the parent struct.
+            bufField.SetValue(boxedParent, bufInstance);
+
+            // Back-propagate for nested value-type fields so inner changes reach the root.
+            object updated = boxedParent;
+            for (int pi = parentStack.Count - 1; pi >= 0; pi--)
+            {
+                var (parent, acc) = parentStack[pi];
+                acc.Setter(parent, updated);
+                updated = parent;
+            }
+        };
+    }
+
+    /// <summary>Reads a primitive value of <paramref name="elementType"/> from unmanaged memory.</summary>
+    public static object ReadMarshalElement(IntPtr ptr, Type elementType)
+    {
+        if (elementType == typeof(byte))   return Marshal.ReadByte(ptr);
+        if (elementType == typeof(sbyte))  return (sbyte)Marshal.ReadByte(ptr);
+        if (elementType == typeof(short))  return (short)Marshal.ReadInt16(ptr);
+        if (elementType == typeof(ushort)) return (ushort)Marshal.ReadInt16(ptr);
+        if (elementType == typeof(int))    return Marshal.ReadInt32(ptr);
+        if (elementType == typeof(uint))   return (uint)Marshal.ReadInt32(ptr);
+        if (elementType == typeof(long))   return Marshal.ReadInt64(ptr);
+        if (elementType == typeof(ulong))  return (ulong)Marshal.ReadInt64(ptr);
+        if (elementType == typeof(float))  return BitConverter.Int32BitsToSingle(Marshal.ReadInt32(ptr));
+        if (elementType == typeof(double)) return BitConverter.Int64BitsToDouble(Marshal.ReadInt64(ptr));
+        if (elementType == typeof(bool))   return Marshal.ReadByte(ptr) != 0;
+        if (elementType == typeof(char))   return (char)Marshal.ReadInt16(ptr);
+
+        throw new NotSupportedException($"Fixed-buffer element type '{elementType.Name}' is not supported.");
+    }
+
+    /// <summary>Writes a primitive <paramref name="value"/> of <paramref name="elementType"/> to unmanaged memory.</summary>
+    public static void WriteMarshalElement(IntPtr ptr, object? value, Type elementType)
+    {
+        if (value == null) return;
+
+        if (elementType == typeof(byte))   { Marshal.WriteByte(ptr, (byte)value);                                        return; }
+        if (elementType == typeof(sbyte))  { Marshal.WriteByte(ptr, (byte)(sbyte)value);                                 return; }
+        if (elementType == typeof(short))  { Marshal.WriteInt16(ptr, (short)value);                                      return; }
+        if (elementType == typeof(ushort)) { Marshal.WriteInt16(ptr, (short)(ushort)value);                              return; }
+        if (elementType == typeof(int))    { Marshal.WriteInt32(ptr, (int)value);                                        return; }
+        if (elementType == typeof(uint))   { Marshal.WriteInt32(ptr, (int)(uint)value);                                  return; }
+        if (elementType == typeof(long))   { Marshal.WriteInt64(ptr, (long)value);                                       return; }
+        if (elementType == typeof(ulong))  { Marshal.WriteInt64(ptr, (long)(ulong)value);                                return; }
+        if (elementType == typeof(float))  { Marshal.WriteInt32(ptr, BitConverter.SingleToInt32Bits((float)value));      return; }
+        if (elementType == typeof(double)) { Marshal.WriteInt64(ptr, BitConverter.DoubleToInt64Bits((double)value));     return; }
+        if (elementType == typeof(bool))   { Marshal.WriteByte(ptr, (bool)value ? (byte)1 : (byte)0);                   return; }
+        if (elementType == typeof(char))   { Marshal.WriteInt16(ptr, (short)(char)value);                                return; }
+
+        throw new NotSupportedException($"Fixed-buffer element type '{elementType.Name}' is not supported.");
+    }
+
+    private static void AppendSyntheticFields(ICollection<FieldMetadata> allFields)    {
         var delayGetter = new Func<object, object?>(input =>
         {
             var sample = (SampleData)input;

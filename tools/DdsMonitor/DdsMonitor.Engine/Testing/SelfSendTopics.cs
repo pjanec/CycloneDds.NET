@@ -27,7 +27,7 @@ public static class SelfSendTopics
 
 [DdsTopic("SelfTest.Simple")]
 [DdsManaged]
-public partial class SelfTestSimple
+public partial struct SelfTestSimple
 {
     [DdsKey]
     public int Id;
@@ -37,6 +37,8 @@ public partial class SelfTestSimple
     public double Value;
 
     public DateTime Timestamp;
+
+    public unsafe fixed byte Data[16];
 }
 
 [DdsTopic("SelfTest.Pose")]

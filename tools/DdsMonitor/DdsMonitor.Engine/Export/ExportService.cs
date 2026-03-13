@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using DdsMonitor.Engine;
 
 namespace DdsMonitor.Engine.Export;
 
@@ -27,10 +28,7 @@ public sealed class ExportService : IExportService
     private const int FileBufferSize = 65_536;
     private const int FlushEveryN = 500;
 
-    private static readonly JsonSerializerOptions PayloadSerializerOptions = new()
-    {
-        IncludeFields = true
-    };
+    private static readonly JsonSerializerOptions PayloadSerializerOptions = DdsJsonOptions.Export;
 
     private readonly ISampleStore _store;
 

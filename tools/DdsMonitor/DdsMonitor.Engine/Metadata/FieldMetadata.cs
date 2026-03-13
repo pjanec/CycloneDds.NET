@@ -10,6 +10,27 @@ public sealed class FieldMetadata
     /// <summary>
     /// Initializes a new instance of the <see cref="FieldMetadata"/> class.
     /// </summary>
+    /// <param name="structuredName">Dot-separated structured field name.</param>
+    /// <param name="displayName">Display name shown in the UI.</param>
+    /// <param name="valueType">CLR type of the field value.</param>
+    /// <param name="getter">Compiled getter delegate.</param>
+    /// <param name="setter">Compiled setter delegate.</param>
+    /// <param name="isSynthetic">True for computed/synthetic fields.</param>
+    /// <param name="isWrapperField">True for top-level SampleData wrapper properties.</param>
+    /// <param name="isArrayField">
+    /// True when the field holds a dynamic array or list whose length can change at runtime
+    /// (e.g. <c>T[]</c>, <c>List&lt;T&gt;</c> representing DDS sequences).
+    /// The exposed value type is the concrete collection type; <see cref="ElementType"/> holds the element type.
+    /// </param>
+    /// <param name="isFixedSizeArray">
+    /// True when the field represents a C# fixed-size buffer (<c>public unsafe fixed T Name[N]</c>)
+    /// or any other fixed-length inline array.  The value type is <c>T[]</c> (elements are copied on
+    /// each access); add/remove operations are not permitted.
+    /// </param>
+    /// <param name="elementType">Element type for array fields; <c>null</c> for scalar fields.</param>
+    /// <param name="fixedArrayLength">
+    /// Number of elements for fixed-size array fields; <c>-1</c> for scalar or dynamic fields.
+    /// </param>
     public FieldMetadata(
         string structuredName,
         string displayName,
@@ -17,7 +38,11 @@ public sealed class FieldMetadata
         Func<object, object?> getter,
         Action<object, object?> setter,
         bool isSynthetic,
-        bool isWrapperField = false)
+        bool isWrapperField = false,
+        bool isArrayField = false,
+        bool isFixedSizeArray = false,
+        Type? elementType = null,
+        int fixedArrayLength = -1)
     {
         StructuredName = structuredName ?? throw new ArgumentNullException(nameof(structuredName));
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
@@ -26,6 +51,10 @@ public sealed class FieldMetadata
         Setter = setter ?? throw new ArgumentNullException(nameof(setter));
         IsSynthetic = isSynthetic;
         IsWrapperField = isWrapperField;
+        IsArrayField = isArrayField;
+        IsFixedSizeArray = isFixedSizeArray;
+        ElementType = elementType;
+        FixedArrayLength = fixedArrayLength;
     }
 
     /// <summary>
@@ -64,4 +93,31 @@ public sealed class FieldMetadata
     /// Wrapper fields are exposed in the filter builder UI in addition to normal payload fields.
     /// </summary>
     public bool IsWrapperField { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether this field holds a dynamic array or list
+    /// (e.g. <c>T[]</c>, <c>List&lt;T&gt;</c>) whose element count can change at runtime.
+    /// When <c>true</c>, <see cref="ElementType"/> is non-null and add/remove element
+    /// operations are permitted in the send panel.
+    /// </summary>
+    public bool IsArrayField { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether this field represents a C# fixed-size buffer
+    /// (<c>public unsafe fixed T Name[N]</c>).  The getter returns a <c>T[]</c> snapshot;
+    /// the setter writes a <c>T[]</c> back into the buffer.
+    /// <see cref="FixedArrayLength"/> gives the buffer length.
+    /// </summary>
+    public bool IsFixedSizeArray { get; }
+
+    /// <summary>
+    /// Gets the element type for array fields, or <c>null</c> for scalar fields.
+    /// </summary>
+    public Type? ElementType { get; }
+
+    /// <summary>
+    /// Gets the fixed number of elements for a <see cref="IsFixedSizeArray"/> field,
+    /// or <c>-1</c> for scalar and dynamic-array fields.
+    /// </summary>
+    public int FixedArrayLength { get; }
 }
