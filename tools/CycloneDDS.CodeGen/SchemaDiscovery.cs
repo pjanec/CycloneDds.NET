@@ -309,6 +309,22 @@ namespace CycloneDDS.CodeGen
                 _ => throw new ArgumentException("Member must be field or property")
             };
 
+            bool isFixedSizeBuffer = false;
+            int fixedSize = 0;
+
+            // Roslyn exposes C# fixed buffers (e.g. `public fixed byte Buf[64];`) as
+            // IFieldSymbol.IsFixedSizeBuffer == true.  The field type is reported as the
+            // *pointer* to the element (e.g. byte*), so we unwrap one level.
+            if (member is IFieldSymbol fieldSym && fieldSym.IsFixedSizeBuffer)
+            {
+                isFixedSizeBuffer = true;
+                fixedSize = fieldSym.FixedSize;
+                if (type is IPointerTypeSymbol pointerType)
+                {
+                    type = pointerType.PointedAtType;
+                }
+            }
+
             // Use a format that ensures fully qualified names (Namespace.Type)
             // We want "Namespace.Type", not "global::Namespace.Type"
             var format = new SymbolDisplayFormat(
@@ -330,12 +346,37 @@ namespace CycloneDDS.CodeGen
             // Normalize common types to C# aliases for consistency with SerializerEmitter
             string typeName = type.ToDisplayString(format);
             if (typeName == "System.String") typeName = "string";
+
+            // For fixed-size buffers the element type is extracted from a pointer, and Roslyn
+            // may return fully-qualified names (e.g. "System.Byte" instead of "byte").
+            // Normalise those to their C# keyword aliases.
+            if (isFixedSizeBuffer)
+            {
+                typeName = typeName switch
+                {
+                    "System.Byte"    => "byte",
+                    "System.SByte"   => "sbyte",
+                    "System.Int16"   => "short",
+                    "System.UInt16"  => "ushort",
+                    "System.Int32"   => "int",
+                    "System.UInt32"  => "uint",
+                    "System.Int64"   => "long",
+                    "System.UInt64"  => "ulong",
+                    "System.Single"  => "float",
+                    "System.Double"  => "double",
+                    "System.Boolean" => "bool",
+                    "System.Char"    => "char",
+                    _ => typeName
+                };
+            }
             
             return new FieldInfo
             {
                 Name = member.Name,
                 TypeName = typeName,
-                Attributes = ExtractAttributes(member)
+                Attributes = ExtractAttributes(member),
+                IsFixedSizeBuffer = isFixedSizeBuffer,
+                FixedSize = fixedSize
             };
         }
 
