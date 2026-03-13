@@ -1,6 +1,7 @@
 @using System.Collections.Generic
 @using System.Linq
 @using System.Reflection
+@using System.Runtime.InteropServices
 @using System.Text.Json
 @using CycloneDDS.Runtime
 @using CycloneDDS.Runtime.Interop
@@ -88,6 +89,10 @@ else
     private DetailTab _activeTab = DetailTab.Tree;
     private DebouncedAction? _debouncer;
     private IDisposable? _subscription;
+
+    // Expand/collapse state – keyed by node path; persists across sample switches.
+    private readonly Dictionary<string, bool> _treeExpanded = new();
+    private readonly HashSet<string> _tableExpandedFields = new();
 
     [CascadingParameter]
     public PanelState? PanelState { get; set; }
@@ -223,14 +228,55 @@ else
         foreach (var field in _currentSample.TopicMetadata.AllFields.Where(meta => !meta.IsSynthetic))
         {
             var value = field.Getter(_currentSample.Payload);
+            var isExpandable = IsTableFieldExpandable(value);
+            var fieldName = field.StructuredName;
+            var isExpanded = isExpandable && _tableExpandedFields.Contains(fieldName);
+
+            // ── Main field row ────────────────────────────────────────────────
             builder.OpenElement(9, "tr");
+
             builder.OpenElement(10, "td");
-            builder.AddContent(11, field.StructuredName);
+            if (isExpandable)
+            {
+                builder.OpenElement(11, "button");
+                builder.AddAttribute(12, "type", "button");
+                builder.AddAttribute(13, "class", "detail-table__toggle");
+                builder.AddAttribute(14, "onclick",
+                    EventCallback.Factory.Create(this, () => ToggleTableField(fieldName)));
+                builder.AddContent(15, isExpanded ? "\u25bc" : "\u25ba");
+                builder.CloseElement();
+            }
+            builder.AddContent(16, field.StructuredName);
             builder.CloseElement();
-            builder.OpenElement(12, "td");
-            builder.AddContent(13, RenderValue(value));
+
+            builder.OpenElement(17, "td");
+            builder.AddContent(18, RenderValue(value));
             builder.CloseElement();
-            builder.CloseElement();
+
+            builder.CloseElement(); // tr
+
+            // ── Expanded element rows ─────────────────────────────────────────
+            if (isExpanded && value != null)
+            {
+                var arr = ToElementArray(value);
+                if (arr != null)
+                {
+                    for (int i = 0; i < arr.Length; i++)
+                    {
+                        var elemVal = arr.GetValue(i);
+                        builder.OpenElement(19, "tr");
+                        builder.AddAttribute(20, "class", "detail-table__element-row");
+                        builder.OpenElement(21, "td");
+                        builder.AddAttribute(22, "class", "detail-table__element-name");
+                        builder.AddContent(23, $"[{i}]");
+                        builder.CloseElement();
+                        builder.OpenElement(24, "td");
+                        builder.AddContent(25, RenderValue(elemVal));
+                        builder.CloseElement();
+                        builder.CloseElement();
+                    }
+                }
+            }
         }
         builder.CloseElement();
         builder.CloseElement();
@@ -333,10 +379,34 @@ else
             displayType = typeof(string);
         }
 
+        // Determine whether this non-leaf node is array-like (for default-collapsed behaviour).
+        var isArrayLike = !isLeaf && type != null &&
+            (type.IsArray ||
+             IsFixedBufferValueType(type) ||
+             (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)));
+
+        // Non-root, non-leaf nodes are user-collapsible.  Arrays/buffers start collapsed.
+        var isToggleable = !isLeaf && !isRoot;
+        var isExpanded = !isToggleable || IsTreeNodeExpanded(nextPath, isArrayLike);
+
         builder.OpenElement(sequence++, "div");
         builder.AddAttribute(sequence++, "class", "detail-tree__node");
         builder.OpenElement(sequence++, "div");
         builder.AddAttribute(sequence++, "class", "detail-tree__row");
+
+        // Expand/collapse toggle button for collapsible nodes.
+        if (isToggleable)
+        {
+            var togglePath = nextPath;
+            var toggleIsArray = isArrayLike;
+            builder.OpenElement(sequence++, "button");
+            builder.AddAttribute(sequence++, "type", "button");
+            builder.AddAttribute(sequence++, "class", "detail-tree__toggle");
+            builder.AddAttribute(sequence++, "onclick",
+                EventCallback.Factory.Create(this, () => ToggleTreeNode(togglePath, toggleIsArray)));
+            builder.AddContent(sequence++, isExpanded ? "\u25bc" : "\u25ba");
+            builder.CloseElement();
+        }
 
         builder.OpenElement(sequence++, "span");
         builder.AddAttribute(sequence++, "class", "detail-tree__label");
@@ -362,16 +432,52 @@ else
             addedToTraversal = traversal.Add(value);
         }
 
-        if (!isLeaf && value != null)
+        if (!isLeaf && value != null && isExpanded)
         {
             var nonNullType = type!;
             builder.OpenElement(sequence++, "div");
             builder.AddAttribute(sequence++, "class", "detail-tree__children");
-            foreach (var member in GetMembers(nonNullType))
+
+            if (nonNullType.IsArray)
             {
-                var memberValue = GetMemberValue(member, value);
-                builder.AddContent(sequence++, RenderNode(memberValue, member.Name, nextPath, traversal, depth + 1));
+                // Render each array element as an indexed child node.
+                var arr = (Array)value;
+                for (int i = 0; i < arr.Length; i++)
+                {
+                    var idx = i;
+                    builder.AddContent(sequence++, RenderNode(arr.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1));
+                }
             }
+            else if (IsFixedBufferValueType(nonNullType))
+            {
+                // Compiler-generated FixedBuffer struct — expand as indexed byte/element children.
+                var elements = ReadFixedBufferElements(value, nonNullType);
+                for (int i = 0; i < elements.Length; i++)
+                {
+                    var idx = i;
+                    builder.AddContent(sequence++, RenderNode(elements.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1));
+                }
+            }
+            else if (nonNullType.IsGenericType &&
+                     nonNullType.GetGenericTypeDefinition() == typeof(List<>))
+            {
+                // List<T> — iterate via the IEnumerable interface.
+                var list = (System.Collections.IList)value;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var idx = i;
+                    builder.AddContent(sequence++, RenderNode(list[idx], $"[{idx}]", nextPath, traversal, depth + 1));
+                }
+            }
+            else
+            {
+                foreach (var member in GetMembers(nonNullType))
+                {
+                    var memberValue = GetMemberValue(member, value);
+                    builder.AddContent(sequence++, RenderNode(memberValue, member.Name, nextPath, traversal, depth + 1));
+                }
+            }
+
             builder.CloseElement();
         }
 
@@ -452,6 +558,35 @@ else
             builder.AddContent(6, text);
             builder.CloseElement();
         }
+        else if (value is Array arr)
+        {
+            // Show a compact summary for array nodes; children are rendered separately.
+            builder.OpenElement(6, "span");
+            builder.AddAttribute(7, "class", "detail-tree__value detail-tree__value--array");
+            builder.AddContent(8, $"[{arr.Length}]");
+            builder.CloseElement();
+        }
+        else if (value != null && value.GetType().IsGenericType &&
+                 value.GetType().GetGenericTypeDefinition() == typeof(List<>))
+        {
+            var list = (System.Collections.IList)value;
+            builder.OpenElement(6, "span");
+            builder.AddAttribute(7, "class", "detail-tree__value detail-tree__value--array");
+            builder.AddContent(8, $"[{list.Count}]");
+            builder.CloseElement();
+        }
+        else if (value != null && IsFixedBufferValueType(value.GetType()))
+        {
+            // Fixed-buffer compiler struct — show element count from size.
+            int byteSize = Marshal.SizeOf(value.GetType());
+            var elemField = value.GetType().GetField("FixedElementField",
+                BindingFlags.Public | BindingFlags.Instance);
+            int elemSize = elemField != null ? Marshal.SizeOf(elemField.FieldType) : 1;
+            builder.OpenElement(6, "span");
+            builder.AddAttribute(7, "class", "detail-tree__value detail-tree__value--array");
+            builder.AddContent(8, $"[{byteSize / elemSize}]");
+            builder.CloseElement();
+        }
         else
         {
             var content = value?.ToString() ?? string.Empty;
@@ -519,7 +654,7 @@ else
     {
         try
         {
-            return JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true, IncludeFields = true });
+            return JsonSerializer.Serialize(payload, payload.GetType(), DdsJsonOptions.Display);
         }
         catch (Exception)
         {
@@ -537,9 +672,8 @@ else
         var payload = _currentSample.Payload;
         try
         {
-            var options = new JsonSerializerOptions { IncludeFields = true };
-            var json = JsonSerializer.Serialize(payload, options);
-            var clone = JsonSerializer.Deserialize(json, payload.GetType(), options);
+            var json = JsonSerializer.Serialize(payload, payload.GetType(), DdsJsonOptions.Export);
+            var clone = JsonSerializer.Deserialize(json, payload.GetType(), DdsJsonOptions.Export);
             if (clone != null)
             {
                 EventBroker.Publish(new CloneAndSendRequestEvent(_currentSample.TopicMetadata, clone));
@@ -621,9 +755,121 @@ else
         return "detail-tree__value";
     }
 
-    // Test helper for verifying recursion guards without rendering.
-    internal static TraversalSummary AnalyzeTraversal(object? value)
+    // ─────────────────────────────────────────────────────────────────────
+    // Expand / collapse helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    private bool IsTreeNodeExpanded(string nodePath, bool isArrayLike)
     {
+        if (_treeExpanded.TryGetValue(nodePath, out var val))
+        {
+            return val;
+        }
+
+        // Default: arrays / fixed-buffers / lists start collapsed; structs start expanded.
+        return !isArrayLike;
+    }
+
+    private void ToggleTreeNode(string nodePath, bool isArrayLike)
+    {
+        _treeExpanded[nodePath] = !IsTreeNodeExpanded(nodePath, isArrayLike);
+    }
+
+    private static bool IsTableFieldExpandable(object? value)
+    {
+        if (value == null)
+        {
+            return false;
+        }
+
+        var type = value.GetType();
+        return type.IsArray ||
+               (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>));
+    }
+
+    private static Array? ToElementArray(object value)
+    {
+        if (value is Array arr)
+        {
+            return arr;
+        }
+
+        if (value is System.Collections.IList list)
+        {
+            var result = new object?[list.Count];
+            for (int i = 0; i < list.Count; i++)
+            {
+                result[i] = list[i];
+            }
+
+            return result;
+        }
+
+        return null;
+    }
+
+    private void ToggleTableField(string fieldName)
+    {
+        if (!_tableExpandedFields.Remove(fieldName))
+        {
+            _tableExpandedFields.Add(fieldName);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Array / fixed-buffer helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true when <paramref name="type"/> is a compiler-generated fixed-buffer
+    /// value type (i.e. the nested struct emitted for <c>public unsafe fixed T Name[N]</c>).
+    /// These have exactly one public instance field named <c>FixedElementField</c>.
+    /// </summary>
+    internal static bool IsFixedBufferValueType(Type type)
+    {
+        if (!type.IsValueType)
+        {
+            return false;
+        }
+
+        var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+        return fields.Length == 1 && fields[0].Name == "FixedElementField";
+    }
+
+    /// <summary>
+    /// Reads all elements of a fixed-buffer value <paramref name="bufInstance"/> into a
+    /// managed array by pinning the boxed struct and reading its raw bytes.
+    /// </summary>
+    internal static Array ReadFixedBufferElements(object bufInstance, Type bufType)
+    {
+        var elemField = bufType.GetField("FixedElementField", BindingFlags.Public | BindingFlags.Instance)!;
+        var elementType = elemField.FieldType;
+        int elemSize = Marshal.SizeOf(elementType);
+        int bufSize  = Marshal.SizeOf(bufType);
+        int count    = bufSize / elemSize;
+
+        var result = Array.CreateInstance(elementType, count);
+        var handle = GCHandle.Alloc(bufInstance, GCHandleType.Pinned);
+        try
+        {
+            var ptr = handle.AddrOfPinnedObject();
+            for (int i = 0; i < count; i++)
+            {
+                result.SetValue(
+                    DdsMonitor.Engine.TopicMetadata.ReadMarshalElement(ptr + (i * elemSize), elementType),
+                    i);
+            }
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        return result;
+    }
+
+    // Test helper for verifying recursion guards without rendering.
+    internal static TraversalSummary AnalyzeTraversal(object? value)    {
         var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
         var summary = new TraversalSummary();
         AnalyzeTraversal(value, traversal, 0, summary);
@@ -664,9 +910,36 @@ else
             addedToTraversal = traversal.Add(value);
         }
 
-        foreach (var member in GetMembers(type))
+        if (type.IsArray)
         {
-            AnalyzeTraversal(GetMemberValue(member, value), traversal, depth + 1, summary);
+            var arr = (Array)value;
+            for (int i = 0; i < arr.Length; i++)
+            {
+                AnalyzeTraversal(arr.GetValue(i), traversal, depth + 1, summary);
+            }
+        }
+        else if (IsFixedBufferValueType(type))
+        {
+            var elements = ReadFixedBufferElements(value, type);
+            for (int i = 0; i < elements.Length; i++)
+            {
+                AnalyzeTraversal(elements.GetValue(i), traversal, depth + 1, summary);
+            }
+        }
+        else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+        {
+            var list = (System.Collections.IList)value;
+            for (int i = 0; i < list.Count; i++)
+            {
+                AnalyzeTraversal(list[i], traversal, depth + 1, summary);
+            }
+        }
+        else
+        {
+            foreach (var member in GetMembers(type))
+            {
+                AnalyzeTraversal(GetMemberValue(member, value), traversal, depth + 1, summary);
+            }
         }
 
         if (addedToTraversal)

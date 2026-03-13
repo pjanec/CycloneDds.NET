@@ -1311,6 +1311,22 @@ body {
   padding-left: 12px;
 }
 
+.detail-tree__toggle {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--panel-muted);
+  cursor: pointer;
+  font-size: 0.65rem;
+  line-height: 1;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.detail-tree__toggle:hover {
+  color: var(--panel-text);
+}
+
 .detail-tree__pin,
 .detail-tree__textview {
   padding: 2px 6px;
@@ -1352,6 +1368,35 @@ body {
   text-align: left;
   padding: 6px 8px;
   border-bottom: 1px solid rgba(42, 53, 80, 0.4);
+}
+
+.detail-table__toggle {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--panel-muted);
+  cursor: pointer;
+  font-size: 0.65rem;
+  line-height: 1;
+  vertical-align: middle;
+  user-select: none;
+  margin-right: 4px;
+}
+
+.detail-table__toggle:hover {
+  color: var(--panel-text);
+}
+
+.detail-table__element-row td {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  opacity: 0.85;
+}
+
+.detail-table__element-name {
+  padding-left: 28px !important;
+  color: var(--panel-muted);
+  font-size: 0.88em;
 }
 
 .detail-json {
@@ -1672,6 +1717,76 @@ body {
 
 .dynamic-form__unsupported {
   font-size: 12px;
+  color: var(--text-2);
+  font-style: italic;
+}
+
+/* ─── Array field editor (fixed-size and dynamic) ─────────────────────────── */
+
+.dynamic-form__array-fixed,
+.dynamic-form__array-dynamic {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.dynamic-form__array-elem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dynamic-form__array-idx {
+  font-size: 10px;
+  color: var(--text-2);
+  white-space: nowrap;
+  min-width: 30px;
+  text-align: right;
+}
+
+.dynamic-form__array-remove {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+
+.dynamic-form__array-remove:hover {
+  border-color: var(--border-1);
+  color: var(--danger, #e05);
+}
+
+.dynamic-form__array-add-row {
+  padding-top: 4px;
+}
+
+.dynamic-form__array-add {
+  background: none;
+  border: 1px dashed var(--border-1);
+  border-radius: 4px;
+  color: var(--accent-2);
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.dynamic-form__array-add:hover {
+  background: var(--surface-2);
+}
+
+.dynamic-form__array-readonly {
+  font-size: 12px;
+  color: var(--text-2);
+  font-family: monospace;
+}
+
+.detail-tree__value--array {
   color: var(--text-2);
   font-style: italic;
 }

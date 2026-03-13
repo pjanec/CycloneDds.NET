@@ -33,11 +33,7 @@ public sealed class ImportService : IImportService
 {
     private const int FileBufferSize = 65_536;
 
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        IncludeFields = true
-    };
+    private static readonly JsonSerializerOptions SerializerOptions = DdsJsonOptions.Import;
 
     /// <inheritdoc />
     public async IAsyncEnumerable<SampleData> ImportAsync(

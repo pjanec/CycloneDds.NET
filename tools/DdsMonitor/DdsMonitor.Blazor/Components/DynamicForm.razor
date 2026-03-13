@@ -1,4 +1,5 @@
 @using System.Collections.Generic
+@using System.Collections
 @using DdsMonitor.Engine.Ui
 
 @inject ITypeDrawerRegistry DrawerRegistry
@@ -43,6 +44,7 @@ else
                 <div class="dynamic-form__control">
                     @if (drawer != null)
                     {
+                        // Scalar field with a registered drawable.
                         var ctx = new DrawerContext(
                             capturedField.DisplayName,
                             capturedField.ValueType,
@@ -55,9 +57,100 @@ else
                             this);
                         @drawer(ctx)
                     }
+                    else if (capturedField.IsFixedSizeArray && capturedField.ElementType != null)
+                    {
+                        // Fixed-size array (e.g. public unsafe fixed byte Name[N]).
+                        // Show N compact element inputs; no add/remove allowed.
+                        var elemDrawer = DrawerRegistry.GetDrawer(capturedField.ElementType);
+                        if (elemDrawer != null)
+                        {
+                            <div class="dynamic-form__array-fixed">
+                                @for (int idx = 0; idx < capturedField.FixedArrayLength; idx++)
+                                {
+                                    var capturedIdx = idx;
+                                    var elemCtx = new DrawerContext(
+                                        $"[{capturedIdx}]",
+                                        capturedField.ElementType,
+                                        () =>
+                                        {
+                                            var arr = capturedField.Getter(Payload!) as Array;
+                                            return arr != null && capturedIdx < arr.Length
+                                                ? arr.GetValue(capturedIdx)
+                                                : null;
+                                        },
+                                        v => SetArrayElement(capturedField, capturedIdx, v),
+                                        this);
+                                    <div class="dynamic-form__array-elem">
+                                        <span class="dynamic-form__array-idx">[<b>@capturedIdx</b>]</span>
+                                        @elemDrawer(elemCtx)
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            // No element drawer – show read-only text.
+                            var arr = capturedField.Getter(Payload!) as Array;
+                            <span class="dynamic-form__array-readonly">
+                                @RenderArrayAsText(arr, capturedField.FixedArrayLength)
+                            </span>
+                        }
+                    }
+                    else if (capturedField.IsArrayField && capturedField.ElementType != null)
+                    {
+                        // Dynamic array / List<T> – add/remove elements allowed.
+                        var elemDrawer = DrawerRegistry.GetDrawer(capturedField.ElementType);
+                        var rawValue = capturedField.Getter(Payload!);
+                        var currentArr = ToObjectArray(rawValue);
+
+                        <div class="dynamic-form__array-dynamic">
+                            @for (int idx = 0; idx < currentArr.Count; idx++)
+                            {
+                                var capturedIdx = idx;
+                                <div class="dynamic-form__array-elem">
+                                    <span class="dynamic-form__array-idx">[<b>@capturedIdx</b>]</span>
+                                    @if (elemDrawer != null)
+                                    {
+                                        var elemCtx = new DrawerContext(
+                                            $"[{capturedIdx}]",
+                                            capturedField.ElementType,
+                                            () =>
+                                            {
+                                                var arr2 = ToObjectArray(capturedField.Getter(Payload!));
+                                                return capturedIdx < arr2.Count ? arr2[capturedIdx] : null;
+                                            },
+                                            v => SetArrayElement(capturedField, capturedIdx, v),
+                                            this);
+                                        @elemDrawer(elemCtx)
+                                    }
+                                    else
+                                    {
+                                        <span class="dynamic-form__unsupported">
+                                            @(currentArr[capturedIdx]?.ToString() ?? "(null)")
+                                        </span>
+                                    }
+                                    <button type="button"
+                                            class="dynamic-form__array-remove"
+                                            title="Remove element"
+                                            @onclick="() => RemoveArrayElement(capturedField, capturedIdx)">
+                                        ×
+                                    </button>
+                                </div>
+                            }
+                            <div class="dynamic-form__array-add-row">
+                                <button type="button"
+                                        class="dynamic-form__array-add"
+                                        title="Add element"
+                                        @onclick="() => AddArrayElement(capturedField)">
+                                    + Add
+                                </button>
+                            </div>
+                        </div>
+                    }
                     else if (field.ValueType.IsArray)
                     {
-                        <span class="dynamic-form__unsupported" title="Array editing not yet supported">
+                        // Fallback: array type without metadata – read-only count.
+                        <span class="dynamic-form__unsupported" title="Array editing not supported for this type">
                             [@((capturedField.Getter(Payload!) as Array)?.Length ?? 0) items]
                         </span>
                     }
@@ -79,9 +172,7 @@ else
 }
 
 @code {
-    /// <summary>
-    /// Topic metadata describing the fields to display.
-    /// </summary>
+    /// <summary>Topic metadata describing the fields to display.</summary>
     [Parameter]
     public TopicMetadata? Meta { get; set; }
 
@@ -104,5 +195,140 @@ else
     {
         var dot = structuredName.LastIndexOf('.');
         return dot < 0 ? null : structuredName[..dot];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Array editing helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sets element at <paramref name="index"/> in the array/list backing
+    /// <paramref name="field"/>, then writes the whole collection back.
+    /// </summary>
+    private void SetArrayElement(FieldMetadata field, int index, object? value)
+    {
+        var raw = field.Getter(Payload!);
+
+        if (raw is IList list && !list.IsFixedSize)
+        {
+            // Generic List<T> or mutable IList.
+            if (index < list.Count)
+            {
+                list[index] = value;
+                field.Setter(Payload!, list);
+            }
+        }
+        else if (raw is Array arr)
+        {
+            // T[] or fixed-buffer copy (IsFixedSizeArray).
+            if (index < arr.Length)
+            {
+                arr.SetValue(value, index);
+                field.Setter(Payload!, arr);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Appends a default element to a dynamic array or <c>List&lt;T&gt;</c> field.
+    /// </summary>
+    private void AddArrayElement(FieldMetadata field)
+    {
+        if (field.ElementType == null) return;
+
+        var raw = field.Getter(Payload!);
+        var defaultElem = field.ElementType.IsValueType
+            ? Activator.CreateInstance(field.ElementType)
+            : null;
+
+        if (raw is IList list && !list.IsFixedSize)
+        {
+            list.Add(defaultElem);
+            field.Setter(Payload!, list);
+        }
+        else
+        {
+            // T[] – replace with a new array one element longer.
+            var src = raw as Array ?? Array.CreateInstance(field.ElementType, 0);
+            var newArr = Array.CreateInstance(field.ElementType, src.Length + 1);
+            Array.Copy(src, newArr, src.Length);
+            newArr.SetValue(defaultElem, src.Length);
+            field.Setter(Payload!, newArr);
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Removes element at <paramref name="index"/> from a dynamic array or
+    /// <c>List&lt;T&gt;</c> field.
+    /// </summary>
+    private void RemoveArrayElement(FieldMetadata field, int index)
+    {
+        if (field.ElementType == null) return;
+
+        var raw = field.Getter(Payload!);
+
+        if (raw is IList list && !list.IsFixedSize)
+        {
+            if (index < list.Count)
+            {
+                list.RemoveAt(index);
+                field.Setter(Payload!, list);
+            }
+        }
+        else if (raw is Array src)
+        {
+            if (src.Length == 0) return;
+
+            var newArr = Array.CreateInstance(field.ElementType, src.Length - 1);
+            Array.Copy(src, 0, newArr, 0, index);
+            Array.Copy(src, index + 1, newArr, index, src.Length - index - 1);
+            field.Setter(Payload!, newArr);
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Converts a raw array/list value to a simple <c>IList&lt;object?&gt;</c>
+    /// for index-based access in the Razor template.
+    /// </summary>
+    private static IList<object?> ToObjectArray(object? raw)
+    {
+        if (raw is Array arr)
+        {
+            var result = new List<object?>(arr.Length);
+            for (int i = 0; i < arr.Length; i++) result.Add(arr.GetValue(i));
+            return result;
+        }
+
+        if (raw is IEnumerable<object?> seq)
+        {
+            return seq.ToList();
+        }
+
+        if (raw is System.Collections.IEnumerable enumerable)
+        {
+            var result = new List<object?>();
+            foreach (var item in enumerable) result.Add(item);
+            return result;
+        }
+
+        return Array.Empty<object?>();
+    }
+
+    /// <summary>
+    /// Renders an array as a compact comma-separated text for read-only display.
+    /// </summary>
+    private static string RenderArrayAsText(Array? arr, int maxLen)
+    {
+        if (arr == null) return "(null)";
+        var count = Math.Min(arr.Length, maxLen > 0 ? maxLen : arr.Length);
+        var parts = new string[count];
+        for (int i = 0; i < count; i++) parts[i] = arr.GetValue(i)?.ToString() ?? "0";
+        return string.Join(", ", parts);
     }
 }
