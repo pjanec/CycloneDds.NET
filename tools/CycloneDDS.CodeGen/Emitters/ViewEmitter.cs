@@ -149,6 +149,11 @@ namespace CycloneDDS.CodeGen.Emitters
                 var fixedType = GetFixedStringType(resolvedTypeName);
                 sb.AppendLine($"{indent}public unsafe {fixedView} {field.Name} => new {fixedView}(({fixedType}*)&_ptr->{nativeFieldName});");
             }
+            // C# fixed-size buffer (e.g. `public fixed byte Buf[64];`)
+            else if (field.IsFixedSizeBuffer)
+            {
+                EmitFixedSizeBufferProperty(sb, field, indent, nativeFieldName);
+            }
             // Primitive
             else if (IsPrimitive(field.TypeName, registry))
             {
@@ -555,6 +560,20 @@ namespace CycloneDDS.CodeGen.Emitters
              sb.AppendLine($"{indent}}}");
         }
 
+        private void EmitFixedSizeBufferProperty(StringBuilder sb, FieldInfo field, string indent, string nativeFieldName)
+        {
+             // For a C# fixed buffer `public fixed T Buf[N]` in the native struct,
+             // `_ptr->Buf` returns a T* to the first element – wrap as ReadOnlySpan<T>.
+             sb.AppendLine($"{indent}/// <summary>Gets {field.Name} as ReadOnlySpan (zero-copy).</summary>");
+             sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{field.TypeName}> {field.Name}");
+             sb.AppendLine($"{indent}{{");
+             sb.AppendLine($"{indent}    get");
+             sb.AppendLine($"{indent}    {{");
+             sb.AppendLine($"{indent}        return new ReadOnlySpan<{field.TypeName}>(_ptr->{nativeFieldName}, {field.FixedSize});");
+             sb.AppendLine($"{indent}    }}");
+             sb.AppendLine($"{indent}}}");
+        }
+
         private void GenerateToManagedMethod(StringBuilder sb, TypeInfo type, GlobalTypeRegistry? registry, string indent)
         {
             sb.AppendLine($"{indent}public {type.Name} ToManaged()");
@@ -652,7 +671,19 @@ namespace CycloneDDS.CodeGen.Emitters
                 return;
             }
 
-            if (IsPrimitive(field.TypeName, registry) || IsBool(field.TypeName, registry) || IsEnum(field, registry) || IsString(field.TypeName, registry))
+            if (field.IsFixedSizeBuffer)
+            {
+                // Copy from ReadOnlySpan (view) into the local managed fixed buffer.
+                // For local stack variables, assign the fixed-buffer pointer to a named pointer
+                // variable first so pointer-indexing is a valid lvalue (avoids CS0131).
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    var __srcSpan = this.{propName};");
+                sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = target.{targetProp};");
+                sb.AppendLine($"{indent}    for (int __i = 0; __i < {field.FixedSize}; __i++)");
+                sb.AppendLine($"{indent}        __dstPtr[__i] = __srcSpan[__i];");
+                sb.AppendLine($"{indent}}}");
+            }
+            else if (IsPrimitive(field.TypeName, registry) || IsBool(field.TypeName, registry) || IsEnum(field, registry) || IsString(field.TypeName, registry))
             {
                  sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
             }
@@ -663,6 +694,44 @@ namespace CycloneDDS.CodeGen.Emitters
             else if (IsSequence(field))
             {
                  var elementType = GetSequenceElementType(field);
+
+                 // T[] – the managed field is T[], not List<T>.
+                 if (field.TypeName.EndsWith("[]"))
+                 {
+                     if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
+                     {
+                         // Primitive/bool: view property returns ReadOnlySpan<T>, ToArray() returns T[].
+                         sb.AppendLine($"{indent}target.{targetProp} = this.{propName}.ToArray();");
+                     }
+                     else if (IsString(elementType, registry))
+                     {
+                         sb.AppendLine($"{indent}target.{targetProp} = new string[this.{propName}Count];");
+                         sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                         sb.AppendLine($"{indent}{{");
+                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i);");
+                         sb.AppendLine($"{indent}}}");
+                     }
+                     else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime")
+                     {
+                         sb.AppendLine($"{indent}target.{targetProp} = new {elementType}[this.{propName}Count];");
+                         sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                         sb.AppendLine($"{indent}{{");
+                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i);");
+                         sb.AppendLine($"{indent}}}");
+                     }
+                     else
+                     {
+                         // Struct sequence: view uses {Name}Count + Get{Name}(i).ToManaged()
+                         sb.AppendLine($"{indent}target.{targetProp} = new {elementType}[this.{propName}Count];");
+                         sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                         sb.AppendLine($"{indent}{{");
+                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i).ToManaged();");
+                         sb.AppendLine($"{indent}}}");
+                     }
+                 }
+                 else
+                 {
+                 // List<T> path
                  var targetCollectionType = "System.Collections.Generic.List";
 
                  if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
@@ -694,7 +763,8 @@ namespace CycloneDDS.CodeGen.Emitters
                      sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i).ToManaged());");
                      sb.AppendLine($"{indent}}}");
                  }
-            }
+                 } // end non-array-typed sequence branch
+            } // end IsSequence
             else if (field.TypeName == "System.Guid" || field.TypeName == "Guid" || 
                      field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
             {

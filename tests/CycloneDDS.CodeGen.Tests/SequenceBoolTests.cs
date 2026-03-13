@@ -67,7 +67,7 @@ namespace Test.SeqBool
     [StructLayout(LayoutKind.Sequential)]
     public struct BoolSeqStruct
     {
-        public List<bool> Flags;
+        public bool[] Flags;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -109,7 +109,7 @@ namespace Test.SeqBool
                     var managed = view.ToManaged();
 
                     if (managed.Flags == null) throw new Exception(""Flags is null"");
-                    if (managed.Flags.Count != 3) throw new Exception($""Count mismatch: {managed.Flags.Count}"");
+                    if (managed.Flags.Length != 3) throw new Exception($""Count mismatch: {managed.Flags.Length}"");
                     if (managed.Flags[0] != true) throw new Exception($""[0] mismatch"");
                     if (managed.Flags[1] != false) throw new Exception($""[1] mismatch"");
                     if (managed.Flags[2] != true) throw new Exception($""[2] mismatch"");

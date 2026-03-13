@@ -307,14 +307,14 @@ namespace Test.ToManaged
     {
         public int Id;
         public string Message;
-        public System.Collections.Generic.List<double> Numbers;
+        public double[] Numbers;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct ComplexStruct
     {
         public InnerStruct Single;
-        public System.Collections.Generic.List<InnerStruct> List;
+        public InnerStruct[] List;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -402,17 +402,17 @@ namespace Test.ToManaged
                     // Assertions
                     if (managed.Single.Id != 101) throw new Exception($""Single.Id mismatch: {managed.Single.Id}"");
                     if (managed.Single.Message != ""NestedMessage"") throw new Exception($""Single.Message mismatch: {managed.Single.Message}"");
-                    if (managed.Single.Numbers.Count != 3) throw new Exception($""Single.Numbers.Count mismatch: {managed.Single.Numbers.Count}"");
+                    if (managed.Single.Numbers.Length != 3) throw new Exception($""Single.Numbers.Count mismatch: {managed.Single.Numbers.Length}"");
                     if (Math.Abs(managed.Single.Numbers[1] - 2.2) > 0.001) throw new Exception($""Single.Numbers[1] mismatch: {managed.Single.Numbers[1]}"");
 
-                    if (managed.List.Count != 2) throw new Exception($""List.Count mismatch: {managed.List.Count}"");
+                    if (managed.List.Length != 2) throw new Exception($""List.Count mismatch: {managed.List.Length}"");
                     
                     if (managed.List[0].Id != 201) throw new Exception($""List[0].Id mismatch: {managed.List[0].Id}"");
                     if (managed.List[0].Message != ""ListMsg1"") throw new Exception($""List[0].Message mismatch: {managed.List[0].Message}"");
-                    if (managed.List[0].Numbers.Count != 0) throw new Exception($""List[0].Numbers.Count mismatch: {managed.List[0].Numbers.Count}"");
+                    if (managed.List[0].Numbers.Length != 0) throw new Exception($""List[0].Numbers.Count mismatch: {managed.List[0].Numbers.Length}"");
 
                     if (managed.List[1].Id != 202) throw new Exception($""List[1].Id mismatch: {managed.List[1].Id}"");
-                    if (managed.List[1].Numbers.Count != 1) throw new Exception($""List[1].Numbers.Count mismatch: {managed.List[1].Numbers.Count}"");
+                    if (managed.List[1].Numbers.Length != 1) throw new Exception($""List[1].Numbers.Count mismatch: {managed.List[1].Numbers.Length}"");
                     if (Math.Abs(managed.List[1].Numbers[0] - 9.9) > 0.001) throw new Exception($""List[1].Numbers[0] mismatch: {managed.List[1].Numbers[0]}"");
                 }
             }

@@ -244,6 +244,18 @@ namespace CycloneDDS.CodeGen
              string sourceAccess = $"{sourcePrefix}.{field.Name}";
              string targetAccess = $"{targetPrefix}.{field.Name}";
 
+             // Fixed-size buffers: inline memcpy, zero allocation.
+             // Use fixed() to pin the in/ref parameters so their fixed buffers are addressable.
+             if (field.IsFixedSizeBuffer)
+             {
+                 sb.AppendLine($"            fixed ({field.TypeName}* __src = {sourceAccess})");
+                 sb.AppendLine($"            fixed ({field.TypeName}* __dst = {targetAccess})");
+                 sb.AppendLine($"            {{");
+                 sb.AppendLine($"                System.Buffer.MemoryCopy(__src, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                 sb.AppendLine($"            }}");
+                 return;
+             }
+
              if (IsOptional(field))
              {
                  string baseType = GetBaseType(field.TypeName);
@@ -637,6 +649,18 @@ namespace CycloneDDS.CodeGen
                  fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
              }
 
+             // Fixed-size buffers: inline memcpy, zero allocation.
+             // Use fixed() to pin the in/ref parameters so their fixed buffers are addressable.
+             if (field.IsFixedSizeBuffer)
+             {
+                 sb.AppendLine($"            fixed ({field.TypeName}* __src = {sourceAccess})");
+                 sb.AppendLine($"            fixed ({field.TypeName}* __dst = {targetAccess})");
+                 sb.AppendLine($"            {{");
+                 sb.AppendLine($"                System.Buffer.MemoryCopy(__src, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                 sb.AppendLine($"            }}");
+                 return;
+             }
+
              if (IsOptional(field))
              {
                  string baseType = GetBaseType(field.TypeName);
@@ -918,6 +942,10 @@ namespace CycloneDDS.CodeGen
 
         private bool IsDynamic(FieldInfo field)
         {
+            // Fixed-size buffers have a compile-time constant size and are embedded
+            // inline in the native struct; they are never dynamic.
+            if (field.IsFixedSizeBuffer) return false;
+
             if (field.TypeName == "string" || field.TypeName == "System.String") return true;
             if (field.TypeName.StartsWith("List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("System.Collections.Generic.List<")) return true;
             
@@ -955,27 +983,28 @@ namespace CycloneDDS.CodeGen
              }
              else if (typeName.StartsWith("List<") || typeName.EndsWith("[]") || typeName.StartsWith("System.Collections.Generic.List<"))
              {
-                 sb.AppendLine($"            if (source.{field.Name} != null && source.{field.Name}.Count > 0)");
+                 string countProp = typeName.EndsWith("[]") ? "Length" : "Count";
+                 sb.AppendLine($"            if (source.{field.Name} != null && source.{field.Name}.{countProp} > 0)");
                  sb.AppendLine($"            {{");
                  sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
                  
-                 string elementType = ExtractGenericType(typeName);
+                 string elementType = typeName.EndsWith("[]") ? typeName.Substring(0, typeName.Length - 2) : ExtractGenericType(typeName);
                  if (IsPrimitive(elementType))
                  {
                       string nativeType = elementType;
                       if (nativeType == "bool") nativeType = "byte";
                       if (nativeType == "string" || nativeType == "System.String") nativeType = "IntPtr"; 
                       
-                      sb.AppendLine($"                currentOffset += source.{field.Name}.Count * Unsafe.SizeOf<{nativeType}>();");
+                      sb.AppendLine($"                currentOffset += source.{field.Name}.{countProp} * Unsafe.SizeOf<{nativeType}>();");
                  }
                  else
                  {
                       string nativeElem = GetNativeTypeForSequenceElement(field);
                       
-                      sb.AppendLine($"                currentOffset += source.{field.Name}.Count * Unsafe.SizeOf<{nativeElem}>();");
+                      sb.AppendLine($"                currentOffset += source.{field.Name}.{countProp} * Unsafe.SizeOf<{nativeElem}>();");
                       sb.AppendLine($"                foreach(var item in source.{field.Name})");
                       sb.AppendLine("                {");
-                      string managedType = ExtractGenericType(typeName); 
+                      string managedType = typeName.EndsWith("[]") ? typeName.Substring(0, typeName.Length - 2) : ExtractGenericType(typeName); 
                       
                       if (managedType == "string" || managedType == "System.String")
                       {
@@ -1032,7 +1061,7 @@ namespace CycloneDDS.CodeGen
         
         private string GetNativeTypeForSequenceElement(FieldInfo field)
         {
-             string elementType = ExtractGenericType(field.TypeName);
+             string elementType = field.TypeName.EndsWith("[]") ? field.TypeName.Substring(0, field.TypeName.Length - 2) : ExtractGenericType(field.TypeName);
              if (IsPrimitive(elementType))
              {
                  if (elementType == "bool" || elementType == "Boolean" || elementType == "System.Boolean") return "byte";
@@ -1159,17 +1188,25 @@ namespace CycloneDDS.CodeGen
                 {
                     if (field.HasAttribute("DdsDiscriminator")) continue;
 
-                    int? maxLen = GetMaxLength(field);
-                    if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                    if (field.IsFixedSizeBuffer)
                     {
                         sb.AppendLine($"        [FieldOffset(0)]");
-                        sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                        sb.AppendLine($"        public fixed {field.TypeName} {field.Name}[{field.FixedSize}];");
                     }
                     else
                     {
-                        string nativeType = GetNativeType(field);
-                        sb.AppendLine($"        [FieldOffset(0)]");
-                        sb.AppendLine($"        public {nativeType} {field.Name};");
+                        int? maxLen = GetMaxLength(field);
+                        if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                        {
+                            sb.AppendLine($"        [FieldOffset(0)]");
+                            sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                        }
+                        else
+                        {
+                            string nativeType = GetNativeType(field);
+                            sb.AppendLine($"        [FieldOffset(0)]");
+                            sb.AppendLine($"        public {nativeType} {field.Name};");
+                        }
                     }
                 }
                 sb.AppendLine("    }");
@@ -1181,15 +1218,22 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine("    {");
                 foreach (var field in type.Fields)
                 {
-                    int? maxLen = GetMaxLength(field);
-                    if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                    if (field.IsFixedSizeBuffer)
                     {
-                        sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                        sb.AppendLine($"        public fixed {field.TypeName} {field.Name}[{field.FixedSize}];");
                     }
                     else
                     {
-                        string nativeType = GetNativeType(field);
-                        sb.AppendLine($"        public {nativeType} {field.Name};");
+                        int? maxLen = GetMaxLength(field);
+                        if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                        {
+                            sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                        }
+                        else
+                        {
+                            string nativeType = GetNativeType(field);
+                            sb.AppendLine($"        public {nativeType} {field.Name};");
+                        }
                     }
                 }
                 sb.AppendLine("    }");

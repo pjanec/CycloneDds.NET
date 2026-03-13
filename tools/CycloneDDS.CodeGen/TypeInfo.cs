@@ -38,6 +38,11 @@ namespace CycloneDDS.CodeGen
         public TypeInfo? GenericType { get; set; } // Resolved generic argument type (e.g. T in List<T>)
         public List<AttributeInfo> Attributes { get; set; } = new List<AttributeInfo>();
 
+        /// <summary>True when the field is a C# fixed-size buffer (e.g. <c>public fixed byte Buf[64];</c>).</summary>
+        public bool IsFixedSizeBuffer { get; set; }
+        /// <summary>Number of elements in the fixed-size buffer (0 when <see cref="IsFixedSizeBuffer"/> is false).</summary>
+        public int FixedSize { get; set; }
+
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
         public AttributeInfo? GetAttribute(string name) => Attributes.FirstOrDefault(a => a.Name == name || a.Name == name + "Attribute");
 

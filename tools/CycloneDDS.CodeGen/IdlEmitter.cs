@@ -423,6 +423,15 @@ namespace CycloneDDS.CodeGen
         
         private (string Type, string Suffix) MapType(FieldInfo field)
         {
+            // C# fixed-size buffers: `public fixed byte Buf[64];`
+            // Treat as a fixed-length IDL array of the element type.
+            if (field.IsFixedSizeBuffer)
+            {
+                var innerField = new FieldInfo { TypeName = field.TypeName };
+                var (innerIdl, innerSuffix) = MapType(innerField);
+                return (innerIdl, innerSuffix + $"[{field.FixedSize}]");
+            }
+
             var typeName = field.TypeName;
             
             // Handle Nullable
