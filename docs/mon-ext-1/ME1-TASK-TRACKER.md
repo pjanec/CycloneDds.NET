@@ -23,8 +23,10 @@
 
 **Goal:** Expose string-method filter operators in the visual builder; enable CLI-safe alphabetical comparison operators.
 
-- [ ] **ME1-T04** StartsWith / EndsWith in Filter Builder UI → [details](./ME1-TASK-DETAILS.md#me1-t04--startswith--endswith-in-filter-builder-ui)
-- [ ] **ME1-T05** CLI-Safe Filter Operators (`gt`, `lt`, `ge`, `le`, `eq`, `ne`) → [details](./ME1-TASK-DETAILS.md#me1-t05--cli-safe-filter-operators)
+- [x] **ME1-C01** Corrective Fix: 8-bit Enum Union Discriminators
+
+- [x] **ME1-T04** StartsWith / EndsWith in Filter Builder UI → [details](./ME1-TASK-DETAILS.md#me1-t04--startswith--endswith-in-filter-builder-ui)
+- [x] **ME1-T05** CLI-Safe Filter Operators (`gt`, `lt`, `ge`, `le`, `eq`, `ne`) → [details](./ME1-TASK-DETAILS.md#me1-t05--cli-safe-filter-operators)
 
 ---
 
@@ -32,8 +34,8 @@
 
 **Goal:** Support multi-participant DDS ingestion with global sample ordinals, participant metadata, and filter-first ordinal allocation.
 
-- [ ] **ME1-T06** Multi-Participant Reception → [details](./ME1-TASK-DETAILS.md#me1-t06--multi-participant-reception)
-- [ ] **ME1-T07** Global Sample Ordinal + Participant Stamping → [details](./ME1-TASK-DETAILS.md#me1-t07--global-sample-ordinal--participant-stamping)
+- [x] **ME1-T06** Multi-Participant Reception → [details](./ME1-TASK-DETAILS.md#me1-t06--multi-participant-reception)
+- [x] **ME1-T07** Global Sample Ordinal + Participant Stamping → [details](./ME1-TASK-DETAILS.md#me1-t07--global-sample-ordinal--participant-stamping)
 
 ---
 

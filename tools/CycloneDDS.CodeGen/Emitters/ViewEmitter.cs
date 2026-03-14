@@ -483,6 +483,61 @@ namespace CycloneDDS.CodeGen.Emitters
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
                 }
+                else if (IsFixedString(caseType))
+                {
+                    // FixedString32/64/etc. view wrapper — native type is the wrapper itself, not a "_Native" variant.
+                    // FixedStringXxxView is a ref struct so cannot be Nullable<T>; throw on mismatch.
+                    var fixedView = GetFixedStringViewType(caseType);
+                    var fixedType = GetFixedStringType(caseType);
+                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {fixedView}. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}public unsafe {fixedView} {propName}As{caseName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if ({conditionExpr})");
+                    sb.AppendLine($"{indent}             return new {fixedView}(({fixedType}*)&_ptr->{fieldName}._u.{caseField});");
+                    sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
+                else if (member.IsFixedSizeBuffer)
+                {
+                    // C# fixed-size buffer (e.g. `public fixed float EightFloats[8]`) inside the native union struct.
+                    // ReadOnlySpan<T> is a ref struct so cannot be Nullable<T>; throw on mismatch.
+                    int bufLen = member.FixedSize;
+                    string bufLenStr = bufLen > 0 ? bufLen.ToString() : "0";
+                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as ReadOnlySpan. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{caseType}> {propName}As{caseName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if ({conditionExpr})");
+                    sb.AppendLine($"{indent}             return new ReadOnlySpan<{caseType}>(_ptr->{fieldName}._u.{caseField}, {bufLenStr});");
+                    sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
+                else if (IsFixedArray(member))
+                {
+                    // Fixed-length array field (e.g. `float[8]` attributed as inline array).
+                    // ReadOnlySpan<T> is a ref struct so cannot be Nullable<T>; throw on mismatch.
+                    string elemType = GetElementType(caseType);
+                    int? arrLen = GetArrayLength(member);
+                    string arrLenStr = arrLen.HasValue ? arrLen.Value.ToString() : "0";
+                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as ReadOnlySpan. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{elemType}> {propName}As{caseName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if ({conditionExpr})");
+                    sb.AppendLine($"{indent}        {{");
+                    sb.AppendLine($"{indent}             {elemType}* ptr = _ptr->{fieldName}._u.{caseField};");
+                    sb.AppendLine($"{indent}             return new ReadOnlySpan<{elemType}>(ptr, {arrLenStr});");
+                    sb.AppendLine($"{indent}        }}");
+                    sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
                 else if (IsPrimitive(caseType, registry) || IsEnum(member, registry))
                 {
                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {caseType} if discriminator matches.</summary>");

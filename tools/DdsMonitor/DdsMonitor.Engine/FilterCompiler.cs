@@ -28,8 +28,27 @@ public sealed class FilterCompiler : IFilterCompiler
         ".EndsWith"
     };
 
+    /// <summary>
+    /// Word-bounded regex replacements for CLI-safe alphabetical comparison operators.
+    /// Using <c>\b</c> word boundaries guarantees that operator tokens inside field names
+    /// (e.g. the <c>ge</c> sequence in <c>message</c>) are never corrupted.
+    /// </summary>
+    private static readonly (Regex Pattern, string Replacement)[] CliOperatorReplacements =
+    {
+        (new Regex(@"\bge\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), ">="),
+        (new Regex(@"\ble\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "<="),
+        (new Regex(@"\bgt\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), ">"),
+        (new Regex(@"\blt\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "<"),
+        (new Regex(@"\beq\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "=="),
+        (new Regex(@"\bne\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "!="),
+    };
+
     /// <inheritdoc />
     public FilterResult Compile(string expression, TopicMetadata? topicMeta)
+        => Compile(expression, topicMeta, null);
+
+    /// <inheritdoc />
+    public FilterResult Compile(string expression, TopicMetadata? topicMeta, IReadOnlyList<object?>? paramValues)
     {
         if (string.IsNullOrWhiteSpace(expression))
         {
@@ -38,6 +57,9 @@ public sealed class FilterCompiler : IFilterCompiler
 
         try
         {
+            // ME1-T05: Normalize CLI-safe alphabetical operators before any other processing.
+            expression = NormalizeCliOperators(expression);
+
             var config = new ParsingConfig
             {
                 ConvertObjectToSupportComparison = true
@@ -45,13 +67,17 @@ public sealed class FilterCompiler : IFilterCompiler
             var parameter = Expression.Parameter(typeof(SampleData), "it");
             var (rewritten, payloadFields) = PrepareExpression(expression, topicMeta);
 
+            // Extra args passed as @0, @1, … in the expression (string-method parameters).
+            var extraArgs = paramValues != null ? paramValues.Cast<object?>().ToArray() : Array.Empty<object?>();
+
             if (payloadFields.Count == 0)
             {
                 var lambda = DynamicExpressionParser.ParseLambda(
                     config,
                     new[] { parameter },
                     typeof(bool),
-                    rewritten);
+                    rewritten,
+                    extraArgs);
 
                 return new FilterResult(true, (Func<SampleData, bool>)lambda.Compile(), null);
             }
@@ -63,7 +89,7 @@ public sealed class FilterCompiler : IFilterCompiler
             if (isDynamic)
             {
                 // Postpone type-specific compilation to first evaluation against each payload type.
-                var lazyPredicate = BuildDynamicNullMetaPredicate(expression);
+                var lazyPredicate = BuildDynamicNullMetaPredicate(expression, paramValues);
                 return new FilterResult(true, lazyPredicate, null);
             }
 
@@ -81,7 +107,8 @@ public sealed class FilterCompiler : IFilterCompiler
                 config,
                 parameters.ToArray(),
                 typeof(bool),
-                rewritten);
+                rewritten,
+                extraArgs);
 
             var compiled = payloadLambda.Compile();
 
@@ -104,6 +131,21 @@ public sealed class FilterCompiler : IFilterCompiler
         {
             return new FilterResult(false, null, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Normalizes CLI-safe alphabetical comparison operators to their symbolic equivalents.
+    /// Uses word-boundary matching so that operator sequences embedded inside identifiers
+    /// (e.g. <c>ge</c> inside <c>message</c>) are never corrupted.
+    /// </summary>
+    private static string NormalizeCliOperators(string expression)
+    {
+        foreach (var (pattern, replacement) in CliOperatorReplacements)
+        {
+            expression = pattern.Replace(expression, replacement);
+        }
+
+        return expression;
     }
 
     private static (string Expression, List<FieldMetadata> Fields) PrepareExpression(
@@ -229,7 +271,7 @@ public sealed class FilterCompiler : IFilterCompiler
     /// time each payload type is encountered. This handles null <see cref="TopicMetadata"/>
     /// by discovering field types at runtime from the actual payload object type.
     /// </summary>
-    private static Func<SampleData, bool> BuildDynamicNullMetaPredicate(string expression)
+    private static Func<SampleData, bool> BuildDynamicNullMetaPredicate(string expression, IReadOnlyList<object?>? paramValues)
     {
         var cache = new Dictionary<Type, Func<SampleData, bool>>();
         var syncLock = new object();
@@ -247,7 +289,7 @@ public sealed class FilterCompiler : IFilterCompiler
             {
                 if (!cache.TryGetValue(payloadType, out typedPredicate))
                 {
-                    typedPredicate = CompileForPayloadType(expression, payloadType);
+                    typedPredicate = CompileForPayloadType(expression, payloadType, paramValues);
                     cache[payloadType] = typedPredicate;
                 }
             }
@@ -260,12 +302,12 @@ public sealed class FilterCompiler : IFilterCompiler
     /// Compiles a filter expression for a specific payload type using its <see cref="TopicMetadata"/>.
     /// Falls back to returning <c>false</c> for all samples if compilation or metadata fails.
     /// </summary>
-    private static Func<SampleData, bool> CompileForPayloadType(string expression, Type payloadType)
+    private static Func<SampleData, bool> CompileForPayloadType(string expression, Type payloadType, IReadOnlyList<object?>? paramValues)
     {
         try
         {
             var typedMeta = new TopicMetadata(payloadType);
-            var result = new FilterCompiler().Compile(expression, typedMeta);
+            var result = new FilterCompiler().Compile(expression, typedMeta, paramValues);
             if (result.IsValid && result.Predicate != null)
             {
                 return result.Predicate;

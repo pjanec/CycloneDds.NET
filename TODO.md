@@ -90,3 +90,9 @@ new CLI Options:
         - On replay, filter removes non-matching samples from the input file (not counting them into total frame count)
 
 
+
+
+[BUG] dds mon
+(json tab on sample detail) - shows enums in the json  as numbers - must be string
+(tree tab on samkle detail panel) - inline array not expanded
+

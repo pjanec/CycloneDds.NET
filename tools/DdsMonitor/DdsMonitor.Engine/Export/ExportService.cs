@@ -135,6 +135,10 @@ public sealed class ExportService : IExportService
         writer.WriteString("TopicTypeName", sample.TopicMetadata.TopicType.FullName);
         writer.WriteString("Timestamp", sample.Timestamp.ToUniversalTime());
 
+        // ME1-T07: Participant stamping fields.
+        writer.WriteNumber("DomainId", sample.DomainId);
+        writer.WriteString("PartitionName", sample.PartitionName);
+
         // Sender
         if (sample.Sender != null)
         {

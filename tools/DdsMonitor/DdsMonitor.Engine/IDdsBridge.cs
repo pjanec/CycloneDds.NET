@@ -10,14 +10,25 @@ namespace DdsMonitor.Engine;
 public interface IDdsBridge : IDisposable
 {
     /// <summary>
-    /// Gets the DDS participant used by the bridge.
+    /// Gets the primary DDS participant (backward-compat shortcut to <c>Participants[0]</c>).
     /// </summary>
     DdsParticipant Participant { get; }
 
     /// <summary>
-    /// Gets the active partition used for readers and writers.
+    /// Gets all active DDS participants managed by the bridge.
+    /// </summary>
+    IReadOnlyList<DdsParticipant> Participants { get; }
+
+    /// <summary>
+    /// Gets the active partition used for readers and writers on the primary participant.
     /// </summary>
     string? CurrentPartition { get; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether incoming samples are dropped without being
+    /// written to the ingestion channel.  Existing in-flight samples complete normally.
+    /// </summary>
+    bool IsPaused { get; set; }
 
     /// <summary>
     /// Subscribes to the topic and returns the active reader.
@@ -53,4 +64,20 @@ public interface IDdsBridge : IDisposable
     /// Raised when the set of active readers changes (subscribe or unsubscribe).
     /// </summary>
     event Action? ReadersChanged;
+
+    /// <summary>
+    /// Adds a new participant for the specified domain and partition.
+    /// </summary>
+    void AddParticipant(uint domainId, string partitionName);
+
+    /// <summary>
+    /// Removes the participant at the specified index and disposes it.
+    /// </summary>
+    void RemoveParticipant(int participantIndex);
+
+    /// <summary>
+    /// Clears all sample and instance stores, resets the global ordinal counter,
+    /// and disposes any per-participant reader subscriptions.
+    /// </summary>
+    void ResetAll();
 }

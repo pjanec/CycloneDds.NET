@@ -21,6 +21,17 @@ public record SampleData
     public DateTime Timestamp { get; init; }
 
     public int SizeBytes { get; init; }
+
+    // ── ME1-T07: Participant stamping ────────────────────────────────────────
+
+    /// <summary>Gets the DDS domain identifier of the participant that received this sample.</summary>
+    public uint DomainId { get; init; }
+
+    /// <summary>Gets the partition name the participant was listening on when the sample arrived.</summary>
+    public string PartitionName { get; init; } = string.Empty;
+
+    /// <summary>Gets the zero-based index of the participant in <see cref="IDdsBridge.Participants"/> that received this sample.</summary>
+    public int ParticipantIndex { get; init; }
 }
 
 /// <summary>

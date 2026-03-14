@@ -1,5 +1,6 @@
-using System;
 using CycloneDDS.Schema;
+using System;
+using System.Runtime.CompilerServices;
 
 namespace DdsMonitor.Engine;
 
@@ -52,6 +53,8 @@ public partial class SelfTestPose
 
     public System.Collections.Generic.List<float> Samples;
     public StatusLevel Level;
+
+    public TestingUnion UnionValue;
 }
 
 [DdsStruct]
@@ -72,9 +75,33 @@ public partial struct Vector3
     public float Z;
 }
 
-public enum StatusLevel
+[DdsUnion]
+public partial struct TestingUnion
+{
+    [DdsDiscriminator]
+    public StatusLevel level;
+
+	[DdsCase(StatusLevel.Ok)]
+	public FixedString32 OkMessage;
+    
+    [DdsCase(StatusLevel.Error)]
+	public FloatBuf8 EightFloatsInline;
+
+    [DdsDefaultCase]
+	[DdsManaged]
+	public string DefaultMessage;
+
+}
+
+public enum StatusLevel : byte
 {
     Ok,
     Warning,
     Error
+}
+
+[InlineArray(8)]
+public struct FloatBuf8
+{
+    public float _elem;
 }

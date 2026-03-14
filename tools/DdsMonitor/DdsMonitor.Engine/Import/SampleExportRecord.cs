@@ -24,6 +24,14 @@ internal sealed class SampleExportRecord
 
     public SenderExportRecord? Sender { get; set; }
 
+    // ── ME1-T07: Participant stamping ────────────────────────────────────────
+
+    /// <summary>DDS domain identifier of the receiving participant.</summary>
+    public uint DomainId { get; set; }
+
+    /// <summary>Partition name the receiving participant was listening on.</summary>
+    public string PartitionName { get; set; } = string.Empty;
+
     /// <summary>
     /// Raw JSON element; deserialized into the concrete topic type during import.
     /// </summary>

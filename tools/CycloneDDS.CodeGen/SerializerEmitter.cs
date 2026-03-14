@@ -189,7 +189,17 @@ namespace CycloneDDS.CodeGen
              {
                  string castType = GetDiscriminatorCastType(discriminator.TypeName);
                  string castExpr = castType == "bool" ? "" : $"({castType})";
-                 if (discriminator.Type != null && discriminator.Type.IsEnum) castExpr = "(int)";
+                 if (discriminator.Type != null && discriminator.Type.IsEnum)
+                 {
+                     // Use the correct cast width matching the native _d field type.
+                     // ME1-T01/T0 fix: byte-backed enums need (byte), short-backed need (ushort).
+                     castExpr = discriminator.Type.EnumBitBound switch
+                     {
+                         8  => "(byte)",
+                         16 => "(ushort)",
+                         _  => "(int)"
+                     };
+                 }
                  sb.AppendLine($"            target._d = {castExpr}source.{discriminator.Name};");
              }
              

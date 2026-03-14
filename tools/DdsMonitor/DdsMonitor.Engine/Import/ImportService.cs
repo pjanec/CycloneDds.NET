@@ -166,7 +166,10 @@ public sealed class ImportService : IImportService
             Timestamp = record.Timestamp,
             SizeBytes = record.SizeBytes,
             Sender = sender,
-            SampleInfo = new DdsApi.DdsSampleInfo { InstanceState = instanceState }
+            SampleInfo = new DdsApi.DdsSampleInfo { InstanceState = instanceState },
+            // ME1-T07: Participant stamping fields (zero/empty for pre-T07 export files).
+            DomainId = record.DomainId,
+            PartitionName = record.PartitionName ?? string.Empty
         };
     }
 }

@@ -29,13 +29,30 @@ public abstract class FilterNode
 {
     public bool IsNegated { get; set; }
 
-    public string ToDynamicLinqString()
+    /// <summary>
+    /// Builds the Dynamic LINQ expression string.  For string-method operators
+    /// (<see cref="FilterComparisonOperator.StartsWith"/> etc.) the values are appended to
+    /// <paramref name="paramValues"/> and the expression references them as <c>@N</c>
+    /// parameters, keeping the generated string safe for all comparison operators.
+    /// </summary>
+    public string ToDynamicLinqString(IList<object?> paramValues)
     {
-        var core = BuildLinq();
+        var core = BuildLinq(paramValues);
         return IsNegated ? $"!({core})" : core;
     }
 
-    protected abstract string BuildLinq();
+    /// <summary>
+    /// Backward-compatible overload that discards collected parameter values.
+    /// Suitable for non-string-method expressions (all comparison operators other
+    /// than <c>StartsWith</c>, <c>EndsWith</c>, <c>Contains</c>) where values are
+    /// embedded directly into the expression string.
+    /// </summary>
+    public string ToDynamicLinqString()
+    {
+        return ToDynamicLinqString(new List<object?>());
+    }
+
+    protected abstract string BuildLinq(IList<object?> paramValues);
 }
 
 public sealed class FilterGroupNode : FilterNode
@@ -44,7 +61,7 @@ public sealed class FilterGroupNode : FilterNode
 
     public List<FilterNode> Children { get; } = new();
 
-    protected override string BuildLinq()
+    protected override string BuildLinq(IList<object?> paramValues)
     {
         if (Children.Count == 0)
         {
@@ -53,7 +70,7 @@ public sealed class FilterGroupNode : FilterNode
 
         if (Children.Count == 1)
         {
-            return Children[0].ToDynamicLinqString();
+            return Children[0].ToDynamicLinqString(paramValues);
         }
 
         var joiner = Operator == FilterGroupOperator.And ? " and " : " or ";
@@ -66,7 +83,7 @@ public sealed class FilterGroupNode : FilterNode
                 builder.Append(joiner);
             }
 
-            builder.Append(Children[i].ToDynamicLinqString());
+            builder.Append(Children[i].ToDynamicLinqString(paramValues));
         }
 
         return $"({builder})";
@@ -86,9 +103,9 @@ public sealed class FilterConditionNode : FilterNode
     [JsonIgnore]
     public Type? ValueType => string.IsNullOrWhiteSpace(ValueTypeName) ? null : Type.GetType(ValueTypeName);
 
-    protected override string BuildLinq()
+    protected override string BuildLinq(IList<object?> paramValues)
     {
-        var formattedValue = FormatValue();
+        var formattedValue = FormatValue(paramValues);
 
         return Operator switch
         {
@@ -104,8 +121,20 @@ public sealed class FilterConditionNode : FilterNode
         };
     }
 
-    private string FormatValue()
+    private string FormatValue(IList<object?> paramValues)
     {
+        // String-method operators use @N parameter syntax so that the value is
+        // passed as a strongly-typed argument to ParseLambda, avoiding inline
+        // string escaping issues and providing clean expression output.
+        if (Operator is FilterComparisonOperator.StartsWith
+                     or FilterComparisonOperator.EndsWith
+                     or FilterComparisonOperator.Contains)
+        {
+            var idx = paramValues.Count;
+            paramValues.Add(ValueText ?? string.Empty);
+            return $"@{idx}";
+        }
+
         if (ValueText == null)
         {
             return "null";

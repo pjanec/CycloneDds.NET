@@ -684,6 +684,10 @@ public sealed class Batch24Tests
 
         public string? CurrentPartition => null;
 
+        public IReadOnlyList<DdsParticipant> Participants => Array.Empty<DdsParticipant>();
+
+        public bool IsPaused { get; set; }
+
         public IReadOnlyDictionary<Type, IDynamicReader> ActiveReaders =>
             new Dictionary<Type, IDynamicReader>();
 
@@ -705,6 +709,12 @@ public sealed class Batch24Tests
             new FakeDynamicWriter(meta.TopicType, WrittenPayloads);
 
         public void ChangePartition(string? newPartition) { }
+
+        public void AddParticipant(uint domainId, string partitionName) { }
+
+        public void RemoveParticipant(int participantIndex) { }
+
+        public void ResetAll() { }
 
         public void Dispose() { }
     }

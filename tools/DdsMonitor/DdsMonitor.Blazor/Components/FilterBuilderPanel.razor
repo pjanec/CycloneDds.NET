@@ -458,6 +458,9 @@
             FilterComparisonOperator.GreaterThanOrEqual => ">=",
             FilterComparisonOperator.LessThan => "<",
             FilterComparisonOperator.LessThanOrEqual => "<=",
+            FilterComparisonOperator.StartsWith => "Starts With",
+            FilterComparisonOperator.EndsWith => "Ends With",
+            FilterComparisonOperator.Contains => "Contains",
             _ => op.ToString()
         };
     }
@@ -473,8 +476,11 @@
             return;
         }
 
-        var expression = _root.ToDynamicLinqString();
-        var result = FilterCompiler.Compile(expression, _topicMetadata);
+        // Collect @N parameter values alongside the LINQ expression so that
+        // string-method operators (StartsWith, EndsWith, Contains) bind correctly.
+        var paramValues = new System.Collections.Generic.List<object?>();
+        var expression = _root.ToDynamicLinqString(paramValues);
+        var result = FilterCompiler.Compile(expression, _topicMetadata, paramValues.Count > 0 ? paramValues : null);
         if (!result.IsValid)
         {
             _errorMessage = result.ErrorMessage ?? "Invalid filter expression.";

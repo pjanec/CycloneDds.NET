@@ -401,10 +401,16 @@ namespace CycloneDDS.CodeGen
                      foreach(var val in caseAttr.CaseValues)
                      {
                         string label = val!.ToString()!;
-                        if (enumDef != null && val is int iVal)
+                        if (enumDef != null && val != null)
                         {
-                            if (iVal >= 0 && iVal < enumDef.TypeInfo!.EnumMembers.Count)
-                                label = enumDef.TypeInfo.EnumMembers[iVal];
+                            try
+                            {
+                                int iVal = Convert.ToInt32(val);
+                                if (iVal >= 0 && iVal < enumDef.TypeInfo!.EnumMembers.Count)
+                                    label = enumDef.TypeInfo.EnumMembers[iVal];
+                            }
+                            catch (InvalidCastException) { }
+                            catch (OverflowException) { }
                         }
                         
                         if (switchType == "boolean")
