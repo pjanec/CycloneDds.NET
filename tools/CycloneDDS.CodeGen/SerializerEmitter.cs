@@ -245,14 +245,26 @@ namespace CycloneDDS.CodeGen
              string targetAccess = $"{targetPrefix}.{field.Name}";
 
              // Fixed-size buffers: inline memcpy, zero allocation.
-             // Use fixed() to pin the in/ref parameters so their fixed buffers are addressable.
              if (field.IsFixedSizeBuffer)
              {
-                 sb.AppendLine($"            fixed ({field.TypeName}* __src = {sourceAccess})");
-                 sb.AppendLine($"            fixed ({field.TypeName}* __dst = {targetAccess})");
-                 sb.AppendLine($"            {{");
-                 sb.AppendLine($"                System.Buffer.MemoryCopy(__src, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
-                 sb.AppendLine($"            }}");
+                 if (field.IsInlineArray)
+                 {
+                     // ME1-T02: [InlineArray] source – use Unsafe.AsPointer (no 'fixed' on InlineArray)
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                {field.TypeName}* __srcPtr = ({field.TypeName}*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref System.Runtime.CompilerServices.Unsafe.AsRef(in {sourceAccess}));");
+                     sb.AppendLine($"                fixed ({field.TypeName}* __dst = {targetAccess})");
+                     sb.AppendLine($"                    System.Buffer.MemoryCopy(__srcPtr, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                     sb.AppendLine($"            }}");
+                 }
+                 else
+                 {
+                     // Regular unsafe fixed buffer: use fixed() pinning on both sides.
+                     sb.AppendLine($"            fixed ({field.TypeName}* __src = {sourceAccess})");
+                     sb.AppendLine($"            fixed ({field.TypeName}* __dst = {targetAccess})");
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                System.Buffer.MemoryCopy(__src, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                     sb.AppendLine($"            }}");
+                 }
                  return;
              }
 
@@ -361,7 +373,14 @@ namespace CycloneDDS.CodeGen
              }
              else if (fieldType != null && fieldType.IsEnum)
              {
-                 sb.AppendLine($"            {targetAccess} = (int){sourceAccess};");
+                 // ME1-T01: narrow the cast based on bit bound
+                 string enumCast = fieldType.EnumBitBound switch
+                 {
+                     8  => "(byte)",
+                     16 => "(ushort)",
+                     _  => "(int)"
+                 };
+                 sb.AppendLine($"            {targetAccess} = {enumCast}{sourceAccess};");
              }
              else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
              {
@@ -650,14 +669,28 @@ namespace CycloneDDS.CodeGen
              }
 
              // Fixed-size buffers: inline memcpy, zero allocation.
-             // Use fixed() to pin the in/ref parameters so their fixed buffers are addressable.
              if (field.IsFixedSizeBuffer)
              {
-                 sb.AppendLine($"            fixed ({field.TypeName}* __src = {sourceAccess})");
-                 sb.AppendLine($"            fixed ({field.TypeName}* __dst = {targetAccess})");
-                 sb.AppendLine($"            {{");
-                 sb.AppendLine($"                System.Buffer.MemoryCopy(__src, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
-                 sb.AppendLine($"            }}");
+                 if (field.IsInlineArray)
+                 {
+                     // ME1-T02: [InlineArray] target – use Unsafe.AsPointer (no 'fixed' on InlineArray)
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                fixed ({field.TypeName}* __src = {sourceAccess})");
+                     sb.AppendLine($"                {{");
+                     sb.AppendLine($"                    {field.TypeName}* __dstPtr = ({field.TypeName}*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref {targetAccess});");
+                     sb.AppendLine($"                    System.Buffer.MemoryCopy(__src, __dstPtr, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                     sb.AppendLine($"                }}");
+                     sb.AppendLine($"            }}");
+                 }
+                 else
+                 {
+                     // Regular unsafe fixed buffer: use fixed() pinning on both sides.
+                     sb.AppendLine($"            fixed ({field.TypeName}* __src = {sourceAccess})");
+                     sb.AppendLine($"            fixed ({field.TypeName}* __dst = {targetAccess})");
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                System.Buffer.MemoryCopy(__src, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                     sb.AppendLine($"            }}");
+                 }
                  return;
              }
 
@@ -742,7 +775,14 @@ namespace CycloneDDS.CodeGen
              }
              else if (fieldType != null && fieldType.IsEnum)
              {
-                 sb.AppendLine($"            {targetAccess} = ({field.TypeName}){sourceAccess};");
+                 // ME1-T01: apply narrow intermediate cast matching the native field width
+                 string intermediateCast = fieldType.EnumBitBound switch
+                 {
+                     8  => "(byte)",
+                     16 => "(ushort)",
+                     _  => "(int)"
+                 };
+                 sb.AppendLine($"            {targetAccess} = ({field.TypeName}){intermediateCast}{sourceAccess};");
              }
              else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
              {
@@ -1120,7 +1160,16 @@ namespace CycloneDDS.CodeGen
              
              if (fieldType != null)
              {
-                 if (fieldType.IsEnum) return 4;
+                 if (fieldType.IsEnum)
+                 {
+                     // ME1-T01: alignment matches bit bound
+                     return fieldType.EnumBitBound switch
+                     {
+                         8  => 1,
+                         16 => 2,
+                         _  => 4
+                     };
+                 }
                  if (fieldType.IsStruct || fieldType.IsUnion || fieldType.IsTopic)
                  {
                      int max = 1;
@@ -1261,7 +1310,16 @@ namespace CycloneDDS.CodeGen
 
             if (fieldType != null)
             {
-                if (fieldType.IsEnum) return "int";
+                if (fieldType.IsEnum)
+                {
+                    // ME1-T01: narrow native type based on bit bound
+                    return fieldType.EnumBitBound switch
+                    {
+                        8  => "byte",
+                        16 => "ushort",
+                        _  => "int"
+                    };
+                }
                 return $"{fieldType.FullName}_Native";
             }
             

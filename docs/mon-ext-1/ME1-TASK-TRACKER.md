@@ -13,9 +13,9 @@
 
 **Goal:** Extend the code generator and schema layer with typed enum bit-bounds, `[InlineArray]` support, and optional topic names.
 
-- [ ] **ME1-T01** Typed Enum `@bit_bound` → [details](./ME1-TASK-DETAILS.md#me1-t01--typed-enum-bit_bound-support)
-- [ ] **ME1-T02** `[InlineArray]` Support → [details](./ME1-TASK-DETAILS.md#me1-t02--inlinearray-support)
-- [ ] **ME1-T03** Default Topic Name from Namespace → [details](./ME1-TASK-DETAILS.md#me1-t03--default-topic-name-from-namespace)
+- [x] **ME1-T01** Typed Enum `@bit_bound` → [details](./ME1-TASK-DETAILS.md#me1-t01--typed-enum-bit_bound-support)
+- [x] **ME1-T02** `[InlineArray]` Support → [details](./ME1-TASK-DETAILS.md#me1-t02--inlinearray-support)
+- [x] **ME1-T03** Default Topic Name from Namespace → [details](./ME1-TASK-DETAILS.md#me1-t03--default-topic-name-from-namespace)
 
 ---
 

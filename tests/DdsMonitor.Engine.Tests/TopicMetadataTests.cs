@@ -63,4 +63,42 @@ public class TopicMetadataTests
         Assert.InRange(delayMs, 123.3, 123.5);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // ME1-T03: Default topic name from namespace
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Success condition 2: TopicMetadata for a type with [DdsTopic] (no name) derives
+    /// the name from the fully-qualified type name with dots replaced by underscores.
+    /// </summary>
+    [Fact]
+    public void TopicMetadata_DefaultTopicName_DerivedFromFullName()
+    {
+        // DefaultNameTopic is in namespace DdsMonitor.Engine.Tests,
+        // so TopicName must be "DdsMonitor_Engine_Tests_DefaultNameTopic".
+        var metadata = new TopicMetadata(typeof(DefaultNameTopic));
+
+        Assert.Equal("DdsMonitor_Engine_Tests_DefaultNameTopic", metadata.TopicName);
+    }
+
+    /// <summary>
+    /// Success condition 3: TopicMetadata for a type with [DdsTopic("ExplicitNameTopic")]
+    /// keeps the explicit name.
+    /// </summary>
+    [Fact]
+    public void TopicMetadata_ExplicitTopicName_Preserved()
+    {
+        var metadata = new TopicMetadata(typeof(ExplicitNamedTopic));
+        Assert.Equal("ExplicitNameTopic", metadata.TopicName);
+    }
+
+    /// <summary>
+    /// Backward compatibility: existing types with explicit names continue to work.
+    /// </summary>
+    [Fact]
+    public void TopicMetadata_OldExplicitName_StillWorks()
+    {
+        var metadata = new TopicMetadata(typeof(OuterType));
+        Assert.Equal("TestTopic", metadata.TopicName);
+    }
 }

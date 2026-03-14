@@ -147,6 +147,17 @@ namespace CycloneDDS.CodeGen
 
                         if (isEnum)
                         {
+                            // ME1-T01: Read underlying type and store bit bound
+                            if (typeSymbol.EnumUnderlyingType != null)
+                            {
+                                typeInfo.EnumBitBound = typeSymbol.EnumUnderlyingType.SpecialType switch
+                                {
+                                    SpecialType.System_Byte or SpecialType.System_SByte => 8,
+                                    SpecialType.System_Int16 or SpecialType.System_UInt16 => 16,
+                                    _ => 32
+                                };
+                            }
+
                             foreach (var member in typeSymbol.GetMembers().OfType<IFieldSymbol>())
                             {
                                 if (member.IsConst && member.HasConstantValue)
@@ -168,6 +179,31 @@ namespace CycloneDDS.CodeGen
                                 {
                                     typeInfo.Fields.Add(CreateFieldInfo(propSymbol));
                                 }
+                            }
+                        }
+
+                        // ME1-T03: Resolve topic name (use attribute arg or namespace fallback)
+                        if (isTopic)
+                        {
+                            var topicAttr = typeSymbol.GetAttributes()
+                                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "CycloneDDS.Schema.DdsTopicAttribute");
+                            string? explicitName = null;
+                            if (topicAttr != null && topicAttr.ConstructorArguments.Length > 0)
+                            {
+                                explicitName = topicAttr.ConstructorArguments[0].Value as string;
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(explicitName))
+                            {
+                                typeInfo.TopicName = explicitName;
+                            }
+                            else
+                            {
+                                // Fallback: full qualified name with '.' replaced by '_'
+                                var fullName = string.IsNullOrEmpty(typeInfo.Namespace)
+                                    ? typeInfo.Name
+                                    : $"{typeInfo.Namespace}.{typeInfo.Name}";
+                                typeInfo.TopicName = fullName.Replace('.', '_');
                             }
                         }
 
@@ -325,6 +361,32 @@ namespace CycloneDDS.CodeGen
                 }
             }
 
+            // ME1-T02: Detect [InlineArray(N)] struct fields.
+            // The attribute is on the FIELD'S TYPE (the InlineArray struct), not the field itself.
+            bool isInlineArray = false;
+            if (!isFixedSizeBuffer && type is INamedTypeSymbol namedFieldType)
+            {
+                var inlineAttr = namedFieldType.GetAttributes()
+                    .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() ==
+                        "System.Runtime.CompilerServices.InlineArrayAttribute");
+                if (inlineAttr != null && inlineAttr.ConstructorArguments.Length > 0
+                    && inlineAttr.ConstructorArguments[0].Value is int inlineLen && inlineLen > 0)
+                {
+                    // Get the single user-defined field inside the InlineArray struct
+                    var elemField = namedFieldType.GetMembers()
+                        .OfType<IFieldSymbol>()
+                        .Where(f => !f.IsImplicitlyDeclared && !f.IsStatic)
+                        .FirstOrDefault();
+                    if (elemField != null)
+                    {
+                        isInlineArray = true;
+                        isFixedSizeBuffer = true;
+                        fixedSize = inlineLen;
+                        type = elemField.Type; // element type
+                    }
+                }
+            }
+
             // Use a format that ensures fully qualified names (Namespace.Type)
             // We want "Namespace.Type", not "global::Namespace.Type"
             var format = new SymbolDisplayFormat(
@@ -350,6 +412,7 @@ namespace CycloneDDS.CodeGen
             // For fixed-size buffers the element type is extracted from a pointer, and Roslyn
             // may return fully-qualified names (e.g. "System.Byte" instead of "byte").
             // Normalise those to their C# keyword aliases.
+            // The same normalization applies for [InlineArray] element types.
             if (isFixedSizeBuffer)
             {
                 typeName = typeName switch
@@ -376,7 +439,8 @@ namespace CycloneDDS.CodeGen
                 TypeName = typeName,
                 Attributes = ExtractAttributes(member),
                 IsFixedSizeBuffer = isFixedSizeBuffer,
-                FixedSize = fixedSize
+                FixedSize = fixedSize,
+                IsInlineArray = isInlineArray
             };
         }
 

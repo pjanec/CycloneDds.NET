@@ -57,6 +57,7 @@ If you want to build the project from source or contribute:
 ### 🧬 Schema & Interoperability
 - **Code-First DSL:** Define your data types entirely in C# using attributes (`[DdsTopic]`, `[DdsKey]`, `[DdsStruct]`, `[DdsQos]`). No need to write IDL files manually.
 - **Automatic IDL Generation:** The build tools automatically generate standard OMG IDL files from your C# classes, ensuring perfect interoperability with other DDS implementations (C++, Python, Java) and tools. See [IDL Generation](IDL-GENERATION.md).
+- **Modern Language Integration:** Full support for C# 12 `[InlineArray]` (safe fixed-size arrays without `unsafe`), typed enums (`enum E : byte` emits `@bit_bound(8)`), and default topic naming based on namespaces.
 - **Auto-Magic Type Discovery:** Runtime automatically registers type descriptors based on your schema.
 - **IDL Import:** Convert existing IDL files into C# DSL automatically using the `IdlImporter` tool.
 - **100% Native Compliance:** Uses Cyclone DDS native serializer for wire compatibility.
@@ -86,7 +87,10 @@ Use this for high-frequency data (1kHz+).
 ```csharp
 using CycloneDDS.Schema;
 
-[DdsTopic("SensorData")]
+namespace Factory.Monitoring;
+
+// Topic name defaults to namespace + class name ("Factory_Monitoring_SensorData") if omitted
+[DdsTopic]
 public partial struct SensorData
 {
     [DdsKey, DdsId(0)]
@@ -98,6 +102,39 @@ public partial struct SensorData
     // Fixed-size buffer (maps to char[32]). No heap allocation.
     [DdsId(2)]
     public FixedString32 LocationId; 
+
+    // Safe, zero-allocation fixed array using C# 12 [InlineArray] (no 'unsafe' needed!)
+    [DdsId(3)]
+    public FloatBuffer8 Measurements;
+
+    // Byte-backed enum yields IDL @bit_bound(8) automatically for optimal native network usage
+    [DdsId(4)]
+    public SensorStatus Status;
+}
+
+[System.Runtime.CompilerServices.InlineArray(8)]
+public struct FloatBuffer8 { private float _element0; }
+
+public enum SensorStatus : byte
+{
+    Offline,
+    Online,
+    Error
+}
+```
+
+### Unmanaged Schema (Unsafe Fixed Buffers)
+For scenarios requiring direct memory manipulation or porting legacy C/C++ structs, you can use `unsafe fixed` arrays. The runtime maps these directly to native memory with zero allocation.
+
+```csharp
+[DdsTopic("CustomTopicNameForVideoFrame")]
+public unsafe partial struct VideoFrame
+{
+    [DdsKey]
+    public int FrameId;
+
+    // Classic C# unsafe fixed-size buffer
+    public fixed byte Pixels[1920 * 1080 * 3];
 }
 ```
 
@@ -150,25 +187,34 @@ public partial struct MachineState
 
 ### Publishing
 ```csharp
+using Factory.Monitoring;
 using var participant = new DdsParticipant();
 
-// Auto-discovers topic type and registers it
-using var writer = new DdsWriter<SensorData>(participant, "SensorData");
+// Auto-discovers topic type and its default name ("Factory_Monitoring_SensorData")
+using var writer = new DdsWriter<SensorData>(participant);
 
 // Zero-allocation write path
-writer.Write(new SensorData 
+var data = new SensorData 
 { 
     SensorId = 1, 
     Value = 25.5,
-    LocationId = new FixedString32("Factory_A")
-});
+    LocationId = new FixedString32("Factory_A"),
+    Status = SensorStatus.Online
+};
+
+// With C# 12, InlineArrays can be accessed directly by index
+data.Measurements[0] = 1.0f; 
+
+writer.Write(data);
 ```
 
 ### Subscribing (Polling)
 Reading uses a **Scope** pattern to ensure safety and zero-copy semantics. You "loan" the data, read it, and return it by disposing the scope.
 
 ```csharp
-using var reader = new DdsReader<SensorData>(participant, "SensorData");
+using Factory.Monitoring;
+
+using var reader = new DdsReader<SensorData>(participant);
 
 // POLL FOR DATA
 // Returns a "Loan" which manages native memory

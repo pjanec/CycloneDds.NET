@@ -674,11 +674,19 @@ namespace CycloneDDS.CodeGen.Emitters
             if (field.IsFixedSizeBuffer)
             {
                 // Copy from ReadOnlySpan (view) into the local managed fixed buffer.
-                // For local stack variables, assign the fixed-buffer pointer to a named pointer
-                // variable first so pointer-indexing is a valid lvalue (avoids CS0131).
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    var __srcSpan = this.{propName};");
-                sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = target.{targetProp};");
+                if (field.IsInlineArray)
+                {
+                    // ME1-T02: [InlineArray] target cannot be implicitly converted to T*.
+                    // Use Unsafe.AsPointer to obtain the element pointer.
+                    sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = ({field.TypeName}*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref target.{targetProp});");
+                }
+                else
+                {
+                    // Normal unsafe fixed buffer: target.Name converts to T* implicitly in unsafe context.
+                    sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = target.{targetProp};");
+                }
                 sb.AppendLine($"{indent}    for (int __i = 0; __i < {field.FixedSize}; __i++)");
                 sb.AppendLine($"{indent}        __dstPtr[__i] = __srcSpan[__i];");
                 sb.AppendLine($"{indent}}}");

@@ -289,7 +289,11 @@ namespace CycloneDDS.CodeGen
 
             if (type.IsTopic)
             {
-                sb.AppendLine($"{indent}@topic");
+                // ME1-T03: include topic name in @topic annotation when available
+                if (!string.IsNullOrWhiteSpace(type.TopicName))
+                    sb.AppendLine($"{indent}@topic(name=\"{type.TopicName}\")");
+                else
+                    sb.AppendLine($"{indent}@topic");
             }
 
             switch (type.Extensibility)
@@ -328,6 +332,12 @@ namespace CycloneDDS.CodeGen
         {
              string indent = GetIndent(indentLevel);
              string memberIndent = GetIndent(indentLevel + 1);
+
+             // ME1-T01: emit @bit_bound annotation for narrow enums (8-bit or 16-bit backing)
+             if (type.EnumBitBound == 8)
+                 sb.AppendLine($"{indent}@bit_bound(8)");
+             else if (type.EnumBitBound == 16)
+                 sb.AppendLine($"{indent}@bit_bound(16)");
 
              sb.AppendLine($"{indent}enum {type.Name} {{");
              

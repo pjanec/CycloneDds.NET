@@ -1,4 +1,5 @@
 using CycloneDDS.Schema;
+using System.Runtime.CompilerServices;
 
 namespace DdsMonitor.Engine.Tests;
 
@@ -155,4 +156,61 @@ public unsafe partial struct MixedArrayTopic
     public int Id;
     public int[] DynamicValues;
     public unsafe fixed float FixedFloats[3];
+}
+
+// ─── ME1-T02: [InlineArray] test types ──────────────────────────────────────
+
+/// <summary>
+/// InlineArray struct holding 8 floats.  Used to verify metadata and JSON for [InlineArray].
+/// </summary>
+[InlineArray(8)]
+public struct FloatBuf8
+{
+    public float _elem;
+}
+
+/// <summary>
+/// InlineArray struct holding 4 ints.  Used to verify JSON serialization produces [1,2,3,4].
+/// </summary>
+[InlineArray(4)]
+public struct IntBuf4
+{
+    public int _elem;
+}
+
+/// <summary>Topic with a [InlineArray(8)] float field.</summary>
+[DdsTopic("InlineArrayFloatTopic")]
+public partial struct InlineArrayFloatTopic
+{
+    public int Id;
+    public FloatBuf8 Data;
+}
+
+/// <summary>Topic with a [InlineArray(4)] int field.</summary>
+[DdsTopic("InlineArrayIntTopic")]
+public partial struct InlineArrayIntTopic
+{
+    public int Id;
+    public IntBuf4 Values;
+}
+
+// ─── ME1-T03: Default topic name test types ───────────────────────────────────
+
+/// <summary>
+/// Topic with no explicit name – TopicName should fall back to
+/// "DdsMonitor_Engine_Tests_DefaultNameTopic".
+/// </summary>
+[DdsTopic]
+public partial struct DefaultNameTopic
+{
+    public int Value;
+}
+
+/// <summary>
+/// Topic with an explicit name – TopicName should be "ExplicitNameTopic".
+/// </summary>
+[DdsTopic("ExplicitNameTopic")]
+public partial struct ExplicitNamedTopic
+{
+    public int Value;
 }

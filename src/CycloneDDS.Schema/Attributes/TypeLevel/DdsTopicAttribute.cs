@@ -9,21 +9,21 @@ namespace CycloneDDS.Schema;
 public sealed class DdsTopicAttribute : Attribute
 {
     /// <summary>
-    /// Gets the name of the DDS topic.
+    /// Gets the explicit name of the DDS topic, or <c>null</c> when the name should be
+    /// derived from the type's fully-qualified name (dots replaced by underscores).
     /// </summary>
-    public string TopicName { get; }
+    public string? TopicName { get; }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="DdsTopicAttribute"/> class.
+    /// Initializes a new instance of the <see cref="DdsTopicAttribute"/> class with an
+    /// optional explicit topic name.
     /// </summary>
-    /// <param name="topicName">The name of the topic. Must not be null or whitespace.</param>
-    /// <exception cref="ArgumentException">Thrown when topicName is null or whitespace.</exception>
-    public DdsTopicAttribute(string topicName)
+    /// <param name="topicName">
+    /// The name of the topic. When <c>null</c> or omitted the topic name is computed at
+    /// runtime from the type's fully-qualified name with dots replaced by underscores.
+    /// </param>
+    public DdsTopicAttribute(string? topicName = null)
     {
-        if (string.IsNullOrWhiteSpace(topicName))
-        {
-            throw new ArgumentException("Topic name cannot be null or whitespace.", nameof(topicName));
-        }
         TopicName = topicName;
     }
 }

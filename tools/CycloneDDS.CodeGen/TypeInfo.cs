@@ -20,6 +20,12 @@ namespace CycloneDDS.CodeGen
         public bool IsUnion { get; set; }
         public List<string> EnumMembers { get; set; } = new List<string>();
 
+        /// <summary>Bit width of the enum's underlying type. 8 for byte/sbyte, 16 for short/ushort, 32 for default (int/uint).</summary>
+        public int EnumBitBound { get; set; } = 32;
+
+        /// <summary>Resolved DDS topic name. Populated by SchemaDiscovery when IsTopic is true.</summary>
+        public string? TopicName { get; set; }
+
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
         public AttributeInfo? GetAttribute(string name) => Attributes.FirstOrDefault(a => a.Name == name || a.Name == name + "Attribute");
 
@@ -42,6 +48,10 @@ namespace CycloneDDS.CodeGen
         public bool IsFixedSizeBuffer { get; set; }
         /// <summary>Number of elements in the fixed-size buffer (0 when <see cref="IsFixedSizeBuffer"/> is false).</summary>
         public int FixedSize { get; set; }
+        /// <summary>True when the field type is decorated with <c>[System.Runtime.CompilerServices.InlineArray(N)]</c>.
+        /// When true, <see cref="IsFixedSizeBuffer"/> is also true and the element type / count are stored
+        /// in <see cref="TypeName"/> and <see cref="FixedSize"/> respectively.</summary>
+        public bool IsInlineArray { get; set; }
 
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
         public AttributeInfo? GetAttribute(string name) => Attributes.FirstOrDefault(a => a.Name == name || a.Name == name + "Attribute");

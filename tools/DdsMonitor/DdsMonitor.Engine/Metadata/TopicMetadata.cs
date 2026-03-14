@@ -34,7 +34,10 @@ public sealed class TopicMetadata
                 $"Type '{topicType.Name}' is missing [{nameof(DdsTopicAttribute)}] attribute.");
         }
 
-        TopicName = topicAttribute.TopicName;
+        // ME1-T03: resolve topic name – use explicit name when provided, else derive from full type name
+        TopicName = string.IsNullOrWhiteSpace(topicAttribute.TopicName)
+            ? (topicType.FullName?.Replace('.', '_') ?? topicType.Name)
+            : topicAttribute.TopicName;
         ShortName = topicType.Name;
         Namespace = topicType.Namespace ?? string.Empty;
 
@@ -118,6 +121,16 @@ public sealed class TopicMetadata
                 {
                     AppendFixedBufferField(
                         fieldInfo, fixedAttr, structuredName, memberPath, allFields);
+                    continue;
+                }
+
+                // ME1-T02: [InlineArray(N)] struct field – treat as a fixed-size array.
+                // Must be detected before IsFlattenable so the InlineArray struct is not
+                // flattened as though it were a nested DDS struct.
+                var inlineAttr = memberType.GetCustomAttribute<System.Runtime.CompilerServices.InlineArrayAttribute>();
+                if (inlineAttr != null)
+                {
+                    AppendInlineArrayField(fieldInfo, inlineAttr, structuredName, memberPath, allFields);
                     continue;
                 }
             }
@@ -296,6 +309,152 @@ public sealed class TopicMetadata
             fixedArrayLength: length);
 
         allFields.Add(meta);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ME1-T02: [InlineArray] support
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a single <see cref="FieldMetadata"/> for a field whose type is decorated
+    /// with <c>[System.Runtime.CompilerServices.InlineArray(N)]</c>.
+    /// The value exposed is a <c>T[]</c> snapshot (read via pinned memory, written back element-by-element).
+    /// </summary>
+    private static void AppendInlineArrayField(
+        FieldInfo inlineField,
+        System.Runtime.CompilerServices.InlineArrayAttribute inlineAttr,
+        string structuredName,
+        IReadOnlyList<MemberInfo> parentPath,
+        ICollection<FieldMetadata> allFields)
+    {
+        var inlineType = inlineField.FieldType;
+        var length = inlineAttr.Length;
+
+        // The element type is the type of the single user-defined field inside the InlineArray struct.
+        var elemFieldInfo = inlineType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .FirstOrDefault(f => !f.IsStatic);
+
+        if (elemFieldInfo == null || length <= 0)
+        {
+            return; // Malformed InlineArray; skip.
+        }
+
+        var elementType = elemFieldInfo.FieldType;
+        var arrayType = elementType.MakeArrayType(); // T[]
+
+        var getter = CreateInlineArrayGetter(parentPath, inlineField, elementType, length);
+        var setter = CreateInlineArraySetter(parentPath, inlineField, elementType, length);
+
+        var meta = new FieldMetadata(
+            structuredName,
+            structuredName,
+            arrayType,
+            getter,
+            setter,
+            isSynthetic: false,
+            isWrapperField: false,
+            isArrayField: false,
+            isFixedSizeArray: true,
+            elementType: elementType,
+            fixedArrayLength: length);
+
+        allFields.Add(meta);
+    }
+
+    private static Func<object, object?> CreateInlineArrayGetter(
+        IReadOnlyList<MemberInfo> parentPath,
+        FieldInfo inlineField,
+        Type elementType,
+        int length)
+    {
+        var parentAccessors = parentPath.Select(m => new MemberAccessor(m)).ToArray();
+        int elemSize = Marshal.SizeOf(elementType);
+
+        return target =>
+        {
+            // Navigate to parent struct.
+            object boxedParent = target;
+            foreach (var acc in parentAccessors)
+            {
+                var next = acc.Getter(boxedParent);
+                if (next == null) return Array.CreateInstance(elementType, length);
+                boxedParent = next;
+            }
+
+            // Get the boxed InlineArray struct value.
+            var structValue = inlineField.GetValue(boxedParent);
+            if (structValue == null) return Array.CreateInstance(elementType, length);
+
+            var result = Array.CreateInstance(elementType, length);
+            var handle = GCHandle.Alloc(structValue, GCHandleType.Pinned);
+            try
+            {
+                var ptr = handle.AddrOfPinnedObject();
+                for (int i = 0; i < length; i++)
+                    result.SetValue(ReadMarshalElement(ptr + (i * elemSize), elementType), i);
+            }
+            finally
+            {
+                handle.Free();
+            }
+            return result;
+        };
+    }
+
+    private static Action<object, object?> CreateInlineArraySetter(
+        IReadOnlyList<MemberInfo> parentPath,
+        FieldInfo inlineField,
+        Type elementType,
+        int length)
+    {
+        var parentAccessors = parentPath.Select(m => new MemberAccessor(m)).ToArray();
+        int elemSize = Marshal.SizeOf(elementType);
+
+        return (target, value) =>
+        {
+            if (value is not Array srcArray) return;
+
+            // Navigate to parent, tracking the chain for back-propagation.
+            var parentStack = new List<(object Obj, MemberAccessor Acc)>(parentAccessors.Length);
+            object boxedParent = target;
+            for (int pi = 0; pi < parentAccessors.Length; pi++)
+            {
+                var acc = parentAccessors[pi];
+                parentStack.Add((boxedParent, acc));
+                var next = acc.Getter(boxedParent);
+                if (next == null) return;
+                boxedParent = next;
+            }
+
+            // Get a boxed copy of the InlineArray struct, modify its memory, then write it back.
+            var structValue = inlineField.GetValue(boxedParent);
+            if (structValue == null) return;
+
+            var handle = GCHandle.Alloc(structValue, GCHandleType.Pinned);
+            try
+            {
+                var ptr = handle.AddrOfPinnedObject();
+                int count = Math.Min(srcArray.Length, length);
+                for (int i = 0; i < count; i++)
+                    WriteMarshalElement(ptr + (i * elemSize), srcArray.GetValue(i), elementType);
+            }
+            finally
+            {
+                handle.Free();
+            }
+
+            // Write the modified InlineArray struct back into the parent field.
+            inlineField.SetValue(boxedParent, structValue);
+
+            // Back-propagate for top-level value-type fields.
+            object updated = boxedParent;
+            for (int pi = parentStack.Count - 1; pi >= 0; pi--)
+            {
+                var (parent, acc) = parentStack[pi];
+                acc.Setter(parent, updated);
+                updated = parent;
+            }
+        };
     }
 
     private static Func<object, object?> CreateFixedBufferGetter(

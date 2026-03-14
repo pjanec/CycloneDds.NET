@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -29,7 +31,21 @@ public sealed class FixedBufferJsonConverterFactory : JsonConverterFactory
         }
 
         var fields = typeToConvert.GetFields(BindingFlags.Public | BindingFlags.Instance);
-        return fields.Length == 1 && fields[0].Name == "FixedElementField";
+
+        // Handles compiler-generated unsafe fixed buffer structs (single field named FixedElementField).
+        if (fields.Length == 1 && fields[0].Name == "FixedElementField")
+        {
+            return true;
+        }
+
+        // ME1-T02: Also handle [InlineArray(N)] structs.  They have exactly one user-defined field
+        // (not necessarily named FixedElementField) and a [InlineArray] attribute on the type.
+        if (typeToConvert.GetCustomAttribute<System.Runtime.CompilerServices.InlineArrayAttribute>() != null)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     /// <inheritdoc />
@@ -44,18 +60,34 @@ public sealed class FixedBufferJsonConverterFactory : JsonConverterFactory
 /// Generic converter for a single fixed-buffer value type <typeparamref name="TBuffer"/>.
 /// Serialises as a JSON array; deserialises by writing elements back via <see cref="Marshal"/>.
 /// </summary>
-/// <typeparam name="TBuffer">The compiler-generated fixed-buffer struct type.</typeparam>
+/// <typeparam name="TBuffer">The compiler-generated fixed-buffer struct or [InlineArray] struct type.</typeparam>
 internal sealed class FixedBufferJsonConverter<TBuffer> : JsonConverter<TBuffer>
     where TBuffer : struct
 {
-    private static readonly FieldInfo ElemField =
-        typeof(TBuffer).GetFields(BindingFlags.Public | BindingFlags.Instance)[0];
+    private static readonly FieldInfo ElemField = GetSingleElementField();
+
+    private static FieldInfo GetSingleElementField()
+    {
+        // Try public fields first (covers both FixedBufferAttribute and most [InlineArray] cases).
+        var pub = typeof(TBuffer).GetFields(BindingFlags.Public | BindingFlags.Instance);
+        if (pub.Length == 1) return pub[0];
+
+        // ME1-T02: Some [InlineArray] structs declare a non-public backing field.
+        var all = typeof(TBuffer).GetFields(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+        var nonCompiler = all.Where(f => !f.Name.StartsWith("<", StringComparison.Ordinal)).ToArray();
+        if (nonCompiler.Length == 1) return nonCompiler[0];
+
+        // Fallback: use the first available field.
+        return all[0];
+    }
 
     private static readonly Type ElementType = ElemField.FieldType;
 
     private static readonly int ElemSize = Marshal.SizeOf(ElementType);
 
-    private static readonly int Count = Marshal.SizeOf<TBuffer>() / ElemSize;
+    // ME1-T02: Use Unsafe.SizeOf rather than Marshal.SizeOf to handle [InlineArray] structs
+    // which have a managed-only extended layout that Marshal.SizeOf may mis-report.
+    private static readonly int Count = Unsafe.SizeOf<TBuffer>() / ElemSize;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Write
