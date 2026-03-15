@@ -2,6 +2,7 @@
 @inherits LayoutComponentBase
 
 @using System.IO
+@using System.Linq
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Forms
 
@@ -10,6 +11,10 @@
 @inject IJSRuntime JSRuntime
 @inject WorkspacePersistenceService WorkspacePersistence
 @inject DevelSettings DevelSettings
+@inject IDdsBridge DdsBridge
+@inject IEventBroker EventBroker
+@inject CloneRequestService CloneRequests
+@implements IDisposable
 
 <div class="app-shell" @onclick="CloseMenus">
     <nav class="app-menu" @onclick:stopPropagation="true">
@@ -29,6 +34,13 @@
         <div class="app-menu__item @(_openMenu == "view" ? "is-open" : string.Empty)">
             <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("view")'>View</button>
             <div class="app-menu__dropdown">
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicsPanel">Topics</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenAllSamplesPanel">All Samples</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenSendSamplePanel">Send Sample</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenReplayPanel">Replay</button>
+                <div class="app-menu__dropdown-separator"></div>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenParticipantEditor">Participant Editor…</button>
+                <div class="app-menu__dropdown-separator"></div>
                 <button type="button" class="app-menu__dropdown-item" @onclick="ToggleTheme">@GetThemeLabel()</button>
             </div>
         </div>
@@ -42,17 +54,42 @@
             </div>
         </div>
 
-        <div class="app-menu__item @(_openMenu == "windows" ? "is-open" : string.Empty)">
-            <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("windows")'>Windows</button>
-            <div class="app-menu__dropdown">
-                <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicsPanel">Topics</button>
-                <button type="button" class="app-menu__dropdown-item" @onclick="OpenAllSamplesPanel">All Samples</button>
-                <button type="button" class="app-menu__dropdown-item" @onclick="OpenSendSamplePanel">Send Sample</button>
-                <button type="button" class="app-menu__dropdown-item" @onclick="OpenReplayPanel">Replay</button>
-            </div>
+        <div class="app-menu__transport">
+            <button type="button"
+                    title="Start – resume receiving samples"
+                    class="app-menu__transport-btn app-menu__transport-btn--play @(DdsBridge.IsPaused ? "is-active" : string.Empty)"
+                    disabled="@(!DdsBridge.IsPaused)"
+                    @onclick="StartBridge">▶</button>
+            <button type="button"
+                    title="Pause – stop accepting new samples"
+                    class="app-menu__transport-btn app-menu__transport-btn--pause @(!DdsBridge.IsPaused ? "is-active" : string.Empty)"
+                    disabled="@(DdsBridge.IsPaused)"
+                    @onclick="PauseBridge">⏸</button>
+            <button type="button"
+                    title="Reset – clear all samples and reset ordinal counter"
+                    class="app-menu__transport-btn app-menu__transport-btn--reset"
+                    @onclick="ResetBridge">⏹</button>
         </div>
+
+        <span class="app-menu__running-indicator @(DdsBridge.IsPaused ? "app-menu__running-indicator--paused" : "app-menu__running-indicator--running")">
+            <span class="app-menu__running-indicator__dot"></span>
+            @(DdsBridge.IsPaused ? "Paused" : "Running")
+        </span>
+
+        <button type="button"
+                class="app-menu__participant-indicator"
+                title="Open Participant Editor"
+                @onclick="OpenParticipantEditor">
+            @GetParticipantSummary()
+        </button>
     </nav>
     <InputFile id="workspaceImport" OnChange="ImportWorkspace" style="display:none" accept=".workspace,application/json" />
+
+    @if (_showParticipantEditor)
+    {
+        <ParticipantEditorDialog OnClose="CloseParticipantEditor" />
+    }
+
     <div class="app-shell__content">
         @Body
     </div>
@@ -68,6 +105,76 @@
     private const string AllSamplesTopicTypeKey = "SamplesPanel.TopicTypeName";
     private string _theme = "dark";
     private string? _openMenu;
+    private bool _showParticipantEditor;
+    private IDisposable? _cloneSubscription;
+
+    protected override void OnInitialized()
+    {
+        _cloneSubscription = EventBroker.Subscribe<CloneAndSendRequestEvent>(OnCloneAndSend);
+    }
+
+    private void OnCloneAndSend(CloneAndSendRequestEvent evt)
+    {
+        // Store the request for any SendSamplePanel that is created AFTER this event
+        // (new-panel case).  Live panels receive the event directly via EventBroker;
+        // they don't need to poll CloneRequests.
+        CloneRequests.SetRequest(evt.TopicMeta, evt.Payload);
+        _ = InvokeAsync(() =>
+        {
+            OpenSendSamplePanel();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        _cloneSubscription?.Dispose();
+    }
+
+    // ── Transport controls (ME1-T09) ──────────────────────────────────────────
+
+    private void StartBridge()
+    {
+        DdsBridge.IsPaused = false;
+        CloseMenus();
+    }
+
+    private void PauseBridge()
+    {
+        DdsBridge.IsPaused = true;
+        CloseMenus();
+    }
+
+    private void ResetBridge()
+    {
+        DdsBridge.ResetAll();
+        CloseMenus();
+    }
+
+    private void OpenParticipantEditor()
+    {
+        _showParticipantEditor = true;
+        CloseMenus();
+    }
+
+    private void CloseParticipantEditor()
+    {
+        _showParticipantEditor = false;
+    }
+
+    private string GetParticipantSummary()
+    {
+        var configs = DdsBridge.ParticipantConfigs;
+        if (configs.Count == 0)
+            return "none";
+
+        // Show pairs: D:0,P:*|D:2,P:abc
+        return string.Join("|", configs.Select(c =>
+        {
+            var partition = string.IsNullOrEmpty(c.PartitionName) ? "*" : c.PartitionName;
+            return $"D:{c.DomainId},P:{partition}";
+        }));
+    }
 
     private void ToggleMenu(string menuName)
     {
@@ -90,9 +197,7 @@
         {
             if (string.Equals(panel.ComponentTypeName, TopicSourcesPanelTypeName, StringComparison.Ordinal))
             {
-                panel.IsMinimized = false;
-                panel.IsHidden = false;
-                WindowManager.BringToFront(panel.PanelId);
+                WindowManager.ShowPanel(panel.PanelId);
                 return;
             }
         }
@@ -118,9 +223,7 @@
         {
             if (string.Equals(panel.ComponentTypeName, TopicExplorerTypeName, StringComparison.Ordinal))
             {
-                panel.IsMinimized = false;
-                panel.IsHidden = false;
-                WindowManager.BringToFront(panel.PanelId);
+                WindowManager.ShowPanel(panel.PanelId);
                 return;
             }
         }
@@ -138,9 +241,7 @@
             if (string.Equals(panel.ComponentTypeName, SamplesPanelTypeName, StringComparison.Ordinal) &&
                 !panel.ComponentState.ContainsKey(AllSamplesTopicTypeKey))
             {
-                panel.IsMinimized = false;
-                panel.IsHidden = false;
-                WindowManager.BringToFront(panel.PanelId);
+                WindowManager.ShowPanel(panel.PanelId);
                 return;
             }
         }
@@ -159,12 +260,9 @@
         CloseMenus();
         foreach (var panel in WindowManager.ActivePanels)
         {
-            if (string.Equals(panel.ComponentTypeName, SendSamplePanelTypeName, StringComparison.Ordinal) &&
-                !panel.ComponentState.ContainsKey("SendSamplePanel.TopicTypeName"))
+            if (string.Equals(panel.ComponentTypeName, SendSamplePanelTypeName, StringComparison.Ordinal))
             {
-                panel.IsMinimized = false;
-                panel.IsHidden = false;
-                WindowManager.BringToFront(panel.PanelId);
+                WindowManager.ShowPanel(panel.PanelId);
                 return;
             }
         }
@@ -184,9 +282,7 @@
         {
             if (string.Equals(panel.ComponentTypeName, ReplayPanelTypeName, StringComparison.Ordinal))
             {
-                panel.IsMinimized = false;
-                panel.IsHidden = false;
-                WindowManager.BringToFront(panel.PanelId);
+                WindowManager.ShowPanel(panel.PanelId);
                 return;
             }
         }

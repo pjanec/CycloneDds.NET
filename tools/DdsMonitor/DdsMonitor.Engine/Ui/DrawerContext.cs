@@ -21,18 +21,24 @@ public sealed class DrawerContext
     /// an input event fires. Pass <c>this</c> from the hosting component so that
     /// Blazor automatically re-renders after every mutation.
     /// </param>
+    /// <param name="onValidationError">
+    /// Optional callback invoked when validation state changes.
+    /// Pass <c>null</c> to clear a previous error; pass a non-null string to set an error message.
+    /// </param>
     public DrawerContext(
         string label,
         Type fieldType,
         Func<object?> valueGetter,
         Action<object?> onChange,
-        IHandleEvent? receiver = null)
+        IHandleEvent? receiver = null,
+        Action<string?>? onValidationError = null)
     {
         Label = label ?? throw new ArgumentNullException(nameof(label));
         FieldType = fieldType ?? throw new ArgumentNullException(nameof(fieldType));
         ValueGetter = valueGetter ?? throw new ArgumentNullException(nameof(valueGetter));
         OnChange = onChange ?? throw new ArgumentNullException(nameof(onChange));
         Receiver = receiver;
+        OnValidationError = onValidationError;
     }
 
     /// <summary>Gets the display label for the field.</summary>
@@ -52,4 +58,11 @@ public sealed class DrawerContext
     /// trigger a re-render after input events. May be <c>null</c> in tests or non-UI contexts.
     /// </summary>
     public IHandleEvent? Receiver { get; }
+
+    /// <summary>
+    /// Optional callback invoked when the validation state of this field changes.
+    /// Called with <c>null</c> to clear a previous error, or a non-null error message string.
+    /// May be <c>null</c> when no validation reporting is needed (e.g. in tests).
+    /// </summary>
+    public Action<string?>? OnValidationError { get; }
 }

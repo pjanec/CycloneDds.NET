@@ -15,6 +15,7 @@ public sealed class TopicDiscoveryService
     private const string DllPattern = "*.dll";
     private const string SchemaAssemblyName = "CycloneDDS.Schema";
     private const string RuntimeAssemblyName = "CycloneDDS.Runtime";
+    private const string CoreAssemblyName = "CycloneDDS.Core";
 
     private readonly ITopicRegistry _registry;
     private readonly List<AssemblyLoadContext> _loadContexts = new();
@@ -81,6 +82,22 @@ public sealed class TopicDiscoveryService
         return LoadAndScanAssembly(dllPath);
     }
 
+    /// <summary>
+    /// Scans a single assembly file, registers any new topic types, and returns the
+    /// full list of DDS topic types found in the assembly (including types that were
+    /// already registered under the same topic name).  Throws if the assembly cannot
+    /// be loaded.
+    /// </summary>
+    public IReadOnlyList<TopicMetadata> DiscoverFromFileDetailed(string dllPath)
+    {
+        if (string.IsNullOrWhiteSpace(dllPath))
+        {
+            throw new ArgumentException("DLL path must not be empty.", nameof(dllPath));
+        }
+
+        return LoadAndScanAssemblyDetailed(dllPath);
+    }
+
     private void TryDiscoverFromAssembly(string dllPath)
     {
         try
@@ -95,12 +112,23 @@ public sealed class TopicDiscoveryService
 
     private int LoadAndScanAssembly(string dllPath)
     {
+        return LoadAndScanAssemblyDetailed(dllPath).Count;
+    }
+
+    /// <summary>
+    /// Loads an assembly, registers new topic types, and returns all DDS topic types
+    /// found in the assembly.  For topic types that were already registered (detected by
+    /// topic name), the existing <see cref="TopicMetadata"/> from the registry is returned
+    /// so the caller always gets a fully resolved entry.
+    /// </summary>
+    private IReadOnlyList<TopicMetadata> LoadAndScanAssemblyDetailed(string dllPath)
+    {
         var loadContext = new CollectiblePluginLoadContext(dllPath);
         var assembly = loadContext.LoadFromAssemblyPath(dllPath);
 
         _loadContexts.Add(loadContext);
 
-        var count = 0;
+        var found = new List<TopicMetadata>();
         foreach (var type in assembly.ExportedTypes)
         {
             if (type.GetCustomAttribute<DdsTopicAttribute>() == null)
@@ -110,10 +138,15 @@ public sealed class TopicDiscoveryService
 
             var metadata = new TopicMetadata(type);
             _registry.Register(metadata);
-            count++;
+
+            // Prefer the version already in the registry (registered first wins), so that
+            // callers always receive a consistent TopicMetadata regardless of whether this
+            // assembly introduced the topic or it was already known.
+            var registered = _registry.GetByName(metadata.TopicName) ?? metadata;
+            found.Add(registered);
         }
 
-        return count;
+        return found;
     }
 
     private sealed class CollectiblePluginLoadContext : AssemblyLoadContext
@@ -129,7 +162,8 @@ public sealed class TopicDiscoveryService
         protected override Assembly? Load(AssemblyName assemblyName)
         {
             if (string.Equals(assemblyName.Name, SchemaAssemblyName, StringComparison.Ordinal) ||
-                string.Equals(assemblyName.Name, RuntimeAssemblyName, StringComparison.Ordinal))
+                string.Equals(assemblyName.Name, RuntimeAssemblyName, StringComparison.Ordinal) ||
+                string.Equals(assemblyName.Name, CoreAssemblyName, StringComparison.Ordinal))
             {
                 return AssemblyLoadContext.Default.LoadFromAssemblyName(assemblyName);
             }

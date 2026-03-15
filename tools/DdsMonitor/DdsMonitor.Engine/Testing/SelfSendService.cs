@@ -33,8 +33,12 @@ public sealed class SelfSendService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         List<IDynamicWriter>? writers = null;
-        bool registered = false;
         bool wasEnabled = false;
+
+        // Register self-send topic metadata unconditionally so they appear in
+        // the Send Sample combo and topic explorer immediately on startup,
+        // even before the user enables self-sending.
+        SelfSendTopics.Register(_topicRegistry);
 
         var rateHz = Math.Max(MinimumRateHz, _settings.SelfSendRateHz);
         var delay = TimeSpan.FromMilliseconds(1000d / rateHz);
@@ -49,13 +53,7 @@ public sealed class SelfSendService : BackgroundService
 
                 if (isEnabled && !wasEnabled)
                 {
-                    // Turning on: lazily register topics and create DDS writers.
-                    if (!registered)
-                    {
-                        SelfSendTopics.Register(_topicRegistry);
-                        registered = true;
-                    }
-
+                    // Turning on: subscribe to DDS and create writers.
                     var topics = GetSelfSendTopics();
                     if (topics.Count > 0)
                     {

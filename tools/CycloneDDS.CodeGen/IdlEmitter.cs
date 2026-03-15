@@ -289,11 +289,8 @@ namespace CycloneDDS.CodeGen
 
             if (type.IsTopic)
             {
-                // ME1-T03: include topic name in @topic annotation when available
-                if (!string.IsNullOrWhiteSpace(type.TopicName))
-                    sb.AppendLine($"{indent}@topic(name=\"{type.TopicName}\")");
-                else
-                    sb.AppendLine($"{indent}@topic");
+                // ME1-C03 / D06: always emit plain @topic — idlc ignores and warns about name= parameter
+                sb.AppendLine($"{indent}@topic");
             }
 
             switch (type.Extensibility)

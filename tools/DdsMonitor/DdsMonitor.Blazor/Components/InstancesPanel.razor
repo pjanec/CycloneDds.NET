@@ -139,11 +139,9 @@ else
         typeof(DateTime),
         input => ((SampleData)input).Timestamp);
 
-    private static readonly JsonSerializerOptions TooltipJsonOptions = new()
-    {
-        WriteIndented = true,
-        IncludeFields = true
-    };
+    // JSON options for sample tooltips and inline previews re-use DdsJsonOptions.Display so that
+    // inactive union arms are stripped and enums appear as strings – identical to file export.
+    private static readonly JsonSerializerOptions TooltipJsonOptions = DdsJsonOptions.Display;
 
     private readonly List<InstanceRow> _viewCache = new();
     private Virtualize<IndexedInstance>? _virtualizeRef;

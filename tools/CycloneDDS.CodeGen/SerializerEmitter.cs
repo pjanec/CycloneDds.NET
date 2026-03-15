@@ -193,12 +193,7 @@ namespace CycloneDDS.CodeGen
                  {
                      // Use the correct cast width matching the native _d field type.
                      // ME1-T01/T0 fix: byte-backed enums need (byte), short-backed need (ushort).
-                     castExpr = discriminator.Type.EnumBitBound switch
-                     {
-                         8  => "(byte)",
-                         16 => "(ushort)",
-                         _  => "(int)"
-                     };
+                     castExpr = GetEnumCastExpression(discriminator.Type.EnumBitBound);
                  }
                  sb.AppendLine($"            target._d = {castExpr}source.{discriminator.Name};");
              }
@@ -384,12 +379,7 @@ namespace CycloneDDS.CodeGen
              else if (fieldType != null && fieldType.IsEnum)
              {
                  // ME1-T01: narrow the cast based on bit bound
-                 string enumCast = fieldType.EnumBitBound switch
-                 {
-                     8  => "(byte)",
-                     16 => "(ushort)",
-                     _  => "(int)"
-                 };
+                 string enumCast = GetEnumCastExpression(fieldType.EnumBitBound);
                  sb.AppendLine($"            {targetAccess} = {enumCast}{sourceAccess};");
              }
              else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
@@ -786,12 +776,7 @@ namespace CycloneDDS.CodeGen
              else if (fieldType != null && fieldType.IsEnum)
              {
                  // ME1-T01: apply narrow intermediate cast matching the native field width
-                 string intermediateCast = fieldType.EnumBitBound switch
-                 {
-                     8  => "(byte)",
-                     16 => "(ushort)",
-                     _  => "(int)"
-                 };
+                 string intermediateCast = GetEnumCastExpression(fieldType.EnumBitBound);
                  sb.AppendLine($"            {targetAccess} = ({field.TypeName}){intermediateCast}{sourceAccess};");
              }
              else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
@@ -1298,6 +1283,14 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine("    }");
             }
         }
+
+        /// <summary>Returns the C# cast expression matching an enum's bit bound (e.g. "(byte)", "(ushort)", "(int)").</summary>
+        private static string GetEnumCastExpression(int bitBound) => bitBound switch
+        {
+            8  => "(byte)",
+            16 => "(ushort)",
+            _  => "(int)"
+        };
 
         private string GetNativeType(FieldInfo field)
         {

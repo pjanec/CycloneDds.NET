@@ -686,6 +686,8 @@ public sealed class Batch24Tests
 
         public IReadOnlyList<DdsParticipant> Participants => Array.Empty<DdsParticipant>();
 
+        public IReadOnlyList<ParticipantConfig> ParticipantConfigs => Array.Empty<ParticipantConfig>();
+
         public bool IsPaused { get; set; }
 
         public IReadOnlyDictionary<Type, IDynamicReader> ActiveReaders =>

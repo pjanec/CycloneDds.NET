@@ -1,5 +1,6 @@
 @using System.Collections.Generic
 @using System.Collections
+@using System.Linq
 @using DdsMonitor.Engine.Ui
 
 @inject ITypeDrawerRegistry DrawerRegistry
@@ -45,6 +46,7 @@ else
                     @if (drawer != null)
                     {
                         // Scalar field with a registered drawable.
+                        var fieldKey = capturedField.StructuredName;
                         var ctx = new DrawerContext(
                             capturedField.DisplayName,
                             capturedField.ValueType,
@@ -54,8 +56,22 @@ else
                                 capturedField.Setter(Payload!, value);
                                 StateHasChanged();
                             },
-                            this);
+                            this,
+                            onValidationError: err =>
+                            {
+                                if (err == null)
+                                    _fieldErrors.Remove(fieldKey);
+                                else
+                                    _fieldErrors[fieldKey] = err;
+                                StateHasChanged();
+                            });
                         @drawer(ctx)
+                        @if (_fieldErrors.TryGetValue(fieldKey, out var fieldErr) && fieldErr != null)
+                        {
+                            <span class="dynamic-form__error-icon" title="@fieldErr">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        }
                     }
                     else if (capturedField.IsFixedSizeArray && capturedField.ElementType != null)
                     {
@@ -183,8 +199,89 @@ else
     [Parameter]
     public object? Payload { get; set; }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Validation state
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private readonly Dictionary<string, string> _fieldErrors = new(StringComparer.Ordinal);
+    private TopicMetadata? _lastMeta;
+
+    /// <summary>
+    /// Returns <c>true</c> when at least one field currently has a validation error,
+    /// meaning the form payload should not be sent.
+    /// </summary>
+    public bool HasValidationErrors => _fieldErrors.Count > 0;
+
+    protected override void OnParametersSet()
+    {
+        // Clear all validation errors when the topic type changes so that stale errors
+        // from a previous topic never block sending for a new topic.
+        // Use reference equality so we don't clear on every parent re-render.
+        if (!ReferenceEquals(_lastMeta, Meta))
+        {
+            _lastMeta = Meta;
+            _fieldErrors.Clear();
+        }
+    }
+
     private IEnumerable<FieldMetadata> EditableFields =>
-        Meta?.AllFields.Where(f => !f.IsSynthetic) ?? Array.Empty<FieldMetadata>();
+        Meta?.AllFields.Where(f => !f.IsSynthetic && IsUnionArmVisible(f)) ?? Array.Empty<FieldMetadata>();
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ME1-T08: Union arm visibility
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true when the field is a non-union field, the union discriminator itself,
+    /// or the union arm whose discriminator value matches the current payload discriminator.
+    /// </summary>
+    private bool IsUnionArmVisible(FieldMetadata field)
+    {
+        // Discriminator field: always visible.
+        if (field.IsDiscriminatorField)
+            return true;
+
+        // Non-union arm: always visible.
+        if (field.DependentDiscriminatorPath == null)
+            return true;
+
+        // Resolve the discriminator value from the live payload.
+        if (Meta == null || Payload == null)
+            return true;
+
+        var discField = Meta.AllFields.FirstOrDefault(
+            f => string.Equals(f.StructuredName, field.DependentDiscriminatorPath, StringComparison.Ordinal));
+        if (discField == null)
+            return true;
+
+        var currentDisc = discField.Getter(Payload);
+
+        // Default case: visible only when no explicit case arm matches.
+        if (field.IsDefaultUnionCase)
+        {
+            return !Meta.AllFields.Any(f =>
+                string.Equals(f.DependentDiscriminatorPath, field.DependentDiscriminatorPath, StringComparison.Ordinal) &&
+                !f.IsDefaultUnionCase &&
+                f.ActiveWhenDiscriminatorValue != null &&
+                UnionValuesEqual(f.ActiveWhenDiscriminatorValue, currentDisc));
+        }
+
+        // Explicit case: visible only when discriminator matches the case value.
+        return field.ActiveWhenDiscriminatorValue != null &&
+               UnionValuesEqual(field.ActiveWhenDiscriminatorValue, currentDisc);
+    }
+
+    /// <summary>
+    /// Compares two potentially heterogeneous values (e.g. int discriminator vs enum arm value)
+    /// by converting both to <c>Int64</c> when direct equality fails.
+    /// </summary>
+    private static bool UnionValuesEqual(object a, object? b)
+    {
+        if (b == null) return false;
+        if (a.Equals(b)) return true;
+        try { return Convert.ToInt64(a) == Convert.ToInt64(b); }
+        catch { return false; }
+    }
 
     /// <summary>
     /// Returns the parent path prefix as the group name for nested fields,

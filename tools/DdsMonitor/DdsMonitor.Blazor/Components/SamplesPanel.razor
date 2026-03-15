@@ -182,11 +182,9 @@
         typeof(DateTime),
         input => ((SampleData)input).Timestamp);
 
-    private static readonly JsonSerializerOptions TooltipJsonOptions = new()
-    {
-        WriteIndented = true,
-        IncludeFields = true
-    };
+    // JSON options for sample tooltips and inline previews re-use DdsJsonOptions.Display so that
+    // inactive union arms are stripped and enums appear as strings – identical to file export.
+    private static readonly JsonSerializerOptions TooltipJsonOptions = DdsJsonOptions.Display;
 
     private readonly List<SampleData> _viewCache = new();
     private Virtualize<IndexedSample>? _virtualizeRef;
@@ -745,6 +743,12 @@
                 [nameof(DetailPanel.IsLinked)] = shouldLink
             });
             panel.Width = 546;
+            // Title is based on the source panel (e.g. "All Samples"), not the sample type.
+            // This keeps the title stable regardless of which topic type is displayed,
+            // allowing the workspace to correctly restore window position on re-open.
+            var sourcePanelState = WindowManager.ActivePanels
+                .FirstOrDefault(p => string.Equals(p.PanelId, sourcePanelId, StringComparison.Ordinal));
+            panel.Title = $"Detail [{sourcePanelState?.Title ?? "Samples"}]";
         }
         else
         {
@@ -755,17 +759,20 @@
             panel.ComponentState[nameof(DetailPanel.IsLinked)] = shouldLink;
             WindowManager.BringToFront(panel.PanelId);
         }
-
-        panel.Title = $"Detail [{sample.TopicMetadata.ShortName}]";
     }
 
     private static bool IsLinkedDetailPanel(PanelState panel)
     {
-        if (panel.ComponentState.TryGetValue(nameof(DetailPanel.IsLinked), out var linkedObj) &&
-            linkedObj is bool linked)
-        {
+        if (!panel.ComponentState.TryGetValue(nameof(DetailPanel.IsLinked), out var linkedObj))
+            return false;
+
+        // ME1-C07: ComponentState values are raw bool (in-memory) or JsonElement (after workspace load)
+        if (linkedObj is bool linked)
             return linked;
-        }
+
+        if (linkedObj is System.Text.Json.JsonElement element &&
+            element.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+            return element.GetBoolean();
 
         return false;
     }

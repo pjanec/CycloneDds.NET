@@ -108,7 +108,20 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IWindowManager, WindowManager>();
         services.AddScoped<IWorkspaceState, WorkspaceState>();
 
-        services.AddHostedService<DdsIngestionService>();
+        // ME1-T11: In Record-headless mode HeadlessRunnerService consumes the channel directly
+        // so DdsIngestionService must not run (two readers on the same channel are not supported).
+        if (settings.HeadlessMode != HeadlessMode.Record)
+        {
+            services.AddHostedService<DdsIngestionService>();
+        }
+
+        // ME1-T11: HeadlessRunnerService is only needed when headless mode is active.
+        // When HeadlessMode == None the Blazor UI drives execution and IHostApplicationLifetime
+        // may not be registered (e.g. in unit-test DI containers), so we skip registration.
+        if (settings.HeadlessMode != HeadlessMode.None)
+        {
+            services.AddHostedService<HeadlessRunnerService>();
+        }
 
         return services;
     }

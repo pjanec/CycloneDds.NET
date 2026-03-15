@@ -20,6 +20,12 @@ public interface IDdsBridge : IDisposable
     IReadOnlyList<DdsParticipant> Participants { get; }
 
     /// <summary>
+    /// Gets the configuration objects for all active participants, in the same order as
+    /// <see cref="Participants"/>. Provides domain ID and partition name for display purposes.
+    /// </summary>
+    IReadOnlyList<ParticipantConfig> ParticipantConfigs { get; }
+
+    /// <summary>
     /// Gets the active partition used for readers and writers on the primary participant.
     /// </summary>
     string? CurrentPartition { get; }

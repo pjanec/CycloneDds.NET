@@ -114,98 +114,9 @@ namespace CycloneDDS.CodeGen
                             Attributes = ExtractAttributes(typeSymbol)
                         };
 
-                        // Check for DdsExtensibility attribute
-                        var extAttr = typeSymbol.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DdsExtensibilityAttribute" || a.AttributeClass?.Name == "DdsExtensibility");
-                        if (extAttr != null && extAttr.ConstructorArguments.Length > 0)
-                        {
-                            var val = extAttr.ConstructorArguments[0].Value;
-                            //Console.WriteLine($"[DEBUG-SCHEMA] Type {typeSymbol.Name} has Extensibility Attr. ValType={val?.GetType().Name} Val={val}");
-                            if (val is int intVal)
-                            {
-                                typeInfo.Extensibility = (DdsExtensibilityKind)intVal;
-                                //Console.WriteLine($"[DEBUG-SCHEMA]   -> Set to {typeInfo.Extensibility}");
-                            }
-                            else
-                            {
-                                Console.WriteLine($"[DEBUG-SCHEMA]   -> Value is not int! Fallback to Appendable?");
-                                // Force correct cast if it's not int (e.g. underlying type issue)
-                                try {
-                                    typeInfo.Extensibility = (DdsExtensibilityKind)Convert.ToInt32(val);
-                                    Console.WriteLine($"[DEBUG-SCHEMA]   -> Converted to {typeInfo.Extensibility}");
-                                } catch (Exception ex) {
-                                    Console.WriteLine($"[DEBUG-SCHEMA]   -> Convention failed: {ex.Message}");
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // Default to Appendable
-                            typeInfo.Extensibility = DdsExtensibilityKind.Appendable;
-                            //Console.WriteLine($"[DEBUG-SCHEMA] Type {typeSymbol.Name} default Extensibility Appendable (No Attr)");
-
-                        }
-
-                        if (isEnum)
-                        {
-                            // ME1-T01: Read underlying type and store bit bound
-                            if (typeSymbol.EnumUnderlyingType != null)
-                            {
-                                typeInfo.EnumBitBound = typeSymbol.EnumUnderlyingType.SpecialType switch
-                                {
-                                    SpecialType.System_Byte or SpecialType.System_SByte => 8,
-                                    SpecialType.System_Int16 or SpecialType.System_UInt16 => 16,
-                                    _ => 32
-                                };
-                            }
-
-                            foreach (var member in typeSymbol.GetMembers().OfType<IFieldSymbol>())
-                            {
-                                if (member.IsConst && member.HasConstantValue)
-                                {
-                                    typeInfo.EnumMembers.Add(member.Name);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // Extract fields and properties
-                            foreach (var member in typeSymbol.GetMembers())
-                            {
-                                if (member is IFieldSymbol fieldSymbol && !fieldSymbol.IsImplicitlyDeclared)
-                                {
-                                    typeInfo.Fields.Add(CreateFieldInfo(fieldSymbol));
-                                }
-                                else if (member is IPropertySymbol propSymbol && !propSymbol.IsImplicitlyDeclared)
-                                {
-                                    typeInfo.Fields.Add(CreateFieldInfo(propSymbol));
-                                }
-                            }
-                        }
-
-                        // ME1-T03: Resolve topic name (use attribute arg or namespace fallback)
-                        if (isTopic)
-                        {
-                            var topicAttr = typeSymbol.GetAttributes()
-                                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "CycloneDDS.Schema.DdsTopicAttribute");
-                            string? explicitName = null;
-                            if (topicAttr != null && topicAttr.ConstructorArguments.Length > 0)
-                            {
-                                explicitName = topicAttr.ConstructorArguments[0].Value as string;
-                            }
-
-                            if (!string.IsNullOrWhiteSpace(explicitName))
-                            {
-                                typeInfo.TopicName = explicitName;
-                            }
-                            else
-                            {
-                                // Fallback: full qualified name with '.' replaced by '_'
-                                var fullName = string.IsNullOrEmpty(typeInfo.Namespace)
-                                    ? typeInfo.Name
-                                    : $"{typeInfo.Namespace}.{typeInfo.Name}";
-                                typeInfo.TopicName = fullName.Replace('.', '_');
-                            }
-                        }
+                        SetExtensibility(typeSymbol, typeInfo);
+                        PopulateEnumOrFields(typeSymbol, typeInfo, isEnum);
+                        if (isTopic) ResolveTopicName(typeSymbol, typeInfo);
 
                         topics.Add(typeInfo);
                     }
@@ -306,6 +217,96 @@ namespace CycloneDDS.CodeGen
             {
                  if (!System.Text.RegularExpressions.Regex.IsMatch(part, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
                      throw new ArgumentException($"[DdsIdlModule(\"{modulePath}\")] on '{typeName}' contains invalid identifier segment '{part}'.");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // D02: Extracted helper methods to reduce main discovery loop length
+        // ─────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Reads [DdsExtensibility] from the symbol and sets <see cref="TypeInfo.Extensibility"/>.</summary>
+        private static void SetExtensibility(INamedTypeSymbol typeSymbol, TypeInfo typeInfo)
+        {
+            var extAttr = typeSymbol.GetAttributes().FirstOrDefault(
+                a => a.AttributeClass?.Name == "DdsExtensibilityAttribute" ||
+                     a.AttributeClass?.Name == "DdsExtensibility");
+
+            if (extAttr != null && extAttr.ConstructorArguments.Length > 0)
+            {
+                var val = extAttr.ConstructorArguments[0].Value;
+                if (val is int intVal)
+                {
+                    typeInfo.Extensibility = (DdsExtensibilityKind)intVal;
+                }
+                else
+                {
+                    try { typeInfo.Extensibility = (DdsExtensibilityKind)Convert.ToInt32(val); }
+                    catch { /* leave at default */ }
+                }
+            }
+            else
+            {
+                typeInfo.Extensibility = DdsExtensibilityKind.Appendable;
+            }
+        }
+
+        /// <summary>Populates enum members (bit-bound + values) or struct/union fields on <paramref name="typeInfo"/>.</summary>
+        private void PopulateEnumOrFields(INamedTypeSymbol typeSymbol, TypeInfo typeInfo, bool isEnum)
+        {
+            if (isEnum)
+            {
+                // ME1-T01: Read underlying type and store bit bound
+                if (typeSymbol.EnumUnderlyingType != null)
+                {
+                    typeInfo.EnumBitBound = typeSymbol.EnumUnderlyingType.SpecialType switch
+                    {
+                        SpecialType.System_Byte or SpecialType.System_SByte => 8,
+                        SpecialType.System_Int16 or SpecialType.System_UInt16 => 16,
+                        _ => 32
+                    };
+                }
+
+                foreach (var member in typeSymbol.GetMembers().OfType<IFieldSymbol>())
+                {
+                    if (member.IsConst && member.HasConstantValue)
+                        typeInfo.EnumMembers.Add(member.Name);
+                }
+            }
+            else
+            {
+                foreach (var member in typeSymbol.GetMembers())
+                {
+                    if (member is IFieldSymbol fieldSymbol && !fieldSymbol.IsImplicitlyDeclared)
+                        typeInfo.Fields.Add(CreateFieldInfo(fieldSymbol));
+                    else if (member is IPropertySymbol propSymbol && !propSymbol.IsImplicitlyDeclared)
+                        typeInfo.Fields.Add(CreateFieldInfo(propSymbol));
+                }
+            }
+        }
+
+        /// <summary>
+        /// ME1-T03: Resolves the DDS topic name from the <c>[DdsTopic]</c> attribute argument
+        /// or falls back to the namespace-qualified type name with dots replaced by underscores.
+        /// </summary>
+        private static void ResolveTopicName(INamedTypeSymbol typeSymbol, TypeInfo typeInfo)
+        {
+            var topicAttr = typeSymbol.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "CycloneDDS.Schema.DdsTopicAttribute");
+
+            string? explicitName = null;
+            if (topicAttr != null && topicAttr.ConstructorArguments.Length > 0)
+                explicitName = topicAttr.ConstructorArguments[0].Value as string;
+
+            if (!string.IsNullOrWhiteSpace(explicitName))
+            {
+                typeInfo.TopicName = explicitName;
+            }
+            else
+            {
+                var fullName = string.IsNullOrEmpty(typeInfo.Namespace)
+                    ? typeInfo.Name
+                    : $"{typeInfo.Namespace}.{typeInfo.Name}";
+                typeInfo.TopicName = fullName.Replace('.', '_');
             }
         }
 

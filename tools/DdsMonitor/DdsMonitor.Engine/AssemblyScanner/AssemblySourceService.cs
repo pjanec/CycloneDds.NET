@@ -194,39 +194,26 @@ public sealed class AssemblySourceService : IAssemblySourceService
 
     /// <summary>
     /// Scans a single entry via the discovery service, populates its <see cref="AssemblySourceEntry.TopicCount"/>
-    /// and <see cref="AssemblySourceEntry.LoadError"/>, and returns the list of registered topics.
+    /// and <see cref="AssemblySourceEntry.LoadError"/>, and returns the list of topic types found in the assembly.
+    /// For topics that were already registered (e.g. via SelfSendService), the existing registry entry is
+    /// returned so the detail panel always shows what topics the DLL contains.
     /// Must be called while holding <see cref="_sync"/>.
     /// </summary>
     private List<TopicMetadata> ScanEntry(AssemblySourceEntry entry)
     {
-        // Snapshot registry size before loading so we can track what was added.
-        var beforeTopics = _topicRegistry.AllTopics;
-        var beforeCount = beforeTopics.Count;
-
         try
         {
-            var count = _discoveryService.DiscoverFromFile(entry.Path);
-            entry.TopicCount = count;
+            var found = _discoveryService.DiscoverFromFileDetailed(entry.Path);
+            entry.TopicCount = found.Count;
             entry.LoadError = null;
+            return new List<TopicMetadata>(found);
         }
         catch (Exception ex)
         {
             entry.TopicCount = 0;
             entry.LoadError = ex.Message;
+            return new List<TopicMetadata>();
         }
-
-        // Collect the newly registered topics (appended at the tail of the registry).
-        var afterTopics = _topicRegistry.AllTopics;
-        var added = new List<TopicMetadata>();
-        for (var i = beforeCount; i < afterTopics.Count; i++)
-        {
-            added.Add(afterTopics[i]);
-        }
-
-        // Reconcile TopicCount with actual newly added count if the registry
-        // deduped some types that were already present.
-        entry.TopicCount = added.Count;
-        return added;
     }
 
     private void Persist()

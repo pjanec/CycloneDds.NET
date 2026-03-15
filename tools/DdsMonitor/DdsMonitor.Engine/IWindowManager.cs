@@ -39,6 +39,12 @@ public interface IWindowManager
     void BringToFront(string panelId);
 
     /// <summary>
+    /// Un-minimizes and un-hides the specified panel, brings it to the front,
+    /// and notifies listeners via <see cref="PanelsChanged"/>.
+    /// </summary>
+    void ShowPanel(string panelId);
+
+    /// <summary>
     /// Clears all active panels.
     /// </summary>
     void ClearPanels();

@@ -1,34 +1,63 @@
 @using System.Collections.Generic
 @using System.Linq
 @using DdsMonitor.Engine.Ui
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
 @implements IDisposable
 
 @inject ITopicRegistry TopicRegistry
 @inject IDdsBridge DdsBridge
 @inject ITypeDrawerRegistry DrawerRegistry
+@inject CloneRequestService CloneRequests
+@inject IEventBroker EventBroker
+@inject IJSRuntime JSRuntime
 
 <div class="send-sample-panel">
-    <div class="send-sample-panel__toolbar">
-        <label class="send-sample-panel__label">Topic:</label>
-        <select class="send-sample-panel__topic-select" value="@_selectedTypeName" @onchange="OnTopicSelected">
-            <option value="">— select a topic —</option>
-            @foreach (var meta in TopicRegistry.AllTopics)
-            {
-                <option value="@meta.TopicType.AssemblyQualifiedName">
-                    @meta.ShortName
-                    @if (!string.IsNullOrEmpty(meta.Namespace))
+    <div class="send-sample-panel__combo-wrap">
+        <input type="text"
+               class="send-sample-panel__combo-input @(_comboOpen ? "is-open" : string.Empty)"
+               value="@(_comboOpen ? _filterText : (_selectedMeta?.ShortName ?? string.Empty))"
+               placeholder="— select a topic —"
+               @ref="_comboInputRef"
+               @onfocus="OnComboFocus"
+               @onclick="OnComboClick"
+               @oninput="OnFilterInput"
+               @onblur="OnComboBlur"
+               @onkeydown="OnFilterKeyDown" />
+
+        @if (_comboOpen)
+        {
+            <div class="send-sample-panel__combo-dropdown">
+                <div class="send-sample-panel__combo-options" @ref="_dropdownRef">
+                    @for (var i = 0; i < _filteredTopicsList.Count; i++)
                     {
-                        <text> (@meta.Namespace)</text>
+                        var capturedMeta = _filteredTopicsList[i];
+                        var isHighlighted = i == _highlightIndex;
+                        var isSelected = capturedMeta == _selectedMeta;
+                        <button type="button"
+                                class="send-sample-panel__combo-option @(isHighlighted ? "is-highlighted" : string.Empty) @(isSelected ? "is-selected" : string.Empty)"
+                                @onmousedown:preventDefault
+                                @onclick="() => SelectFromCombo(capturedMeta)">
+                            <span class="send-sample-panel__combo-option-name">@capturedMeta.ShortName</span>
+                            @if (!string.IsNullOrEmpty(capturedMeta.Namespace))
+                            {
+                                <span class="send-sample-panel__combo-option-ns">@capturedMeta.Namespace</span>
+                            }
+                        </button>
                     }
-                </option>
-            }
-        </select>
+                    @if (_filteredTopicsList.Count == 0)
+                    {
+                        <div class="send-sample-panel__combo-empty">No topics match "@_filterText"</div>
+                    }
+                </div>
+            </div>
+        }
     </div>
 
     @if (_selectedMeta != null && _payload != null)
     {
         <div class="send-sample-panel__form-area">
-            <DynamicForm Meta="@_selectedMeta" Payload="@_payload" />
+            <DynamicForm @ref="_form" Meta="@_selectedMeta" Payload="@_payload" />
         </div>
 
         <div class="send-sample-panel__footer">
@@ -40,7 +69,9 @@
             {
                 <span class="send-sample-panel__success">Sample sent.</span>
             }
-            <button type="button" class="send-sample-panel__send-btn" @onclick="SendSample">
+            <button type="button" class="send-sample-panel__send-btn" @onclick="SendSample"
+                    disabled="@(_form?.HasValidationErrors == true)"
+                    title="@(_form?.HasValidationErrors == true ? "Fix validation errors before sending" : "Send sample")">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <line x1="22" y1="2" x2="11" y2="13" />
@@ -61,12 +92,185 @@
 @code {
     private const string SendSampleTopicTypeKey = "SendSamplePanel.TopicTypeName";
 
+    private DynamicForm? _form;
     private TopicMetadata? _selectedMeta;
     private object? _payload;
-    private string? _selectedTypeName;
     private string? _sendError;
     private bool _sendSuccess;
     private IDynamicWriter? _cachedWriter;
+    private IDisposable? _cloneSubscription;
+
+    // ── Combo state ───────────────────────────────────────────────────────────
+    private bool _comboOpen;
+    private string _filterText = string.Empty;
+    private int _highlightIndex = -1;
+    private List<TopicMetadata> _filteredTopicsList = new();
+    private ElementReference _comboInputRef;
+    private ElementReference _dropdownRef;
+
+    /// <summary>
+    /// Rebuilds <see cref="_filteredTopicsList"/> from the current <see cref="_filterText"/>
+    /// and clamps <see cref="_highlightIndex"/> to the new list bounds.
+    /// </summary>
+    private void ApplyFilter()
+    {
+        var all = TopicRegistry.AllTopics
+            .OrderBy(m => m.ShortName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.Namespace ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(_filterText))
+        {
+            _filteredTopicsList = all.ToList();
+        }
+        else
+        {
+            var lower = _filterText.Trim().ToLowerInvariant();
+            _filteredTopicsList = all.Where(m =>
+                (m.ShortName ?? string.Empty).Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                (m.Namespace ?? string.Empty).Contains(lower, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        if (_filteredTopicsList.Count == 0)
+        {
+            _highlightIndex = -1;
+        }
+        else
+        {
+            _highlightIndex = Math.Clamp(_highlightIndex, 0, _filteredTopicsList.Count - 1);
+        }
+    }
+
+    /// <summary>
+    /// Opens the combo: pre-fills the filter with the selected topic name so the dropdown
+    /// instantly narrows to matching topics, then selects all the text so the first keypress
+    /// replaces the entire filter rather than appending.
+    /// Called from both <see cref="OnComboFocus"/> (keyboard Tab into the input) and
+    /// <see cref="OnComboClick"/> (mouse click when already focused).
+    /// </summary>
+    private async Task OpenCombo()
+    {
+        if (_comboOpen)
+        {
+            // Already open – nothing more to do (e.g. onclick fired after onfocus).
+            return;
+        }
+
+        _filterText = _selectedMeta?.ShortName ?? string.Empty;
+        _comboOpen = true;
+
+        // Rebuild list so highlight can target the currently-selected item.
+        _highlightIndex = _selectedMeta != null
+            ? Math.Max(0, _filteredTopicsList.IndexOf(_selectedMeta))
+            : 0;
+        ApplyFilter();
+
+        // Highlight the selected item if it appears in the filtered list.
+        if (_selectedMeta != null)
+        {
+            var idx = _filteredTopicsList.IndexOf(_selectedMeta);
+            _highlightIndex = idx >= 0 ? idx : 0;
+        }
+        else
+        {
+            _highlightIndex = _filteredTopicsList.Count > 0 ? 0 : -1;
+        }
+
+        // Select all text so any character the user types immediately replaces the filter.
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("ddsMonitor.selectInput", _comboInputRef);
+        }
+        catch
+        {
+            // Ignore JS failures (e.g. pre-render).
+        }
+    }
+
+    private async Task OnComboFocus(FocusEventArgs _) => await OpenCombo();
+    private async Task OnComboClick() => await OpenCombo();
+
+    private void OnFilterInput(ChangeEventArgs e)
+    {
+        _filterText = e.Value?.ToString() ?? string.Empty;
+        // Reset highlight to the first matching item after each keystroke.
+        _highlightIndex = 0;
+        ApplyFilter();
+    }
+
+    /// <summary>
+    /// Closes the combo when focus leaves the input.
+    /// @onmousedown:preventDefault on option buttons prevents blur before click,
+    /// so selection always completes before the combo closes.
+    /// </summary>
+    private void OnComboBlur(FocusEventArgs _)
+    {
+        _comboOpen = false;
+        _filterText = string.Empty;
+    }
+
+    private async Task OnFilterKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "ArrowDown")
+        {
+            MoveHighlight(1);
+            await ScrollHighlightedIntoView();
+            return;
+        }
+
+        if (e.Key == "ArrowUp")
+        {
+            MoveHighlight(-1);
+            await ScrollHighlightedIntoView();
+            return;
+        }
+
+        if (e.Key == "Enter")
+        {
+            if (_highlightIndex >= 0 && _highlightIndex < _filteredTopicsList.Count)
+            {
+                SelectFromCombo(_filteredTopicsList[_highlightIndex]);
+            }
+            return;
+        }
+
+        if (e.Key is "Escape" or "Tab")
+        {
+            _comboOpen = false;
+            _filterText = string.Empty;
+        }
+    }
+
+    private void MoveHighlight(int delta)
+    {
+        if (_filteredTopicsList.Count == 0)
+        {
+            _highlightIndex = -1;
+            return;
+        }
+
+        _highlightIndex = Math.Clamp(_highlightIndex + delta, 0, _filteredTopicsList.Count - 1);
+    }
+
+    private async Task ScrollHighlightedIntoView()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("ddsMonitor.scrollHighlightedComboOption", _dropdownRef);
+        }
+        catch
+        {
+            // Ignore JS failures.
+        }
+    }
+
+    private void SelectFromCombo(TopicMetadata meta)
+    {
+        SelectTopic(meta);
+        PersistState();
+        _comboOpen = false;
+        _filterText = string.Empty;
+    }
 
     /// <summary>
     /// Optional initial topic to pre-select when the panel opens.
@@ -80,6 +284,21 @@
 
     protected override void OnInitialized()
     {
+        // Subscribe via EventBroker so clone requests reach this panel reliably
+        // regardless of how many SendSamplePanel instances exist.  Each live
+        // instance receives the event and applies the data; the panel that was
+        // brought to front by OpenSendSamplePanel is the one the user sees.
+        _cloneSubscription = EventBroker.Subscribe<CloneAndSendRequestEvent>(OnCloneAndSendDirect);
+
+        // Check for a pending clone request posted before this panel initialized
+        // (the new-panel case: the event was published before we subscribed).
+        var pending = CloneRequests.TakeRequest();
+        if (pending.HasValue)
+        {
+            ApplyCloneRequest(pending.Value.Meta, pending.Value.Payload);
+            return;
+        }
+
         // If an initial topic was injected via parameter, apply it.
         if (InitialTopic != null)
         {
@@ -91,44 +310,32 @@
         TryRestoreFromState();
     }
 
+    private void OnCloneAndSendDirect(CloneAndSendRequestEvent evt)
+    {
+        // Invoked directly via EventBroker on the circuit thread that published
+        // the event (DetailPanel button click).  Apply state here and schedule
+        // a separate render batch so the form appears after OpenSendSamplePanel
+        // brings this panel to front.
+        ApplyCloneRequest(evt.TopicMeta, evt.Payload);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void ApplyCloneRequest(TopicMetadata meta, object payload)
+    {
+        _cachedWriter?.Dispose();
+        _cachedWriter = null;
+        _selectedMeta = meta;
+        _payload = payload;
+        _sendError = null;
+        _sendSuccess = false;
+    }
+
     protected override void OnParametersSet()
     {
         if (InitialTopic != null && _selectedMeta?.TopicType != InitialTopic.TopicType)
         {
             SelectTopic(InitialTopic);
         }
-    }
-
-    private void OnTopicSelected(ChangeEventArgs args)
-    {
-        _sendError = null;
-        _sendSuccess = false;
-
-        var typeName = args.Value?.ToString() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(typeName))
-        {
-            _selectedMeta = null;
-            _payload = null;
-            _selectedTypeName = string.Empty;
-            return;
-        }
-
-        var type = Type.GetType(typeName);
-        if (type == null)
-        {
-            _sendError = $"Could not resolve type '{typeName}'.";
-            return;
-        }
-
-        var meta = TopicRegistry.GetByType(type);
-        if (meta == null)
-        {
-            _sendError = $"No metadata registered for type '{type.Name}'.";
-            return;
-        }
-
-        SelectTopic(meta);
-        PersistState();
     }
 
     private void SelectTopic(TopicMetadata meta)
@@ -138,7 +345,6 @@
         _cachedWriter = null;
 
         _selectedMeta = meta;
-        _selectedTypeName = meta.TopicType.AssemblyQualifiedName;
         _payload = CreateDefaultPayload(meta.TopicType);
         _sendError = null;
         _sendSuccess = false;
@@ -235,6 +441,7 @@
 
     public void Dispose()
     {
+        _cloneSubscription?.Dispose();
         _cachedWriter?.Dispose();
         _cachedWriter = null;
     }

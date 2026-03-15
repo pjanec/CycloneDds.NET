@@ -189,6 +189,283 @@ body {
   color: var(--accent-2);
 }
 
+/* ── Transport control buttons ─────────────────────────────────────── */
+
+.app-menu__transport {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 0 8px;
+  border-left: 1px solid var(--panel-border);
+  border-right: 1px solid var(--panel-border);
+}
+
+.app-menu__transport-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--panel-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  opacity: 0.55;
+}
+
+.app-menu__transport-btn:hover {
+  background: var(--bg-3);
+  opacity: 0.9;
+}
+
+.app-menu__transport-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Play = green when active (system is running) */
+.app-menu__transport-btn--play.is-active {
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.35);
+  background: rgba(74, 222, 128, 0.12);
+  opacity: 1;
+}
+
+/* Pause = amber/blue when active (system is paused) */
+.app-menu__transport-btn--pause.is-active {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.12);
+  opacity: 1;
+}
+
+/* Reset is always red-tinted */
+.app-menu__transport-btn--reset {
+  color: #f87272;
+  opacity: 0.75;
+}
+
+.app-menu__transport-btn--reset:hover {
+  color: #f87272;
+  border-color: rgba(248, 114, 114, 0.35);
+  background: rgba(248, 114, 114, 0.12);
+  opacity: 1;
+}
+
+/* ── Running status indicator ──────────────────────────────────────── */
+
+.app-menu__running-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-left: 4px;
+  cursor: default;
+  user-select: none;
+}
+
+.app-menu__running-indicator--running {
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.3);
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.app-menu__running-indicator--paused {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.app-menu__running-indicator__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.app-menu__running-indicator--running .app-menu__running-indicator__dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ── Participant indicator ─────────────────────────────────────────── */
+
+.app-menu__participant-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--panel-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--font-display);
+  padding: 4px 10px;
+  margin-left: 12px;
+  transition: border-color 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.app-menu__participant-indicator:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+/* ── Participant editor dialog ─────────────────────────────────────── */
+
+.participant-editor {
+  padding: 4px 0;
+}
+
+.participant-editor__subtitle {
+  font-size: 0.78rem;
+  color: var(--panel-muted);
+  margin: 0 0 16px 0;
+  padding: 0;
+}
+
+.participant-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.participant-editor__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: border-color 0.12s;
+}
+
+.participant-editor__row:hover {
+  border-color: var(--accent-2);
+}
+
+.participant-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.participant-editor__field-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--panel-muted);
+}
+
+.participant-editor__field--domain {
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.participant-editor__field--partition {
+  flex: 1 1 auto;
+}
+
+.participant-editor__input {
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--panel-text);
+  font-size: 0.85rem;
+  font-family: var(--font-display);
+  padding: 6px 10px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.participant-editor__input:focus {
+  border-color: var(--accent-2);
+}
+
+.participant-editor__remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--panel-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  margin-left: 4px;
+}
+
+.participant-editor__remove-btn:hover {
+  background: rgba(248, 114, 114, 0.12);
+  border-color: rgba(248, 114, 114, 0.4);
+  color: #f87272;
+}
+
+.participant-editor__add-row {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.participant-editor__add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px dashed var(--panel-border);
+  background: transparent;
+  color: var(--panel-muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-family: var(--font-display);
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.participant-editor__add-btn:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.participant-editor__empty {
+  text-align: center;
+  padding: 20px 0;
+  color: var(--panel-muted);
+  font-size: 0.85rem;
+}
+
+/* ── File dialog overrides for participant editor (keeps .file-dialog base) ── */
+
+.participant-editor-dialog .file-dialog__window {
+  width: 520px;
+}
+
 .app-shell__content {
   flex: 1 1 auto;
   min-height: 0;
@@ -1629,12 +1906,12 @@ body {
 .dynamic-form--empty {
   align-items: center;
   justify-content: center;
-  color: var(--text-2);
+  color: var(--panel-muted);
   font-size: 13px;
 }
 
 .dynamic-form__placeholder {
-  color: var(--text-2);
+  color: var(--panel-muted);
 }
 
 .dynamic-form__group-header {
@@ -1645,7 +1922,7 @@ body {
   color: var(--accent-2);
   margin-top: 8px;
   padding: 2px 0;
-  border-bottom: 1px solid var(--border-1);
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .dynamic-form__group-end {
@@ -1666,7 +1943,7 @@ body {
 .dynamic-form__label {
   flex: 0 0 160px;
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--panel-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1680,29 +1957,50 @@ body {
 }
 
 .dynamic-form__input {
-  width: 100%;
-  background: var(--surface-2);
-  border: 1px solid var(--border-1);
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 4px;
-  color: var(--text-1);
+  color: var(--panel-text);
   font-size: 12px;
   padding: 4px 6px;
   outline: none;
+  /* Make edit fields visually distinct – always show a visible border */
+  box-shadow: inset 0 0 0 1px transparent;
 }
 
 .dynamic-form__input:focus {
   border-color: var(--accent-2);
 }
 
+/* In dark theme, boost input visibility so empty fields are identifiable */
+[data-theme="dark"] .dynamic-form__input {
+  background: rgba(30, 38, 58, 0.95);
+  border-color: rgba(79, 195, 247, 0.25);
+}
+
+[data-theme="dark"] .dynamic-form__input:focus {
+  border-color: var(--accent-2);
+  background: rgba(30, 38, 58, 1);
+}
+
 .dynamic-form__select {
   width: 100%;
-  background: var(--surface-2);
-  border: 1px solid var(--border-1);
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 4px;
-  color: var(--text-1);
+  color: var(--panel-text);
   font-size: 12px;
   padding: 4px 6px;
   outline: none;
+  color-scheme: inherit;
+}
+
+[data-theme="dark"] .dynamic-form__select {
+  background: rgba(30, 38, 58, 0.95);
+  border-color: rgba(79, 195, 247, 0.25);
+  color: var(--panel-text);
 }
 
 .dynamic-form__select:focus {
@@ -1715,9 +2013,24 @@ body {
   accent-color: var(--accent-2);
 }
 
+/* Validation error indicator – red warning triangle shown inline after an invalid input */
+.dynamic-form__error-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 5px;
+  color: #e53935;
+  cursor: help;
+  vertical-align: middle;
+}
+
+.dynamic-form__error-icon svg {
+  stroke: #e53935;
+}
+
 .dynamic-form__unsupported {
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--panel-muted);
   font-style: italic;
 }
 
@@ -1739,7 +2052,7 @@ body {
 
 .dynamic-form__array-idx {
   font-size: 10px;
-  color: var(--text-2);
+  color: var(--panel-muted);
   white-space: nowrap;
   min-width: 30px;
   text-align: right;
@@ -1750,7 +2063,7 @@ body {
   background: none;
   border: 1px solid transparent;
   border-radius: 3px;
-  color: var(--text-2);
+  color: var(--panel-muted);
   font-size: 13px;
   line-height: 1;
   padding: 1px 5px;
@@ -1758,7 +2071,7 @@ body {
 }
 
 .dynamic-form__array-remove:hover {
-  border-color: var(--border-1);
+  border-color: var(--panel-border);
   color: var(--danger, #e05);
 }
 
@@ -1768,7 +2081,7 @@ body {
 
 .dynamic-form__array-add {
   background: none;
-  border: 1px dashed var(--border-1);
+  border: 1px dashed var(--panel-border);
   border-radius: 4px;
   color: var(--accent-2);
   font-size: 11px;
@@ -1777,17 +2090,17 @@ body {
 }
 
 .dynamic-form__array-add:hover {
-  background: var(--surface-2);
+  background: var(--input-bg);
 }
 
 .dynamic-form__array-readonly {
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--panel-muted);
   font-family: monospace;
 }
 
 .detail-tree__value--array {
-  color: var(--text-2);
+  color: var(--panel-muted);
   font-style: italic;
 }
 
@@ -1805,35 +2118,120 @@ body {
   align-items: center;
   gap: 8px;
   padding: 8px;
-  border-bottom: 1px solid var(--border-1);
+  border-bottom: 1px solid var(--panel-border);
   flex-shrink: 0;
+  /* Legacy: kept for any panel variant that uses the toolbar directly */
 }
 
 .send-sample-panel__label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-2);
+  color: var(--panel-muted);
   white-space: nowrap;
 }
 
-.send-sample-panel__topic-select {
-  flex: 1 1 auto;
-  background: var(--surface-2);
-  border: 1px solid var(--border-1);
-  border-radius: 4px;
-  color: var(--text-1);
+.send-sample-panel__combo-wrap {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+/* The combo input: shows selected value when closed, acts as filter when open */
+.send-sample-panel__combo-input {
+  width: 100%;
+  display: block;
+  padding: 7px 10px;
+  background: var(--input-bg);
+  border: none;
+  color: var(--panel-text);
   font-size: 12px;
-  padding: 4px 6px;
+  font-family: var(--font-display);
   outline: none;
+  box-sizing: border-box;
+  color-scheme: inherit;
+  cursor: pointer;
 }
 
-.send-sample-panel__topic-select option {
-  background: var(--surface-2);
-  color: var(--text-1);
+.send-sample-panel__combo-input::placeholder {
+  color: var(--panel-muted);
+  font-style: italic;
 }
 
-.send-sample-panel__topic-select:focus {
-  border-color: var(--accent-2);
+.send-sample-panel__combo-input:focus,
+.send-sample-panel__combo-input.is-open {
+  background: var(--bg-3);
+  cursor: text;
+  border-bottom: 1px solid var(--accent-2);
+}
+
+/* Dropdown panel — in normal flow so it doesn't get clipped by panel-body overflow */
+.send-sample-panel__combo-dropdown {
+  z-index: 10;
+  background: var(--panel-bg);
+  border-top: 1px solid var(--accent-2);
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow: hidden;
+  box-shadow: inset 0 -4px 8px rgba(0,0,0,0.2);
+}
+
+.send-sample-panel__combo-options {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.send-sample-panel__combo-option {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--panel-text);
+  font-size: 12px;
+  font-family: var(--font-display);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+
+.send-sample-panel__combo-option:hover {
+  background: var(--bg-3);
+}
+
+.send-sample-panel__combo-option.is-highlighted {
+  background: var(--bg-3);
+  outline: 1px solid var(--accent-2);
+  outline-offset: -1px;
+}
+
+.send-sample-panel__combo-option.is-selected {
+  background: rgba(79, 195, 247, 0.15);
+  color: var(--accent-2);
+}
+
+.send-sample-panel__combo-option.is-highlighted.is-selected {
+  background: rgba(79, 195, 247, 0.25);
+  color: var(--accent-2);
+}
+
+.send-sample-panel__combo-option-name {
+  font-weight: 600;
+}
+
+.send-sample-panel__combo-option-ns {
+  font-size: 10px;
+  color: var(--panel-muted);
+}
+
+.send-sample-panel__combo-empty {
+  padding: 12px 10px;
+  color: var(--panel-muted);
+  font-size: 12px;
+  font-style: italic;
 }
 
 .send-sample-panel__form-area {
@@ -1847,7 +2245,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-2);
+  color: var(--panel-muted);
   font-size: 13px;
 }
 
@@ -1856,7 +2254,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 8px;
-  border-top: 1px solid var(--border-1);
+  border-top: 1px solid var(--panel-border);
   flex-shrink: 0;
 }
 
@@ -1878,6 +2276,11 @@ body {
 
 .send-sample-panel__send-btn:hover {
   opacity: 0.85;
+}
+
+.send-sample-panel__send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .send-sample-panel__error {
@@ -1908,8 +2311,8 @@ body {
 
 .file-dialog__window {
   background: var(--panel-bg, #1e1e2e);
-  border: 1px solid var(--border, #333);
-  border-radius: 6px;
+  border: 1px solid var(--panel-border, #333);
+  border-radius: 10px;
   width: 680px;
   max-width: 95vw;
   max-height: 80vh;
@@ -1919,7 +2322,54 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
 
-.file-dialog__titlebar {
+/* ── Generic header/body used by dialogs that don't use the full file-picker UI ── */
+.file-dialog__header {
+  display: flex;
+  align-items: center;
+  background: var(--panel-title, #181824);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--panel-border, #333);
+  flex-shrink: 0;
+}
+
+.file-dialog__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 14px;
+}
+
+/* Generic dialog action buttons */
+.file-dialog__btn {
+  padding: 7px 18px;
+  border-radius: 7px;
+  border: 1px solid var(--panel-border, #444);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  transition: opacity 0.12s, background 0.12s;
+}
+
+.file-dialog__btn--primary {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: #000;
+}
+
+.file-dialog__btn--primary:hover {
+  opacity: 0.85;
+}
+
+.file-dialog__btn--secondary {
+  background: transparent;
+  color: var(--panel-text);
+}
+
+.file-dialog__btn--secondary:hover {
+  background: var(--bg-3);
+}
+
+
   display: flex;
   align-items: center;
   background: var(--titlebar-bg, #181824);

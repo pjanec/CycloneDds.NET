@@ -17,6 +17,8 @@ public sealed class DdsBridge : IDdsBridge
 
     private readonly object _sync = new();
     private readonly Dictionary<Type, IDynamicReader> _activeReaders = new();
+    // D04: auxiliary readers per extra participant (index 0 = participant 1, index 1 = participant 2, ...)
+    private readonly List<Dictionary<Type, IDynamicReader>> _auxReadersPerParticipant = new();
     private readonly ChannelWriter<SampleData> _channelWriter;
     private readonly List<DdsParticipant> _participants = new();
     private readonly List<ParticipantConfig> _participantConfigs = new();
@@ -66,6 +68,9 @@ public sealed class DdsBridge : IDdsBridge
         {
             _participantConfigs.Add(cfg);
             _participants.Add(new DdsParticipant(cfg.DomainId));
+            // Participants beyond index 0 each get an aux-reader slot.
+            if (_participants.Count > 1)
+                _auxReadersPerParticipant.Add(new Dictionary<Type, IDynamicReader>());
         }
 
         // Use the first participant's partition as the current partition for backward compat.
@@ -85,6 +90,12 @@ public sealed class DdsBridge : IDdsBridge
     public IReadOnlyList<DdsParticipant> Participants
     {
         get { lock (_sync) { return _participants.AsReadOnly(); } }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ParticipantConfig> ParticipantConfigs
+    {
+        get { lock (_sync) { return _participantConfigs.AsReadOnly(); } }
     }
 
     /// <inheritdoc />
@@ -147,10 +158,13 @@ public sealed class DdsBridge : IDdsBridge
 
                 // Create additional readers for participants 1..N (their samples flow
                 // into the same channel but are not exposed via ActiveReaders).
+                // D04: store them in _auxReadersPerParticipant for later hot-wiring.
                 for (var i = 1; i < _participants.Count; i++)
                 {
                     var aux = CreateAndWireReader(meta, i);
                     aux.Start(_participantConfigs[i].PartitionName);
+                    if (i - 1 < _auxReadersPerParticipant.Count)
+                        _auxReadersPerParticipant[i - 1][meta.TopicType] = aux;
                 }
 
                 ReadersChanged?.Invoke();
@@ -185,6 +199,17 @@ public sealed class DdsBridge : IDdsBridge
 
             _activeReaders.Remove(meta.TopicType);
             reader.Dispose();
+
+            // D04: also dispose auxiliary readers for this topic.
+            foreach (var auxMap in _auxReadersPerParticipant)
+            {
+                if (auxMap.TryGetValue(meta.TopicType, out var auxReader))
+                {
+                    auxMap.Remove(meta.TopicType);
+                    auxReader.Dispose();
+                }
+            }
+
             ReadersChanged?.Invoke();
         }
     }
@@ -225,6 +250,15 @@ public sealed class DdsBridge : IDdsBridge
             }
 
             _activeReaders.Clear();
+
+            // D04: also dispose all auxiliary readers before re-subscribing
+            foreach (var auxMap in _auxReadersPerParticipant)
+            {
+                foreach (var auxReader in auxMap.Values)
+                    auxReader.Dispose();
+                auxMap.Clear();
+            }
+
             CurrentPartition = newPartition;
 
             foreach (var meta in metas)
@@ -232,6 +266,15 @@ public sealed class DdsBridge : IDdsBridge
                 var reader = CreateAndWireReader(meta, 0);
                 reader.Start(CurrentPartition);
                 _activeReaders[meta.TopicType] = reader;
+
+                // Recreate aux readers for all extra participants
+                for (var i = 1; i < _participants.Count; i++)
+                {
+                    var aux = CreateAndWireReader(meta, i);
+                    aux.Start(_participantConfigs[i].PartitionName);
+                    if (i - 1 < _auxReadersPerParticipant.Count)
+                        _auxReadersPerParticipant[i - 1][meta.TopicType] = aux;
+                }
             }
         }
     }
@@ -249,6 +292,27 @@ public sealed class DdsBridge : IDdsBridge
             var cfg = new ParticipantConfig { DomainId = domainId, PartitionName = partitionName };
             _participantConfigs.Add(cfg);
             _participants.Add(new DdsParticipant(domainId));
+
+            // D04: Each new participant beyond index 0 gets an aux-reader slot.
+            var auxMap = new Dictionary<Type, IDynamicReader>();
+            _auxReadersPerParticipant.Add(auxMap);
+
+            // D04: Hot-wire all existing active subscriptions into the new participant.
+            var newParticipantIndex = _participants.Count - 1;
+            foreach (var kv in _activeReaders)
+            {
+                var meta = kv.Value.TopicMetadata;
+                try
+                {
+                    var aux = CreateAndWireReader(meta, newParticipantIndex);
+                    aux.Start(cfg.PartitionName);
+                    auxMap[meta.TopicType] = aux;
+                }
+                catch
+                {
+                    // Swallow — new participant is best-effort; existing reads are unaffected.
+                }
+            }
         }
     }
 
@@ -260,6 +324,15 @@ public sealed class DdsBridge : IDdsBridge
             ThrowIfDisposed();
             if (participantIndex < 0 || participantIndex >= _participants.Count)
                 throw new ArgumentOutOfRangeException(nameof(participantIndex));
+
+            // D04: dispose and remove aux readers for this participant (only for index >= 1).
+            var auxIndex = participantIndex - 1;
+            if (auxIndex >= 0 && auxIndex < _auxReadersPerParticipant.Count)
+            {
+                foreach (var auxReader in _auxReadersPerParticipant[auxIndex].Values)
+                    auxReader.Dispose();
+                _auxReadersPerParticipant.RemoveAt(auxIndex);
+            }
 
             _participants[participantIndex].Dispose();
             _participants.RemoveAt(participantIndex);
@@ -278,6 +351,14 @@ public sealed class DdsBridge : IDdsBridge
             foreach (var reader in _activeReaders.Values)
                 reader.Dispose();
             _activeReaders.Clear();
+
+            // D04: Clear all auxiliary readers.
+            foreach (var auxMap in _auxReadersPerParticipant)
+            {
+                foreach (var auxReader in auxMap.Values)
+                    auxReader.Dispose();
+                auxMap.Clear();
+            }
 
             // Reset shared state.
             _ordinalCounter.Reset();
@@ -324,6 +405,14 @@ public sealed class DdsBridge : IDdsBridge
             }
 
             _activeReaders.Clear();
+
+            // D04: dispose all auxiliary readers
+            foreach (var auxMap in _auxReadersPerParticipant)
+            {
+                foreach (var auxReader in auxMap.Values)
+                    auxReader.Dispose();
+            }
+            _auxReadersPerParticipant.Clear();
 
             foreach (var participant in _participants)
             {

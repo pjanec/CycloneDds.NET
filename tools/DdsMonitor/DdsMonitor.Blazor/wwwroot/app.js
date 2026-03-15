@@ -136,3 +136,34 @@ window.ddsMonitor.clickElement = function (element) {
 
     element.click();
 };
+
+/** Selects all text inside an input element so the user can immediately type to replace it. */
+window.ddsMonitor.selectInput = function (element) {
+    if (!element) {
+        return;
+    }
+    element.select();
+};
+
+/**
+ * Scrolls the element bearing the class 'is-highlighted' inside the given container
+ * into view, keeping it visible within the combo dropdown.
+ */
+window.ddsMonitor.scrollHighlightedComboOption = function (container) {
+    if (!container) {
+        return;
+    }
+    var highlighted = container.querySelector('.is-highlighted');
+    if (!highlighted) {
+        return;
+    }
+    var containerTop = container.scrollTop;
+    var containerBottom = containerTop + container.clientHeight;
+    var elemTop = highlighted.offsetTop;
+    var elemBottom = elemTop + highlighted.offsetHeight;
+    if (elemTop < containerTop) {
+        container.scrollTop = elemTop;
+    } else if (elemBottom > containerBottom) {
+        container.scrollTop = elemBottom - container.clientHeight;
+    }
+};

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using CycloneDDS.Schema;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 
@@ -93,7 +94,12 @@ public sealed class TypeDrawerRegistry : ITypeDrawerRegistry
         Register(typeof(bool), BuildCheckboxDrawer());
         Register(typeof(char), BuildTextDrawer(maxLength: 1, charMode: true));
         Register(typeof(DateTime), BuildDateTimeDrawer());
-        Register(typeof(Guid), BuildTextDrawer());
+        Register(typeof(Guid), BuildGuidDrawer());
+        // FixedStringN types: editable text fields capped to their byte capacity.
+        Register(typeof(FixedString32),  BuildFixedStringDrawer(FixedString32.Capacity,  s => new FixedString32(s)));
+        Register(typeof(FixedString64),  BuildFixedStringDrawer(FixedString64.Capacity,  s => new FixedString64(s)));
+        Register(typeof(FixedString128), BuildFixedStringDrawer(FixedString128.Capacity, s => new FixedString128(s)));
+        Register(typeof(FixedString256), BuildFixedStringDrawer(FixedString256.Capacity, s => new FixedString256(s)));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -124,6 +130,84 @@ public sealed class TypeDrawerRegistry : ITypeDrawerRegistry
             {
                 builder.AddAttribute(seq++, "maxlength", maxLength.Value);
             }
+            builder.AddAttribute(seq++, "oninput", cb);
+            builder.CloseElement();
+        };
+    }
+
+    /// <summary>
+    /// Builds a text-input drawer for a FixedStringN type.
+    /// The input is limited to the byte capacity of the FixedString,
+    /// and changes are written back via <paramref name="fromString"/>.
+    /// </summary>
+    private static RenderFragment<DrawerContext> BuildFixedStringDrawer<T>(int capacity, Func<string, T> fromString)
+    {
+        return ctx => builder =>
+        {
+            var seq = 0;
+            var current = ctx.ValueGetter()?.ToString() ?? string.Empty;
+            var cb = EventCallback.Factory.Create<ChangeEventArgs>(ctx.Receiver!,
+                args =>
+                {
+                    var text = args.Value?.ToString() ?? string.Empty;
+                    try
+                    {
+                        ctx.OnChange(fromString(text));
+                        ctx.OnValidationError?.Invoke(null);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        // Text too long or invalid for this FixedString capacity – report error.
+                        ctx.OnValidationError?.Invoke(ex.Message);
+                    }
+                });
+            builder.OpenElement(seq++, "input");
+            builder.AddAttribute(seq++, "type", "text");
+            builder.AddAttribute(seq++, "class", "dynamic-form__input");
+            builder.AddAttribute(seq++, "value", current);
+            builder.AddAttribute(seq++, "maxlength", capacity);
+            builder.AddAttribute(seq++, "oninput", cb);
+            builder.CloseElement();
+        };
+    }
+
+    /// <summary>
+    /// Builds a text-input drawer for <see cref="Guid"/> fields.
+    /// Validates the user input with <see cref="Guid.TryParse"/> before passing it to the model;
+    /// reports validation errors via <see cref="DrawerContext.OnValidationError"/> when the input
+    /// is not a valid GUID so that the host form can disable the Send button.
+    /// </summary>
+    private static RenderFragment<DrawerContext> BuildGuidDrawer()
+    {
+        return ctx => builder =>
+        {
+            var seq = 0;
+            var current = ctx.ValueGetter()?.ToString() ?? string.Empty;
+            var cb = EventCallback.Factory.Create<ChangeEventArgs>(ctx.Receiver!,
+                args =>
+                {
+                    var text = args.Value?.ToString() ?? string.Empty;
+                    if (Guid.TryParse(text, out var parsed))
+                    {
+                        ctx.OnChange(parsed);
+                        ctx.OnValidationError?.Invoke(null);
+                    }
+                    else if (string.IsNullOrEmpty(text))
+                    {
+                        ctx.OnChange(Guid.Empty);
+                        ctx.OnValidationError?.Invoke(null);
+                    }
+                    else
+                    {
+                        ctx.OnValidationError?.Invoke("Invalid GUID format (expected: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)");
+                    }
+                });
+
+            builder.OpenElement(seq++, "input");
+            builder.AddAttribute(seq++, "type", "text");
+            builder.AddAttribute(seq++, "class", "dynamic-form__input");
+            builder.AddAttribute(seq++, "value", current);
+            builder.AddAttribute(seq++, "placeholder", "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
             builder.AddAttribute(seq++, "oninput", cb);
             builder.CloseElement();
         };

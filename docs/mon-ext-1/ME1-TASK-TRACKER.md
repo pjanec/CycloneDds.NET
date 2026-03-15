@@ -1,8 +1,8 @@
 # ME1 — Task Tracker
 
 **Project:** DDS Monitor Feature Extensions (Monitoring Extensions 1)  
-**Status:** Not Started  
-**Last Updated:** 2026-03-14
+**Status:** Complete  
+**Last Updated:** 2026-03-15
 
 **Reference:** See [ME1-TASK-DETAILS.md](./ME1-TASK-DETAILS.md) for detailed task descriptions.  
 **Design:** See [ME1-DESIGN.md](./ME1-DESIGN.md) for architecture and rationale.
@@ -43,8 +43,8 @@
 
 **Goal:** Hide inactive union arms in editor and inspector panels; add transport controls and a participant configuration dialog to the main toolbar.
 
-- [ ] **ME1-T08** Union Arm Visibility → [details](./ME1-TASK-DETAILS.md#me1-t08--union-arm-visibility)
-- [ ] **ME1-T09** Start/Pause/Reset Toolbar + Participant Editor → [details](./ME1-TASK-DETAILS.md#me1-t09--startpausereset-toolbar--participant-editor)
+- [x] **ME1-T08** Union Arm Visibility → [details](./ME1-TASK-DETAILS.md#me1-t08--union-arm-visibility)
+- [x] **ME1-T09** Start/Pause/Reset Toolbar + Participant Editor → [details](./ME1-TASK-DETAILS.md#me1-t09--startpausereset-toolbar--participant-editor)
 
 ---
 
@@ -52,5 +52,21 @@
 
 **Goal:** Auto-open browser and auto-shutdown; headless CLI record and replay.
 
-- [ ] **ME1-T10** Auto-Browser Open + HTTP-Only Lifecycle → [details](./ME1-TASK-DETAILS.md#me1-t10--auto-browser-open--http-only-lifecycle)
-- [ ] **ME1-T11** Headless Recorder / Replay Mode → [details](./ME1-TASK-DETAILS.md#me1-t11--headless-recorder--replay-mode)
+- [x] **ME1-T10** Auto-Browser Open + HTTP-Only Lifecycle → [details](./ME1-TASK-DETAILS.md#me1-t10--auto-browser-open--http-only-lifecycle)
+- [x] **ME1-T11** Headless Recorder / Replay Mode → [details](./ME1-TASK-DETAILS.md#me1-t11--headless-recorder--replay-mode)
+
+---
+
+## Phase 6 — Tech Debt & Cleanup
+
+**Goal:** Rectify issues identified from the completion of previous batches and resolve user-reported bugs.
+
+- [x] **ME1-C04** Evaluate & Resolve Remaining Backlog (Fix D01-D04)
+- [x] **ME1-C02** InlineArray struct visibility in Union Arms (Fix D05)
+- [x] **ME1-C03** Clean up `@topic` parameter generation (Fix D06)
+- [x] **ME1-C05** JSON Enum Serialization (Enums to string)
+- [x] **ME1-C06** Inline Array Expansion in Sample Detail Tree Tab
+- [x] **ME1-C07** Linked Sample Detail Restoration Bug
+- [x] **ME1-C08** JSON Export Union Arm Removal
+
+---

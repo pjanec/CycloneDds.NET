@@ -34,3 +34,8 @@ public sealed record ApplyFilterRequestEvent(string TargetPanelId, string Filter
 /// </summary>
 public sealed record ReplayFilterChangedEvent(Func<SampleData, bool>? Predicate);
 
+/// <summary>
+/// Emitted when the set of active DDS participants is changed via the Participant Editor.
+/// </summary>
+public sealed record ParticipantsChangedEvent(IReadOnlyList<ParticipantConfig> CurrentParticipants);
+

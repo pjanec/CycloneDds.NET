@@ -100,13 +100,14 @@ public struct GlobalItem
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // IdlEmitter – @topic annotation includes the resolved topic name
-        // Success condition 4:
-        //   IDL output for My.Ns.Item with [DdsTopic] includes @topic(name="My_Ns_Item")
+        // IdlEmitter – @topic annotation is plain (no name parameter)
+        // Success condition 4 (updated for ME1-C03/D06):
+        //   IDL output always emits @topic without a name= parameter
+        //   to avoid idlc warnings about ignored parameters.
         // ─────────────────────────────────────────────────────────────────────
 
         [Fact]
-        public void IdlEmitter_DdsTopicNoArg_EmitsTopicNameAnnotation()
+        public void IdlEmitter_DdsTopicNoArg_EmitsPlainTopicAnnotation()
         {
             // Build a TypeInfo representing a type with no explicit name.
             var registry = new GlobalTypeRegistry();
@@ -126,12 +127,13 @@ public struct GlobalItem
 
             var content = File.ReadAllText(Path.Combine(outputDir, "File1.idl"));
 
-            // The @topic annotation must include the resolved name.
-            Assert.Contains("@topic(name=\"My_Ns_Item\")", content);
+            // Plain @topic must be present; name=" must NOT appear (D06 fix).
+            Assert.Contains("@topic", content);
+            Assert.DoesNotContain("@topic(", content);
         }
 
         [Fact]
-        public void IdlEmitter_DdsTopicExplicitName_EmitsExplicitTopicName()
+        public void IdlEmitter_DdsTopicExplicitName_EmitsPlainTopicAnnotation()
         {
             var registry = new GlobalTypeRegistry();
             var type = new TypeInfo
@@ -149,7 +151,9 @@ public struct GlobalItem
             new IdlEmitter().EmitIdlFiles(registry, outputDir);
 
             var content = File.ReadAllText(Path.Combine(outputDir, "File1.idl"));
-            Assert.Contains("@topic(name=\"ExplicitName\")", content);
+            // D06: plain @topic regardless of name
+            Assert.Contains("@topic", content);
+            Assert.DoesNotContain("@topic(", content);
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -157,10 +161,11 @@ public struct GlobalItem
         // ─────────────────────────────────────────────────────────────────────
 
         [Fact]
-        public void FullRoundtrip_DdsTopicNoArg_IdlContainsNamespacedTopicName()
+        public void FullRoundtrip_DdsTopicNoArg_IdlContainsPlainTopicAnnotation()
         {
-            // ME1-T03 success condition 4 (integration):
-            // IDL for a type My.Ns.Item with [DdsTopic] (no name) includes topic using My_Ns_Item.
+            // ME1-T03 / ME1-C03 integration: IDL for a type My.Ns.Item with [DdsTopic]
+            // must contain plain @topic (no name= parameter, per D06 fix).
+            // The resolved TopicName "My_Ns_Item" is used at runtime but NOT embedded in IDL.
             CreateFile(@"
 using CycloneDDS.Schema;
 namespace My.Ns
@@ -173,12 +178,17 @@ namespace My.Ns
 }");
             var discovery = new SchemaDiscovery();
             var types = discovery.DiscoverTopics(_tempDir);
+
+            // SchemaDiscovery must still resolve topic name correctly for runtime use.
+            var t = Assert.Single(types, x => x.Name == "Item");
+            Assert.Equal("My_Ns_Item", t.TopicName);
+
             var registry = new GlobalTypeRegistry();
-            foreach (var t in types)
+            foreach (var typ in types)
             {
-                var file = discovery.GetIdlFileName(t, t.SourceFile);
-                var module = discovery.GetIdlModule(t);
-                registry.RegisterLocal(t, t.SourceFile, file, module);
+                var file = discovery.GetIdlFileName(typ, typ.SourceFile);
+                var module = discovery.GetIdlModule(typ);
+                registry.RegisterLocal(typ, typ.SourceFile, file, module);
             }
 
             var outputDir = Path.Combine(_tempDir, "roundtrip_idl");
@@ -188,8 +198,10 @@ namespace My.Ns
             var idlFiles = System.IO.Directory.GetFiles(outputDir, "*.idl");
             Assert.NotEmpty(idlFiles);
             var allContent = string.Concat(System.Array.ConvertAll(idlFiles, System.IO.File.ReadAllText));
-            Assert.Contains("My_Ns_Item", allContent);
+
+            // D06: plain @topic must be present; name= must NOT appear.
             Assert.Contains("@topic", allContent);
+            Assert.DoesNotContain("@topic(", allContent);
         }
     }
 }

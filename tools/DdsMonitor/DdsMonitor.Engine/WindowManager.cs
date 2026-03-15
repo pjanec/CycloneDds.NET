@@ -142,6 +142,40 @@ public sealed class WindowManager : IWindowManager
     }
 
     /// <inheritdoc />
+    public void ShowPanel(string panelId)
+    {
+        if (string.IsNullOrWhiteSpace(panelId))
+        {
+            throw new ArgumentException("Panel identifier is required.", nameof(panelId));
+        }
+
+        lock (_sync)
+        {
+            PanelState? panel = null;
+
+            foreach (var entry in _activePanels)
+            {
+                if (string.Equals(entry.PanelId, panelId, StringComparison.Ordinal))
+                {
+                    panel = entry;
+                    break;
+                }
+            }
+
+            if (panel == null)
+            {
+                return;
+            }
+
+            panel.IsMinimized = false;
+            panel.IsHidden = false;
+            panel.ZIndex = GetHighestZIndex() + ZIndexIncrement;
+        }
+
+        PanelsChanged?.Invoke();
+    }
+
+    /// <inheritdoc />
     public void ClearPanels()
     {
         lock (_sync)
@@ -242,11 +276,28 @@ public sealed class WindowManager : IWindowManager
     {
         var result = new List<PanelState>();
 
+        // Guard: at most one Send-Sample panel should survive (the first non-hidden one,
+        // or the first overall when all are hidden).  Multiple instances can accumulate in
+        // long-running sessions; keeping only one prevents the duplicate-subscriber issue
+        // that caused clone requests to be consumed by a hidden/stale instance.
+        bool sendSampleIncluded = false;
+
         foreach (var panel in panels)
         {
             if (panel == null)
             {
                 continue;
+            }
+
+            // Only one SendSamplePanel survives the save – prefer the first visible (non-hidden) one.
+            if (panel.ComponentTypeName.Contains("SendSamplePanel", StringComparison.Ordinal))
+            {
+                if (sendSampleIncluded)
+                {
+                    continue;
+                }
+
+                sendSampleIncluded = true;
             }
 
             var clone = new PanelState

@@ -102,6 +102,24 @@ public sealed class TopicMetadata
             return;
         }
 
+        // ── ME1-T08: detect [DdsUnion] so arm fields get union metadata ──────────
+        var isUnionType = currentType.GetCustomAttribute<DdsUnionAttribute>() != null;
+        string? unionDiscriminatorPath = null;
+        if (isUnionType)
+        {
+            // Pre-scan to find the discriminator field structured name.
+            foreach (var m in GetPublicInstanceMembers(currentType))
+            {
+                if (m.GetCustomAttribute<DdsDiscriminatorAttribute>() != null)
+                {
+                    unionDiscriminatorPath = string.IsNullOrEmpty(prefix)
+                        ? m.Name
+                        : $"{prefix}.{m.Name}";
+                    break;
+                }
+            }
+        }
+
         foreach (var member in GetPublicInstanceMembers(currentType))
         {
             var memberType = GetMemberType(member);
@@ -110,6 +128,37 @@ public sealed class TopicMetadata
                 : $"{prefix}.{member.Name}";
 
             var nextPath = new List<MemberInfo>(memberPath) { member };
+
+            // ── ME1-T08 / ME1-C02: collect union arm / discriminator membership ─────
+            // Must be determined BEFORE the InlineArray / FixedBuffer early-exits so that
+            // inline-array union arms also receive the proper discriminator metadata.
+            bool isDiscriminatorField = false;
+            bool isUnionArm = false;
+            object? activeWhenDiscriminatorValue = null;
+            bool isDefaultUnionCase = false;
+            string? dependentDiscriminatorPath = null;
+
+            if (isUnionType)
+            {
+                isDiscriminatorField = member.GetCustomAttribute<DdsDiscriminatorAttribute>() != null;
+                if (!isDiscriminatorField)
+                {
+                    var caseAttr = member.GetCustomAttribute<DdsCaseAttribute>();
+                    var defaultCaseAttr = member.GetCustomAttribute<DdsDefaultCaseAttribute>();
+                    if (caseAttr != null)
+                    {
+                        isUnionArm = true;
+                        activeWhenDiscriminatorValue = caseAttr.Value;
+                        dependentDiscriminatorPath = unionDiscriminatorPath;
+                    }
+                    else if (defaultCaseAttr != null)
+                    {
+                        isUnionArm = true;
+                        isDefaultUnionCase = true;
+                        dependentDiscriminatorPath = unionDiscriminatorPath;
+                    }
+                }
+            }
 
             // ── Fixed-size C# buffer (public unsafe fixed T Name[N]) ─────────
             // Must be detected BEFORE IsFlattenable, because the compiler-generated
@@ -124,18 +173,27 @@ public sealed class TopicMetadata
                     continue;
                 }
 
-                // ME1-T02: [InlineArray(N)] struct field – treat as a fixed-size array.
+                // ME1-T02 / ME1-C02: [InlineArray(N)] struct field – treat as a fixed-size array.
                 // Must be detected before IsFlattenable so the InlineArray struct is not
                 // flattened as though it were a nested DDS struct.
+                // Union metadata is passed through so inline-array union arms inherit
+                // discriminator context (D05 fix).
                 var inlineAttr = memberType.GetCustomAttribute<System.Runtime.CompilerServices.InlineArrayAttribute>();
                 if (inlineAttr != null)
                 {
-                    AppendInlineArrayField(fieldInfo, inlineAttr, structuredName, memberPath, allFields);
+                    AppendInlineArrayField(
+                        fieldInfo, inlineAttr, structuredName, memberPath, allFields,
+                        dependentDiscriminatorPath: dependentDiscriminatorPath,
+                        activeWhenDiscriminatorValue: activeWhenDiscriminatorValue,
+                        isDefaultUnionCase: isDefaultUnionCase,
+                        isDiscriminatorField: isDiscriminatorField);
                     continue;
                 }
             }
 
-            if (IsFlattenable(memberType))
+            // Union arm members (even if they happen to be flattenable structs) are
+            // kept as atomic FieldMetadata so the union visibility logic works correctly.
+            if (!isDiscriminatorField && !isUnionArm && IsFlattenable(memberType))
             {
                 AppendFields(topicType, memberType, nextPath, structuredName, allFields, keyFields, visited);
                 continue;
@@ -171,7 +229,11 @@ public sealed class TopicMetadata
                 isArrayField: isArrayField,
                 isFixedSizeArray: false,
                 elementType: elementType,
-                fixedArrayLength: -1);
+                fixedArrayLength: -1,
+                dependentDiscriminatorPath: dependentDiscriminatorPath,
+                activeWhenDiscriminatorValue: activeWhenDiscriminatorValue,
+                isDefaultUnionCase: isDefaultUnionCase,
+                isDiscriminatorField: isDiscriminatorField);
 
             allFields.Add(fieldMetadata);
 
@@ -254,6 +316,12 @@ public sealed class TopicMetadata
             return true;
         }
 
+        // FixedStringN types from CycloneDDS.Schema are string-like leaf values.
+        if (IsFixedStringType(type))
+        {
+            return true;
+        }
+
         if (type.IsArray)
         {
             return true;
@@ -271,6 +339,19 @@ public sealed class TopicMetadata
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="type"/> is one of the CycloneDDS FixedStringN types
+    /// (FixedString32, FixedString64, FixedString128, FixedString256).
+    /// These are treated as string-like scalar leaf values rather than expanded structs.
+    /// </summary>
+    public static bool IsFixedStringType(Type type)
+    {
+        return type == typeof(FixedString32) ||
+               type == typeof(FixedString64) ||
+               type == typeof(FixedString128) ||
+               type == typeof(FixedString256);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -319,13 +400,19 @@ public sealed class TopicMetadata
     /// Creates a single <see cref="FieldMetadata"/> for a field whose type is decorated
     /// with <c>[System.Runtime.CompilerServices.InlineArray(N)]</c>.
     /// The value exposed is a <c>T[]</c> snapshot (read via pinned memory, written back element-by-element).
+    /// Union metadata parameters are forwarded from the outer union-arm detection so that
+    /// inline-array union arms correctly inherit discriminator context (ME1-C02 / D05 fix).
     /// </summary>
     private static void AppendInlineArrayField(
         FieldInfo inlineField,
         System.Runtime.CompilerServices.InlineArrayAttribute inlineAttr,
         string structuredName,
         IReadOnlyList<MemberInfo> parentPath,
-        ICollection<FieldMetadata> allFields)
+        ICollection<FieldMetadata> allFields,
+        string? dependentDiscriminatorPath = null,
+        object? activeWhenDiscriminatorValue = null,
+        bool isDefaultUnionCase = false,
+        bool isDiscriminatorField = false)
     {
         var inlineType = inlineField.FieldType;
         var length = inlineAttr.Length;
@@ -356,7 +443,11 @@ public sealed class TopicMetadata
             isArrayField: false,
             isFixedSizeArray: true,
             elementType: elementType,
-            fixedArrayLength: length);
+            fixedArrayLength: length,
+            dependentDiscriminatorPath: dependentDiscriminatorPath,
+            activeWhenDiscriminatorValue: activeWhenDiscriminatorValue,
+            isDefaultUnionCase: isDefaultUnionCase,
+            isDiscriminatorField: isDiscriminatorField);
 
         allFields.Add(meta);
     }

@@ -31,6 +31,21 @@ public sealed class FieldMetadata
     /// <param name="fixedArrayLength">
     /// Number of elements for fixed-size array fields; <c>-1</c> for scalar or dynamic fields.
     /// </param>
+    /// <param name="dependentDiscriminatorPath">
+    /// For a union arm field, the dot-separated path of the discriminator field that governs
+    /// whether this arm is active.  <c>null</c> for non-union fields.
+    /// </param>
+    /// <param name="activeWhenDiscriminatorValue">
+    /// The discriminator value (from <c>[DdsCase(value)]</c>) for which this arm is active.
+    /// <c>null</c> for non-arm fields and for the <c>[DdsDefaultCase]</c> arm.
+    /// </param>
+    /// <param name="isDefaultUnionCase">
+    /// <c>true</c> when this arm is decorated with <c>[DdsDefaultCase]</c> and is shown
+    /// when no explicit case matches the current discriminator value.
+    /// </param>
+    /// <param name="isDiscriminatorField">
+    /// <c>true</c> when this field carries the <c>[DdsDiscriminator]</c> attribute.
+    /// </param>
     public FieldMetadata(
         string structuredName,
         string displayName,
@@ -42,7 +57,11 @@ public sealed class FieldMetadata
         bool isArrayField = false,
         bool isFixedSizeArray = false,
         Type? elementType = null,
-        int fixedArrayLength = -1)
+        int fixedArrayLength = -1,
+        string? dependentDiscriminatorPath = null,
+        object? activeWhenDiscriminatorValue = null,
+        bool isDefaultUnionCase = false,
+        bool isDiscriminatorField = false)
     {
         StructuredName = structuredName ?? throw new ArgumentNullException(nameof(structuredName));
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
@@ -55,6 +74,10 @@ public sealed class FieldMetadata
         IsFixedSizeArray = isFixedSizeArray;
         ElementType = elementType;
         FixedArrayLength = fixedArrayLength;
+        DependentDiscriminatorPath = dependentDiscriminatorPath;
+        ActiveWhenDiscriminatorValue = activeWhenDiscriminatorValue;
+        IsDefaultUnionCase = isDefaultUnionCase;
+        IsDiscriminatorField = isDiscriminatorField;
     }
 
     /// <summary>
@@ -120,4 +143,30 @@ public sealed class FieldMetadata
     /// or <c>-1</c> for scalar and dynamic-array fields.
     /// </summary>
     public int FixedArrayLength { get; }
+
+    // ── Union-specific metadata (ME1-T08) ─────────────────────────────────────
+
+    /// <summary>
+    /// Gets the dot-separated path of the discriminator field that controls whether
+    /// this union arm is shown.  <c>null</c> for non-union fields.
+    /// </summary>
+    public string? DependentDiscriminatorPath { get; }
+
+    /// <summary>
+    /// Gets the discriminator value (from <c>[DdsCase(value)]</c>) that activates this arm.
+    /// <c>null</c> for non-arm fields and for the <c>[DdsDefaultCase]</c> arm.
+    /// </summary>
+    public object? ActiveWhenDiscriminatorValue { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether this arm is the default union case
+    /// (<c>[DdsDefaultCase]</c>), shown when no explicit case matches.
+    /// </summary>
+    public bool IsDefaultUnionCase { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether this field is the union discriminator
+    /// (decorated with <c>[DdsDiscriminator]</c>).
+    /// </summary>
+    public bool IsDiscriminatorField { get; }
 }
