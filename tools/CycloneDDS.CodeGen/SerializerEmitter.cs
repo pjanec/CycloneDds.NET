@@ -189,12 +189,8 @@ namespace CycloneDDS.CodeGen
              {
                  string castType = GetDiscriminatorCastType(discriminator.TypeName);
                  string castExpr = castType == "bool" ? "" : $"({castType})";
-                 if (discriminator.Type != null && discriminator.Type.IsEnum)
-                 {
-                     // Use the correct cast width matching the native _d field type.
-                     // ME1-T01/T0 fix: byte-backed enums need (byte), short-backed need (ushort).
-                     castExpr = GetEnumCastExpression(discriminator.Type.EnumBitBound);
-                 }
+                 // Native _d field is always int; cast enum discriminator to int.
+                 if (discriminator.Type != null && discriminator.Type.IsEnum) castExpr = "(int)";
                  sb.AppendLine($"            target._d = {castExpr}source.{discriminator.Name};");
              }
              
@@ -378,9 +374,8 @@ namespace CycloneDDS.CodeGen
              }
              else if (fieldType != null && fieldType.IsEnum)
              {
-                 // ME1-T01: narrow the cast based on bit bound
-                 string enumCast = GetEnumCastExpression(fieldType.EnumBitBound);
-                 sb.AppendLine($"            {targetAccess} = {enumCast}{sourceAccess};");
+                 // Native field is always int (idlc ignores @bit_bound for in-memory ABI layout).
+                 sb.AppendLine($"            {targetAccess} = (int){sourceAccess};");
              }
              else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
              {
@@ -775,9 +770,8 @@ namespace CycloneDDS.CodeGen
              }
              else if (fieldType != null && fieldType.IsEnum)
              {
-                 // ME1-T01: apply narrow intermediate cast matching the native field width
-                 string intermediateCast = GetEnumCastExpression(fieldType.EnumBitBound);
-                 sb.AppendLine($"            {targetAccess} = ({field.TypeName}){intermediateCast}{sourceAccess};");
+                 // Native field is always int; direct cast to enum type is safe.
+                 sb.AppendLine($"            {targetAccess} = ({field.TypeName}){sourceAccess};");
              }
              else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
              {
@@ -1155,16 +1149,7 @@ namespace CycloneDDS.CodeGen
              
              if (fieldType != null)
              {
-                 if (fieldType.IsEnum)
-                 {
-                     // ME1-T01: alignment matches bit bound
-                     return fieldType.EnumBitBound switch
-                     {
-                         8  => 1,
-                         16 => 2,
-                         _  => 4
-                     };
-                 }
+                 if (fieldType.IsEnum) return 4; // idlc always allocates 4 bytes for enum fields regardless of @bit_bound.
                  if (fieldType.IsStruct || fieldType.IsUnion || fieldType.IsTopic)
                  {
                      int max = 1;
@@ -1313,16 +1298,9 @@ namespace CycloneDDS.CodeGen
 
             if (fieldType != null)
             {
-                if (fieldType.IsEnum)
-                {
-                    // ME1-T01: narrow native type based on bit bound
-                    return fieldType.EnumBitBound switch
-                    {
-                        8  => "byte",
-                        16 => "ushort",
-                        _  => "int"
-                    };
-                }
+                // idlc always generates int32 for enum fields in native structs, regardless of @bit_bound.
+                // The @bit_bound annotation only affects the CDR wire format, not the in-memory ABI layout.
+                if (fieldType.IsEnum) return "int";
                 return $"{fieldType.FullName}_Native";
             }
             
