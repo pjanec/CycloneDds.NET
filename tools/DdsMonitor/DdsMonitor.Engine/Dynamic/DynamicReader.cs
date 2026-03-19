@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using CycloneDDS.Runtime;
@@ -36,6 +37,23 @@ public sealed class DynamicReader<T> : IDynamicReader
 {
     private const int DefaultMaxSamples = 32;
     private const int UnknownSizeBytes = 0;
+
+    private delegate int GetNativeSizeDelegate(in T sample);
+    private static readonly GetNativeSizeDelegate? _nativeSizer;
+
+    static DynamicReader()
+    {
+        var method = typeof(T).GetMethod(
+            "GetNativeSize",
+            BindingFlags.Public | BindingFlags.Static,
+            null,
+            new[] { typeof(T).MakeByRefType() },
+            null);
+        if (method != null)
+        {
+            _nativeSizer = (GetNativeSizeDelegate)Delegate.CreateDelegate(typeof(GetNativeSizeDelegate), method);
+        }
+    }
 
     private readonly DdsParticipant _participant;
     private readonly string? _initialPartition;
@@ -184,6 +202,7 @@ public sealed class DynamicReader<T> : IDynamicReader
         }
 
         var payload = sample.Data;
+        var estimatedSize = _nativeSizer != null && payload != null ? _nativeSizer(payload) : UnknownSizeBytes;
 
         // ME1-T07: Build a temporary sample (ordinal = 0) for filter evaluation.
         // The ordinal counter is only incremented for samples that pass the filter,
@@ -195,7 +214,7 @@ public sealed class DynamicReader<T> : IDynamicReader
             TopicMetadata = TopicMetadata,
             SampleInfo = sample.Info,
             Timestamp = DateTime.UtcNow,
-            SizeBytes = UnknownSizeBytes,
+            SizeBytes = estimatedSize,
             DomainId = _config?.DomainId ?? 0,
             PartitionName = _config?.PartitionName ?? string.Empty,
             ParticipantIndex = _config?.ParticipantIndex ?? 0

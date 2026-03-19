@@ -231,7 +231,7 @@ public sealed class SampleStoreTests
         Assert.Empty(exceptions);
     }
 
-    private static SampleData CreateSample(TopicMetadata metadata, long ordinal)
+    private static SampleData CreateSample(TopicMetadata metadata, long ordinal, int sizeBytes = 0)
     {
         return new SampleData
         {
@@ -240,7 +240,7 @@ public sealed class SampleStoreTests
             TopicMetadata = metadata,
             SampleInfo = new DdsApi.DdsSampleInfo { SourceTimestamp = 0 },
             Timestamp = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-            SizeBytes = 0
+            SizeBytes = sizeBytes
         };
     }
 
@@ -301,5 +301,68 @@ public sealed class SampleStoreTests
         store.OnViewRebuilt -= Handler;
 
         Assert.Same(tcs.Task, completed);
+    }
+}
+
+public sealed class SampleStoreBandwidthTests
+{
+    [Fact]
+    public void TotalBytesReceived_IsZeroInitially()
+    {
+        using var store = new SampleStore();
+        Assert.Equal(0, store.TotalBytesReceived);
+    }
+
+    [Fact]
+    public void TotalBytesReceived_AccumulatesAcrossAppends()
+    {
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        using var store = new SampleStore();
+
+        store.Append(CreateSizedSample(metadata, 1, 100));
+        store.Append(CreateSizedSample(metadata, 2, 200));
+        store.Append(CreateSizedSample(metadata, 3, 50));
+
+        Assert.Equal(350, store.TotalBytesReceived);
+    }
+
+    [Fact]
+    public void TotalBytesReceived_ResetToZeroOnClear()
+    {
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        using var store = new SampleStore();
+
+        store.Append(CreateSizedSample(metadata, 1, 100));
+        store.Append(CreateSizedSample(metadata, 2, 200));
+        Assert.Equal(300, store.TotalBytesReceived);
+
+        store.Clear();
+
+        Assert.Equal(0, store.TotalBytesReceived);
+    }
+
+    [Fact]
+    public void TotalBytesReceived_IgnoresSamplesWithZeroSize()
+    {
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        using var store = new SampleStore();
+
+        store.Append(CreateSizedSample(metadata, 1, 0));
+        store.Append(CreateSizedSample(metadata, 2, 0));
+
+        Assert.Equal(0, store.TotalBytesReceived);
+    }
+
+    private static SampleData CreateSizedSample(TopicMetadata metadata, long ordinal, int sizeBytes)
+    {
+        return new SampleData
+        {
+            Ordinal = ordinal,
+            Payload = new SampleTopic { Id = (int)ordinal },
+            TopicMetadata = metadata,
+            SampleInfo = new DdsApi.DdsSampleInfo { SourceTimestamp = 0 },
+            Timestamp = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            SizeBytes = sizeBytes
+        };
     }
 }

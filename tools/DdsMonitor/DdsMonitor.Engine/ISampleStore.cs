@@ -29,6 +29,11 @@ public interface ISampleStore
     void Clear();
 
     /// <summary>
+    /// Gets the total bytes received across all topics (best-effort estimate).
+    /// </summary>
+    long TotalBytesReceived { get; }
+
+    /// <summary>
     /// Gets the count of samples passing the current filter.
     /// </summary>
     int CurrentFilteredCount { get; }

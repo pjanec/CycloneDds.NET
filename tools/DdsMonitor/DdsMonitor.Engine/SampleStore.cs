@@ -25,6 +25,8 @@ public sealed class SampleStore : ISampleStore, IDisposable
     private readonly CancellationTokenSource _sortCancellation = new();
     private readonly Task _sortTask;
 
+    private long _totalBytesReceived;
+
     private Func<SampleData, bool>? _filterPredicate;
     private FieldMetadata? _sortField;
     private SortDirection _sortDirection;
@@ -55,6 +57,9 @@ public sealed class SampleStore : ISampleStore, IDisposable
             }
         }
     }
+
+    /// <inheritdoc />
+    public long TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
 
     /// <inheritdoc />
     public int CurrentFilteredCount => Volatile.Read(ref _currentFilteredCount);
@@ -90,6 +95,7 @@ public sealed class SampleStore : ISampleStore, IDisposable
             throw new ArgumentNullException(nameof(sample));
         }
 
+        Interlocked.Add(ref _totalBytesReceived, sample.SizeBytes);
         var shouldSignal = false;
 
         lock (_sync)
@@ -138,6 +144,7 @@ public sealed class SampleStore : ISampleStore, IDisposable
             _sortDirty = false;
         }
 
+        Interlocked.Exchange(ref _totalBytesReceived, 0);
         OnViewRebuilt?.Invoke();
     }
 

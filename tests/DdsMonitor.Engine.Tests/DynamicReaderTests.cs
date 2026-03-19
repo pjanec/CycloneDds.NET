@@ -49,4 +49,31 @@ public sealed class DynamicReaderTests
         reader.Stop();
     }
 
+    [Fact(Timeout = 10000)]
+    public async Task DynamicReader_PopulatesSizeBytes_UsingGeneratedNativeSizer()
+    {
+        var metadata = new TopicMetadata(typeof(DynamicReaderMessage));
+        using var participant = new DdsParticipant();
+        using var reader = new DynamicReader<DynamicReaderMessage>(participant, metadata);
+        using var writer = new DynamicWriter<DynamicReaderMessage>(participant, metadata);
+
+        var tcs = new TaskCompletionSource<SampleData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        reader.OnSampleReceived += sample => tcs.TrySetResult(sample);
+
+        reader.Start(null);
+
+        await Task.Delay(200);
+
+        writer.Write(new DynamicReaderMessage { Id = 1, Value = 2 });
+
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(7000));
+        Assert.Same(tcs.Task, completed);
+
+        var received = await tcs.Task;
+        // DynamicReaderMessage has two int fields; GetNativeSize must return > 0.
+        Assert.True(received.SizeBytes > 0, $"Expected SizeBytes > 0 but got {received.SizeBytes}");
+
+        reader.Stop();
+    }
+
 }

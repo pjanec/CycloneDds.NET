@@ -27,6 +27,8 @@ public sealed class SamplesPanelTests
 
         public IReadOnlyList<SampleData> AllSamples => Array.Empty<SampleData>();
 
+        public long TotalBytesReceived => 0;
+
         public int CurrentFilteredCount => 0;
 
         public event Action? OnViewRebuilt

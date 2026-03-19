@@ -14,6 +14,7 @@
 @inject IDdsBridge DdsBridge
 @inject IEventBroker EventBroker
 @inject CloneRequestService CloneRequests
+@inject ISampleStore SampleStore
 @implements IDisposable
 
 <div class="app-shell" @onclick="CloseMenus">
@@ -76,6 +77,9 @@
             @(DdsBridge.IsPaused ? "Paused" : "Running")
         </span>
 
+        <span class="app-menu__participant-indicator" title="Incoming Bandwidth">
+            @FormatBandwidth(_currentBandwidth)
+        </span>
         <button type="button"
                 class="app-menu__participant-indicator"
                 title="Open Participant Editor"
@@ -107,10 +111,30 @@
     private string? _openMenu;
     private bool _showParticipantEditor;
     private IDisposable? _cloneSubscription;
+    private System.Threading.Timer? _bandwidthTimer;
+    private long _lastBytesReceived;
+    private long _currentBandwidth;
 
     protected override void OnInitialized()
     {
         _cloneSubscription = EventBroker.Subscribe<CloneAndSendRequestEvent>(OnCloneAndSend);
+        _bandwidthTimer = new System.Threading.Timer(UpdateBandwidth, null, 1000, 1000);
+    }
+
+    private void UpdateBandwidth(object? state)
+    {
+        var currentBytes = SampleStore.TotalBytesReceived;
+        _currentBandwidth = currentBytes - _lastBytesReceived;
+        _lastBytesReceived = currentBytes;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static string FormatBandwidth(long bytesPerSec)
+    {
+        if (bytesPerSec <= 0) return "0 B/s";
+        if (bytesPerSec < 1024) return $"{bytesPerSec} B/s";
+        if (bytesPerSec < 1_048_576) return $"{bytesPerSec / 1024.0:0.##} KB/s";
+        return $"{bytesPerSec / 1_048_576.0:0.##} MB/s";
     }
 
     private void OnCloneAndSend(CloneAndSendRequestEvent evt)
@@ -129,6 +153,7 @@
     public void Dispose()
     {
         _cloneSubscription?.Dispose();
+        _bandwidthTimer?.Dispose();
     }
 
     // ── Transport controls (ME1-T09) ──────────────────────────────────────────
