@@ -105,7 +105,7 @@
                        type="text"
                        value="@_fileNameInput"
                        @oninput="OnFileNameInput"
-                       placeholder="@(Mode == FileDialogMode.Save ? "output.json" : "Select a file above…")"
+                       placeholder="@(Mode == FileDialogMode.Save ? "output.json" : "Select a file or folder above, or leave empty for current folder…")"
                        spellcheck="false" />
                 <button type="button"
                         class="file-dialog__ok-btn"
@@ -233,7 +233,7 @@
 
     // ── Confirmation / Cancellation ──────────────────────────────────────────
 
-    private bool CanConfirm => !string.IsNullOrWhiteSpace(_fileNameInput);
+    private bool CanConfirm => Mode == FileDialogMode.Open || !string.IsNullOrWhiteSpace(_fileNameInput);
 
     private void Confirm()
     {
@@ -245,7 +245,8 @@
         var path = rawPath.Trim();
         if (string.IsNullOrEmpty(path))
         {
-            return;
+            if (Mode != FileDialogMode.Open) { return; }
+            path = _currentDir;
         }
 
         // For relative filename entry in Save mode, combine with current dir.
@@ -254,10 +255,10 @@
             path = Path.Combine(_currentDir, path);
         }
 
-        // In Open mode, insist the file actually exists.
-        if (Mode == FileDialogMode.Open && !File.Exists(path))
+        // In Open mode, accept files and directories.
+        if (Mode == FileDialogMode.Open && !File.Exists(path) && !Directory.Exists(path))
         {
-            _navError = $"File not found: {path}";
+            _navError = $"File or folder not found: {path}";
             return;
         }
 

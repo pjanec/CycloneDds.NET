@@ -74,7 +74,7 @@
 
 **Goal:** Allow a folder path as a topic source; auto-scan all DLLs; display assembly path in the UI; FileDialog supports folder selection.
 
-- [ ] **ME2-T14** Folder-Based Assembly Scanning → [details](./ME2-TASK-DETAILS.md#me2-t14--folder-based-assembly-scanning)
+- [x] **ME2-T14** Folder-Based Assembly Scanning → [details](./ME2-TASK-DETAILS.md#me2-t14--folder-based-assembly-scanning)
 
 ---
 
@@ -130,6 +130,14 @@
 
 **Goal:** Resolve Service Locator and Scope architecture faults blocking runtime environments.
 
-- [ ] **ME2-T27** (Tech Debt) `TopicColorService` Scoped Dependency Injection Fix: Safe encapsulation matching Blazor scoped lifetimes (`IWorkspaceState`) against incorrectly declared Singletons blocking App startup. 
+- [x] **ME2-T27** (Tech Debt) `TopicColorService` Scoped Dependency Injection Fix: Safe encapsulation matching Blazor scoped lifetimes (`IWorkspaceState`) against incorrectly declared Singletons blocking App startup. 
+
+---
+
+## Phase 14 — Runtime Module Tech Debt (Reflection Faults)
+
+**Goal:** Correctly handle exterior assemblies invoking deep reflection APIs against CycloneDDS schemas during `Delegate.CreateDelegate` mappings.
+
+- [ ] **ME2-T28** (Tech Debt) `DdsTypeSupport.GetKeyDescriptors` Delegate Binding Fix: Intercept and normalize explicit Delegate signature definitions to prevent dynamic module loads from crashing type descriptor reflection on topic subscriptions.
 
 ---

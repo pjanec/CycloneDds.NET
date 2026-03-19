@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -41,6 +42,18 @@ public sealed class AssemblySourceService : IAssemblySourceService
         var dir = Path.Combine(appData, "DdsMonitor");
         Directory.CreateDirectory(dir);
         _configFilePath = Path.Combine(dir, ConfigFileName);
+
+        LoadAndScanAll();
+    }
+
+    /// <summary>
+    /// Internal constructor that accepts an explicit config file path for testing.
+    /// </summary>
+    internal AssemblySourceService(ITopicRegistry topicRegistry, TopicDiscoveryService discoveryService, string configFilePath)
+    {
+        _topicRegistry = topicRegistry ?? throw new ArgumentNullException(nameof(topicRegistry));
+        _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
+        _configFilePath = configFilePath ?? throw new ArgumentNullException(nameof(configFilePath));
 
         LoadAndScanAll();
     }
@@ -203,10 +216,33 @@ public sealed class AssemblySourceService : IAssemblySourceService
     {
         try
         {
-            var found = _discoveryService.DiscoverFromFileDetailed(entry.Path);
+            List<TopicMetadata> found;
+
+            if (Directory.Exists(entry.Path))
+            {
+                found = new List<TopicMetadata>();
+                var files = Directory.EnumerateFiles(entry.Path, "*.dll")
+                    .Concat(Directory.EnumerateFiles(entry.Path, "*.exe"));
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        found.AddRange(_discoveryService.DiscoverFromFileDetailed(file));
+                    }
+                    catch
+                    {
+                        // Skip non-loadable files silently.
+                    }
+                }
+            }
+            else
+            {
+                found = new List<TopicMetadata>(_discoveryService.DiscoverFromFileDetailed(entry.Path));
+            }
+
             entry.TopicCount = found.Count;
             entry.LoadError = null;
-            return new List<TopicMetadata>(found);
+            return found;
         }
         catch (Exception ex)
         {

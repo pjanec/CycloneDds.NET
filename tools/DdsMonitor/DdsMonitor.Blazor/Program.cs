@@ -29,7 +29,7 @@ if (!isHeadless)
     builder.Services.AddSingleton<ITypeDrawerRegistry, TypeDrawerRegistry>();
     builder.Services.AddSingleton<TooltipService>();
     builder.Services.AddSingleton<ContextMenuService>();
-    builder.Services.AddSingleton<DdsMonitor.Engine.TopicColorService>();
+    builder.Services.AddScoped<DdsMonitor.Engine.TopicColorService>();
     builder.Services.AddSingleton<CloneRequestService>();
     builder.Services.AddScoped<WorkspacePersistenceService>();
 

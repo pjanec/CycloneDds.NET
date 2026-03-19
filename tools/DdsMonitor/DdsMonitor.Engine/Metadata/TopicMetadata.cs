@@ -70,12 +70,18 @@ public sealed class TopicMetadata
         AllFields = allFields;
         KeyFields = keyFields;
         IsKeyed = keyFields.Count > 0;
+        AssemblyPath = topicType.Assembly.Location;
     }
 
     /// <summary>
     /// Gets the CLR topic type.
     /// </summary>
     public Type TopicType { get; }
+
+    /// <summary>
+    /// Gets the file-system path of the assembly that contains this topic type.
+    /// </summary>
+    public string AssemblyPath { get; }
 
     /// <summary>
     /// Gets the DDS topic name from the <see cref="DdsTopicAttribute"/>.

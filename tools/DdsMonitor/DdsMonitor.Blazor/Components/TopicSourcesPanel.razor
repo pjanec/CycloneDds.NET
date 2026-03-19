@@ -21,7 +21,7 @@
     <!-- ── Toolbar ───────────────────────────────────────────────── -->
     <div class="topic-sources__toolbar">
         <span class="topic-sources__title">Assemblies</span>
-        <button class="topic-sources__btn" title="Add DLL assembly" @onclick="OpenAddDialog">
+        <button class="topic-sources__btn" title="Add DLL assembly or folder containing assemblies" @onclick="OpenAddDialog">
             <!-- Plus icon -->
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -119,6 +119,10 @@
                                 @if (!string.IsNullOrEmpty(topic.Namespace))
                                 {
                                     <span class="topic-sources__clr-ns">@topic.Namespace</span>
+                                }
+                                @if (!string.IsNullOrEmpty(topic.AssemblyPath))
+                                {
+                                    <span class="topic-sources__clr-ns" title="@topic.AssemblyPath">@topic.AssemblyPath</span>
                                 }
                             </td>
                             <td>@(topic.IsKeyed ? "✓" : string.Empty)</td>
