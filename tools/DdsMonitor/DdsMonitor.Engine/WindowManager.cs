@@ -437,11 +437,24 @@ public sealed class WindowManager : IWindowManager
     {
         if (_panelTypes.TryGetValue(componentTypeName, out var registered))
         {
-            return registered.AssemblyQualifiedName ?? registered.FullName ?? componentTypeName;
+            return registered.FullName ?? componentTypeName;
         }
 
         var resolved = Type.GetType(componentTypeName);
-        return resolved?.AssemblyQualifiedName ?? resolved?.FullName ?? componentTypeName;
+        if (resolved != null)
+        {
+            return resolved.FullName ?? componentTypeName;
+        }
+
+        // Backward-compat: strip assembly qualification from old AQN workspace entries
+        // (e.g. "My.Type, MyAssembly, Version=0.1.0.0, ...") so they resolve to FullName.
+        var commaIndex = componentTypeName.IndexOf(',');
+        if (commaIndex > 0)
+        {
+            return componentTypeName[..commaIndex].Trim();
+        }
+
+        return componentTypeName;
     }
 
     private string GetPanelBaseName(string componentTypeName)

@@ -103,7 +103,7 @@
                         <div class="samples-panel__expand-card" style="height:@(ExpandedRowHeight)px">
                             <div class="samples-panel__expand-card-header">
                                 <span class="samples-panel__cell samples-panel__col-ordinal">#@row.Sample.Ordinal</span>
-                                <span class="samples-panel__cell samples-panel__col-timestamp">@row.Sample.Timestamp.ToString("HH:mm:ss.fff")</span>
+                                <span class="samples-panel__cell samples-panel__col-timestamp">@row.Sample.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</span>
                                 <span class="samples-panel__cell @GetStatusClass(row.Sample)" title="@GetStatusTooltip(row.Sample)">@GetStatusSymbol(row.Sample)</span>
                             </div>
                             <pre class="samples-panel__expand-json">@GetPayloadJsonSafe(row.Sample)</pre>
@@ -463,7 +463,7 @@
 
     private void OpenFilterBuilder()
     {
-        var filterTypeName = typeof(FilterBuilderPanel).AssemblyQualifiedName!;
+        var filterTypeName = typeof(FilterBuilderPanel).FullName!;
         var sourcePanelId = GetPanelId();
 
         // Reuse an existing hidden filter panel for this samples panel (preserves its screen position).
@@ -724,7 +724,7 @@
 
     private void OpenDetail(SampleData sample)
     {
-        var detailTypeName = typeof(DetailPanel).AssemblyQualifiedName!;
+        var detailTypeName = typeof(DetailPanel).FullName!;
         var sourcePanelId = GetPanelId();
         var detailPanels = WindowManager.ActivePanels
             .Where(panel => string.Equals(panel.ComponentTypeName, detailTypeName, StringComparison.Ordinal))
@@ -1125,11 +1125,7 @@
                 }
             }
 
-            if (_sortField != null)
-            {
-                _viewCache.Sort((left, right) => CompareSamples(left, right, _sortField, _sortDirection));
-            }
-
+            ApplySortToViewCache();
             _totalCount = fixedSamples.Count;
             _currentCount = _viewCache.Count;
             _viewDirty = false;
@@ -1157,6 +1153,7 @@
                 }
             }
 
+            ApplySortToViewCache();
             _totalCount = snapshot.Count;
             _currentCount = _viewCache.Count;
             _viewDirty = false;
@@ -1181,14 +1178,18 @@
             }
         }
 
+        ApplySortToViewCache();
+        _totalCount = total;
+        _currentCount = _viewCache.Count;
+        _viewDirty = false;
+    }
+
+    private void ApplySortToViewCache()
+    {
         if (_sortField != null)
         {
             _viewCache.Sort((left, right) => CompareSamples(left, right, _sortField, _sortDirection));
         }
-
-        _totalCount = total;
-        _currentCount = _viewCache.Count;
-        _viewDirty = false;
     }
 
     private static int CompareSamples(
@@ -1254,7 +1255,7 @@
                 builder.AddContent(5, row.Sample.SizeBytes);
                 break;
             case ColumnKind.Timestamp:
-                builder.AddContent(6, row.Sample.Timestamp.ToString("HH:mm:ss.fff"));
+                builder.AddContent(6, row.Sample.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff"));
                 break;
             case ColumnKind.Delay:
                 builder.AddContent(7, GetDelayText(row.Sample));

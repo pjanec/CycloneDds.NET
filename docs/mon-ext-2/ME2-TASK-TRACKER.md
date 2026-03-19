@@ -13,10 +13,10 @@
 
 **Goal:** Resolve four confirmed bugs affecting workspace compatibility, subscriptions, sorting, and timestamp readability.
 
-- [ ] **ME2-T01** Workspace ComponentTypeName Compatibility → [details](./ME2-TASK-DETAILS.md#me2-t01--workspace-componenttypename-forward-compatibility)
-- [ ] **ME2-T02** Reset Does Not Lose Subscriptions → [details](./ME2-TASK-DETAILS.md#me2-t02--reset-does-not-lose-subscriptions)
-- [ ] **ME2-T03** Ordinal Sort Broken in All Samples → [details](./ME2-TASK-DETAILS.md#me2-t03--ordinal-sort-broken-in-all-samples)
-- [ ] **ME2-T04** Timestamp Display Formatting → [details](./ME2-TASK-DETAILS.md#me2-t04--timestamp-display-formatting)
+- [x] **ME2-T01** Workspace ComponentTypeName Compatibility → [details](./ME2-TASK-DETAILS.md#me2-t01--workspace-componenttypename-forward-compatibility)
+- [x] **ME2-T02** Reset Does Not Lose Subscriptions → [details](./ME2-TASK-DETAILS.md#me2-t02--reset-does-not-lose-subscriptions)
+- [x] **ME2-T03** Ordinal Sort Broken in All Samples → [details](./ME2-TASK-DETAILS.md#me2-t03--ordinal-sort-broken-in-all-samples)
+- [x] **ME2-T04** Timestamp Display Formatting → [details](./ME2-TASK-DETAILS.md#me2-t04--timestamp-display-formatting)
 
 ---
 
@@ -24,8 +24,8 @@
 
 **Goal:** Fix null value invisibility; add value-type syntax highlighting; fix union rendering in Table and Tree tabs.
 
-- [ ] **ME2-T05** Null String Visibility + Value Type Syntax Highlighting → [details](./ME2-TASK-DETAILS.md#me2-t05--null-string-visibility--value-type-syntax-highlighting)
-- [ ] **ME2-T06** Union Rendering Improvements → [details](./ME2-TASK-DETAILS.md#me2-t06--union-rendering-improvements)
+- [x] **ME2-T05** Null String Visibility + Value Type Syntax Highlighting → [details](./ME2-TASK-DETAILS.md#me2-t05--null-string-visibility--value-type-syntax-highlighting)
+- [x] **ME2-T06** Union Rendering Improvements → [details](./ME2-TASK-DETAILS.md#me2-t06--union-rendering-improvements)
 
 ---
 
@@ -33,7 +33,7 @@
 
 **Goal:** Improve build log clarity for multi-project solutions.
 
-- [ ] **ME2-T07** Schema Compiler Project Name in Build Log → [details](./ME2-TASK-DETAILS.md#me2-t07--schema-compiler-project-name-in-build-log)
+- [x] **ME2-T07** Schema Compiler Project Name in Build Log → [details](./ME2-TASK-DETAILS.md#me2-t07--schema-compiler-project-name-in-build-log)
 
 ---
 
@@ -74,5 +74,13 @@
 **Goal:** Allow a folder path as a topic source; auto-scan all DLLs; display assembly path in the UI; FileDialog supports folder selection.
 
 - [ ] **ME2-T14** Folder-Based Assembly Scanning → [details](./ME2-TASK-DETAILS.md#me2-t14--folder-based-assembly-scanning)
+
+---
+
+## Phase 8 — Send Sample Optional/Nullable Support
+
+**Goal:** Allow sending literal null strings or excluding optional values completely.
+
+- [ ] **ME2-T15** Nullable/Optional Field Support in Send Sample Panel → (added by Dev Lead, see BATCH-02)
 
 ---

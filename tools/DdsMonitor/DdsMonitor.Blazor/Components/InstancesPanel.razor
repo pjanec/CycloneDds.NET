@@ -533,7 +533,7 @@ else
                 builder.CloseElement();
                 break;
             case ColumnKind.Time:
-                builder.AddContent(3, row.Row.Sample.Timestamp.ToString("HH:mm:ss.fff"));
+                builder.AddContent(3, row.Row.Sample.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff"));
                 break;
             case ColumnKind.Actions:
                 builder.OpenElement(4, "div");
@@ -647,7 +647,7 @@ else
 
     private void EnsureLinkedDetailPanel(SampleData sample)
     {
-        var detailTypeName = typeof(DetailPanel).AssemblyQualifiedName!;
+        var detailTypeName = typeof(DetailPanel).FullName!;
         var sourcePanelId = GetPanelId();
         var detailPanels = WindowManager.ActivePanels
             .Where(panel => string.Equals(panel.ComponentTypeName, detailTypeName, StringComparison.Ordinal))
@@ -685,7 +685,7 @@ else
 
     private void OpenDetail(SampleData sample)
     {
-        var detailTypeName = typeof(DetailPanel).AssemblyQualifiedName!;
+        var detailTypeName = typeof(DetailPanel).FullName!;
         var sourcePanelId = GetPanelId();
         var detailPanels = WindowManager.ActivePanels
             .Where(panel => string.Equals(panel.ComponentTypeName, detailTypeName, StringComparison.Ordinal))
@@ -773,7 +773,7 @@ else
         }
 
         var filter = BuildInstanceFilter(row);
-        var panel = WindowManager.SpawnPanel(typeof(SamplesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        var panel = WindowManager.SpawnPanel(typeof(SamplesPanel).FullName!, new Dictionary<string, object>
         {
             [nameof(SamplesPanel.TopicMetadata)] = TopicMetadata,
             [nameof(SamplesPanel.InitialFilterText)] = filter

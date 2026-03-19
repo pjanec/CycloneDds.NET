@@ -229,9 +229,10 @@ else
         builder.CloseElement();
 
         builder.OpenElement(8, "tbody");
-        foreach (var field in _currentSample.TopicMetadata.AllFields.Where(meta => !meta.IsSynthetic))
+        var payload = _currentSample.Payload;
+        foreach (var field in _currentSample.TopicMetadata.AllFields.Where(meta => !meta.IsSynthetic && IsUnionArmVisible(meta, payload)))
         {
-            var value = field.Getter(_currentSample.Payload);
+            var value = field.Getter(payload);
             var isExpandable = IsTableFieldExpandable(value);
             var fieldName = field.StructuredName;
             var isExpanded = isExpandable && _tableExpandedFields.Contains(fieldName);
@@ -268,16 +269,59 @@ else
                     for (int i = 0; i < arr.Length; i++)
                     {
                         var elemVal = arr.GetValue(i);
+                        var isUnionElem = elemVal != null &&
+                            elemVal.GetType().GetCustomAttribute<DdsUnionAttribute>() != null;
+                        var elemName = $"{fieldName}[{i}]";
+                        var isElemExpanded = isUnionElem && _tableExpandedFields.Contains(elemName);
+
                         builder.OpenElement(19, "tr");
                         builder.AddAttribute(20, "class", "detail-table__element-row");
                         builder.OpenElement(21, "td");
                         builder.AddAttribute(22, "class", "detail-table__element-name");
-                        builder.AddContent(23, $"[{i}]");
+                        if (isUnionElem)
+                        {
+                            var capturedElemName = elemName;
+                            builder.OpenElement(23, "button");
+                            builder.AddAttribute(24, "type", "button");
+                            builder.AddAttribute(25, "class", "detail-table__toggle");
+                            builder.AddAttribute(26, "onclick",
+                                EventCallback.Factory.Create(this, () => ToggleTableField(capturedElemName)));
+                            builder.AddContent(27, isElemExpanded ? "\u25bc" : "\u25ba");
+                            builder.CloseElement();
+                        }
+                        builder.AddContent(28, $"[{i}]");
                         builder.CloseElement();
-                        builder.OpenElement(24, "td");
-                        builder.AddContent(25, RenderValue(elemVal));
+                        builder.OpenElement(29, "td");
+                        if (isUnionElem)
+                        {
+                            var uInfo = GetUnionInfo(elemVal!);
+                            builder.AddContent(30, RenderValue(uInfo.Discriminator));
+                        }
+                        else
+                        {
+                            builder.AddContent(30, RenderValue(elemVal));
+                        }
                         builder.CloseElement();
-                        builder.CloseElement();
+                        builder.CloseElement(); // tr
+
+                        // Expanded union arm sub-row.
+                        if (isUnionElem && isElemExpanded && elemVal != null)
+                        {
+                            var uInfo = GetUnionInfo(elemVal);
+                            if (uInfo.ActiveArm != null)
+                            {
+                                builder.OpenElement(31, "tr");
+                                builder.AddAttribute(32, "class", "detail-table__element-row detail-table__element-row--nested");
+                                builder.OpenElement(33, "td");
+                                builder.AddAttribute(34, "class", "detail-table__element-name detail-table__element-name--nested");
+                                builder.AddContent(35, uInfo.ActiveArm.Name);
+                                builder.CloseElement();
+                                builder.OpenElement(36, "td");
+                                builder.AddContent(37, RenderValue(uInfo.ArmValue));
+                                builder.CloseElement();
+                                builder.CloseElement(); // tr
+                            }
+                        }
                     }
                 }
             }
@@ -323,7 +367,7 @@ else
         builder.AddAttribute(1, "class", "detail-info");
         builder.AddContent(2, $"Global Ordinal: {_currentSample.Ordinal}");
         builder.AddMarkupContent(3, "<br />");
-        builder.AddContent(4, $"Incoming Timestamp: {_currentSample.Timestamp:O}");
+        builder.AddContent(4, $"Incoming Timestamp: {_currentSample.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fffffff")}");
         builder.AddMarkupContent(5, "<br />");
         builder.AddContent(6, $"Domain ID: {_currentSample.DomainId}");
         builder.AddMarkupContent(7, "<br />");
@@ -335,7 +379,7 @@ else
         builder.AddMarkupContent(13, "<br />");
         builder.AddContent(14, $"View: {info.ViewState}");
         builder.AddMarkupContent(15, "<br />");
-        builder.AddContent(16, $"SourceTimestamp: {info.SourceTimestamp}");
+        builder.AddContent(16, $"SourceTimestamp: {FormatSourceTimestamp(info.SourceTimestamp)}");
         builder.CloseElement();
     };
 
@@ -364,6 +408,17 @@ else
         builder.CloseElement();
     };
 
+    private static string FormatSourceTimestamp(long nanoseconds)
+    {
+        if (nanoseconds <= 0 || nanoseconds == long.MaxValue)
+        {
+            return "Unknown";
+        }
+
+        return DateTime.UnixEpoch.AddTicks(nanoseconds / 100).ToLocalTime()
+            .ToString("yyyy-MM-dd HH:mm:ss.fffffff");
+    }
+
     private RenderFragment RenderNode(object? value, string label, string path, HashSet<object> traversal, int depth) => builder =>
     {
         var sequence = 0;
@@ -389,6 +444,14 @@ else
         {
             displayValue = "(max depth)";
             displayType = typeof(string);
+        }
+        else if (!isLeaf && type != null && value != null &&
+                 type.GetCustomAttribute<DdsUnionAttribute>() != null)
+        {
+            // ME2-T06: show discriminator value as the collapsed node label for union types.
+            var uInfo = GetUnionInfo(value);
+            displayValue = uInfo.Discriminator;
+            displayType = uInfo.Discriminator?.GetType() ?? typeof(string);
         }
 
         // Determine whether this non-leaf node is array-like (for default-collapsed behaviour).
@@ -615,7 +678,7 @@ else
 
     private void OpenTextView(string text)
     {
-        var panel = WindowManager.SpawnPanel(typeof(TextViewPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        var panel = WindowManager.SpawnPanel(typeof(TextViewPanel).FullName!, new Dictionary<string, object>
         {
             [nameof(TextViewPanel.Title)] = "Text View",
             [nameof(TextViewPanel.Content)] = text
@@ -626,6 +689,15 @@ else
 
     private RenderFragment RenderValue(object? value) => builder =>
     {
+        if (value == null)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "detail-tree__value is-null");
+            builder.AddContent(2, "null");
+            builder.CloseElement();
+            return;
+        }
+
         if (value is string text)
         {
             builder.OpenElement(0, "span");
@@ -683,9 +755,11 @@ else
         }
         else
         {
-            var content = value?.ToString() ?? string.Empty;
+            var content = value is bool boolVal
+                ? (boolVal ? "true" : "false")
+                : value.ToString() ?? string.Empty;
             builder.OpenElement(6, "span");
-            builder.AddAttribute(7, "class", "detail-tree__value");
+            builder.AddAttribute(7, "class", GetValueClass(value.GetType()));
             builder.AddAttribute(8, "onmousedown",
                 EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(content, false, args)));
             builder.AddAttribute(9, "oncontextmenu:preventDefault", true);
@@ -873,6 +947,80 @@ else
         }
 
         return "detail-tree__value";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Union rendering helpers (ME2-T06)
+    // ─────────────────────────────────────────────────────────────────────
+
+    private static (object? Discriminator, MemberInfo? ActiveArm, object? ArmValue) GetUnionInfo(object unionObj)
+    {
+        var type = unionObj.GetType();
+        MemberInfo? discMember = null;
+        object? discValue = null;
+
+        foreach (var m in GetMembers(type))
+        {
+            if (m.GetCustomAttribute<DdsDiscriminatorAttribute>() != null)
+            {
+                discMember = m;
+                discValue = GetMemberValue(m, unionObj);
+                break;
+            }
+        }
+
+        // Find explicit matching arm.
+        foreach (var m in GetMembers(type))
+        {
+            var caseAttr = m.GetCustomAttribute<DdsCaseAttribute>();
+            if (caseAttr != null && UnionValuesEqualTree(caseAttr.Value, discValue))
+            {
+                return (discValue, m, GetMemberValue(m, unionObj));
+            }
+        }
+
+        // Fall back to default case arm.
+        foreach (var m in GetMembers(type))
+        {
+            if (m.GetCustomAttribute<DdsDefaultCaseAttribute>() != null)
+            {
+                return (discValue, m, GetMemberValue(m, unionObj));
+            }
+        }
+
+        return (discValue, null, null);
+    }
+
+    private bool IsUnionArmVisible(FieldMetadata field, object payload)
+    {
+        // Non-arm fields (discriminator fields, plain fields) are always visible.
+        if (field.DependentDiscriminatorPath == null)
+        {
+            return true;
+        }
+
+        // Locate the discriminator field to read the current value.
+        var discField = _currentSample?.TopicMetadata.AllFields
+            .FirstOrDefault(f => f.StructuredName == field.DependentDiscriminatorPath);
+        if (discField == null)
+        {
+            return true;
+        }
+
+        var discValue = discField.Getter(payload);
+
+        if (field.IsDefaultUnionCase)
+        {
+            // Show default arm only when no explicit arm matches.
+            return !_currentSample!.TopicMetadata.AllFields.Any(f =>
+                f.DependentDiscriminatorPath == field.DependentDiscriminatorPath
+                && !f.IsDefaultUnionCase
+                && f.ActiveWhenDiscriminatorValue != null
+                && UnionValuesEqualTree(f.ActiveWhenDiscriminatorValue, discValue));
+        }
+
+        return field.ActiveWhenDiscriminatorValue != null
+               && UnionValuesEqualTree(field.ActiveWhenDiscriminatorValue, discValue);
     }
 
     // ─────────────────────────────────────────────────────────────────────

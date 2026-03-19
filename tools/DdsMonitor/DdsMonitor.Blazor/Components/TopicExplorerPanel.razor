@@ -211,7 +211,7 @@
 
     private void OpenTopicSourcesPanel()
     {
-        var typeName = typeof(TopicSourcesPanel).AssemblyQualifiedName!;
+        var typeName = typeof(TopicSourcesPanel).FullName!;
         foreach (var panel in WindowManager.ActivePanels)
         {
             if (string.Equals(panel.ComponentTypeName, typeName, StringComparison.Ordinal))
@@ -486,7 +486,7 @@
     {
         foreach (var existingPanel in WindowManager.ActivePanels)
         {
-            if (!string.Equals(existingPanel.ComponentTypeName, typeof(SamplesPanel).AssemblyQualifiedName, StringComparison.Ordinal))
+            if (!string.Equals(existingPanel.ComponentTypeName, typeof(SamplesPanel).FullName, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -501,7 +501,7 @@
             }
         }
 
-        var panel = WindowManager.SpawnPanel(typeof(SamplesPanel).AssemblyQualifiedName!, new Dictionary<string, object>
+        var panel = WindowManager.SpawnPanel(typeof(SamplesPanel).FullName!, new Dictionary<string, object>
         {
             [nameof(SamplesPanel.TopicMetadata)] = metadata
         });
@@ -513,7 +513,7 @@
     private void OpenInstancesPanel(TopicMetadata metadata)
     {
         const string instancesTopicTypeKey = "InstancesPanel.TopicTypeName";
-        var instanceTypeName = typeof(InstancesPanel).AssemblyQualifiedName!;
+        var instanceTypeName = typeof(InstancesPanel).FullName!;
         var stableId = GetStableInstancesPanelId(metadata);
 
         // First: look for a panel with the stable ID (fastest path after first creation).
@@ -594,7 +594,7 @@
 
     private void OpenSendSamplePanel(TopicMetadata metadata)
     {
-        var sendSampleTypeName = typeof(SendSamplePanel).AssemblyQualifiedName!;
+        var sendSampleTypeName = typeof(SendSamplePanel).FullName!;
 
         foreach (var existingPanel in WindowManager.ActivePanels)
         {

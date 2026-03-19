@@ -347,25 +347,11 @@ public sealed class DdsBridge : IDdsBridge
         {
             ThrowIfDisposed();
 
-            // Clear all active readers.
-            foreach (var reader in _activeReaders.Values)
-                reader.Dispose();
-            _activeReaders.Clear();
-
-            // D04: Clear all auxiliary readers.
-            foreach (var auxMap in _auxReadersPerParticipant)
-            {
-                foreach (var auxReader in auxMap.Values)
-                    auxReader.Dispose();
-                auxMap.Clear();
-            }
-
-            // Reset shared state.
+            // Reset shared state: clear ordinal counter and data stores.
+            // Readers are intentionally preserved so active subscriptions survive.
             _ordinalCounter.Reset();
             _sampleStore?.Clear();
             _instanceStore?.Clear();
-
-            ReadersChanged?.Invoke();
         }
     }
 

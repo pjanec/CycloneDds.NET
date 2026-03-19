@@ -61,8 +61,8 @@
 @code {
     private const double MinPanelWidth = 220;
     private const double MinPanelHeight = 140;
-    private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
-    private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
+    private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).FullName!;
+    private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).FullName!;
 
     private PanelState? _activePanel;
     private DragMode _dragMode = DragMode.None;

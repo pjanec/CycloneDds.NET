@@ -96,11 +96,11 @@
 </div>
 
 @code {
-    private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).AssemblyQualifiedName!;
-    private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).AssemblyQualifiedName!;
-    private static readonly string SendSamplePanelTypeName = typeof(SendSamplePanel).AssemblyQualifiedName!;
-    private static readonly string ReplayPanelTypeName = typeof(ReplayPanel).AssemblyQualifiedName!;
-    private static readonly string TopicSourcesPanelTypeName = typeof(TopicSourcesPanel).AssemblyQualifiedName!;
+    private static readonly string TopicExplorerTypeName = typeof(TopicExplorerPanel).FullName!;
+    private static readonly string SamplesPanelTypeName = typeof(SamplesPanel).FullName!;
+    private static readonly string SendSamplePanelTypeName = typeof(SendSamplePanel).FullName!;
+    private static readonly string ReplayPanelTypeName = typeof(ReplayPanel).FullName!;
+    private static readonly string TopicSourcesPanelTypeName = typeof(TopicSourcesPanel).FullName!;
     private const string WorkspaceExportFileName = "ddsmon.workspace";
     private const string AllSamplesTopicTypeKey = "SamplesPanel.TopicTypeName";
     private string _theme = "dark";
