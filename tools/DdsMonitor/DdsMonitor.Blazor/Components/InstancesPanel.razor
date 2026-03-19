@@ -854,6 +854,11 @@ else
             {
                 OpenDetail(row.Row.Sample);
                 return Task.CompletedTask;
+            }),
+            new("Filter Out Topic", null, () =>
+            {
+                ExcludeTopicFromFilter(row.Row.Sample.TopicMetadata.ShortName);
+                return Task.CompletedTask;
             })
         };
 
@@ -868,6 +873,21 @@ else
         }
 
         OpenRowContextMenu(row, args);
+    }
+
+    private void ExcludeTopicFromFilter(string topicName)
+    {
+        var escaped = topicName.Replace("\\", "\\\\", StringComparison.Ordinal)
+                               .Replace("\"", "\\\"", StringComparison.Ordinal);
+        var condition = $"Sample.Topic != \"{escaped}\"";
+
+        _filterText = string.IsNullOrWhiteSpace(_filterText)
+            ? condition
+            : $"({_filterText}) AND {condition}";
+
+        ApplyFilter();
+        SavePanelState();
+        StateHasChanged();
     }
 
     private bool IsSelected(IndexedInstance row)

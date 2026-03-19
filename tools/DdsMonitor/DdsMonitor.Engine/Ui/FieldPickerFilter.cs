@@ -37,7 +37,8 @@ public static class FieldPickerFilter
             return true;
         }
 
-        return field.StructuredName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+        var fullPath = (field.IsWrapperField ? "Sample." : "Payload.") + field.StructuredName;
+        return fullPath.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                field.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 }

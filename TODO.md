@@ -147,3 +147,12 @@ The window is non-modal. It should use standard window index for saving and reso
 not topci type based.
 
 It shoud use modern styling (no densely placed ugly controls).
+
+
+
+
+
+[IMPROVEMENT]
+The current selection of visible columns in samples panels should be saved and restored with the panel info.
+This is important especially for the sample-type specific sample windows.
+There should be an easy way to reset this to defaults - via some button on the column selection window.

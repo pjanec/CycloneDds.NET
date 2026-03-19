@@ -172,24 +172,12 @@
         typeof(long),
         input => ((SampleData)input).Ordinal);
 
-    private static readonly FieldMetadata TopicField = CreateSyntheticField(
-        "Topic",
-        typeof(string),
-        input => ((SampleData)input).TopicMetadata.ShortName);
-
-    private static readonly FieldMetadata TimestampField = CreateSyntheticField(
-        "Timestamp",
-        typeof(DateTime),
-        input => ((SampleData)input).Timestamp);
-
     // JSON options for sample tooltips and inline previews re-use DdsJsonOptions.Display so that
     // inactive union arms are stripped and enums appear as strings – identical to file export.
     private static readonly JsonSerializerOptions TooltipJsonOptions = DdsJsonOptions.Display;
 
     private readonly List<SampleData> _viewCache = new();
     private Virtualize<IndexedSample>? _virtualizeRef;
-    private FieldMetadata? _delayField;
-    private FieldMetadata? _sizeField;
     private readonly List<FieldMetadata> _selectedColumns = new();
     private readonly List<FieldMetadata> _availableColumns = new();
     private readonly List<ColumnLayout> _layoutColumns = new();
@@ -305,8 +293,6 @@
         if (TopicMetadata == null)
         {
             // All-topics mode: aggregate non-synthetic fields from all registered topics.
-            _sizeField = null;
-            _delayField = null;
             PopulateAllTopicsAvailableColumns();
 
             // Restore previously selected columns by matching structured names.
@@ -321,6 +307,15 @@
                         _selectedColumns.Add(match);
                     }
                 }
+
+                if (_selectedColumns.Count == 0)
+                {
+                    AddDefaultSelectedColumns();
+                }
+            }
+            else
+            {
+                AddDefaultSelectedColumns();
             }
 
             RebuildLayoutColumns();
@@ -330,7 +325,8 @@
 
         foreach (var field in TopicMetadata.AllFields)
         {
-            if (!field.IsSynthetic)
+            // Include all fields except the always-hardcoded Ordinal column
+            if (!field.IsSynthetic || field.StructuredName != "Ordinal")
             {
                 _availableColumns.Add(field);
             }
@@ -350,36 +346,61 @@
 
             if (_selectedColumns.Count == 0)
             {
-                _selectedColumns.AddRange(_availableColumns.Take(3));
+                AddDefaultSelectedColumns();
             }
         }
         else
         {
-            _selectedColumns.AddRange(_availableColumns.Take(3));
+            AddDefaultSelectedColumns();
         }
-
-        _sizeField = TopicMetadata.AllFields.FirstOrDefault(field =>
-            string.Equals(field.StructuredName, SizeFieldName, StringComparison.Ordinal));
-
-        _delayField = TopicMetadata.AllFields.FirstOrDefault(field =>
-            string.Equals(field.StructuredName, DelayFieldName, StringComparison.Ordinal));
 
         RebuildLayoutColumns();
         SavePanelState();
     }
 
+    private void AddDefaultSelectedColumns()
+    {
+        var defaultKeys = new[] { "Topic", "Timestamp", SizeFieldName, DelayFieldName };
+        foreach (var key in defaultKeys)
+        {
+            var match = _availableColumns.FirstOrDefault(f =>
+                string.Equals(f.StructuredName, key, StringComparison.Ordinal));
+            if (match != null)
+                _selectedColumns.Add(match);
+        }
+        // Fallback to first 3 payload fields when no metadata columns exist
+        if (_selectedColumns.Count == 0)
+            _selectedColumns.AddRange(_availableColumns.Where(f => !f.IsSynthetic).Take(3));
+    }
+
     /// <summary>
     /// Builds _availableColumns and _fieldTopicTypes from all currently registered topics.
     /// Deduplicates by StructuredName, keeping the first-encountered field.
+    /// Synthetic fields (except Ordinal) are added once from the first available topic.
     /// </summary>
     private void PopulateAllTopicsAvailableColumns()
     {
         _availableColumns.Clear();
         _fieldTopicTypes.Clear();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var syntheticAdded = false;
 
         foreach (var topic in TopicRegistry.AllTopics)
         {
+            // Add synthetic fields (except Ordinal) once from the first topic.
+            if (!syntheticAdded)
+            {
+                foreach (var field in topic.AllFields)
+                {
+                    if (field.IsSynthetic && field.StructuredName != "Ordinal" && seen.Add(field.StructuredName))
+                    {
+                        _availableColumns.Add(field);
+                        // Synthetics target the SampleData object, not the payload - no _fieldTopicTypes entry.
+                    }
+                }
+                syntheticAdded = true;
+            }
+
             foreach (var field in topic.AllFields)
             {
                 if (!field.IsSynthetic && seen.Add(field.StructuredName))
@@ -411,6 +432,16 @@
             _totalCount = total;
             _currentCount = current;
             _ = _virtualizeRef?.RefreshDataAsync();
+
+            if (_trackMode && _selectedIndex >= 0)
+            {
+                _ = InvokeAsync(async () =>
+                {
+                    await Task.Delay(50);
+                    await EnsureSelectionVisibleAsync(_selectedIndex);
+                });
+            }
+
             StateHasChanged();
         }
 
@@ -438,6 +469,19 @@
     private void ToggleTrackMode()
     {
         _trackMode = !_trackMode;
+        if (_trackMode)
+        {
+            EnsureView();
+            if (_selectedIndex >= 0)
+            {
+                _ = InvokeAsync(async () =>
+                {
+                    await Task.Delay(50);
+                    await EnsureSelectionVisibleAsync(_selectedIndex);
+                });
+            }
+        }
+        StateHasChanged();
     }
 
     private void ToggleColumnPicker()
@@ -706,19 +750,23 @@
         _selectedSample = row.Sample;
         _selectedIndex = row.Index;
 
+        // T11: Auto-manage track mode based on whether the latest item is selected.
+        var isLatest = _viewCache.Count > 0 && (
+            _sortDirection == SortDirection.Ascending
+                ? row.Index == _viewCache.Count - 1
+                : row.Index == 0);
+        _trackMode = isLatest;
+
         _ = FocusGrid();
 
-        if (_trackMode)
+        if (publishNow)
         {
-            if (publishNow)
-            {
-                EventBroker.Publish(new SampleSelectedEvent(GetPanelId(), row.Sample));
-            }
-            else
-            {
-                _pendingTrackSample = row.Sample;
-                _trackDebouncer?.Trigger();
-            }
+            EventBroker.Publish(new SampleSelectedEvent(GetPanelId(), row.Sample));
+        }
+        else
+        {
+            _pendingTrackSample = row.Sample;
+            _trackDebouncer?.Trigger();
         }
     }
 
@@ -811,6 +859,11 @@
             {
                 EventBroker.Publish(new CloneAndSendRequestEvent(row.Sample.TopicMetadata, row.Sample.Payload));
                 return Task.CompletedTask;
+            }),
+            new("Filter Out Topic", null, () =>
+            {
+                ExcludeTopicFromFilter(row.Sample.TopicMetadata.ShortName);
+                return Task.CompletedTask;
             })
         };
 
@@ -827,6 +880,21 @@
         OpenRowContextMenu(row, args);
     }
 
+    private void ExcludeTopicFromFilter(string topicName)
+    {
+        var escaped = topicName.Replace("\\", "\\\\", StringComparison.Ordinal)
+                               .Replace("\"", "\\\"", StringComparison.Ordinal);
+        var condition = $"Sample.Topic != \"{escaped}\"";
+
+        _filterText = string.IsNullOrWhiteSpace(_filterText)
+            ? condition
+            : $"({_filterText}) AND {condition}";
+
+        ApplyFilter();
+        SavePanelState();
+        StateHasChanged();
+    }
+
     private bool IsSelected(IndexedSample row)
     {
         return row.Index == _selectedIndex;
@@ -834,7 +902,7 @@
 
     private Task PublishPendingTrackSample()
     {
-        if (_pendingTrackSample == null || !_trackMode)
+        if (_pendingTrackSample == null)
         {
             return Task.CompletedTask;
         }
@@ -981,6 +1049,16 @@
 
         _viewDirty = true;
         _ = _virtualizeRef?.RefreshDataAsync();
+
+        if (_trackMode && _selectedIndex >= 0)
+        {
+            _ = InvokeAsync(async () =>
+            {
+                await Task.Delay(50);
+                await EnsureSelectionVisibleAsync(_selectedIndex);
+            });
+        }
+
         StateHasChanged();
     }
 
@@ -1060,17 +1138,6 @@
         SavePanelState();
     }
 
-    private string GetDelayText(SampleData sample)
-    {
-        if (_delayField == null)
-        {
-            return string.Empty;
-        }
-
-        var value = _delayField.Getter(sample);
-        return FormatValue(value);
-    }
-
     private object? GetFieldValue(FieldMetadata field, SampleData sample)
     {
         var target = field.IsSynthetic ? (object)sample : sample.Payload;
@@ -1129,6 +1196,7 @@
             _totalCount = fixedSamples.Count;
             _currentCount = _viewCache.Count;
             _viewDirty = false;
+            UpdateSelectionAndTracking();
             return;
         }
 
@@ -1157,6 +1225,7 @@
             _totalCount = snapshot.Count;
             _currentCount = _viewCache.Count;
             _viewDirty = false;
+            UpdateSelectionAndTracking();
             return;
         }
 
@@ -1182,13 +1251,57 @@
         _totalCount = total;
         _currentCount = _viewCache.Count;
         _viewDirty = false;
+        UpdateSelectionAndTracking();
     }
 
     private void ApplySortToViewCache()
     {
-        if (_sortField != null)
+        if (_sortField == null) return;
+
+        // O(N) fast path: Ordinal/Timestamp data arrives in ascending order.
+        // Descending only needs a List.Reverse(); ascending needs nothing.
+        if (_sortField.StructuredName == "Ordinal" || _sortField.StructuredName == "Timestamp")
+        {
+            if (_sortDirection == SortDirection.Descending)
+                _viewCache.Reverse();
+            // else: already ascending — nothing to do
+        }
+        else
         {
             _viewCache.Sort((left, right) => CompareSamples(left, right, _sortField, _sortDirection));
+        }
+    }
+
+    /// <summary>
+    /// Updates <see cref="_selectedIndex"/> and <see cref="_selectedSample"/> after a view rebuild.
+    /// In track mode, auto-selects the latest sample and triggers a debounced detail publish.
+    /// Outside track mode, fixes index drift caused by new samples shifting existing rows.
+    /// </summary>
+    private void UpdateSelectionAndTracking()
+    {
+        if (_viewCache.Count == 0)
+        {
+            _selectedSample = null;
+            _selectedIndex = -1;
+            return;
+        }
+
+        if (_trackMode)
+        {
+            // "Latest" = highest ordinal.
+            // Ascending sort: last element; descending sort: first element.
+            var latestIndex = _sortDirection == SortDirection.Ascending ? _viewCache.Count - 1 : 0;
+            _selectedIndex = latestIndex;
+            _selectedSample = _viewCache[latestIndex];
+            _pendingTrackSample = _selectedSample;
+            _trackDebouncer?.Trigger();
+        }
+        else if (_selectedSample != null)
+        {
+            // Fix index drift: the selected sample may have shifted position after rebuildl.
+            var newIndex = _viewCache.IndexOf(_selectedSample);
+            if (newIndex >= 0)
+                _selectedIndex = newIndex;
         }
     }
 
@@ -1248,23 +1361,11 @@
                 builder.AddContent(3, GetStatusSymbol(row.Sample));
                 builder.CloseElement();
                 break;
-            case ColumnKind.Topic:
-                builder.AddContent(4, row.Sample.TopicMetadata.ShortName);
-                break;
-            case ColumnKind.Size:
-                builder.AddContent(5, row.Sample.SizeBytes);
-                break;
-            case ColumnKind.Timestamp:
-                builder.AddContent(6, row.Sample.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff"));
-                break;
-            case ColumnKind.Delay:
-                builder.AddContent(7, GetDelayText(row.Sample));
-                break;
             case ColumnKind.Field:
                 if (column.Field != null)
                 {
                     var value = GetFieldValue(column.Field, row.Sample);
-                    builder.AddContent(8, RenderValue(value));
+                    builder.AddContent(4, RenderValue(value));
                 }
                 break;
             case ColumnKind.Actions:
@@ -1374,6 +1475,11 @@
             return string.Empty;
         }
 
+        if (value is DateTime dt)
+        {
+            return dt.ToLocalTime().ToString("HH:mm:ss.fff");
+        }
+
         if (value is double number)
         {
             return number.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
@@ -1434,19 +1540,6 @@
 
         AddLayoutColumn("Ordinal", "Ordinal", ColumnKind.Ordinal, OrdinalField, "samples-panel__cell--ordinal", 0.7);
         AddLayoutColumn("Status", "Status", ColumnKind.Status, null, "samples-panel__cell--status", 0.5);
-        AddLayoutColumn("Topic", "Topic", ColumnKind.Topic, TopicField, string.Empty, 1.2);
-
-        if (_sizeField != null)
-        {
-            AddLayoutColumn(SizeFieldName, SizeFieldName, ColumnKind.Size, _sizeField, string.Empty, 0.8);
-        }
-
-        AddLayoutColumn("Timestamp", "Timestamp", ColumnKind.Timestamp, TimestampField, string.Empty, 1.0);
-
-        if (_delayField != null)
-        {
-            AddLayoutColumn(DelayFieldName, DelayFieldName, ColumnKind.Delay, _delayField, string.Empty, 0.9);
-        }
 
         foreach (var field in _selectedColumns)
         {
@@ -1695,10 +1788,6 @@
     {
         Ordinal,
         Status,
-        Topic,
-        Size,
-        Timestamp,
-        Delay,
         Field,
         Actions
     }

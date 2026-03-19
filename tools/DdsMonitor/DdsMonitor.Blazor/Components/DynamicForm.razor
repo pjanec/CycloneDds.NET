@@ -38,11 +38,26 @@ else
             var capturedField = field;
             var drawer = DrawerRegistry.GetDrawer(field.ValueType);
 
+            var currentValue = capturedField.Getter(Payload!);
+            var canBeNull = CanBeNull(capturedField.ValueType) && !capturedField.IsFixedSizeArray;
+            var isNull = canBeNull && currentValue == null;
+
             <div class="dynamic-form__row @(isNested ? "dynamic-form__row--nested" : string.Empty)">
                 <label class="dynamic-form__label" title="@capturedField.StructuredName">
                     @capturedField.DisplayName
                 </label>
-                <div class="dynamic-form__control">
+
+                @if (canBeNull)
+                {
+                    <input type="checkbox"
+                           class="dynamic-form__checkbox"
+                           title="Include this optional/nullable field"
+                           checked="@(!isNull)"
+                           @onchange="e => ToggleNull(capturedField, e.Value)"
+                           style="margin-right: 8px; flex-shrink: 0;" />
+                }
+
+                <div class="dynamic-form__control" style="@(isNull ? "opacity: 0.4; pointer-events: none;" : string.Empty)">
                     @if (drawer != null)
                     {
                         // Scalar field with a registered drawable.
@@ -427,5 +442,56 @@ else
         var parts = new string[count];
         for (int i = 0; i < count; i++) parts[i] = arr.GetValue(i)?.ToString() ?? "0";
         return string.Join(", ", parts);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Nullable & Optional fields handling
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static bool CanBeNull(Type type)
+    {
+        // Reference types (classes, arrays, strings) and Nullable<T> can be null.
+        return !type.IsValueType || Nullable.GetUnderlyingType(type) != null;
+    }
+
+    private void ToggleNull(FieldMetadata field, object? isCheckedObj)
+    {
+        if (Payload == null) return;
+
+        bool isChecked = isCheckedObj is bool b && b;
+        if (!isChecked)
+        {
+            field.Setter(Payload, null);
+
+            // Clear any active validation errors since the field is no longer being sent
+            _fieldErrors.Remove(field.StructuredName);
+        }
+        else
+        {
+            // Initialize with a safe default value when the user checks the box
+            var targetType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+            object? defaultValue = null;
+
+            if (targetType == typeof(string))
+            {
+                defaultValue = string.Empty;
+            }
+            else if (targetType.IsArray)
+            {
+                defaultValue = Array.CreateInstance(targetType.GetElementType()!, 0);
+            }
+            else
+            {
+                try
+                {
+                    defaultValue = Activator.CreateInstance(targetType);
+                }
+                catch { } // Fallback to null if no parameterless constructor exists
+            }
+
+            field.Setter(Payload, defaultValue);
+        }
+
+        StateHasChanged();
     }
 }

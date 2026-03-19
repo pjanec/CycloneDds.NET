@@ -222,7 +222,9 @@
 
     private void ApplyField(FilterConditionNode condition, FieldMetadata field)
     {
-        condition.FieldPath = $"Payload.{field.StructuredName}";
+        condition.FieldPath = field.IsWrapperField
+            ? $"Sample.{field.StructuredName}"
+            : $"Payload.{field.StructuredName}";
         condition.ValueTypeName = field.ValueType.AssemblyQualifiedName;
 
         if (field.ValueType == typeof(bool))
@@ -246,12 +248,20 @@
             return null;
         }
 
-        if (!condition.FieldPath.StartsWith("Payload.", StringComparison.Ordinal))
+        string path;
+        if (condition.FieldPath.StartsWith("Sample.", StringComparison.Ordinal))
+        {
+            path = condition.FieldPath.Substring("Sample.".Length);
+        }
+        else if (condition.FieldPath.StartsWith("Payload.", StringComparison.Ordinal))
+        {
+            path = condition.FieldPath.Substring("Payload.".Length);
+        }
+        else
         {
             return null;
         }
 
-        var path = condition.FieldPath.Substring("Payload.".Length);
         return _topicMetadata.AllFields.FirstOrDefault(field =>
             string.Equals(field.StructuredName, path, StringComparison.Ordinal));
     }

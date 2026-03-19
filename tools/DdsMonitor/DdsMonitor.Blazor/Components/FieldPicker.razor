@@ -18,7 +18,7 @@
                 var isActive = i == _highlightIndex;
                 <li class="field-picker__row @(isActive ? "is-active" : string.Empty)"
                     @onclick="() => SelectField(field)">
-                    <span class="field-picker__name">@field.DisplayName</span>
+                    <span class="field-picker__name">@GetPrefixedName(field)</span>
                     <span class="field-picker__type">@field.ValueType.Name</span>
                 </li>
             }
@@ -55,7 +55,7 @@
     {
         if (SelectedField != null && !string.Equals(_lastSelectedKey, SelectedField.StructuredName, StringComparison.Ordinal))
         {
-            _query = SelectedField.StructuredName;
+            _query = GetPrefixedName(SelectedField);
             _lastSelectedKey = SelectedField.StructuredName;
         }
 
@@ -151,7 +151,7 @@
     private async Task SelectField(FieldMetadata field)
     {
         _lastSelectedKey = field.StructuredName;
-        _query = field.StructuredName;
+        _query = GetPrefixedName(field);
         await OnFieldSelected.InvokeAsync(field);
     }
 
@@ -160,4 +160,7 @@
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
     }
+
+    private static string GetPrefixedName(FieldMetadata field)
+        => field.IsWrapperField ? $"Sample.{field.StructuredName}" : $"Payload.{field.StructuredName}";
 }

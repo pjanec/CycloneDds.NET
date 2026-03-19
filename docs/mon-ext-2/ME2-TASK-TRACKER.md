@@ -41,9 +41,9 @@
 
 **Goal:** Expose non-payload metadata fields (Topic, InstanceState) to the filter and column picker; add quick-filter context menu; decouple hardcoded columns.
 
-- [ ] **ME2-T08** Expose Non-Payload Fields to Filter and Column Picker → [details](./ME2-TASK-DETAILS.md#me2-t08--expose-non-payload-fields-to-filter-and-column-picker)
-- [ ] **ME2-T09** "Filter Out Topic" Context Menu → [details](./ME2-TASK-DETAILS.md#me2-t09--filter-out-topic-context-menu)
-- [ ] **ME2-T10** Decouple Hardcoded Columns — Make Metadata Fields Selectable → [details](./ME2-TASK-DETAILS.md#me2-t10--decouple-hardcoded-columns--make-metadata-fields-selectable)
+- [x] **ME2-T08** Expose Non-Payload Fields to Filter and Column Picker → [details](./ME2-TASK-DETAILS.md#me2-t08--expose-non-payload-fields-to-filter-and-column-picker)
+- [x] **ME2-T09** "Filter Out Topic" Context Menu → [details](./ME2-TASK-DETAILS.md#me2-t09--filter-out-topic-context-menu)
+- [x] **ME2-T10** Decouple Hardcoded Columns — Make Metadata Fields Selectable → [details](./ME2-TASK-DETAILS.md#me2-t10--decouple-hardcoded-columns--make-metadata-fields-selectable)
 
 ---
 
@@ -51,7 +51,7 @@
 
 **Goal:** Make sort work in all-topics mode (superset of T03); implement performant autoscroll track mode.
 
-- [ ] **ME2-T11** Sort Fix + Autoscroll Track Mode → [details](./ME2-TASK-DETAILS.md#me2-t11--sort-fix--autoscroll-track-mode)
+- [x] **ME2-T11** Sort Fix + Autoscroll Track Mode → [details](./ME2-TASK-DETAILS.md#me2-t11--sort-fix--autoscroll-track-mode)
 
 > Note: ME2-T11 is a superset of ME2-T03. Implementing T11 replaces the need for T03. Mark T03 done when T11 is done.
 
@@ -81,6 +81,18 @@
 
 **Goal:** Allow sending literal null strings or excluding optional values completely.
 
-- [ ] **ME2-T15** Nullable/Optional Field Support in Send Sample Panel → (added by Dev Lead, see BATCH-02)
+- [x] **ME2-T15** Nullable/Optional Field Support in Send Sample Panel → (added by Dev Lead, see BATCH-02)
+
+---
+
+## Phase 9 — Replay Stability, Null Serialization, and UX Adjustments
+
+**Goal:** Resolve BATCH-02 UI UX requests, fix dynamic null-string payloads, ensure deterministic Replay cache behavior, correct negative Time Delays.
+
+- [ ] **ME2-T20** (Tech Debt) `ApplySortToViewCache` determinism hazard for Replay Mode.
+- [ ] **ME2-T16** Fix dynamic string serialization so `null` remains `null`.
+- [ ] **ME2-T17** Samples panel filter edit box `[x]` clear button.
+- [ ] **ME2-T18** Samples panel column config persistence with `Topic` & `Timestamp` defaults alongside easy reset capabilities.
+- [ ] **ME2-T19** Delay column timing arithmetic correction to avoid negative metrics.
 
 ---

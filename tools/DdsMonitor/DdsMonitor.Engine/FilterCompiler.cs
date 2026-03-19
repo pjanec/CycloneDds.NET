@@ -14,7 +14,7 @@ namespace DdsMonitor.Engine;
 public sealed class FilterCompiler : IFilterCompiler
 {
     private static readonly Regex PayloadFieldRegex = new(
-        "\\bPayload\\.([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
+        "\\b(?:Payload|Sample)\\.([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
         RegexOptions.Compiled);
 
     /// <summary>

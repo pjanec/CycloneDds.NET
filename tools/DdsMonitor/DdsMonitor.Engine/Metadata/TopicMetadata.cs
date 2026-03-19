@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CycloneDDS.Runtime;
 using CycloneDDS.Schema;
 
 namespace DdsMonitor.Engine;
@@ -719,9 +720,14 @@ public sealed class TopicMetadata
         var timestampGetter = new Func<object, object?>(input => ((SampleData)input).Timestamp);
         var ordinalGetter = new Func<object, object?>(input => ((SampleData)input).Ordinal);
 
+        var topicGetter = new Func<object, object?>(input => ((SampleData)input).TopicMetadata.ShortName);
+        var instanceStateGetter = new Func<object, object?>(input => (object)((SampleData)input).SampleInfo.InstanceState);
+
         // Wrapper fields: top-level SampleData properties exposed as filterable fields.
         allFields.Add(new FieldMetadata("Timestamp", "Timestamp", typeof(DateTime), timestampGetter, SyntheticSetter, isSynthetic: true, isWrapperField: true));
         allFields.Add(new FieldMetadata("Ordinal", "Ordinal", typeof(long), ordinalGetter, SyntheticSetter, isSynthetic: true, isWrapperField: true));
+        allFields.Add(new FieldMetadata("Topic", "Topic", typeof(string), topicGetter, SyntheticSetter, isSynthetic: true, isWrapperField: true));
+        allFields.Add(new FieldMetadata("InstanceState", "InstanceState", typeof(DdsInstanceState), instanceStateGetter, SyntheticSetter, isSynthetic: true, isWrapperField: true));
 
         // Display-only synthetic fields (not filterable via the standard field picker).
         allFields.Add(new FieldMetadata(DelayFieldName, DelayFieldName, typeof(double), delayGetter, SyntheticSetter, isSynthetic: true));
