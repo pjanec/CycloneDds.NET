@@ -1686,6 +1686,18 @@ body {
   color: #f28ba8;
 }
 
+.detail-tree__value.is-keyword {
+  color: #c792ea;
+}
+
+.detail-tree__value.is-punctuation {
+  color: var(--panel-muted);
+}
+
+.detail-tree__value--formatted {
+  display: inline;
+}
+
 .detail-table {
   width: 100%;
   border-collapse: collapse;

@@ -26,6 +26,12 @@ namespace CycloneDDS.CodeGen
         /// <summary>Resolved DDS topic name. Populated by SchemaDiscovery when IsTopic is true.</summary>
         public string? TopicName { get; set; }
 
+        /// <summary>
+        /// Optional format template from <c>[DdsTypeFormat("…")]</c>.
+        /// When non-null, SerializerEmitter generates ToString() and GetFormatTokens() overrides.
+        /// </summary>
+        public string? FormatTemplate { get; set; }
+
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
         public AttributeInfo? GetAttribute(string name) => Attributes.FirstOrDefault(a => a.Name == name || a.Name == name + "Attribute");
 

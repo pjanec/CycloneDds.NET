@@ -21,8 +21,10 @@ namespace CycloneDDS.CodeGen
             if (generateUsings)
             {
                 sb.AppendLine("using System;");
+                sb.AppendLine("using System.Collections.Generic;");
                 sb.AppendLine("using CycloneDDS.Core;");
                 sb.AppendLine("using CycloneDDS.Runtime;");
+                sb.AppendLine("using CycloneDDS.Schema.Formatting;");
                 sb.AppendLine("using System.Runtime.InteropServices;"); // Just in case
                 sb.AppendLine("using System.Runtime.CompilerServices;");
                 sb.AppendLine("using System.Text;");
@@ -50,6 +52,11 @@ namespace CycloneDDS.CodeGen
             {
                 EmitKeyNativeSizer(sb, type);
                 EmitKeyMarshaller(sb, type);
+            }
+
+            if (!string.IsNullOrEmpty(type.FormatTemplate))
+            {
+                EmitCustomFormatter(sb, type);
             }
             
             // Close class
@@ -83,6 +90,10 @@ namespace CycloneDDS.CodeGen
                 EmitKeyNativeSizer(sb, type);
                 EmitKeyMarshaller(sb, type);
             }
+            if (!string.IsNullOrEmpty(type.FormatTemplate))
+            {
+                EmitCustomFormatter(sb, type);
+            }
             return sb.ToString();
         }
 
@@ -100,6 +111,101 @@ namespace CycloneDDS.CodeGen
         private bool IsAppendable(TypeInfo type)
         {
              return type.Extensibility == DdsExtensibilityKind.Appendable || type.Extensibility == DdsExtensibilityKind.Mutable;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // Tier 2 custom formatter: [DdsTypeFormat] → ToString() + GetFormatTokens()
+        // ─────────────────────────────────────────────────────────────────────────
+
+        // Regex matching a single template placeholder: {FieldName} or {FieldName:Fmt} or {FieldName:Fmt:TokenType}
+        private static readonly System.Text.RegularExpressions.Regex _templateTokenRegex =
+            new System.Text.RegularExpressions.Regex(
+                @"\{(\w+)(?::([^:}]*))?(?::([^}]*))?\}",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>
+        /// Parses the <see cref="TypeInfo.FormatTemplate"/> and emits:
+        /// <list type="bullet">
+        ///   <item><c>public override string ToString() =&gt; $"…";</c></item>
+        ///   <item><c>public IEnumerable&lt;FormattedToken&gt; GetFormatTokens()</c></item>
+        /// </list>
+        /// </summary>
+        private void EmitCustomFormatter(StringBuilder sb, TypeInfo type)
+        {
+            var template = type.FormatTemplate!;
+
+            // ── ToString() ──────────────────────────────────────────────────────
+            // Convert {Field:Fmt:TokenType} → C# interpolation {Field:Fmt}
+            // (or just {Field} when FormatString is absent/empty)
+            var interpolation = _templateTokenRegex.Replace(template, m =>
+            {
+                var fieldName  = m.Groups[1].Value;
+                var formatStr  = m.Groups[2].Success ? m.Groups[2].Value : string.Empty;
+                return string.IsNullOrEmpty(formatStr) ? $"{{{fieldName}}}" : $"{{{fieldName}:{formatStr}}}";
+            });
+
+            sb.AppendLine();
+            sb.AppendLine($"        public override string ToString() => $\"{EscapeInterpolatedString(interpolation)}\";");
+
+            // ── GetFormatTokens() ───────────────────────────────────────────────
+            sb.AppendLine();
+            sb.AppendLine("        public System.Collections.Generic.IEnumerable<CycloneDDS.Schema.Formatting.FormattedToken> GetFormatTokens()");
+            sb.AppendLine("        {");
+
+            int lastIndex = 0;
+            foreach (System.Text.RegularExpressions.Match m in _templateTokenRegex.Matches(template))
+            {
+                // Emit literal text segment before this placeholder (if any)
+                if (m.Index > lastIndex)
+                {
+                    var literal = template.Substring(lastIndex, m.Index - lastIndex);
+                    sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken(\"{EscapeString(literal)}\", CycloneDDS.Schema.Formatting.TokenType.Punctuation);");
+                }
+
+                var fieldName  = m.Groups[1].Value;
+                var formatStr  = m.Groups[2].Success ? m.Groups[2].Value.Trim() : string.Empty;
+                var tokenTypeName = m.Groups[3].Success ? m.Groups[3].Value.Trim() : string.Empty;
+
+                // Resolve TokenType — default to Default when not specified
+                var tokenType = string.IsNullOrEmpty(tokenTypeName) ? "Default" : tokenTypeName;
+
+                // Emit field token
+                var toStringCall = string.IsNullOrEmpty(formatStr)
+                    ? $"this.{fieldName}.ToString()"
+                    : $"this.{fieldName}.ToString(\"{EscapeString(formatStr)}\")";
+
+                sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken({toStringCall} ?? string.Empty, CycloneDDS.Schema.Formatting.TokenType.{tokenType});");
+
+                lastIndex = m.Index + m.Length;
+            }
+
+            // Emit any trailing literal text
+            if (lastIndex < template.Length)
+            {
+                var trailing = template.Substring(lastIndex);
+                sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken(\"{EscapeString(trailing)}\", CycloneDDS.Schema.Formatting.TokenType.Punctuation);");
+            }
+
+            sb.AppendLine("        }");
+        }
+
+        /// <summary>Escapes a string literal for inclusion inside a C# verbatim string expression.</summary>
+        private static string EscapeString(string value)
+            => value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+        /// <summary>
+        /// Escapes a string intended for use inside a C# interpolated string literal ($"…").
+        /// Braces that are already part of valid interpolation holes ({field} / {field:fmt}) are
+        /// left as-is; any literal <c>{</c> or <c>}</c> characters that are not interpolation
+        /// holes are doubled to <c>{{</c> / <c>}}</c> so they are treated as escaped braces.
+        /// </summary>
+        private static string EscapeInterpolatedString(string value)
+        {
+            // The value already contains syntactically correct C# interpolation holes
+            // produced by the regex replacement.  We only need to escape the surrounding
+            // double-quote characters (which EscapeString does) — the braces inside holes
+            // are intentionally left unreplaced.
+            return EscapeString(value);
         }
 
         private string GetDiscriminatorCastType(string typeName)

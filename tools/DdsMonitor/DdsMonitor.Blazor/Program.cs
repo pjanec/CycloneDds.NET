@@ -27,6 +27,7 @@ if (!isHeadless)
         .AddInteractiveServerComponents();
 
     builder.Services.AddSingleton<ITypeDrawerRegistry, TypeDrawerRegistry>();
+    builder.Services.AddSingleton<IValueFormatterRegistry, ValueFormatterRegistry>();
     builder.Services.AddSingleton<TooltipService>();
     builder.Services.AddSingleton<ContextMenuService>();
     builder.Services.AddScoped<DdsMonitor.Engine.TopicColorService>();

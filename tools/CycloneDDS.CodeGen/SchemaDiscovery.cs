@@ -117,6 +117,7 @@ namespace CycloneDDS.CodeGen
                         SetExtensibility(typeSymbol, typeInfo);
                         PopulateEnumOrFields(typeSymbol, typeInfo, isEnum);
                         if (isTopic) ResolveTopicName(typeSymbol, typeInfo);
+                        ExtractFormatTemplate(typeSymbol, typeInfo);
 
                         topics.Add(typeInfo);
                     }
@@ -247,6 +248,22 @@ namespace CycloneDDS.CodeGen
             else
             {
                 typeInfo.Extensibility = DdsExtensibilityKind.Appendable;
+            }
+        }
+
+        /// <summary>
+        /// Reads the <c>[DdsTypeFormat("template")]</c> attribute from the type symbol and
+        /// stores the template string on <see cref="TypeInfo.FormatTemplate"/>.
+        /// </summary>
+        private static void ExtractFormatTemplate(INamedTypeSymbol typeSymbol, TypeInfo typeInfo)
+        {
+            var fmtAttr = typeSymbol.GetAttributes().FirstOrDefault(
+                a => a.AttributeClass?.Name == "DdsTypeFormatAttribute" ||
+                     a.AttributeClass?.Name == "DdsTypeFormat");
+
+            if (fmtAttr != null && fmtAttr.ConstructorArguments.Length > 0)
+            {
+                typeInfo.FormatTemplate = fmtAttr.ConstructorArguments[0].Value as string;
             }
         }
 

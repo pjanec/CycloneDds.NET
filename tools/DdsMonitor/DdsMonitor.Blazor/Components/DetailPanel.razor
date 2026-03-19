@@ -7,6 +7,7 @@
 @using CycloneDDS.Runtime
 @using CycloneDDS.Runtime.Interop
 @using CycloneDDS.Schema
+@using CycloneDDS.Schema.Formatting
 @using Microsoft.AspNetCore.Components.Rendering
 @using Microsoft.JSInterop
 @implements IDisposable
@@ -17,6 +18,7 @@
 @inject ContextMenuService ContextMenuService
 @inject IJSRuntime JSRuntime
 @inject WorkspacePersistenceService WorkspacePersistence
+@inject IValueFormatterRegistry ValueFormatterRegistry
 
 @if (_currentSample == null)
 {
@@ -96,6 +98,9 @@ else
     // Expand/collapse state – keyed by node path; persists across sample switches.
     private readonly Dictionary<string, bool> _treeExpanded = new();
     private readonly HashSet<string> _tableExpandedFields = new();
+
+    // Active Tier 1 formatter per tree-node path (null = use Tier 2 / default rendering).
+    private readonly Dictionary<string, IValueFormatter?> _selectedFormatters = new();
 
     [CascadingParameter]
     public PanelState? PanelState { get; set; }
@@ -490,10 +495,22 @@ else
         builder.AddContent(sequence++, label);
         builder.CloseElement();
 
-        builder.OpenElement(sequence++, "span");
-        builder.AddAttribute(sequence++, "class", GetValueClass(displayType));
-        builder.AddContent(sequence++, RenderValue(displayValue));
-        builder.CloseElement();
+        // Render the value span — use formatted token rendering for types with GetFormatTokens().
+        var fmtMethodForNode = !isCycle && !isMaxDepth && displayType != null
+            ? GetFormatTokensMethod(displayType)
+            : null;
+
+        if (fmtMethodForNode != null && displayValue != null)
+        {
+            builder.AddContent(sequence++, RenderFormattedTokenValue(displayValue, fmtMethodForNode, nextPath));
+        }
+        else
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", GetValueClass(displayType));
+            builder.AddContent(sequence++, RenderValue(displayValue));
+            builder.CloseElement();
+        }
 
         if (isLeaf)
         {
@@ -754,6 +771,29 @@ else
             builder.AddContent(8, $"[{byteSize / elemSize}]");
             builder.CloseElement();
         }
+        else if (value != null && GetFormatTokensMethod(value.GetType()) != null)
+        {
+            // Tier 2 duck-typed GetFormatTokens(): render inline token sequence (table view, no path context).
+            var fmtMethod = GetFormatTokensMethod(value.GetType())!;
+            var fmtTokens = ((IEnumerable<FormattedToken>)(fmtMethod.Invoke(value, null)
+                ?? Array.Empty<FormattedToken>())).ToList();
+            var plainText = string.Concat(fmtTokens.Select(t => t.Text));
+            var capturedText = plainText;
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "detail-tree__value detail-tree__value--formatted");
+            builder.AddAttribute(2, "onmousedown",
+                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(capturedText, false, args)));
+            builder.AddAttribute(3, "oncontextmenu:preventDefault", true);
+            var fmtSeq = 4;
+            foreach (var token in fmtTokens)
+            {
+                builder.OpenElement(fmtSeq++, "span");
+                builder.AddAttribute(fmtSeq++, "class", GetTokenClass(token.Type));
+                builder.AddContent(fmtSeq++, token.Text);
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+        }
         else
         {
             var content = value is bool boolVal
@@ -768,6 +808,96 @@ else
             builder.CloseElement();
         }
     };
+
+    /// <summary>
+    /// Renders a value with full Tier 2 (GetFormatTokens) token highlighting AND Tier 1 formatter
+    /// selection support.  Called from <see cref="RenderNode"/> when a path is available.
+    /// </summary>
+    private RenderFragment RenderFormattedTokenValue(object value, MethodInfo fmtMethod, string path) => builder =>
+    {
+        var sequence = 0;
+
+        // Determine which tokens to render: Tier 1 selected formatter wins over Tier 2 default.
+        IEnumerable<FormattedToken> tokens;
+        if (_selectedFormatters.TryGetValue(path, out var activeFmt) && activeFmt != null)
+        {
+            tokens = activeFmt.FormatTokens(value);
+        }
+        else
+        {
+            tokens = (IEnumerable<FormattedToken>)(fmtMethod.Invoke(value, null)
+                ?? Array.Empty<FormattedToken>());
+        }
+
+        var tokenList = tokens.ToList();
+        var plainText = string.Concat(tokenList.Select(t => t.Text));
+        var capturedPath = path;
+        var capturedValue = value;
+        var capturedText = plainText;
+
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "detail-tree__value detail-tree__value--formatted");
+        builder.AddAttribute(sequence++, "onmousedown",
+            EventCallback.Factory.Create<MouseEventArgs>(this,
+                args => HandleFormattedValueMouseDown(capturedValue, capturedPath, capturedText, args)));
+        builder.AddAttribute(sequence++, "oncontextmenu:preventDefault", true);
+
+        foreach (var token in tokenList)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", GetTokenClass(token.Type));
+            builder.AddContent(sequence++, token.Text);
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private void HandleFormattedValueMouseDown(object value, string path, string plainText, MouseEventArgs args)
+    {
+        if (args.Button != RightMouseButton)
+        {
+            return;
+        }
+
+        OpenFormatterContextMenu(value, path, plainText, args);
+    }
+
+    private void OpenFormatterContextMenu(object value, string path, string plainText, MouseEventArgs args)
+    {
+        var items = new List<ContextMenuItem>
+        {
+            new("Copy to Clipboard", null, () => CopyToClipboardAsync(plainText))
+        };
+
+        var formatters = ValueFormatterRegistry.GetFormatters(value.GetType(), value);
+        if (formatters.Count > 0)
+        {
+            items.Add(new("── View As ──", null, null));
+
+            var capturedPath0 = path;
+            items.Add(new("Default", null, () =>
+            {
+                _selectedFormatters.Remove(capturedPath0);
+                _ = InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            }));
+
+            foreach (var fmt in formatters)
+            {
+                var capturedFmt = fmt;
+                var capturedPath1 = path;
+                items.Add(new(capturedFmt.DisplayName, null, () =>
+                {
+                    _selectedFormatters[capturedPath1] = capturedFmt;
+                    _ = InvokeAsync(StateHasChanged);
+                    return Task.CompletedTask;
+                }));
+            }
+        }
+
+        ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+    }
 
     private void ShowJsonTooltip(string text, MouseEventArgs args)
     {
@@ -908,6 +1038,12 @@ else
             return true;
         }
 
+        // Types with a duck-typed GetFormatTokens() method render inline as token sequences.
+        if (GetFormatTokensMethod(type) != null)
+        {
+            return true;
+        }
+
         // FixedStringN types are string-like scalars – render their text, not their struct internals.
         return IsFixedStringType(type);
     }
@@ -949,6 +1085,28 @@ else
 
         return "detail-tree__value";
     }
+
+    /// <summary>Maps a <see cref="TokenType"/> to the appropriate CSS class for syntax highlighting.</summary>
+    private static string GetTokenClass(TokenType tokenType) => tokenType switch
+    {
+        TokenType.Number      => "detail-tree__value is-number",
+        TokenType.String      => "detail-tree__value is-string",
+        TokenType.Boolean     => "detail-tree__value is-bool",
+        TokenType.Enum        => "detail-tree__value is-enum",
+        TokenType.Keyword     => "detail-tree__value is-keyword",
+        TokenType.Punctuation => "detail-tree__value is-punctuation",
+        TokenType.Null        => "detail-tree__value is-null",
+        _                     => "detail-tree__value",
+    };
+
+    /// <summary>
+    /// Per-type reflection cache for the duck-typed <c>GetFormatTokens()</c> method.
+    /// Returns <c>null</c> when the type does not implement the method.
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, MethodInfo?> _fmtTokensMethodCache = new();
+
+    private static MethodInfo? GetFormatTokensMethod(Type type)
+        => _fmtTokensMethodCache.GetOrAdd(type, t => t.GetMethod("GetFormatTokens"));
 
     // ─────────────────────────────────────────────────────────────────────
     // Union rendering helpers (ME2-T06 + ME2-T22-B: cached reflection)
