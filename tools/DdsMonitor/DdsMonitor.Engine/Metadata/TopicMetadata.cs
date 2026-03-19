@@ -712,7 +712,12 @@ public sealed class TopicMetadata
         var delayGetter = new Func<object, object?>(input =>
         {
             var sample = (SampleData)input;
-            var sourceTimestamp = new DateTime(sample.SampleInfo.SourceTimestamp, DateTimeKind.Utc);
+            // SampleInfo.SourceTimestamp is nanoseconds since Unix epoch (1970-01-01 UTC).
+            // Convert to a DateTime using the same approach as FormatSourceTimestamp in DetailPanel.
+            var sourceTimestampNs = sample.SampleInfo.SourceTimestamp;
+            if (sourceTimestampNs <= 0 || sourceTimestampNs == long.MaxValue)
+                return 0.0;
+            var sourceTimestamp = DateTime.UnixEpoch.AddTicks(sourceTimestampNs / 100);
             return (sample.Timestamp - sourceTimestamp).TotalMilliseconds;
         });
 

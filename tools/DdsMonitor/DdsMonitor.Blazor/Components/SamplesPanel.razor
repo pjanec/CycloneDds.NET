@@ -58,6 +58,15 @@
                    value="@_filterText"
                    placeholder="Filter: Payload.Field == 42"
                    @oninput="OnFilterInput" />
+            @if (!string.IsNullOrEmpty(_filterText))
+            {
+                <button type="button"
+                        class="samples-panel__filter-clear"
+                        title="Clear filter"
+                        @onclick="ClearFilter">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            }
         </div>
     </div>
 
@@ -140,6 +149,7 @@
                                 AvailableFields="@_availableColumns"
                                 SelectedFields="@_selectedColumns"
                                 OnApply="ApplyColumns"
+                                OnReset="ResetColumns"
                                 OnCancel="CloseColumnPicker" />
         </div>
     }
@@ -360,7 +370,8 @@
 
     private void AddDefaultSelectedColumns()
     {
-        var defaultKeys = new[] { "Topic", "Timestamp", SizeFieldName, DelayFieldName };
+        // Default columns: Topic (ShortName) and Timestamp (reception time) only.
+        var defaultKeys = new[] { "Topic", "Timestamp" };
         foreach (var key in defaultKeys)
         {
             var match = _availableColumns.FirstOrDefault(f =>
@@ -631,6 +642,16 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task ResetColumns()
+    {
+        _selectedColumns.Clear();
+        AddDefaultSelectedColumns();
+        _showColumnPicker = false;
+        RebuildLayoutColumns();
+        SavePanelState();
+        await InvokeAsync(StateHasChanged);
+    }
+
     private Task CloseColumnPicker()
     {
         _showColumnPicker = false;
@@ -642,6 +663,15 @@
         _filterText = args.Value?.ToString() ?? string.Empty;
         ApplyFilter();
         SavePanelState();
+    }
+
+    private void ClearFilter()
+    {
+        _filterText = string.Empty;
+        _filterError = null;
+        ApplyFilter();
+        SavePanelState();
+        StateHasChanged();
     }
 
     private void ApplyFilter()
@@ -1258,18 +1288,38 @@
     {
         if (_sortField == null) return;
 
-        // O(N) fast path: Ordinal/Timestamp data arrives in ascending order.
-        // Descending only needs a List.Reverse(); ascending needs nothing.
+        // O(N) fast path for Ordinal/Timestamp: live data arrives in strictly ascending
+        // ordinal order so a Reverse() is sufficient for descending, and no-op for ascending.
+        // Replay mode (FixedSamples != null) may supply out-of-order samples, so we first
+        // validate that the current cache is already monotonically ascending before trusting
+        // the fast path. If not, fall through to the general O(N log N) sort.
         if (_sortField.StructuredName == "Ordinal" || _sortField.StructuredName == "Timestamp")
         {
-            if (_sortDirection == SortDirection.Descending)
-                _viewCache.Reverse();
-            // else: already ascending — nothing to do
+            if (FixedSamples == null || IsCacheAscending(_sortField))
+            {
+                if (_sortDirection == SortDirection.Descending)
+                    _viewCache.Reverse();
+                // else: already ascending — nothing to do
+                return;
+            }
         }
-        else
+
+        _viewCache.Sort((left, right) => CompareSamples(left, right, _sortField, _sortDirection));
+    }
+
+    /// <summary>
+    /// Returns true when <see cref="_viewCache"/> is already sorted in ascending order by
+    /// <paramref name="field"/> (i.e. each element compares ≤ the next).
+    /// Used to validate the O(N) fast-path assumption before applying <see cref="List{T}.Reverse"/>.
+    /// </summary>
+    private bool IsCacheAscending(FieldMetadata field)
+    {
+        for (var i = 1; i < _viewCache.Count; i++)
         {
-            _viewCache.Sort((left, right) => CompareSamples(left, right, _sortField, _sortDirection));
+            if (CompareSamples(_viewCache[i - 1], _viewCache[i], field, SortDirection.Ascending) > 0)
+                return false;
         }
+        return true;
     }
 
     /// <summary>
@@ -1389,7 +1439,14 @@
 
     private RenderFragment RenderValue(object? value) => builder =>
     {
-        if (value is string text)
+        if (value == null)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "samples-panel__value is-null");
+            builder.AddContent(2, "null");
+            builder.CloseElement();
+        }
+        else if (value is string text)
         {
             builder.OpenElement(0, "span");
             builder.AddAttribute(1, "class", "samples-panel__value is-string");

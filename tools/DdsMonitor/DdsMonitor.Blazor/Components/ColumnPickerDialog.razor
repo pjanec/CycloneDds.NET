@@ -51,6 +51,7 @@
     </div>
 
     <div class="column-picker__footer">
+        <button type="button" class="column-picker__footer-btn" @onclick="OnResetClicked">Reset</button>
         <button type="button" class="column-picker__footer-btn" @onclick="OnCancelClicked">Cancel</button>
         <button type="button" class="column-picker__footer-btn primary" @onclick="OnApplyClicked">Apply</button>
     </div>
@@ -78,6 +79,13 @@
 
     [Parameter]
     public EventCallback OnCancel { get; set; }
+
+    /// <summary>
+    /// Invoked when the user clicks Reset to restore default column selection.
+    /// The callback receives the resulting default list for immediate application.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnReset { get; set; }
 
     protected override void OnParametersSet()
     {
@@ -185,6 +193,11 @@
     private async Task OnCancelClicked()
     {
         await OnCancel.InvokeAsync();
+    }
+
+    private async Task OnResetClicked()
+    {
+        await OnReset.InvokeAsync();
     }
 
     private void OnAvailableSearch(ChangeEventArgs args)

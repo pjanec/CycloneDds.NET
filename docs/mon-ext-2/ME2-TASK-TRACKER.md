@@ -2,7 +2,7 @@
 
 **Project:** DDS Monitor Feature Extensions (Monitoring Extensions 2)  
 **Status:** In Progress  
-**Last Updated:** 2026-03-18
+**Last Updated:** 2026-03-19
 
 **Reference:** See [ME2-TASK-DETAILS.md](./ME2-TASK-DETAILS.md) for detailed task descriptions.  
 **Design:** See [ME2-DESIGN.md](./ME2-DESIGN.md) for architecture and rationale.
@@ -89,10 +89,20 @@
 
 **Goal:** Resolve BATCH-02 UI UX requests, fix dynamic null-string payloads, ensure deterministic Replay cache behavior, correct negative Time Delays.
 
-- [ ] **ME2-T20** (Tech Debt) `ApplySortToViewCache` determinism hazard for Replay Mode.
-- [ ] **ME2-T16** Fix dynamic string serialization so `null` remains `null`.
-- [ ] **ME2-T17** Samples panel filter edit box `[x]` clear button.
-- [ ] **ME2-T18** Samples panel column config persistence with `Topic` & `Timestamp` defaults alongside easy reset capabilities.
-- [ ] **ME2-T19** Delay column timing arithmetic correction to avoid negative metrics.
+- [x] **ME2-T20** (Tech Debt) `ApplySortToViewCache` determinism hazard for Replay Mode.
+- [x] **ME2-T16** Fix dynamic string serialization so `null` remains `null`.
+- [x] **ME2-T17** Samples panel filter edit box `[x]` clear button.
+- [x] **ME2-T18** Samples panel column config persistence with `Topic` & `Timestamp` defaults alongside easy reset capabilities.
+- [x] **ME2-T19** Delay column timing arithmetic correction to avoid negative metrics.
+
+---
+
+## Phase 10 — Send Sample Optional/Nullable Schema Metadata
+
+**Goal:** Accurately reflect IDL `@optional` tags inside the Monitor to correctly enforce nullable strings against mandatory constraints, and resolve deep reflective panel performance traps.
+
+- [ ] **ME2-T22-A** (Tech Debt) `IsUnionArmVisible` traverses fields using O(N^2) LINQ every render-run; extract to a dictionary cache keyed by Discriminator.
+- [ ] **ME2-T22-B** (Tech Debt) `GetUnionInfo` triggers expensive MemberInfo reflection continuously on union rows; needs ConcurrentDictionary caching.
+- [ ] **ME2-T21** Restrict sending empty strings/null checkboxes purely to `[DdsOptional]` or `IsValueType == false` parameters using explicit field metadata binding. 
 
 ---

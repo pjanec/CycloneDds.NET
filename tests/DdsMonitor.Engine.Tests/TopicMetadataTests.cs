@@ -49,12 +49,15 @@ public class TopicMetadataTests
         var sourceTime = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var receiveTime = sourceTime.AddMilliseconds(123.4);
 
+        // SampleInfo.SourceTimestamp is nanoseconds since Unix epoch (1970-01-01 UTC).
+        var sourceTimestampNs = (sourceTime.Ticks - DateTime.UnixEpoch.Ticks) * 100L;
+
         var sample = new SampleData
         {
             Ordinal = 1,
             Payload = new OuterType(),
             TopicMetadata = metadata,
-            SampleInfo = new DdsApi.DdsSampleInfo { SourceTimestamp = sourceTime.Ticks },
+            SampleInfo = new DdsApi.DdsSampleInfo { SourceTimestamp = sourceTimestampNs },
             Timestamp = receiveTime,
             SizeBytes = 10
         };

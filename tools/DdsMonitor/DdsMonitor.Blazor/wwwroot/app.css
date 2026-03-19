@@ -1244,6 +1244,7 @@ body {
   align-items: center;
   gap: 6px;
   margin-left: auto;
+  position: relative;
 }
 
 .samples-panel__filter input {
@@ -1252,6 +1253,25 @@ body {
   border: 1px solid var(--panel-border);
   background: var(--input-bg);
   color: var(--panel-text);
+}
+
+.samples-panel__filter-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #f28ba8;
+  flex-shrink: 0;
+}
+
+.samples-panel__filter-clear:hover {
+  background: rgba(242, 139, 168, 0.15);
 }
 
 .samples-panel__error {
@@ -1359,6 +1379,11 @@ body {
 
 .samples-panel__value.is-string {
   color: #ffd089;
+}
+
+.samples-panel__value.is-null {
+  color: #f28ba8;
+  font-style: italic;
 }
 
 .samples-panel__status {
