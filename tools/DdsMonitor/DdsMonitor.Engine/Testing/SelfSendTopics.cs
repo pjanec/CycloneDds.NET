@@ -55,6 +55,10 @@ public partial class SelfTestPose
     public StatusLevel Level;
 
     public TestingUnion UnionValue;
+
+
+    public Enum16 enum16;
+
 }
 
 [DdsStruct]
@@ -90,7 +94,6 @@ public partial struct TestingUnion
     [DdsDefaultCase]
 	[DdsManaged]
 	public string DefaultMessage;
-
 }
 
 public enum StatusLevel : byte
@@ -98,6 +101,13 @@ public enum StatusLevel : byte
     Ok,
     Warning,
     Error
+}
+
+public enum Enum16 : ushort
+{
+    Enum16_A,
+    Enum16_B,
+    Enum16_C
 }
 
 [InlineArray(8)]
