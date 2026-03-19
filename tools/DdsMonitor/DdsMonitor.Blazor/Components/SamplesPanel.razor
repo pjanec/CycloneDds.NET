@@ -22,6 +22,7 @@
 @inject IJSRuntime JSRuntime
 @inject ContextMenuService ContextMenuService
 @inject DdsMonitor.Engine.Export.IExportService ExportService
+@inject TopicColorService TopicColorService
 
 <div class="samples-panel" @onmousemove="HandleColumnResize" @onmouseup="EndColumnResize" @onmouseleave="EndColumnResize">
     <div class="samples-panel__toolbar">
@@ -1415,7 +1416,22 @@
                 if (column.Field != null)
                 {
                     var value = GetFieldValue(column.Field, row.Sample);
-                    builder.AddContent(4, RenderValue(value));
+                    // ME2-T26: Apply topic color to the synthetic "Topic" field (ShortName).
+                    if (column.Field.IsSynthetic &&
+                        string.Equals(column.Field.StructuredName, "Topic", StringComparison.Ordinal) &&
+                        value is string topicName &&
+                        !string.IsNullOrEmpty(topicName))
+                    {
+                        builder.OpenElement(4, "span");
+                        builder.AddAttribute(5, "class", "topic-name-colored");
+                        builder.AddAttribute(6, "style", TopicColorService.GetColorStyle(topicName));
+                        builder.AddContent(7, topicName);
+                        builder.CloseElement();
+                    }
+                    else
+                    {
+                        builder.AddContent(4, RenderValue(value));
+                    }
                 }
                 break;
             case ColumnKind.Actions:

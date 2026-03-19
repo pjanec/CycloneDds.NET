@@ -1,6 +1,9 @@
 @implements IDisposable
+@using System.Linq
 
 @inject IAssemblySourceService AssemblySourceService
+@inject IWindowManager WindowManager
+@inject ContextMenuService ContextMenuService
 
 @* ──────────────────────────────────────────────────────────────────────────
    TopicSourcesPanel.razor
@@ -108,9 +111,16 @@
                 <tbody>
                     @foreach (var topic in _selectedTopics)
                     {
-                        <tr>
+                        <tr @onmousedown="(args) => HandleRowMouseDown(topic, args)"
+                            @oncontextmenu:preventDefault="true">
                             <td>@topic.TopicName</td>
-                            <td>@topic.TopicType.Name</td>
+                            <td>
+                                <span class="topic-sources__clr-name">@topic.TopicType.Name</span>
+                                @if (!string.IsNullOrEmpty(topic.Namespace))
+                                {
+                                    <span class="topic-sources__clr-ns">@topic.Namespace</span>
+                                }
+                            </td>
                             <td>@(topic.IsKeyed ? "✓" : string.Empty)</td>
                         </tr>
                     }
@@ -130,7 +140,7 @@
 
 @code {
     private IReadOnlyList<AssemblySourceEntry> _entries = Array.Empty<AssemblySourceEntry>();
-    private IReadOnlyList<TopicMetadata> _selectedTopics = Array.Empty<TopicMetadata>();
+    private List<TopicMetadata> _selectedTopics = new();
     private int _selectedIndex = -1;
     private bool _fileDialogOpen;
     private static string _lastOpenedPath = string.Empty;
@@ -165,9 +175,14 @@
 
     private void RefreshSelectedTopics()
     {
-        _selectedTopics = _selectedIndex >= 0
+        var raw = _selectedIndex >= 0
             ? AssemblySourceService.GetTopicsForEntry(_selectedIndex)
             : Array.Empty<TopicMetadata>();
+
+        // ME2-T13-B: sort alphabetically by topic short name.
+        _selectedTopics = raw
+            .OrderBy(t => t.ShortName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private void SelectEntry(int index)
@@ -236,6 +251,63 @@
         AssemblySourceService.MoveDown(_selectedIndex);
         _selectedIndex++;
         RefreshSelectedTopics();
+    }
+
+    private void HandleRowMouseDown(TopicMetadata metadata, MouseEventArgs args)
+    {
+        const int rightMouseButton = 2;
+        if (args.Button == rightMouseButton)
+        {
+            var items = new List<ContextMenuItem>
+            {
+                new("Topic Properties", null, () =>
+                {
+                    OpenTopicProperties(metadata);
+                    return Task.CompletedTask;
+                })
+            };
+            ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+        }
+    }
+
+    private void OpenTopicProperties(TopicMetadata metadata)
+    {
+        var typeName = typeof(TopicPropertiesPanel).FullName!;
+
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(panel.ComponentTypeName, typeName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (panel.IsHidden)
+            {
+                panel.IsHidden = false;
+                panel.ComponentState[nameof(TopicPropertiesPanel.TopicMetadata)] = metadata;
+                panel.Title = $"Properties [{metadata.ShortName}]";
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+
+            if (!panel.IsMinimized &&
+                panel.ComponentState.TryGetValue(nameof(TopicPropertiesPanel.TopicMetadata), out var existing) &&
+                existing is TopicMetadata existingMeta &&
+                string.Equals(existingMeta.ShortName, metadata.ShortName, StringComparison.Ordinal))
+            {
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        var spawnState = new Dictionary<string, object>
+        {
+            [nameof(TopicPropertiesPanel.TopicMetadata)] = metadata
+        };
+        var newPanel = WindowManager.SpawnPanel(typeName, spawnState);
+        newPanel.Title = $"Properties [{metadata.ShortName}]";
+        newPanel.Width = 640;
+        newPanel.Height = 480;
     }
 
     public void Dispose()

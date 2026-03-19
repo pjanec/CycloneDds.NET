@@ -1,0 +1,283 @@
+@using System.Reflection
+@using System.Linq
+@using DdsMonitor.Engine
+@using CycloneDDS.Schema
+@implements IDisposable
+
+@inject ITopicRegistry TopicRegistry
+@inject TopicColorService TopicColorService
+
+<div class="topic-properties">
+
+    @if (TopicMetadata == null)
+    {
+        <div class="topic-properties__content">
+            <div class="topic-properties__label" style="padding: 20px; text-align: center;">
+                No topic selected.
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- ── Header ─────────────────────────────────────────────── -->
+        <div class="topic-properties__header">
+            <span class="topic-properties__topic-name"
+                  style="@TopicColorService.GetColorStyle(TopicMetadata.ShortName)">
+                @TopicMetadata.ShortName
+            </span>
+        </div>
+
+        <!-- ── Info grid ──────────────────────────────────────────── -->
+        <div class="topic-properties__info-grid">
+            <span class="topic-properties__label">DDS Topic Name</span>
+            <span class="topic-properties__value is-emphasis">@TopicMetadata.TopicName</span>
+
+            <span class="topic-properties__label">CLR Type</span>
+            <span class="topic-properties__value">@TopicMetadata.TopicType.FullName</span>
+
+            <span class="topic-properties__label">Namespace</span>
+            <span class="topic-properties__value">@(string.IsNullOrEmpty(TopicMetadata.Namespace) ? "—" : TopicMetadata.Namespace)</span>
+
+            <span class="topic-properties__label">Extensibility</span>
+            <span class="topic-properties__value">@GetExtensibility(TopicMetadata.TopicType)</span>
+
+            @{
+                var csize = GetPlainCSize(TopicMetadata.TopicType);
+            }
+            @if (csize.HasValue)
+            {
+                <span class="topic-properties__label">C Struct Size</span>
+                <span class="topic-properties__value">@csize.Value bytes</span>
+            }
+
+            <span class="topic-properties__label">Keyed</span>
+            <span class="topic-properties__value">@(TopicMetadata.IsKeyed ? "Yes" : "No")</span>
+
+            <!-- ── Color ─────────────────────────────────────── -->
+            <span class="topic-properties__label">Color</span>
+            <div class="topic-properties__color-row">
+                @{
+                    var userColor = TopicColorService.GetUserColor(TopicMetadata.ShortName);
+                    var isAuto = userColor == null;
+                    var previewColor = TopicColorService.GetAutoColorVar(TopicMetadata.ShortName);
+                }
+                @if (isAuto)
+                {
+                    <!-- Show a color picker pre-set to a color but marked as "auto" -->
+                    <input type="color"
+                           class="topic-properties__color-input"
+                           title="Pick a custom color"
+                           @onchange="OnColorChanged" />
+                    <span class="topic-properties__value" style="font-size:11px; color:var(--panel-muted)">
+                        Auto (#@(TopicColorService.GetAutoColorIndex(TopicMetadata.ShortName) + 1))
+                    </span>
+                }
+                else
+                {
+                    <input type="color"
+                           class="topic-properties__color-input"
+                           value="@userColor"
+                           title="Pick a custom color"
+                           @onchange="OnColorChanged" />
+                    <span class="topic-properties__value">@userColor</span>
+                    <button type="button"
+                            class="topic-properties__color-auto"
+                            title="Reset to automatic color"
+                            @onclick="ResetColor">Auto</button>
+                }
+            </div>
+        </div>
+
+        <!-- ── Field table ────────────────────────────────────────── -->
+        <div class="topic-properties__content">
+            <div class="topic-properties__section-title">Fields (@GetSortedFields().Count)</div>
+            <table class="topic-properties__table">
+                <thead>
+                    <tr>
+                        <th>Field Name</th>
+                        <th>Data Type</th>
+                        <th>Key</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var field in GetSortedFields())
+                    {
+                        <tr>
+                            <td>@field.StructuredName</td>
+                            <td class="topic-properties__type">@GetFriendlyTypeName(field.ValueType)</td>
+                            <td>
+                                @if (IsKey(field))
+                                {
+                                    <span class="topic-properties__key-badge">KEY</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+</div>
+
+@code {
+    private const string TopicTypeNameKey = "TopicPropertiesPanel.TopicTypeName";
+
+    [CascadingParameter]
+    public PanelState? PanelState { get; set; }
+
+    [Parameter]
+    public TopicMetadata? TopicMetadata { get; set; }
+
+    protected override void OnInitialized()
+    {
+        TopicColorService.OnChanged += HandleColorChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (TopicMetadata != null)
+        {
+            // Persist the type name so we can restore after workspace reload.
+            if (PanelState != null)
+            {
+                PanelState.ComponentState[TopicTypeNameKey] =
+                    TopicMetadata.TopicType.AssemblyQualifiedName ?? TopicMetadata.TopicType.FullName ?? string.Empty;
+            }
+        }
+        else if (PanelState != null &&
+                 PanelState.ComponentState.TryGetValue(TopicTypeNameKey, out var savedObj))
+        {
+            // Restore from workspace persistence.
+            var savedName = savedObj?.ToString();
+            if (!string.IsNullOrWhiteSpace(savedName))
+            {
+                var resolved = Type.GetType(savedName);
+                if (resolved == null)
+                {
+                    // Scan all assemblies for the type (ME2-T25-B pattern).
+                    var commaIdx = savedName.IndexOf(',');
+                    var fullName = commaIdx > 0 ? savedName[..commaIdx].Trim() : savedName;
+                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        resolved = asm.GetType(fullName, throwOnError: false, ignoreCase: false);
+                        if (resolved != null) break;
+                    }
+                }
+
+                if (resolved != null)
+                {
+                    TopicMetadata = TopicRegistry.GetByType(resolved);
+                }
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        TopicColorService.OnChanged -= HandleColorChanged;
+    }
+
+    private void HandleColorChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private IReadOnlyList<FieldMetadata> GetSortedFields()
+    {
+        if (TopicMetadata == null)
+        {
+            return Array.Empty<FieldMetadata>();
+        }
+
+        return TopicMetadata.AllFields
+            .Where(f => !f.IsSynthetic)
+            .OrderBy(f => f.StructuredName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private bool IsKey(FieldMetadata field)
+    {
+        return TopicMetadata?.KeyFields.Contains(field) ?? false;
+    }
+
+    private static uint? GetPlainCSize(Type type)
+    {
+        try
+        {
+            var method = type.GetMethod(
+                "GetDescriptorSize",
+                BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null) return null;
+            var result = method.Invoke(null, null);
+            if (result is uint size) return size;
+        }
+        catch
+        {
+            // Reflection failure — not available for this type.
+        }
+
+        return null;
+    }
+
+    private static string GetExtensibility(Type type)
+    {
+        try
+        {
+            foreach (var attr in type.GetCustomAttributes(inherit: false))
+            {
+                var attrType = attr.GetType();
+                if (attrType.Name == "DdsExtensibilityAttribute")
+                {
+                    var kindProp = attrType.GetProperty("Kind");
+                    if (kindProp != null)
+                    {
+                        return kindProp.GetValue(attr)?.ToString() ?? "Unknown";
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Reflection failure.
+        }
+
+        return "Appendable (Default)";
+    }
+
+    private static string GetFriendlyTypeName(Type? type)
+    {
+        if (type == null) return string.Empty;
+
+        if (type.IsArray)
+        {
+            var elementType = type.GetElementType()!;
+            return $"{elementType.FullName ?? elementType.Name}[]";
+        }
+
+        if (type.IsGenericType)
+        {
+            var def = type.GetGenericTypeDefinition();
+            if (def == typeof(List<>))
+            {
+                var argType = type.GetGenericArguments()[0];
+                return $"List<{argType.FullName ?? argType.Name}>";
+            }
+        }
+
+        return type.FullName ?? type.Name;
+    }
+
+    private void OnColorChanged(ChangeEventArgs e)
+    {
+        if (TopicMetadata == null) return;
+        var hex = e.Value?.ToString();
+        TopicColorService.SetUserColor(TopicMetadata.ShortName, hex);
+    }
+
+    private void ResetColor()
+    {
+        if (TopicMetadata == null) return;
+        TopicColorService.ResetUserColor(TopicMetadata.ShortName);
+    }
+}

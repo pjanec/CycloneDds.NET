@@ -8,6 +8,8 @@
 @inject IInstanceStore InstanceStore
 @inject IWindowManager WindowManager
 @inject DdsSettings Settings
+@inject ContextMenuService ContextMenuService
+@inject TopicColorService TopicColorService
 
 <div class="topic-explorer">
     <div class="topic-explorer__filters">
@@ -78,12 +80,17 @@
         <tbody>
             @foreach (var topic in FilteredTopics)
             {
-                <tr @ondblclick="() => OpenSamplesPanel(topic.Metadata)">
+                <tr @ondblclick="() => OpenSamplesPanel(topic.Metadata)"
+                    @onmousedown="(args) => HandleRowMouseDown(topic.Metadata, args)"
+                    @oncontextmenu:preventDefault="true">
                     <td>
                         <input type="checkbox" checked="@topic.IsSubscribed" @onchange="(e) => ToggleSubscription(topic.Metadata, e)" />
                     </td>
                     <td>
-                        <div class="topic-explorer__name">@topic.Metadata.ShortName</div>
+                        <div class="topic-explorer__name topic-name-colored"
+                             style="@TopicColorService.GetColorStyle(topic.Metadata.ShortName)">
+                            @topic.Metadata.ShortName
+                        </div>
                         <div class="topic-explorer__namespace">@topic.Metadata.Namespace</div>
                     </td>
                     <td>@topic.SampleCount</td>
@@ -229,6 +236,72 @@
         topicSourcesPanel.Height = 520;
         topicSourcesPanel.X = 200;
         topicSourcesPanel.Y = 80;
+    }
+
+    private void HandleRowMouseDown(TopicMetadata metadata, MouseEventArgs args)
+    {
+        const int rightMouseButton = 2;
+        if (args.Button == rightMouseButton)
+        {
+            var items = new List<ContextMenuItem>
+            {
+                new("Topic Properties", null, () =>
+                {
+                    OpenTopicProperties(metadata);
+                    return Task.CompletedTask;
+                }),
+                new("Open Samples", null, () =>
+                {
+                    OpenSamplesPanel(metadata);
+                    return Task.CompletedTask;
+                }),
+            };
+            ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+        }
+    }
+
+    private void OpenTopicProperties(TopicMetadata metadata)
+    {
+        var typeName = typeof(TopicPropertiesPanel).FullName!;
+
+        // Recycle an existing hidden TopicPropertiesPanel that is showing the same topic.
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (!string.Equals(panel.ComponentTypeName, typeName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // Reuse hidden panels by updating them to show the new topic.
+            if (panel.IsHidden)
+            {
+                panel.IsHidden = false;
+                panel.ComponentState[nameof(TopicPropertiesPanel.TopicMetadata)] = metadata;
+                panel.Title = $"Properties [{metadata.ShortName}]";
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+
+            // Already open with the same or different topic — bring it to front.
+            if (!panel.IsMinimized &&
+                panel.ComponentState.TryGetValue(nameof(TopicPropertiesPanel.TopicMetadata), out var existing) &&
+                existing is TopicMetadata existingMeta &&
+                string.Equals(existingMeta.ShortName, metadata.ShortName, StringComparison.Ordinal))
+            {
+                WindowManager.BringToFront(panel.PanelId);
+                return;
+            }
+        }
+
+        // Spawn a new TopicPropertiesPanel.
+        var spawnState = new Dictionary<string, object>
+        {
+            [nameof(TopicPropertiesPanel.TopicMetadata)] = metadata
+        };
+        var newPanel = WindowManager.SpawnPanel(typeName, spawnState);
+        newPanel.Title = $"Properties [{metadata.ShortName}]";
+        newPanel.Width = 640;
+        newPanel.Height = 480;
     }
 
     private void RefreshTopics()

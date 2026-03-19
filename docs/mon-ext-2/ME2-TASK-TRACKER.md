@@ -61,11 +61,12 @@
 
 **Goal:** New non-modal topic schema inspector; right-click access from TopicExplorer and TopicSources.
 
-- [ ] **ME2-T12** New TopicPropertiesPanel Component → [details](./ME2-TASK-DETAILS.md#me2-t12--new-topicpropertiespanel-component)
-- [ ] **ME2-T13-A** Topic Explorer Right-Click → Topic Properties → [details](./ME2-TASK-DETAILS.md#me2-t13-a--topic-explorer-right-click--topic-properties)
-- [ ] **ME2-T13-B** Topic Sources Panel Improvements → [details](./ME2-TASK-DETAILS.md#me2-t13-b--topic-sources-panel-improvements)
+- [x] **ME2-T12** New TopicPropertiesPanel Component → [details](./ME2-TASK-DETAILS.md#me2-t12--new-topicpropertiespanel-component)
+- [x] **ME2-T13-A** Topic Explorer Right-Click → Topic Properties → [details](./ME2-TASK-DETAILS.md#me2-t13-a--topic-explorer-right-click--topic-properties)
+- [x] **ME2-T13-B** Topic Sources Panel Improvements → [details](./ME2-TASK-DETAILS.md#me2-t13-b--topic-sources-panel-improvements)
+- [x] **ME2-T26** Global Colorized Topic Names: Introduce distinct auto-hashed layout coloration mapping for mapped strings across all panels, with explicit visual controls bound locally inside Topic Properties Panel.
 
-> Note: T13-A and T13-B depend on T12 being complete first.
+> Note: T13-A, T13-B, and T26 depend on T12 being complete first.
 
 ---
 
@@ -120,7 +121,15 @@
 
 **Goal:** Secure underlying framework architecture allowing decoupled modular assembly tracking and safe workspace serialization mappings.
 
-- [ ] **ME2-T25-A** (Tech Debt) `GetPanelBaseName` Name Sanitization Fix: Standardize workspace serialization lengths to truncate safely for deeply-nested AQN dependencies.
-- [ ] **ME2-T25-B** (Tech Debt) `Type.GetType` Extensibility Fix: Enhance Desktop.razor type loading to scan properly decoupled external framework plugins natively instead of failing on executing-assembly scoping.
+- [x] **ME2-T25-A** (Tech Debt) `GetPanelBaseName` Name Sanitization Fix: Standardize workspace serialization lengths to truncate safely for deeply-nested AQN dependencies.
+- [x] **ME2-T25-B** (Tech Debt) `Type.GetType` Extensibility Fix: Enhance Desktop.razor type loading to scan properly decoupled external framework plugins natively instead of failing on executing-assembly scoping.
+
+---
+
+## Phase 13 — Startup Tech Debt (DI Framework)
+
+**Goal:** Resolve Service Locator and Scope architecture faults blocking runtime environments.
+
+- [ ] **ME2-T27** (Tech Debt) `TopicColorService` Scoped Dependency Injection Fix: Safe encapsulation matching Blazor scoped lifetimes (`IWorkspaceState`) against incorrectly declared Singletons blocking App startup. 
 
 ---

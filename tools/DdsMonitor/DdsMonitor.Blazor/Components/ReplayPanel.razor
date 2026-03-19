@@ -8,6 +8,7 @@
 @inject IReplayEngine ReplayEngine
 @inject IWindowManager WindowManager
 @inject IEventBroker EventBroker
+@inject TopicColorService TopicColorService
 
 <!-- ── Replay Panel ────────────────────────────────────────────────────── -->
 <div class="replay-panel">
@@ -169,7 +170,9 @@
                 <div class="replay-panel__section-title">Next Sample</div>
                 <div class="replay-panel__next-sample">
                     <span class="replay-panel__next-ordinal">#@pending.Ordinal</span>
-                    <span class="replay-panel__next-type" title="@pending.TopicMetadata.TopicType.FullName">@pending.TopicMetadata.ShortName</span>
+                    <span class="replay-panel__next-type topic-name-colored"
+                          title="@pending.TopicMetadata.TopicType.FullName"
+                          style="@TopicColorService.GetColorStyle(pending.TopicMetadata.ShortName)">@pending.TopicMetadata.ShortName</span>
                     <button type="button"
                             class="replay-panel__toolbar-btn"
                             title="Open Detail Panel for this sample"

@@ -465,7 +465,26 @@ public sealed class WindowManager : IWindowManager
         }
 
         var resolved = Type.GetType(componentTypeName);
-        return resolved?.Name ?? componentTypeName;
+        if (resolved != null)
+        {
+            return resolved.Name;
+        }
+
+        // Backward-compat: strip assembly qualification from old AQN workspace entries
+        // (e.g. "My.Namespace.MyPanel, MyAssembly, Version=0.1.0.0, ...") so the base
+        // name used as the PanelId prefix remains concise and version-stable.
+        var commaIndex = componentTypeName.IndexOf(',');
+        if (commaIndex > 0)
+        {
+            var fullName = componentTypeName[..commaIndex].Trim();
+            // Extract just the simple class name (after the last dot).
+            var dotIndex = fullName.LastIndexOf('.');
+            return dotIndex >= 0 ? fullName[(dotIndex + 1)..] : fullName;
+        }
+
+        // If it is already a FullName (no comma), extract simple class name.
+        var lastDot = componentTypeName.LastIndexOf('.');
+        return lastDot >= 0 ? componentTypeName[(lastDot + 1)..] : componentTypeName;
     }
 
     private string CreatePanelId(string baseName)

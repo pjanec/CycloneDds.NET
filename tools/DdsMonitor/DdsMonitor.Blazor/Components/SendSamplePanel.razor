@@ -11,6 +11,7 @@
 @inject CloneRequestService CloneRequests
 @inject IEventBroker EventBroker
 @inject IJSRuntime JSRuntime
+@inject TopicColorService TopicColorService
 
 <div class="send-sample-panel">
     <div class="send-sample-panel__combo-wrap">
@@ -38,7 +39,8 @@
                                 class="send-sample-panel__combo-option @(isHighlighted ? "is-highlighted" : string.Empty) @(isSelected ? "is-selected" : string.Empty)"
                                 @onmousedown:preventDefault
                                 @onclick="() => SelectFromCombo(capturedMeta)">
-                            <span class="send-sample-panel__combo-option-name">@capturedMeta.ShortName</span>
+                            <span class="send-sample-panel__combo-option-name topic-name-colored"
+                                  style="@TopicColorService.GetColorStyle(capturedMeta.ShortName)">@capturedMeta.ShortName</span>
                             @if (!string.IsNullOrEmpty(capturedMeta.Namespace))
                             {
                                 <span class="send-sample-panel__combo-option-ns">@capturedMeta.Namespace</span>

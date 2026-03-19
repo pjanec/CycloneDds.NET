@@ -397,7 +397,8 @@
                panel.ComponentTypeName.Contains("DetailPanel", StringComparison.Ordinal) ||
                panel.ComponentTypeName.Contains("TopicExplorerPanel", StringComparison.Ordinal) ||
                panel.ComponentTypeName.Contains("InstancesPanel", StringComparison.Ordinal) ||
-               panel.ComponentTypeName.Contains("SendSamplePanel", StringComparison.Ordinal);
+               panel.ComponentTypeName.Contains("SendSamplePanel", StringComparison.Ordinal) ||
+               panel.ComponentTypeName.Contains("TopicPropertiesPanel", StringComparison.Ordinal);
     }
 
     private void LoadWorkspace()
@@ -463,7 +464,33 @@
             return null;
         }
 
-        return Type.GetType(componentTypeName);
+        // First try the standard resolution (works for current-assembly and mscorlib types).
+        var direct = Type.GetType(componentTypeName);
+        if (direct != null)
+        {
+            return direct;
+        }
+
+        // ME2-T25-B: Fall back to scanning all loaded assemblies so that types from
+        // external plugin assemblies (not in the executing assembly) are resolved.
+        // Use the FullName portion only (strip AQN suffix if present).
+        var fullName = componentTypeName;
+        var commaIndex = componentTypeName.IndexOf(',');
+        if (commaIndex > 0)
+        {
+            fullName = componentTypeName[..commaIndex].Trim();
+        }
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            var found = assembly.GetType(fullName, throwOnError: false, ignoreCase: false);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private static Dictionary<string, object> FilterComponentParameters(Type componentType, Dictionary<string, object> state)
