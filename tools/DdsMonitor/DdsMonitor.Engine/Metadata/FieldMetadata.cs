@@ -46,6 +46,11 @@ public sealed class FieldMetadata
     /// <param name="isDiscriminatorField">
     /// <c>true</c> when this field carries the <c>[DdsDiscriminator]</c> attribute.
     /// </param>
+    /// <param name="isOptional">
+    /// <c>true</c> when this field is explicitly annotated with <c>[DdsOptional]</c>
+    /// or declared as a <c>Nullable&lt;T&gt;</c> type.  Only optional fields show a
+    /// null/include checkbox in the Send Sample panel.
+    /// </param>
     public FieldMetadata(
         string structuredName,
         string displayName,
@@ -61,7 +66,8 @@ public sealed class FieldMetadata
         string? dependentDiscriminatorPath = null,
         object? activeWhenDiscriminatorValue = null,
         bool isDefaultUnionCase = false,
-        bool isDiscriminatorField = false)
+        bool isDiscriminatorField = false,
+        bool isOptional = false)
     {
         StructuredName = structuredName ?? throw new ArgumentNullException(nameof(structuredName));
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
@@ -78,6 +84,7 @@ public sealed class FieldMetadata
         ActiveWhenDiscriminatorValue = activeWhenDiscriminatorValue;
         IsDefaultUnionCase = isDefaultUnionCase;
         IsDiscriminatorField = isDiscriminatorField;
+        IsOptional = isOptional;
     }
 
     /// <summary>
@@ -169,4 +176,11 @@ public sealed class FieldMetadata
     /// (decorated with <c>[DdsDiscriminator]</c>).
     /// </summary>
     public bool IsDiscriminatorField { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether this field is explicitly marked as optional
+    /// (annotated with <c>[DdsOptional]</c> or declared as <c>Nullable&lt;T&gt;</c>).
+    /// Only optional fields display a null/include checkbox in the Send Sample panel.
+    /// </summary>
+    public bool IsOptional { get; }
 }

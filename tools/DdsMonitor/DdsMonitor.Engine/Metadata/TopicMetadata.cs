@@ -18,6 +18,24 @@ public sealed class TopicMetadata
     private const string DelayFieldName = "Delay [ms]";
     private const string SizeFieldName = "Size [B]";
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, IReadOnlyList<FieldMetadata>> _complexFieldsCache = new();
+
+    /// <summary>
+    /// Computes and caches flattened <see cref="FieldMetadata"/> for any struct/union type
+    /// (not just root topics).  Used by DynamicForm to render nested complex items in arrays.
+    /// </summary>
+    public static IReadOnlyList<FieldMetadata> GetComplexFields(Type type)
+    {
+        return _complexFieldsCache.GetOrAdd(type, t =>
+        {
+            var allFields = new List<FieldMetadata>();
+            var keyFields = new List<FieldMetadata>();
+            var visited = new HashSet<Type>();
+            AppendFields(t, t, new List<MemberInfo>(), string.Empty, allFields, keyFields, visited);
+            return allFields;
+        });
+    }
+
     private static readonly Action<object, object?> SyntheticSetter = (_, __) =>
         throw new InvalidOperationException("Synthetic fields are read-only.");
 
@@ -219,6 +237,13 @@ public sealed class TopicMetadata
                 elementType = memberType.GetGenericArguments()[0];
             }
 
+            // ── Determine optional metadata (ME2-T21) ─────────────────────────
+            // A field is optional when it carries [DdsOptional] attribute OR when
+            // its type is Nullable<T>.  Reference types (string, arrays) that are
+            // NOT annotated with [DdsOptional] are NOT considered optional here.
+            bool isOptional = Nullable.GetUnderlyingType(memberType) != null ||
+                              member.GetCustomAttribute<DdsOptionalAttribute>() != null;
+
             var fieldMetadata = new FieldMetadata(
                 structuredName,
                 structuredName,
@@ -234,7 +259,8 @@ public sealed class TopicMetadata
                 dependentDiscriminatorPath: dependentDiscriminatorPath,
                 activeWhenDiscriminatorValue: activeWhenDiscriminatorValue,
                 isDefaultUnionCase: isDefaultUnionCase,
-                isDiscriminatorField: isDiscriminatorField);
+                isDiscriminatorField: isDiscriminatorField,
+                isOptional: isOptional);
 
             allFields.Add(fieldMetadata);
 

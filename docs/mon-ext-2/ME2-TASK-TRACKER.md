@@ -101,8 +101,17 @@
 
 **Goal:** Accurately reflect IDL `@optional` tags inside the Monitor to correctly enforce nullable strings against mandatory constraints, and resolve deep reflective panel performance traps.
 
-- [ ] **ME2-T22-A** (Tech Debt) `IsUnionArmVisible` traverses fields using O(N^2) LINQ every render-run; extract to a dictionary cache keyed by Discriminator.
-- [ ] **ME2-T22-B** (Tech Debt) `GetUnionInfo` triggers expensive MemberInfo reflection continuously on union rows; needs ConcurrentDictionary caching.
-- [ ] **ME2-T21** Restrict sending empty strings/null checkboxes purely to `[DdsOptional]` or `IsValueType == false` parameters using explicit field metadata binding. 
+- [x] **ME2-T22-A** (Tech Debt) `IsUnionArmVisible` traverses fields using O(N^2) LINQ every render-run; extract to a dictionary cache keyed by Discriminator.
+- [x] **ME2-T22-B** (Tech Debt) `GetUnionInfo` triggers expensive MemberInfo reflection continuously on union rows; needs ConcurrentDictionary caching.
+- [x] **ME2-T21** Restrict sending empty strings/null checkboxes purely to `[DdsOptional]` or `IsValueType == false` parameters using explicit field metadata binding. 
+
+---
+
+## Phase 11 — Send Sample Dynamic Form Array & Union Struct Fixes
+
+**Goal:** Resolve critical nested component logic faults where deeply nested structures inside Union array lists fail to expand, and list instantiations fail via `InvalidCastException`.
+
+- [ ] **ME2-T23** Union List Item Structure Expansion Fix: Render complete hierarchical sub-forms for structures existing as active union arms inside dynamic collection instances.
+- [ ] **ME2-T24** `AddArrayElement` InvalidCastException Fix: Safely evaluate runtime sequence instantiation avoiding hardcoded array type conversions (e.g., dynamically projecting `T[]` vs `List<T>`) before invoking strictly-typed metadata setters.
 
 ---

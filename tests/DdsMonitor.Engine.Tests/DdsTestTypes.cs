@@ -207,10 +207,30 @@ public partial struct DefaultNameTopic
 }
 
 /// <summary>
-/// Topic with an explicit name – TopicName should be "ExplicitNameTopic".
+/// Topic with an explicit name — TopicName should be "ExplicitNameTopic".
 /// </summary>
 [DdsTopic("ExplicitNameTopic")]
 public partial struct ExplicitNamedTopic
 {
     public int Value;
+}
+
+// ─── ME2-BATCH-04 test types ─────────────────────────────────────────────────
+
+/// <summary>
+/// Topic type used to verify IsOptional detection on [DdsOptional] and Nullable&lt;T&gt;.
+/// Note: [DdsOptional] is only applied to Nullable&lt;T&gt; fields to stay compatible
+/// with the CDR code generator (optional string requires a different struct layout).
+/// </summary>
+[DdsTopic("OptionalFieldTopic")]
+public partial struct OptionalFieldTopic
+{
+    public int Id;
+
+    /// <summary>Marked optional via both [DdsOptional] and Nullable&lt;T&gt;.</summary>
+    [DdsOptional]
+    public int? OptionalInt;
+
+    /// <summary>Nullable without [DdsOptional] — still optional because Nullable&lt;T&gt;.</summary>
+    public double? NullableDouble;
 }

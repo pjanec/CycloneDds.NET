@@ -1,3 +1,4 @@
+@using System.Collections.Concurrent
 @using System.Collections.Generic
 @using System.Linq
 @using System.Reflection
@@ -950,43 +951,72 @@ else
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Union rendering helpers (ME2-T06)
+    // Union rendering helpers (ME2-T06 + ME2-T22-B: cached reflection)
     // ─────────────────────────────────────────────────────────────────────
 
-    private static (object? Discriminator, MemberInfo? ActiveArm, object? ArmValue) GetUnionInfo(object unionObj)
+    /// <summary>
+    /// Structural metadata for a union type, cached to avoid repeated reflection.
+    /// </summary>
+    private sealed record UnionMeta(
+        MemberInfo? DiscriminatorMember,
+        IReadOnlyList<(MemberInfo Member, object CaseValue)> CaseArms,
+        MemberInfo? DefaultArm);
+
+    /// <summary>
+    /// Per-type cache used by <see cref="GetUnionInfo"/> to avoid scanning attributes
+    /// on every render cycle (ME2-T22-B).
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, UnionMeta> _unionMetaCache = new();
+
+    private static UnionMeta BuildUnionMeta(Type type)
     {
-        var type = unionObj.GetType();
         MemberInfo? discMember = null;
-        object? discValue = null;
+        MemberInfo? defaultArm = null;
+        var caseArms = new List<(MemberInfo, object)>();
 
         foreach (var m in GetMembers(type))
         {
             if (m.GetCustomAttribute<DdsDiscriminatorAttribute>() != null)
             {
                 discMember = m;
-                discValue = GetMemberValue(m, unionObj);
-                break;
+                continue;
             }
-        }
 
-        // Find explicit matching arm.
-        foreach (var m in GetMembers(type))
-        {
             var caseAttr = m.GetCustomAttribute<DdsCaseAttribute>();
-            if (caseAttr != null && UnionValuesEqualTree(caseAttr.Value, discValue))
+            if (caseAttr != null)
             {
-                return (discValue, m, GetMemberValue(m, unionObj));
+                caseArms.Add((m, caseAttr.Value));
+                continue;
             }
-        }
 
-        // Fall back to default case arm.
-        foreach (var m in GetMembers(type))
-        {
             if (m.GetCustomAttribute<DdsDefaultCaseAttribute>() != null)
             {
-                return (discValue, m, GetMemberValue(m, unionObj));
+                defaultArm = m;
             }
         }
+
+        return new UnionMeta(discMember, caseArms, defaultArm);
+    }
+
+    private static (object? Discriminator, MemberInfo? ActiveArm, object? ArmValue) GetUnionInfo(object unionObj)
+    {
+        var type = unionObj.GetType();
+
+        // Use cached structural metadata – avoids repeated GetCustomAttribute calls (ME2-T22-B).
+        var meta = _unionMetaCache.GetOrAdd(type, BuildUnionMeta);
+
+        var discValue = meta.DiscriminatorMember != null
+            ? GetMemberValue(meta.DiscriminatorMember, unionObj)
+            : null;
+
+        foreach (var (member, caseValue) in meta.CaseArms)
+        {
+            if (UnionValuesEqualTree(caseValue, discValue))
+                return (discValue, member, GetMemberValue(member, unionObj));
+        }
+
+        if (meta.DefaultArm != null)
+            return (discValue, meta.DefaultArm, GetMemberValue(meta.DefaultArm, unionObj));
 
         return (discValue, null, null);
     }

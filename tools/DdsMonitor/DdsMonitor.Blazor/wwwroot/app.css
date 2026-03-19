@@ -3196,3 +3196,41 @@ body {
   background: rgba(79, 195, 247, 0.06);
 }
 
+
+/* ¦¦¦ Complex nested form element (for struct/union in arrays) ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦ */
+.dynamic-form__complex-elem {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+}
+
+.dynamic-form__complex-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dynamic-form__complex-toggle {
+    background: transparent;
+    border: none;
+    color: var(--panel-text);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 0;
+    font-family: var(--font-display);
+    text-align: left;
+    flex: 1 1 auto;
+}
+
+.dynamic-form__complex-toggle:hover {
+    color: var(--accent-2);
+}
+
+.dynamic-form__complex-body {
+    margin-left: 20px;
+    padding-left: 10px;
+    border-left: 1px dashed var(--panel-border);
+    margin-top: 4px;
+    margin-bottom: 8px;
+}
