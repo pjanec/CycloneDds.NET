@@ -202,9 +202,35 @@ else
                     }
                     else
                     {
-                        <span class="dynamic-form__unsupported">
-                            @(capturedField.Getter(Payload!)?.ToString() ?? "(null)")
-                        </span>
+                        // ME2-T23: Check whether the value is a complex struct that can be
+                        // expanded as a nested form (e.g. a union arm whose type is Vec3/Pose).
+                        var complexFields23 = TopicMetadata.GetComplexFields(capturedField.ValueType);
+                        if (complexFields23.Count > 0)
+                        {
+                            var isStructExpanded = IsExpanded(capturedField, -1);
+                            var structVal = capturedField.Getter(Payload!);
+                            <div class="dynamic-form__complex-elem" style="flex:1; min-width:0;">
+                                <div class="dynamic-form__complex-header">
+                                    <button type="button" class="dynamic-form__complex-toggle" @onclick="() => ToggleExpand(capturedField, -1)">
+                                        @(isStructExpanded ? "\u25bc" : "\u25ba") @(structVal?.GetType().Name ?? capturedField.ValueType.Name)
+                                    </button>
+                                </div>
+                                @if (isStructExpanded && structVal != null)
+                                {
+                                    <div class="dynamic-form__complex-body">
+                                        <DynamicForm Fields="complexFields23"
+                                                     Payload="structVal"
+                                                     OnPayloadMutated="v => SetStructArm(capturedField, v)" />
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="dynamic-form__unsupported">
+                                @(capturedField.Getter(Payload!)?.ToString() ?? "(null)")
+                            </span>
+                        }
                     }
                 </div>
             </div>
@@ -425,6 +451,22 @@ else
             list.Add(defaultElem);
             field.Setter(Payload!, list);
         }
+        else if (field.ValueType.IsGenericType
+            && typeof(IList).IsAssignableFrom(field.ValueType)
+            && !field.ValueType.IsArray)
+        {
+            // ME2-T24: Setter expects a generic List<T>/IList<T>; raw may be null or a
+            // legacy T[] snapshot.  Build a properly-typed List<T> so the cast succeeds.
+            var listType = typeof(List<>).MakeGenericType(field.ElementType);
+            var newList = (IList)Activator.CreateInstance(listType)!;
+            if (raw is IEnumerable existing)
+            {
+                foreach (var item in existing)
+                    newList.Add(item);
+            }
+            newList.Add(defaultElem);
+            field.Setter(Payload!, newList);
+        }
         else
         {
             var src = raw as Array ?? Array.CreateInstance(field.ElementType, 0);
@@ -462,6 +504,19 @@ else
             field.Setter(Payload!, newArr);
         }
 
+        OnPayloadMutated?.Invoke(Payload!);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Propagates a mutation to a complex struct field that acts as a direct (non-array)
+    /// value on the payload — e.g. a union arm whose type is a struct.
+    /// Because structs are value types, the inner DynamicForm returns a boxed copy;
+    /// we write it back via the setter and bubble the change upward.
+    /// </summary>
+    private void SetStructArm(FieldMetadata field, object? value)
+    {
+        field.Setter(Payload!, value);
         OnPayloadMutated?.Invoke(Payload!);
         StateHasChanged();
     }

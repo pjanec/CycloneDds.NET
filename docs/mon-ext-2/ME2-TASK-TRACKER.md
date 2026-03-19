@@ -111,7 +111,16 @@
 
 **Goal:** Resolve critical nested component logic faults where deeply nested structures inside Union array lists fail to expand, and list instantiations fail via `InvalidCastException`.
 
-- [ ] **ME2-T23** Union List Item Structure Expansion Fix: Render complete hierarchical sub-forms for structures existing as active union arms inside dynamic collection instances.
-- [ ] **ME2-T24** `AddArrayElement` InvalidCastException Fix: Safely evaluate runtime sequence instantiation avoiding hardcoded array type conversions (e.g., dynamically projecting `T[]` vs `List<T>`) before invoking strictly-typed metadata setters.
+- [x] **ME2-T23** Union List Item Structure Expansion Fix: Render complete hierarchical sub-forms for structures existing as active union arms inside dynamic collection instances.
+- [x] **ME2-T24** `AddArrayElement` InvalidCastException Fix: Safely evaluate runtime sequence instantiation avoiding hardcoded array type conversions (e.g., dynamically projecting `T[]` vs `List<T>`) before invoking strictly-typed metadata setters.
+
+---
+
+## Phase 12 — Workspace Tech Debt & Extensibility
+
+**Goal:** Secure underlying framework architecture allowing decoupled modular assembly tracking and safe workspace serialization mappings.
+
+- [ ] **ME2-T25-A** (Tech Debt) `GetPanelBaseName` Name Sanitization Fix: Standardize workspace serialization lengths to truncate safely for deeply-nested AQN dependencies.
+- [ ] **ME2-T25-B** (Tech Debt) `Type.GetType` Extensibility Fix: Enhance Desktop.razor type loading to scan properly decoupled external framework plugins natively instead of failing on executing-assembly scoping.
 
 ---

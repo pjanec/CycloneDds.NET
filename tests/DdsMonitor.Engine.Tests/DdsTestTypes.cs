@@ -234,3 +234,50 @@ public partial struct OptionalFieldTopic
     /// <summary>Nullable without [DdsOptional] — still optional because Nullable&lt;T&gt;.</summary>
     public double? NullableDouble;
 }
+
+// ─── ME2-BATCH-05 test types ─────────────────────────────────────────────────
+
+/// <summary>
+/// A complex struct used as a union arm to verify ME2-T23: struct arms must render
+/// an expandable sub-form in DynamicForm instead of falling back to ToString().
+/// </summary>
+[DdsStruct]
+public partial struct StructArmPayload
+{
+    public float X;
+    public float Y;
+    public float Z;
+}
+
+/// <summary>
+/// Union whose arm 1 is a complex struct (StructArmPayload) and arm 0 is a plain scalar.
+/// Used to validate ME2-T23: GetComplexFields returns non-empty fields for the struct arm
+/// type so DynamicForm can render an expandable nested form.
+/// </summary>
+[DdsUnion]
+public partial struct StructArmUnion
+{
+    [DdsDiscriminator]
+    public int Kind;
+
+    /// <summary>Complex struct arm — triggers the expand path in DynamicForm (ME2-T23).</summary>
+    [DdsCase(1)]
+    public StructArmPayload StructArm;
+
+    /// <summary>Scalar arm — handled by a registered drawer, no expansion needed.</summary>
+    [DdsCase(0)]
+    public int ScalarArm;
+}
+
+/// <summary>
+/// Topic with a <c>List&lt;float&gt;</c> field declared as a generic list sequence.
+/// Used to verify ME2-T24: AddArrayElement builds List&lt;float&gt; (not float[]) when
+/// the setter expects a generic list, avoiding InvalidCastException on the first +Add.
+/// </summary>
+[DdsTopic("FloatListSequenceTopic")]
+[DdsManaged]
+public partial class FloatListSequenceTopic
+{
+    public int Id;
+    public System.Collections.Generic.List<float> Items;
+}
