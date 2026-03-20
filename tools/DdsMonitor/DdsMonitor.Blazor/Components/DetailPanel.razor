@@ -214,127 +214,95 @@ else
         builder.CloseElement();
     };
 
-    private RenderFragment RenderTableView() => builder =>
-    {
-        if (_currentSample == null)
+    private RenderFragment RenderTableView() => @<text>
+        @if (_currentSample != null)
         {
-            return;
-        }
-
-        builder.OpenElement(0, "table");
-        builder.AddAttribute(1, "class", "detail-table");
-        builder.OpenElement(2, "thead");
-        builder.OpenElement(3, "tr");
-        builder.OpenElement(4, "th");
-        builder.AddContent(5, "Field");
-        builder.CloseElement();
-        builder.OpenElement(6, "th");
-        builder.AddContent(7, "Value");
-        builder.CloseElement();
-        builder.CloseElement();
-        builder.CloseElement();
-
-        builder.OpenElement(8, "tbody");
-        var payload = _currentSample.Payload;
-        foreach (var field in _currentSample.TopicMetadata.AllFields.Where(meta => !meta.IsSynthetic && IsUnionArmVisible(meta, payload)))
-        {
-            var value = field.Getter(payload);
-            var isExpandable = IsTableFieldExpandable(value);
-            var fieldName = field.StructuredName;
-            var isExpanded = isExpandable && _tableExpandedFields.Contains(fieldName);
-
-            // ── Main field row ────────────────────────────────────────────────
-            builder.OpenElement(9, "tr");
-
-            builder.OpenElement(10, "td");
-            if (isExpandable)
-            {
-                builder.OpenElement(11, "button");
-                builder.AddAttribute(12, "type", "button");
-                builder.AddAttribute(13, "class", "detail-table__toggle");
-                builder.AddAttribute(14, "onclick",
-                    EventCallback.Factory.Create(this, () => ToggleTableField(fieldName)));
-                builder.AddContent(15, isExpanded ? "\u25bc" : "\u25ba");
-                builder.CloseElement();
-            }
-            builder.AddContent(16, field.StructuredName);
-            builder.CloseElement();
-
-            builder.OpenElement(17, "td");
-            builder.AddContent(18, RenderValue(value));
-            builder.CloseElement();
-
-            builder.CloseElement(); // tr
-
-            // ── Expanded element rows ─────────────────────────────────────────
-            if (isExpanded && value != null)
-            {
-                var arr = ToElementArray(value);
-                if (arr != null)
-                {
-                    for (int i = 0; i < arr.Length; i++)
+            <table class="detail-table">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var payload = _currentSample.Payload; }
+                    @foreach (var field in _currentSample.TopicMetadata.AllFields.Where(meta => !meta.IsSynthetic && IsUnionArmVisible(meta, payload)))
                     {
-                        var elemVal = arr.GetValue(i);
-                        var isUnionElem = elemVal != null &&
-                            elemVal.GetType().GetCustomAttribute<DdsUnionAttribute>() != null;
-                        var elemName = $"{fieldName}[{i}]";
-                        var isElemExpanded = isUnionElem && _tableExpandedFields.Contains(elemName);
+                        var value = field.Getter(payload);
+                        var isExpandable = IsTableFieldExpandable(value);
+                        var fieldName = field.StructuredName;
+                        var isExpanded = isExpandable && _tableExpandedFields.Contains(fieldName);
 
-                        builder.OpenElement(19, "tr");
-                        builder.AddAttribute(20, "class", "detail-table__element-row");
-                        builder.OpenElement(21, "td");
-                        builder.AddAttribute(22, "class", "detail-table__element-name");
-                        if (isUnionElem)
-                        {
-                            var capturedElemName = elemName;
-                            builder.OpenElement(23, "button");
-                            builder.AddAttribute(24, "type", "button");
-                            builder.AddAttribute(25, "class", "detail-table__toggle");
-                            builder.AddAttribute(26, "onclick",
-                                EventCallback.Factory.Create(this, () => ToggleTableField(capturedElemName)));
-                            builder.AddContent(27, isElemExpanded ? "\u25bc" : "\u25ba");
-                            builder.CloseElement();
-                        }
-                        builder.AddContent(28, $"[{i}]");
-                        builder.CloseElement();
-                        builder.OpenElement(29, "td");
-                        if (isUnionElem)
-                        {
-                            var uInfo = GetUnionInfo(elemVal!);
-                            builder.AddContent(30, RenderValue(uInfo.Discriminator));
-                        }
-                        else
-                        {
-                            builder.AddContent(30, RenderValue(elemVal));
-                        }
-                        builder.CloseElement();
-                        builder.CloseElement(); // tr
+                        <tr>
+                            <td>
+                                @if (isExpandable)
+                                {
+                                    <button type="button" class="detail-table__toggle" @onclick="() => ToggleTableField(fieldName)">
+                                        @(isExpanded ? "\u25bc" : "\u25ba")
+                                    </button>
+                                }
+                                @field.StructuredName
+                            </td>
+                            <td>@RenderValue(value)</td>
+                        </tr>
 
-                        // Expanded union arm sub-row.
-                        if (isUnionElem && isElemExpanded && elemVal != null)
+                        @if (isExpanded && value != null)
                         {
-                            var uInfo = GetUnionInfo(elemVal);
-                            if (uInfo.ActiveArm != null)
+                            var arr = ToElementArray(value);
+                            if (arr != null)
                             {
-                                builder.OpenElement(31, "tr");
-                                builder.AddAttribute(32, "class", "detail-table__element-row detail-table__element-row--nested");
-                                builder.OpenElement(33, "td");
-                                builder.AddAttribute(34, "class", "detail-table__element-name detail-table__element-name--nested");
-                                builder.AddContent(35, uInfo.ActiveArm.Name);
-                                builder.CloseElement();
-                                builder.OpenElement(36, "td");
-                                builder.AddContent(37, RenderValue(uInfo.ArmValue));
-                                builder.CloseElement();
-                                builder.CloseElement(); // tr
+                                for (int i = 0; i < arr.Length; i++)
+                                {
+                                    var elemVal = arr.GetValue(i);
+                                    var isUnionElem = elemVal != null && elemVal.GetType().GetCustomAttribute<DdsUnionAttribute>() != null;
+                                    var elemName = $"{fieldName}[{i}]";
+                                    var isElemExpanded = isUnionElem && _tableExpandedFields.Contains(elemName);
+
+                                    <tr class="detail-table__element-row">
+                                        <td class="detail-table__element-name">
+                                            @if (isUnionElem)
+                                            {
+                                                var capturedElemName = elemName;
+                                                <button type="button" class="detail-table__toggle" @onclick="() => ToggleTableField(capturedElemName)">
+                                                    @(isElemExpanded ? "\u25bc" : "\u25ba")
+                                                </button>
+                                            }
+                                            [@i]
+                                        </td>
+                                        <td>
+                                            @if (isUnionElem)
+                                            {
+                                                var uInfo = GetUnionInfo(elemVal!);
+                                                @RenderValue(uInfo.Discriminator)
+                                            }
+                                            else
+                                            {
+                                                @RenderValue(elemVal)
+                                            }
+                                        </td>
+                                    </tr>
+
+                                    @if (isUnionElem && isElemExpanded && elemVal != null)
+                                    {
+                                        var uInfo = GetUnionInfo(elemVal);
+                                        if (uInfo.ActiveArm != null)
+                                        {
+                                            <tr class="detail-table__element-row detail-table__element-row--nested">
+                                                <td class="detail-table__element-name detail-table__element-name--nested">
+                                                    @uInfo.ActiveArm.Name
+                                                </td>
+                                                <td>@RenderValue(uInfo.ArmValue)</td>
+                                            </tr>
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
+                </tbody>
+            </table>
         }
-        builder.CloseElement();
-        builder.CloseElement();
-    };
+    </text>;
 
     private RenderFragment RenderJsonView() => builder =>
     {
