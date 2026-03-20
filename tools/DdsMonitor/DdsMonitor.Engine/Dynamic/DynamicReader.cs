@@ -193,14 +193,6 @@ public sealed class DynamicReader<T> : IDynamicReader
 
     private void EmitSample(DdsSample<T> sample)
     {
-        // Skip lifecycle-only events (UNREGISTER / DISPOSE) where ValidData == 0.
-        // Accessing sample.Data on these would dereference a null/incomplete native
-        // pointer and crash inside MarshalFromNative.
-        if (!sample.IsValid)
-        {
-            return;
-        }
-
         var payload = sample.Data;
         var estimatedSize = _nativeSizer != null && payload != null ? _nativeSizer(payload) : UnknownSizeBytes;
 

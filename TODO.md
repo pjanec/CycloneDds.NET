@@ -13,3 +13,4 @@ and not accidentally visually mistaken with string representation for example
 Topic Properties needs to show
  - real DDS topic name string (not just CLR type)
  - QoS settings
+
