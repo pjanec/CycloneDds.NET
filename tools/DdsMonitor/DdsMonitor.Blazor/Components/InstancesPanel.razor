@@ -600,12 +600,19 @@ else
         TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
     }
 
-    private void ShowDetailTooltip(SampleData sample, MouseEventArgs args)
+    private async Task ShowDetailTooltip(SampleData sample, MouseEventArgs args)
     {
         try
         {
-            var json = JsonSerializer.Serialize(sample.Payload, sample.TopicMetadata.TopicType, TooltipJsonOptions);
-            var html = JsonSyntaxHighlighter.ToHtml(json);
+            var html = await Task.Run(() =>
+            {
+                var json = JsonSerializer.Serialize(sample.Payload, sample.TopicMetadata.TopicType, TooltipJsonOptions);
+                if (json.Length > 3000)
+                {
+                    json = json.Substring(0, 3000) + "\n... [payload truncated for preview]";
+                }
+                return JsonSyntaxHighlighter.ToHtml(json);
+            });
             TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
         }
         catch

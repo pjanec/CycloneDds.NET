@@ -108,7 +108,7 @@ public sealed class DynamicReader<T> : IDynamicReader
 
             var reader = _reader;
             var token = _cancellation.Token;
-            _readTask = Task.Run(() => ReadLoop(reader, token));
+            _readTask = ReadLoopAsync(reader, token);
         }
     }
 
@@ -157,27 +157,16 @@ public sealed class DynamicReader<T> : IDynamicReader
         reader?.Dispose();
     }
 
-    private void ReadLoop(DdsReader<T> reader, CancellationToken cancellationToken)
+    private async Task ReadLoopAsync(DdsReader<T> reader, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var hasData = reader.WaitDataAsync(cancellationToken).GetAwaiter().GetResult();
-                if (!hasData)
+                var hasData = await reader.WaitDataAsync(cancellationToken);
+                if (hasData)
                 {
-                    continue;
-                }
-
-                using var loan = reader.Take(DefaultMaxSamples);
-                if (loan.Count == 0)
-                {
-                    continue;
-                }
-
-                foreach (var sample in loan)
-                {
-                    EmitSample(sample);
+                    DrainReader(reader);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -188,6 +177,22 @@ public sealed class DynamicReader<T> : IDynamicReader
             {
                 break;
             }
+        }
+    }
+
+    // Synchronous helper: DdsLoan<T> is a ref struct and cannot be declared
+    // inside an async method on C# < 13, so the Take/Emit work lives here.
+    private void DrainReader(DdsReader<T> reader)
+    {
+        using var loan = reader.Take(DefaultMaxSamples);
+        if (loan.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var sample in loan)
+        {
+            EmitSample(sample);
         }
     }
 
