@@ -393,264 +393,178 @@ else
             .ToString("yyyy-MM-dd HH:mm:ss.fffffff");
     }
 
-    private RenderFragment RenderNode(object? value, string label, string path, HashSet<object> traversal, int depth) => builder =>
-    {
-        var sequence = 0;
-        var type = value?.GetType();
-        var isReferenceType = type != null && !type.IsValueType;
-        var isCycle = isReferenceType && traversal.Contains(value!);
-        var isMaxDepth = depth >= MaxTreeDepth;
-        var isLeaf = type == null || IsLeafType(type) || isCycle || isMaxDepth;
-        var isRoot = string.IsNullOrEmpty(path) && _currentSample != null &&
-            string.Equals(label, _currentSample.TopicMetadata.ShortName, StringComparison.Ordinal);
-        var nextPath = isRoot
-            ? string.Empty
-            : (string.IsNullOrEmpty(path) ? label : $"{path}.{label}");
-        var displayValue = value;
-        var displayType = type;
+    private RenderFragment RenderNode(object? value, string label, string path, HashSet<object> traversal, int depth) => @<text>
+        @{
+            var type = value?.GetType();
+            var isReferenceType = type != null && !type.IsValueType;
+            var isCycle = isReferenceType && traversal.Contains(value!);
+            var isMaxDepth = depth >= MaxTreeDepth;
+            var isLeaf = type == null || IsLeafType(type) || isCycle || isMaxDepth;
+            var isRoot = string.IsNullOrEmpty(path) && _currentSample != null &&
+                         string.Equals(label, _currentSample.TopicMetadata.ShortName, StringComparison.Ordinal);
+            var nextPath = isRoot
+                ? string.Empty
+                : (string.IsNullOrEmpty(path) ? label : $"{path}.{label}");
 
-        if (isCycle)
-        {
-            displayValue = "(cycle)";
-            displayType = typeof(string);
-        }
-        else if (isMaxDepth)
-        {
-            displayValue = "(max depth)";
-            displayType = typeof(string);
-        }
-        else if (!isLeaf && type != null && value != null &&
-                 type.GetCustomAttribute<DdsUnionAttribute>() != null)
-        {
-            // ME2-T06: show discriminator value as the collapsed node label for union types.
-            var uInfo = GetUnionInfo(value);
-            displayValue = uInfo.Discriminator;
-            displayType = uInfo.Discriminator?.GetType() ?? typeof(string);
-        }
+            var displayValue = value;
+            var displayType = type;
 
-        // Determine whether this non-leaf node is array-like (for default-collapsed behaviour).
-        var isArrayLike = !isLeaf && type != null &&
-            (type.IsArray ||
-             IsFixedBufferValueType(type) ||
-             IsInlineArrayValueType(type) ||
-             (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)));
-
-        // Non-root, non-leaf nodes are user-collapsible.  Arrays/buffers start collapsed.
-        var isToggleable = !isLeaf && !isRoot;
-        var isExpanded = !isToggleable || IsTreeNodeExpanded(nextPath, isArrayLike);
-
-        builder.OpenElement(sequence++, "div");
-        builder.AddAttribute(sequence++, "class", "detail-tree__node");
-        builder.OpenElement(sequence++, "div");
-        builder.AddAttribute(sequence++, "class", "detail-tree__row");
-
-        // Expand/collapse toggle button for collapsible nodes.
-        if (isToggleable)
-        {
-            var togglePath = nextPath;
-            var toggleIsArray = isArrayLike;
-            builder.OpenElement(sequence++, "button");
-            builder.AddAttribute(sequence++, "type", "button");
-            builder.AddAttribute(sequence++, "class", "detail-tree__toggle");
-            builder.AddAttribute(sequence++, "onclick",
-                EventCallback.Factory.Create(this, () => ToggleTreeNode(togglePath, toggleIsArray)));
-            builder.AddContent(sequence++, isExpanded ? "\u25bc" : "\u25ba");
-            builder.CloseElement();
-        }
-
-        builder.OpenElement(sequence++, "span");
-        builder.AddAttribute(sequence++, "class", "detail-tree__label");
-        builder.AddContent(sequence++, label);
-        builder.CloseElement();
-
-        // Render the value span — use formatted token rendering for types with GetFormatTokens().
-        var fmtMethodForNode = !isCycle && !isMaxDepth && displayType != null
-            ? GetFormatTokensMethod(displayType)
-            : null;
-
-        if (fmtMethodForNode != null && displayValue != null)
-        {
-            builder.AddContent(sequence++, RenderFormattedTokenValue(displayValue, fmtMethodForNode, nextPath));
-        }
-        else
-        {
-            builder.OpenElement(sequence++, "span");
-            builder.AddAttribute(sequence++, "class", GetValueClass(displayType));
-            builder.AddContent(sequence++, RenderValue(displayValue));
-            builder.CloseElement();
-        }
-
-        if (isLeaf)
-        {
-            RenderPin(builder, ref sequence, nextPath);
-            RenderTextViewButton(builder, ref sequence, value);
-        }
-
-        builder.CloseElement();
-
-        var addedToTraversal = false;
-        if (!isLeaf && isReferenceType && value != null)
-        {
-            addedToTraversal = traversal.Add(value);
-        }
-
-        if (!isLeaf && value != null && isExpanded)
-        {
-            var nonNullType = type!;
-            builder.OpenElement(sequence++, "div");
-            builder.AddAttribute(sequence++, "class", "detail-tree__children");
-
-            if (nonNullType.IsArray)
+            if (isCycle)
             {
-                // Render each array element as an indexed child node.
-                var arr = (Array)value;
-                for (int i = 0; i < arr.Length; i++)
-                {
-                    var idx = i;
-                    builder.AddContent(sequence++, RenderNode(arr.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1));
-                }
+                displayValue = "(cycle)";
+                displayType = typeof(string);
             }
-            else if (IsFixedBufferValueType(nonNullType))
+            else if (isMaxDepth)
             {
-                // Compiler-generated FixedBuffer struct — expand as indexed byte/element children.
-                var elements = ReadFixedBufferElements(value, nonNullType);
-                for (int i = 0; i < elements.Length; i++)
-                {
-                    var idx = i;
-                    builder.AddContent(sequence++, RenderNode(elements.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1));
-                }
+                displayValue = "(max depth)";
+                displayType = typeof(string);
             }
-            else if (IsInlineArrayValueType(nonNullType))
+            else if (!isLeaf && type != null && value != null &&
+                     type.GetCustomAttribute<DdsUnionAttribute>() != null)
             {
-                // ME1-C06: [InlineArray(N)] struct — expand as indexed element children.
-                var elements = ReadInlineArrayElements(value, nonNullType);
-                for (int i = 0; i < elements.Length; i++)
-                {
-                    var idx = i;
-                    builder.AddContent(sequence++, RenderNode(elements.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1));
-                }
+                var uInfo = GetUnionInfo(value);
+                displayValue = uInfo.Discriminator;
+                displayType = uInfo.Discriminator?.GetType() ?? typeof(string);
             }
-            else if (nonNullType.IsGenericType &&
-                     nonNullType.GetGenericTypeDefinition() == typeof(List<>))
-            {
-                // List<T> — iterate via the IEnumerable interface.
-                var list = (System.Collections.IList)value;
-                for (int i = 0; i < list.Count; i++)
+
+            var isArrayLike = !isLeaf && type != null &&
+                              (type.IsArray ||
+                               IsFixedBufferValueType(type) ||
+                               IsInlineArrayValueType(type) ||
+                               (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)));
+
+            var isToggleable = !isLeaf && !isRoot;
+            var isExpanded = !isToggleable || IsTreeNodeExpanded(nextPath, isArrayLike);
+        }
+
+        <div class="detail-tree__node">
+            <div class="detail-tree__row">
+                @if (isToggleable)
                 {
-                    var idx = i;
-                    builder.AddContent(sequence++, RenderNode(list[idx], $"[{idx}]", nextPath, traversal, depth + 1));
+                    var togglePath = nextPath;
+                    var toggleIsArray = isArrayLike;
+                    <button type="button" class="detail-tree__toggle" @onclick="() => ToggleTreeNode(togglePath, toggleIsArray)">
+                        @(isExpanded ? "\u25bc" : "\u25ba")
+                    </button>
                 }
-            }
-            else
-            {
-                // ── ME1-T08: For [DdsUnion] structs, show only the active arm ─────────
-                if (nonNullType.GetCustomAttribute<DdsUnionAttribute>() != null)
+
+                <span class="detail-tree__label">@label</span>
+
+                @{
+                    var fmtMethodForNode = !isCycle && !isMaxDepth && displayType != null
+                        ? GetFormatTokensMethod(displayType)
+                        : null;
+                }
+
+                @if (fmtMethodForNode != null && displayValue != null)
                 {
-                    // Find the discriminator member and its current value.
-                    MemberInfo? discMember = null;
-                    foreach (var m in GetMembers(nonNullType))
-                    {
-                        if (m.GetCustomAttribute<DdsDiscriminatorAttribute>() != null)
-                        {
-                            discMember = m;
-                            break;
-                        }
-                    }
-
-                    object? discValue = discMember != null ? GetMemberValue(discMember, value) : null;
-
-                    // Determine whether any explicit case matches the discriminator value.
-                    bool anyExplicitMatch = GetMembers(nonNullType)
-                        .Where(m => m.GetCustomAttribute<DdsCaseAttribute>() != null)
-                        .Any(m => UnionValuesEqualTree(m.GetCustomAttribute<DdsCaseAttribute>()!.Value, discValue));
-
-                    foreach (var member in GetMembers(nonNullType))
-                    {
-                        // Always show the discriminator.
-                        if (member.GetCustomAttribute<DdsDiscriminatorAttribute>() != null)
-                        {
-                            var mv = GetMemberValue(member, value);
-                            builder.AddContent(sequence++, RenderNode(mv, member.Name, nextPath, traversal, depth + 1));
-                            continue;
-                        }
-
-                        var caseAttr = member.GetCustomAttribute<DdsCaseAttribute>();
-                        var defaultCaseAttr = member.GetCustomAttribute<DdsDefaultCaseAttribute>();
-
-                        if (caseAttr != null)
-                        {
-                            // Show only the arm whose case value equals the discriminator.
-                            if (!UnionValuesEqualTree(caseAttr.Value, discValue))
-                                continue;
-                        }
-                        else if (defaultCaseAttr != null)
-                        {
-                            // Show default arm only when no explicit arm matched.
-                            if (anyExplicitMatch)
-                                continue;
-                        }
-                        else
-                        {
-                            // Field in a union without case marker – skip.
-                            continue;
-                        }
-
-                        var memberValue = GetMemberValue(member, value);
-                        builder.AddContent(sequence++, RenderNode(memberValue, member.Name, nextPath, traversal, depth + 1));
-                    }
+                    @RenderFormattedTokenValue(displayValue, fmtMethodForNode, nextPath)
                 }
                 else
                 {
-                    foreach (var member in GetMembers(nonNullType))
+                    <span class="@GetValueClass(displayType)">
+                        @RenderValue(displayValue)
+                    </span>
+                }
+
+                @if (isLeaf)
+                {
+                    if (!string.IsNullOrWhiteSpace(SourcePanelId))
                     {
-                        var memberValue = GetMemberValue(member, value);
-                        builder.AddContent(sequence++, RenderNode(memberValue, member.Name, nextPath, traversal, depth + 1));
+                        <button type="button" class="detail-tree__pin" @onclick="() => AddColumn(nextPath)">+</button>
                     }
+                    if (value is string nodeText)
+                    {
+                        <button type="button" class="detail-tree__textview" @onclick="() => OpenTextView(nodeText)">Open</button>
+                    }
+                }
+            </div>
+
+            @{
+                var addedToTraversal = false;
+                if (!isLeaf && isReferenceType && value != null)
+                {
+                    addedToTraversal = traversal.Add(value);
                 }
             }
 
-            builder.CloseElement();
-        }
+            @if (!isLeaf && value != null && isExpanded)
+            {
+                var nonNullType = type!;
+                <div class="detail-tree__children">
+                    @if (nonNullType.IsArray)
+                    {
+                        var arr = (Array)value;
+                        for (int i = 0; i < arr.Length; i++)
+                        {
+                            var idx = i;
+                            @RenderNode(arr.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1)
+                        }
+                    }
+                    else if (IsFixedBufferValueType(nonNullType))
+                    {
+                        var elements = ReadFixedBufferElements(value, nonNullType);
+                        for (int i = 0; i < elements.Length; i++)
+                        {
+                            var idx = i;
+                            @RenderNode(elements.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1)
+                        }
+                    }
+                    else if (IsInlineArrayValueType(nonNullType))
+                    {
+                        var elements = ReadInlineArrayElements(value, nonNullType);
+                        for (int i = 0; i < elements.Length; i++)
+                        {
+                            var idx = i;
+                            @RenderNode(elements.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1)
+                        }
+                    }
+                    else if (nonNullType.IsGenericType && nonNullType.GetGenericTypeDefinition() == typeof(List<>))
+                    {
+                        var list = (System.Collections.IList)value;
+                        for (int i = 0; i < list.Count; i++)
+                        {
+                            var idx = i;
+                            @RenderNode(list[idx], $"[{idx}]", nextPath, traversal, depth + 1)
+                        }
+                    }
+                    else
+                    {
+                        if (nonNullType.GetCustomAttribute<DdsUnionAttribute>() != null)
+                        {
+                            var unionMeta = _unionMetaCache.GetOrAdd(nonNullType, BuildUnionMeta);
+                            var discValue = unionMeta.DiscriminatorMember != null ? GetMemberValue(unionMeta.DiscriminatorMember, value) : null;
+                            var uInfo = GetUnionInfo(value);
 
-        if (addedToTraversal)
-        {
-            traversal.Remove(value!);
-        }
+                            if (unionMeta.DiscriminatorMember != null)
+                            {
+                                @RenderNode(discValue, unionMeta.DiscriminatorMember.Name, nextPath, traversal, depth + 1)
+                            }
+                            if (uInfo.ActiveArm != null)
+                            {
+                                @RenderNode(uInfo.ArmValue, uInfo.ActiveArm.Name, nextPath, traversal, depth + 1)
+                            }
+                        }
+                        else
+                        {
+                            foreach (var member in GetMembers(nonNullType))
+                            {
+                                var memberValue = GetMemberValue(member, value);
+                                @RenderNode(memberValue, member.Name, nextPath, traversal, depth + 1)
+                            }
+                        }
+                    }
+                </div>
+            }
 
-        builder.CloseElement();
-    };
-
-    private void RenderPin(RenderTreeBuilder builder, ref int sequence, string path)
-    {
-        if (string.IsNullOrWhiteSpace(SourcePanelId))
-        {
-            return;
-        }
-
-        builder.OpenElement(sequence++, "button");
-        builder.AddAttribute(sequence++, "type", "button");
-        builder.AddAttribute(sequence++, "class", "detail-tree__pin");
-        builder.AddAttribute(sequence++, "onclick",
-            EventCallback.Factory.Create(this, () => AddColumn(path)));
-        builder.AddContent(sequence++, "+");
-        builder.CloseElement();
-    }
-
-    private void RenderTextViewButton(RenderTreeBuilder builder, ref int sequence, object? value)
-    {
-        if (value is not string text)
-        {
-            return;
-        }
-
-        builder.OpenElement(sequence++, "button");
-        builder.AddAttribute(sequence++, "type", "button");
-        builder.AddAttribute(sequence++, "class", "detail-tree__textview");
-        builder.AddAttribute(sequence++, "onclick",
-            EventCallback.Factory.Create(this, () => OpenTextView(text)));
-        builder.AddContent(sequence++, "Open");
-        builder.CloseElement();
-    }
+            @{
+                if (addedToTraversal)
+                {
+                    traversal.Remove(value!);
+                }
+            }
+        </div>
+    </text>;
 
     private void AddColumn(string path)
     {
@@ -673,153 +587,94 @@ else
         panel.Title = "Text View";
     }
 
-    private RenderFragment RenderValue(object? value) => builder =>
-    {
-        if (value == null)
+    private RenderFragment RenderValue(object? value) => @<text>
+        @if (value == null)
         {
-            builder.OpenElement(0, "span");
-            builder.AddAttribute(1, "class", "detail-tree__value is-null");
-            builder.AddContent(2, "null");
-            builder.CloseElement();
-            return;
+            <span class="detail-tree__value is-null">null</span>
         }
-
-        if (value is string text)
+        else if (value is string text)
         {
-            builder.OpenElement(0, "span");
-            builder.AddAttribute(1, "class", "detail-tree__value is-string");
-            builder.AddAttribute(2, "onmouseenter",
-                EventCallback.Factory.Create<MouseEventArgs>(this, args => ShowJsonTooltip(text, args)));
-            builder.AddAttribute(3, "onmouseleave",
-                EventCallback.Factory.Create(this, HideTooltip));
-            builder.AddAttribute(4, "onmousedown",
-                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(text, true, args)));
-            builder.AddAttribute(5, "oncontextmenu:preventDefault", true);
-            builder.AddContent(6, text);
-            builder.CloseElement();
+            <span class="detail-tree__value is-string"
+                  @onmouseenter="args => ShowJsonTooltip(text, args)"
+                  @onmouseleave="HideTooltip"
+                  @onmousedown="args => HandleValueMouseDown(text, true, args)"
+                  @oncontextmenu:preventDefault="true">@text</span>
         }
-        else if (value != null && IsFixedStringType(value.GetType()))
+        else if (IsFixedStringType(value.GetType()))
         {
-            // FixedStringN: render as a string value showing the actual text content.
             var fsText = value.ToString() ?? string.Empty;
-            builder.OpenElement(0, "span");
-            builder.AddAttribute(1, "class", "detail-tree__value is-string");
-            builder.AddAttribute(2, "onmousedown",
-                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(fsText, false, args)));
-            builder.AddAttribute(3, "oncontextmenu:preventDefault", true);
-            builder.AddContent(4, fsText);
-            builder.CloseElement();
+            <span class="detail-tree__value is-string"
+                  @onmousedown="args => HandleValueMouseDown(fsText, false, args)"
+                  @oncontextmenu:preventDefault="true">@fsText</span>
         }
         else if (value is Array arr)
         {
-            // Show a compact summary for array nodes; children are rendered separately.
-            builder.OpenElement(6, "span");
-            builder.AddAttribute(7, "class", "detail-tree__value detail-tree__value--array");
-            builder.AddContent(8, $"[{arr.Length}]");
-            builder.CloseElement();
+            <span class="detail-tree__value detail-tree__value--array">[@arr.Length]</span>
         }
-        else if (value != null && value.GetType().IsGenericType &&
-                 value.GetType().GetGenericTypeDefinition() == typeof(List<>))
+        else if (value.GetType().IsGenericType && value.GetType().GetGenericTypeDefinition() == typeof(List<>))
         {
             var list = (System.Collections.IList)value;
-            builder.OpenElement(6, "span");
-            builder.AddAttribute(7, "class", "detail-tree__value detail-tree__value--array");
-            builder.AddContent(8, $"[{list.Count}]");
-            builder.CloseElement();
+            <span class="detail-tree__value detail-tree__value--array">[@list.Count]</span>
         }
-        else if (value != null && IsFixedBufferValueType(value.GetType()))
+        else if (IsFixedBufferValueType(value.GetType()))
         {
-            // Fixed-buffer compiler struct — show element count from size.
             int byteSize = Marshal.SizeOf(value.GetType());
-            var elemField = value.GetType().GetField("FixedElementField",
-                BindingFlags.Public | BindingFlags.Instance);
+            var elemField = value.GetType().GetField("FixedElementField", BindingFlags.Public | BindingFlags.Instance);
             int elemSize = elemField != null ? Marshal.SizeOf(elemField.FieldType) : 1;
-            builder.OpenElement(6, "span");
-            builder.AddAttribute(7, "class", "detail-tree__value detail-tree__value--array");
-            builder.AddContent(8, $"[{byteSize / elemSize}]");
-            builder.CloseElement();
+            <span class="detail-tree__value detail-tree__value--array">[@(byteSize / elemSize)]</span>
         }
-        else if (value != null && GetFormatTokensMethod(value.GetType()) != null)
+        else if (GetFormatTokensMethod(value.GetType()) != null)
         {
-            // Tier 2 duck-typed GetFormatTokens(): render inline token sequence (table view, no path context).
             var fmtMethod = GetFormatTokensMethod(value.GetType())!;
-            var fmtTokens = ((IEnumerable<FormattedToken>)(fmtMethod.Invoke(value, null)
-                ?? Array.Empty<FormattedToken>())).ToList();
+            var fmtTokens = ((IEnumerable<FormattedToken>)(fmtMethod.Invoke(value, null) ?? Array.Empty<FormattedToken>())).ToList();
             var plainText = string.Concat(fmtTokens.Select(t => t.Text));
             var capturedText = plainText;
-            builder.OpenElement(0, "span");
-            builder.AddAttribute(1, "class", "detail-tree__value detail-tree__value--formatted");
-            builder.AddAttribute(2, "onmousedown",
-                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(capturedText, false, args)));
-            builder.AddAttribute(3, "oncontextmenu:preventDefault", true);
-            var fmtSeq = 4;
-            foreach (var token in fmtTokens)
+            <span class="detail-tree__value detail-tree__value--formatted"
+                  @onmousedown="args => HandleValueMouseDown(capturedText, false, args)"
+                  @oncontextmenu:preventDefault="true">
+                @foreach (var token in fmtTokens)
+                {
+                    <span class="@GetTokenClass(token.Type)">@token.Text</span>
+                }
+            </span>
+        }
+        else
+        {
+            var content = value is bool boolVal ? (boolVal ? "true" : "false") : value.ToString() ?? string.Empty;
+            <span class="@GetValueClass(value.GetType())"
+                  @onmousedown="args => HandleValueMouseDown(content, false, args)"
+                  @oncontextmenu:preventDefault="true">@content</span>
+        }
+    </text>;
+
+    private RenderFragment RenderFormattedTokenValue(object value, MethodInfo fmtMethod, string path) => @<text>
+        @{
+            IEnumerable<FormattedToken> tokens;
+            if (_selectedFormatters.TryGetValue(path, out var activeFmt) && activeFmt != null)
             {
-                builder.OpenElement(fmtSeq++, "span");
-                builder.AddAttribute(fmtSeq++, "class", GetTokenClass(token.Type));
-                builder.AddContent(fmtSeq++, token.Text);
-                builder.CloseElement();
+                tokens = activeFmt.FormatTokens(value);
             }
-            builder.CloseElement();
-        }
-        else
-        {
-            var content = value is bool boolVal
-                ? (boolVal ? "true" : "false")
-                : value.ToString() ?? string.Empty;
-            builder.OpenElement(6, "span");
-            builder.AddAttribute(7, "class", GetValueClass(value.GetType()));
-            builder.AddAttribute(8, "onmousedown",
-                EventCallback.Factory.Create<MouseEventArgs>(this, args => HandleValueMouseDown(content, false, args)));
-            builder.AddAttribute(9, "oncontextmenu:preventDefault", true);
-            builder.AddContent(10, content);
-            builder.CloseElement();
-        }
-    };
+            else
+            {
+                tokens = (IEnumerable<FormattedToken>)(fmtMethod.Invoke(value, null) ?? Array.Empty<FormattedToken>());
+            }
 
-    /// <summary>
-    /// Renders a value with full Tier 2 (GetFormatTokens) token highlighting AND Tier 1 formatter
-    /// selection support.  Called from <see cref="RenderNode"/> when a path is available.
-    /// </summary>
-    private RenderFragment RenderFormattedTokenValue(object value, MethodInfo fmtMethod, string path) => builder =>
-    {
-        var sequence = 0;
-
-        // Determine which tokens to render: Tier 1 selected formatter wins over Tier 2 default.
-        IEnumerable<FormattedToken> tokens;
-        if (_selectedFormatters.TryGetValue(path, out var activeFmt) && activeFmt != null)
-        {
-            tokens = activeFmt.FormatTokens(value);
-        }
-        else
-        {
-            tokens = (IEnumerable<FormattedToken>)(fmtMethod.Invoke(value, null)
-                ?? Array.Empty<FormattedToken>());
+            var tokenList = tokens.ToList();
+            var plainText = string.Concat(tokenList.Select(t => t.Text));
+            var capturedPath = path;
+            var capturedValue = value;
+            var capturedText = plainText;
         }
 
-        var tokenList = tokens.ToList();
-        var plainText = string.Concat(tokenList.Select(t => t.Text));
-        var capturedPath = path;
-        var capturedValue = value;
-        var capturedText = plainText;
-
-        builder.OpenElement(sequence++, "span");
-        builder.AddAttribute(sequence++, "class", "detail-tree__value detail-tree__value--formatted");
-        builder.AddAttribute(sequence++, "onmousedown",
-            EventCallback.Factory.Create<MouseEventArgs>(this,
-                args => HandleFormattedValueMouseDown(capturedValue, capturedPath, capturedText, args)));
-        builder.AddAttribute(sequence++, "oncontextmenu:preventDefault", true);
-
-        foreach (var token in tokenList)
-        {
-            builder.OpenElement(sequence++, "span");
-            builder.AddAttribute(sequence++, "class", GetTokenClass(token.Type));
-            builder.AddContent(sequence++, token.Text);
-            builder.CloseElement();
-        }
-
-        builder.CloseElement();
-    };
+        <span class="detail-tree__value detail-tree__value--formatted"
+              @onmousedown="args => HandleFormattedValueMouseDown(capturedValue, capturedPath, capturedText, args)"
+              @oncontextmenu:preventDefault="true">
+            @foreach (var token in tokenList)
+            {
+                <span class="@GetTokenClass(token.Type)">@token.Text</span>
+            }
+        </span>
+    </text>;
 
     private void HandleFormattedValueMouseDown(object value, string path, string plainText, MouseEventArgs args)
     {
