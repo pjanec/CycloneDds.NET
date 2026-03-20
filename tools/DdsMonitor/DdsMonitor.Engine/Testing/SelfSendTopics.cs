@@ -62,6 +62,7 @@ public partial class SelfTestPose
 }
 
 [DdsStruct]
+[DdsTypeFormat("[pos:{Position}, vel:{Velocity}]")]
 public partial struct Pose
 {
     public Vector3 Position;

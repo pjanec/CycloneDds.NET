@@ -189,30 +189,21 @@ else
         PanelState.ComponentState[nameof(IsLinked)] = _linked;
     }
 
-    private RenderFragment RenderTab(DetailTab tab, string label) => builder =>
-    {
-        var sequence = 0;
-        builder.OpenElement(sequence++, "button");
-        builder.AddAttribute(sequence++, "type", "button");
-        builder.AddAttribute(sequence++, "class", _activeTab == tab ? "detail-panel__tab is-active" : "detail-panel__tab");
-        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => _activeTab = tab));
-        builder.AddContent(sequence++, label);
-        builder.CloseElement();
-    };
+    private RenderFragment RenderTab(DetailTab tab, string label) => @<text>
+        <button type="button"
+                class="@(_activeTab == tab ? "detail-panel__tab is-active" : "detail-panel__tab")"
+                @onclick="() => { _activeTab = tab; }">@label</button>
+    </text>;
 
-    private RenderFragment RenderTreeView() => builder =>
-    {
-        if (_currentSample == null)
+    private RenderFragment RenderTreeView() => @<text>
+        @if (_currentSample != null)
         {
-            return;
+            var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
+            <div class="detail-tree">
+                @RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty, traversal, 0)
+            </div>
         }
-
-        var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
-        builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "class", "detail-tree");
-        builder.AddContent(2, RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty, traversal, 0));
-        builder.CloseElement();
-    };
+    </text>;
 
     private RenderFragment RenderTableView() => @<text>
         @if (_currentSample != null)
@@ -304,83 +295,62 @@ else
         }
     </text>;
 
-    private RenderFragment RenderJsonView() => builder =>
-    {
-        if (_currentSample == null)
+    private RenderFragment RenderJsonView() => @<text>
+        @if (_currentSample == null)
         {
-            return;
-        }
-
-        var payload = _currentSample.Payload;
-        var json = SerializePayload(payload);
-        if (json == null)
-        {
-            builder.OpenElement(0, "div");
-            builder.AddAttribute(1, "class", "detail-panel__empty");
-            builder.AddContent(2, "JSON serialization failed.");
-            builder.CloseElement();
-            return;
-        }
-
-        var html = JsonSyntaxHighlighter.ToHtml(json);
-        builder.OpenElement(3, "pre");
-        builder.AddAttribute(4, "class", "detail-json");
-        builder.AddContent(5, (MarkupString)html);
-        builder.CloseElement();
-    };
-
-    private RenderFragment RenderSampleInfo() => builder =>
-    {
-        if (_currentSample == null)
-        {
-            return;
-        }
-
-        var info = _currentSample.SampleInfo;
-        builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "class", "detail-info");
-        builder.AddContent(2, $"Global Ordinal: {_currentSample.Ordinal}");
-        builder.AddMarkupContent(3, "<br />");
-        builder.AddContent(4, $"Incoming Timestamp: {_currentSample.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fffffff")}");
-        builder.AddMarkupContent(5, "<br />");
-        builder.AddContent(6, $"Domain ID: {_currentSample.DomainId}");
-        builder.AddMarkupContent(7, "<br />");
-        builder.AddContent(8, $"Partition: {(string.IsNullOrEmpty(_currentSample.PartitionName) ? "<default>" : _currentSample.PartitionName)}");
-        builder.AddMarkupContent(9, "<br />");
-        builder.AddContent(10, $"Instance: {info.InstanceState}");
-        builder.AddMarkupContent(11, "<br />");
-        builder.AddContent(12, $"Sample: {info.SampleState}");
-        builder.AddMarkupContent(13, "<br />");
-        builder.AddContent(14, $"View: {info.ViewState}");
-        builder.AddMarkupContent(15, "<br />");
-        builder.AddContent(16, $"SourceTimestamp: {FormatSourceTimestamp(info.SourceTimestamp)}");
-        builder.CloseElement();
-    };
-
-    private RenderFragment RenderSenderInfo() => builder =>
-    {
-        if (_currentSample == null)
-        {
-            return;
-        }
-
-        var sender = _currentSample.Sender;
-        builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "class", "detail-info");
-        if (sender == null)
-        {
-            builder.AddContent(2, "No sender metadata.");
+            <div class="detail-panel__empty">No sample selected.</div>
         }
         else
         {
-            builder.AddContent(2, $"ProcessId: {sender.ProcessId}");
-            builder.AddMarkupContent(3, "<br />");
-            builder.AddContent(4, $"Machine: {sender.MachineName}");
-            builder.AddMarkupContent(5, "<br />");
-            builder.AddContent(6, $"IP: {sender.IpAddress}");
+            var payload = _currentSample.Payload;
+            var json = SerializePayload(payload);
+            @if (json == null)
+            {
+                <div class="detail-panel__empty">JSON serialization failed.</div>
+            }
+            else
+            {
+                var html = JsonSyntaxHighlighter.ToHtml(json);
+                <pre class="detail-json">@((MarkupString)html)</pre>
+            }
         }
-        builder.CloseElement();
-    };
+    </text>;
+
+    private RenderFragment RenderSampleInfo() => @<text>
+        @if (_currentSample != null)
+        {
+            var info = _currentSample.SampleInfo;
+            <div class="detail-info">
+                Global Ordinal: @_currentSample.Ordinal<br />
+                Incoming Timestamp: @_currentSample.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fffffff")<br />
+                Domain ID: @_currentSample.DomainId<br />
+                Partition: @(string.IsNullOrEmpty(_currentSample.PartitionName) ? "<default>" : _currentSample.PartitionName)<br />
+                Instance: @info.InstanceState<br />
+                Sample: @info.SampleState<br />
+                View: @info.ViewState<br />
+                SourceTimestamp: @FormatSourceTimestamp(info.SourceTimestamp)
+            </div>
+        }
+    </text>;
+
+    private RenderFragment RenderSenderInfo() => @<text>
+        @if (_currentSample != null)
+        {
+            var sender = _currentSample.Sender;
+            <div class="detail-info">
+                @if (sender == null)
+                {
+                    <span>No sender metadata.</span>
+                }
+                else
+                {
+                    <span>ProcessId: @sender.ProcessId</span><br />
+                    <span>Machine: @sender.MachineName</span><br />
+                    <span>IP: @sender.IpAddress</span>
+                }
+            </div>
+        }
+    </text>;
 
     private static string FormatSourceTimestamp(long nanoseconds)
     {

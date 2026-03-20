@@ -108,7 +108,9 @@ public sealed class DynamicReader<T> : IDynamicReader
 
             var reader = _reader;
             var token = _cancellation.Token;
-            _readTask = ReadLoopAsync(reader, token);
+            // explicitly push the task to a background thread so it never captures the UI context to begin with
+            // otherwise the UI freezes when the topic subscription check box is clicked
+            _readTask = Task.Run(() => ReadLoopAsync(reader, token));
         }
     }
 

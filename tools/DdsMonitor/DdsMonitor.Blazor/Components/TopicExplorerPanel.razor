@@ -321,55 +321,40 @@
         _topics = snapshots;
     }
 
-    private RenderFragment RenderSparkline(Type topicType) => builder =>
-    {
-        if (!_sparklines.TryGetValue(topicType, out var buffer))
-        {
-            return;
-        }
-
-        var values = buffer.GetSnapshot();
-        var maxVal = 1;
-        foreach (var v in values)
-        {
-            if (v > maxVal)
+    private RenderFragment RenderSparkline(Type topicType) => @<text>
+        @{
+            if (!_sparklines.TryGetValue(topicType, out var buffer))
             {
-                maxVal = v;
+                return;
+            }
+
+            var values = buffer.GetSnapshot();
+            var maxVal = 1;
+            foreach (var v in values)
+            {
+                if (v > maxVal)
+                {
+                    maxVal = v;
+                }
+            }
+
+            const int svgWidth = 60;
+            const int svgHeight = 20;
+            var step = (double)svgWidth / (values.Length - 1);
+            var points = new System.Text.StringBuilder();
+
+            for (var i = 0; i < values.Length; i++)
+            {
+                var x = i * step;
+                var y = svgHeight - (((double)values[i] / maxVal) * (svgHeight - 2)) - 1;
+                if (i > 0) points.Append(' ');
+                points.Append(FormattableString.Invariant($"{x:0.#},{y:0.#}"));
             }
         }
-
-        const int svgWidth = 60;
-        const int svgHeight = 20;
-        var step = (double)svgWidth / (values.Length - 1);
-        var points = new System.Text.StringBuilder();
-
-        for (var i = 0; i < values.Length; i++)
-        {
-            var x = i * step;
-            var y = svgHeight - (((double)values[i] / maxVal) * (svgHeight - 2)) - 1;
-            if (i > 0) points.Append(' ');
-            points.Append(FormattableString.Invariant($"{x:0.#},{y:0.#}"));
-        }
-
-        var sequence = 0;
-        builder.OpenElement(sequence++, "svg");
-        builder.AddAttribute(sequence++, "class", "topic-explorer__sparkline");
-        builder.AddAttribute(sequence++, "viewBox", FormattableString.Invariant($"0 0 {svgWidth} {svgHeight}"));
-        builder.AddAttribute(sequence++, "width", svgWidth);
-        builder.AddAttribute(sequence++, "height", svgHeight);
-
-        builder.OpenElement(sequence++, "polyline");
-        builder.AddAttribute(sequence++, "class", "topic-explorer__sparkline-line");
-        builder.AddAttribute(sequence++, "points", points.ToString());
-        builder.AddAttribute(sequence++, "fill", "none");
-        builder.AddAttribute(sequence++, "stroke", "var(--accent-2)");
-        builder.AddAttribute(sequence++, "stroke-width", "1.5");
-        builder.AddAttribute(sequence++, "stroke-linecap", "round");
-        builder.AddAttribute(sequence++, "stroke-linejoin", "round");
-        builder.CloseElement();
-
-        builder.CloseElement();
-    };
+        <svg class="topic-explorer__sparkline" viewBox="@FormattableString.Invariant($"0 0 {svgWidth} {svgHeight}")" width="@svgWidth" height="@svgHeight">
+            <polyline class="topic-explorer__sparkline-line" points="@points.ToString()" fill="none" stroke="var(--accent-2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        </svg>
+    </text>;
 
     private IEnumerable<TopicExplorerTopicSnapshot> FilteredTopics
     {
@@ -410,23 +395,12 @@
         };
     }
 
-    private RenderFragment RenderFilterButton(string label, TopicFilterKind kind, TriStateFilter state) => builder =>
-    {
-        var sequence = 0;
-        builder.OpenElement(sequence++, "button");
-        builder.AddAttribute(sequence++, "type", "button");
-        builder.AddAttribute(sequence++, "class", $"tri-toggle {GetTriStateClass(state)}");
-        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => CycleFilter(kind)));
-        builder.OpenElement(sequence++, "span");
-        builder.AddAttribute(sequence++, "class", "tri-toggle__state");
-        builder.AddContent(sequence++, GetTriStateLabel(state));
-        builder.CloseElement();
-        builder.OpenElement(sequence++, "span");
-        builder.AddAttribute(sequence++, "class", "tri-toggle__label");
-        builder.AddContent(sequence++, label);
-        builder.CloseElement();
-        builder.CloseElement();
-    };
+    private RenderFragment RenderFilterButton(string label, TopicFilterKind kind, TriStateFilter state) => @<text>
+        <button type="button" class="tri-toggle @GetTriStateClass(state)" @onclick="() => CycleFilter(kind)">
+            <span class="tri-toggle__state">@GetTriStateLabel(state)</span>
+            <span class="tri-toggle__label">@label</span>
+        </button>
+    </text>;
 
     private void CycleFilter(TopicFilterKind kind)
     {

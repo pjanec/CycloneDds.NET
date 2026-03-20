@@ -382,48 +382,36 @@
         </div>
     </div>;
 
-    private RenderFragment RenderValueEditor(FilterConditionNode condition) => builder =>
-    {
-        var valueType = ResolveValueType(condition);
-        var sequence = 0;
-
-        if (valueType == typeof(bool))
-        {
-            builder.OpenElement(sequence++, "input");
-            builder.AddAttribute(sequence++, "type", "checkbox");
-            builder.AddAttribute(sequence++, "checked", string.Equals(condition.ValueText, "true", StringComparison.OrdinalIgnoreCase));
-            builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => OnConditionBoolChanged(condition, args)));
-            builder.CloseElement();
-            return;
+    private RenderFragment RenderValueEditor(FilterConditionNode condition) => @<text>
+        @{
+            var valueType = ResolveValueType(condition);
+            var inputType = valueType == typeof(DateTime) || valueType == typeof(DateTimeOffset) ? "datetime-local" : "text";
         }
-
-        if (valueType != null && valueType.IsEnum)
+        @if (valueType == typeof(bool))
         {
-            builder.OpenElement(sequence++, "select");
-            builder.AddAttribute(sequence++, "class", "filter-builder__select");
-            builder.AddAttribute(sequence++, "value", condition.ValueText);
-            builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => OnConditionEnumChanged(condition, args)));
-
-            foreach (var name in Enum.GetNames(valueType))
-            {
-                builder.OpenElement(sequence++, "option");
-                builder.AddAttribute(sequence++, "value", name);
-                builder.AddContent(sequence++, name);
-                builder.CloseElement();
-            }
-
-            builder.CloseElement();
-            return;
+            <input type="checkbox"
+                   checked="@string.Equals(condition.ValueText, "true", StringComparison.OrdinalIgnoreCase)"
+                   @onchange="args => OnConditionBoolChanged(condition, args)" />
         }
-
-        var inputType = valueType == typeof(DateTime) || valueType == typeof(DateTimeOffset) ? "datetime-local" : "text";
-        builder.OpenElement(sequence++, "input");
-        builder.AddAttribute(sequence++, "type", inputType);
-        builder.AddAttribute(sequence++, "class", "filter-builder__input");
-        builder.AddAttribute(sequence++, "value", condition.ValueText ?? string.Empty);
-        builder.AddAttribute(sequence++, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, args => OnConditionValueChanged(condition, args)));
-        builder.CloseElement();
-    };
+        else if (valueType != null && valueType.IsEnum)
+        {
+            <select class="filter-builder__select"
+                    value="@condition.ValueText"
+                    @onchange="args => OnConditionEnumChanged(condition, args)">
+                @foreach (var name in Enum.GetNames(valueType))
+                {
+                    <option value="@name">@name</option>
+                }
+            </select>
+        }
+        else
+        {
+            <input type="@inputType"
+                   class="filter-builder__input"
+                   value="@(condition.ValueText ?? string.Empty)"
+                   @oninput="args => OnConditionValueChanged(condition, args)" />
+        }
+    </text>;
 
     private FilterGroupOperator ParseGroupOperator(ChangeEventArgs args)
     {
