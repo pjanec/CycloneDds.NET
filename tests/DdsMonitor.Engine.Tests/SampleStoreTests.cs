@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,10 +12,6 @@ public sealed class SampleStoreTests
 {
     private const int SampleCount = 100;
     private const int TopicSampleCount = 5;
-    private const int FilterThreshold = 50;
-    private const int SortTimeoutMs = 2000;
-    private const int SliceStartIndex = 10;
-    private const int SliceCount = 5;
     private const int ConcurrentTaskCount = 4;
     private const int SamplesPerTask = 1000;
     private const int ReadLoopIterations = 5000;
@@ -24,13 +20,14 @@ public sealed class SampleStoreTests
     public void SampleStore_Append_IncrementsCount()
     {
         var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
+        var store = new SampleStore();
 
         for (var i = 1; i <= SampleCount; i++)
         {
             store.Append(CreateSample(metadata, i));
         }
 
+        Assert.Equal(SampleCount, store.TotalCount);
         Assert.Equal(SampleCount, store.AllSamples.Count);
     }
 
@@ -39,7 +36,7 @@ public sealed class SampleStoreTests
     {
         var metadataA = new TopicMetadata(typeof(SampleTopic));
         var metadataB = new TopicMetadata(typeof(SimpleType));
-        using var store = new SampleStore();
+        var store = new SampleStore();
 
         for (var i = 0; i < TopicSampleCount; i++)
         {
@@ -57,140 +54,58 @@ public sealed class SampleStoreTests
     }
 
     [Fact]
-    public void SampleStore_SetFilter_ReducesFilteredCount()
+    public void SampleStore_GetSamples_ReturnsSliceFromStartIndex()
     {
         var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
+        var store = new SampleStore();
 
         for (var i = 1; i <= SampleCount; i++)
         {
             store.Append(CreateSample(metadata, i));
         }
 
-        store.SetFilter(sample => sample.Ordinal > FilterThreshold);
+        var slice = store.GetSamples(SampleCount - 10);
 
-        Assert.Equal(SampleCount - FilterThreshold, store.CurrentFilteredCount);
+        Assert.Equal(10, slice.Length);
+        Assert.Equal(SampleCount - 9, slice[0].Ordinal);
+        Assert.Equal(SampleCount, slice[^1].Ordinal);
     }
 
     [Fact]
-    public async Task SampleStore_SetSortSpec_SortsDescending()
+    public void SampleStore_GetSamples_EmptyWhenStartIndexEqualsCount()
     {
         var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
-        var ordinals = new[] { 7, 2, 9, 1, 5, 3 };
+        var store = new SampleStore();
+        store.Append(CreateSample(metadata, 1));
 
-        foreach (var ordinal in ordinals)
-        {
-            store.Append(CreateSample(metadata, ordinal));
-        }
+        var result = store.GetSamples(store.TotalCount);
 
-        var sortField = CreateOrdinalSortField();
-        store.SetSortSpec(sortField, SortDirection.Descending);
-
-        var waitTask = WaitForViewRebuilt(store);
-        store.Append(CreateSample(metadata, ordinals[^1] + 1));
-
-        var completed = await Task.WhenAny(waitTask, Task.Delay(SortTimeoutMs));
-        Assert.Same(waitTask, completed);
-
-        var view = store.GetVirtualView(0, ordinals.Length + 1).ToArray();
-        var ordered = view.Select(sample => sample.Ordinal).ToArray();
-        var expected = ordinals.Concat(new[] { ordinals[^1] + 1 })
-            .OrderByDescending(value => value)
-            .Select(value => (long)value)
-            .ToArray();
-
-        Assert.Equal(expected, ordered);
+        Assert.Empty(result);
     }
 
     [Fact]
-    public async Task SampleStore_MergeSort_MergesNewArrivals()
+    public void SampleStore_Clear_ResetsEverything()
     {
         var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
-        var sortField = CreateOrdinalSortField();
-
-        store.SetSortSpec(sortField, SortDirection.Ascending);
-
-        var initial = new[] { 10, 30, 20 };
-        foreach (var ordinal in initial)
-        {
-            store.Append(CreateSample(metadata, ordinal));
-        }
-
-        await WaitForViewCountAsync(store, initial.Length);
-
-        var initialView = store.GetVirtualView(0, initial.Length).ToArray();
-        Assert.Equal(new long[] { 10, 20, 30 }, initialView.Select(sample => sample.Ordinal));
-
-        var newArrivals = new[] { 25, 5 };
-        foreach (var ordinal in newArrivals)
-        {
-            store.Append(CreateSample(metadata, ordinal));
-        }
-
-        await WaitForViewCountAsync(store, initial.Length + newArrivals.Length);
-
-        var mergedView = store.GetVirtualView(0, initial.Length + newArrivals.Length).ToArray();
-        var expected = initial.Concat(newArrivals).OrderBy(value => value).Select(value => (long)value).ToArray();
-        Assert.Equal(expected, mergedView.Select(sample => sample.Ordinal));
-    }
-
-    [Fact]
-    public async Task SampleStore_Clear_ResetsEverything()
-    {
-        var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
+        var store = new SampleStore();
 
         for (var i = 1; i <= SampleCount; i++)
         {
             store.Append(CreateSample(metadata, i));
         }
-
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        store.OnViewRebuilt += () => tcs.TrySetResult(true);
 
         store.Clear();
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(SortTimeoutMs));
-        Assert.Same(tcs.Task, completed);
-
+        Assert.Equal(0, store.TotalCount);
         Assert.Empty(store.AllSamples);
-        Assert.Equal(0, store.CurrentFilteredCount);
-        Assert.Empty(store.GetVirtualView(0, 1).ToArray());
-    }
-
-    [Fact]
-    public async Task SampleStore_GetVirtualView_ReturnsCorrectSlice()
-    {
-        var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
-
-        store.SetSortSpec(CreateOrdinalSortField(), SortDirection.Ascending);
-
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        store.OnViewRebuilt += () => tcs.TrySetResult(true);
-
-        for (var i = 1; i <= SampleCount; i++)
-        {
-            store.Append(CreateSample(metadata, i));
-        }
-
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(SortTimeoutMs));
-        Assert.Same(tcs.Task, completed);
-
-        var slice = store.GetVirtualView(SliceStartIndex, SliceCount).ToArray();
-
-        Assert.Equal(SliceCount, slice.Length);
-        Assert.Equal(SliceStartIndex + 1, slice[0].Ordinal);
-        Assert.Equal(SliceStartIndex + SliceCount, slice[^1].Ordinal);
+        Assert.Empty(store.GetSamples(0));
     }
 
     [Fact]
     public async Task SampleStore_ConcurrentAppendAndRead_DoesNotThrow()
     {
         var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
+        var store = new SampleStore();
         var exceptions = new List<Exception>();
         var sync = new object();
 
@@ -212,7 +127,7 @@ public sealed class SampleStoreTests
             {
                 for (var i = 0; i < ReadLoopIterations; i++)
                 {
-                    _ = store.CurrentFilteredCount;
+                    _ = store.TotalCount;
                 }
             }
             catch (Exception ex)
@@ -231,7 +146,7 @@ public sealed class SampleStoreTests
         Assert.Empty(exceptions);
     }
 
-    private static SampleData CreateSample(TopicMetadata metadata, long ordinal, int sizeBytes = 0)
+    internal static SampleData CreateSample(TopicMetadata metadata, long ordinal, int sizeBytes = 0)
     {
         return new SampleData
         {
@@ -243,65 +158,6 @@ public sealed class SampleStoreTests
             SizeBytes = sizeBytes
         };
     }
-
-    private static FieldMetadata CreateOrdinalSortField()
-    {
-        return new FieldMetadata(
-            "Ordinal",
-            "Ordinal",
-            typeof(long),
-            sample => ((SampleData)sample).Ordinal,
-            (_, __) => { },
-            true);
-    }
-
-    private static Task WaitForViewRebuilt(SampleStore store)
-    {
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void Handler()
-        {
-            store.OnViewRebuilt -= Handler;
-            tcs.TrySetResult(true);
-        }
-
-        store.OnViewRebuilt += Handler;
-        return tcs.Task;
-    }
-
-    private static async Task WaitForViewCountAsync(SampleStore store, int expectedCount)
-    {
-        if (store.GetVirtualView(0, expectedCount).Length == expectedCount)
-        {
-            return;
-        }
-
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void Handler()
-        {
-            if (store.GetVirtualView(0, expectedCount).Length != expectedCount)
-            {
-                return;
-            }
-
-            store.OnViewRebuilt -= Handler;
-            tcs.TrySetResult(true);
-        }
-
-        store.OnViewRebuilt += Handler;
-
-        if (store.GetVirtualView(0, expectedCount).Length == expectedCount)
-        {
-            store.OnViewRebuilt -= Handler;
-            return;
-        }
-
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(SortTimeoutMs));
-        store.OnViewRebuilt -= Handler;
-
-        Assert.Same(tcs.Task, completed);
-    }
 }
 
 public sealed class SampleStoreBandwidthTests
@@ -309,7 +165,7 @@ public sealed class SampleStoreBandwidthTests
     [Fact]
     public void TotalBytesReceived_IsZeroInitially()
     {
-        using var store = new SampleStore();
+        var store = new SampleStore();
         Assert.Equal(0, store.TotalBytesReceived);
     }
 
@@ -317,7 +173,7 @@ public sealed class SampleStoreBandwidthTests
     public void TotalBytesReceived_AccumulatesAcrossAppends()
     {
         var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
+        var store = new SampleStore();
 
         store.Append(CreateSizedSample(metadata, 1, 100));
         store.Append(CreateSizedSample(metadata, 2, 200));
@@ -330,7 +186,7 @@ public sealed class SampleStoreBandwidthTests
     public void TotalBytesReceived_ResetToZeroOnClear()
     {
         var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
+        var store = new SampleStore();
 
         store.Append(CreateSizedSample(metadata, 1, 100));
         store.Append(CreateSizedSample(metadata, 2, 200));
@@ -345,7 +201,7 @@ public sealed class SampleStoreBandwidthTests
     public void TotalBytesReceived_IgnoresSamplesWithZeroSize()
     {
         var metadata = new TopicMetadata(typeof(SampleTopic));
-        using var store = new SampleStore();
+        var store = new SampleStore();
 
         store.Append(CreateSizedSample(metadata, 1, 0));
         store.Append(CreateSizedSample(metadata, 2, 0));

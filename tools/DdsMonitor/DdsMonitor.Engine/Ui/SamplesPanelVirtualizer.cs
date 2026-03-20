@@ -3,30 +3,30 @@ using System;
 namespace DdsMonitor.Engine;
 
 /// <summary>
-/// Provides sample ranges for virtualized grids.
+/// Provides sample ranges for virtualized grids by delegating to an <see cref="ISampleView"/>.
 /// </summary>
 public sealed class SamplesPanelVirtualizer
 {
-    private readonly ISampleStore _sampleStore;
+    private readonly ISampleView _sampleView;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SamplesPanelVirtualizer"/> class.
     /// </summary>
-    public SamplesPanelVirtualizer(ISampleStore sampleStore)
+    public SamplesPanelVirtualizer(ISampleView sampleView)
     {
-        _sampleStore = sampleStore ?? throw new ArgumentNullException(nameof(sampleStore));
+        _sampleView = sampleView ?? throw new ArgumentNullException(nameof(sampleView));
     }
 
     /// <summary>
     /// Gets the total number of samples in the current filtered view.
     /// </summary>
-    public int TotalCount => _sampleStore.CurrentFilteredCount;
+    public int TotalCount => _sampleView.CurrentFilteredCount;
 
     /// <summary>
-    /// Requests a virtualized slice from the sample store.
+    /// Requests a virtualized slice from the sample view.
     /// </summary>
     public ReadOnlyMemory<SampleData> GetRange(int startIndex, int count)
     {
-        return _sampleStore.GetVirtualView(startIndex, count);
+        return _sampleView.GetVirtualView(startIndex, count);
     }
 }

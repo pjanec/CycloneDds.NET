@@ -163,8 +163,6 @@
 @code {
     private const int RowHeight = 38;
     private const int ExpandedRowHeight = 200;
-    private const int MinimumUiRefreshHz = 1;
-    private const int MillisecondsPerSecond = 1000;
     private const string SizeFieldName = "Size [B]";
     private const string DelayFieldName = "Delay [ms]";
     private const int TrackDebounceMs = 25;
@@ -195,9 +193,9 @@
     private readonly Dictionary<string, double> _columnWeights = new(StringComparer.Ordinal);
     private string _filterText = string.Empty;
     private string? _filterError;
-    private Timer? _refreshTimer;
     private int _currentCount;
     private int _totalCount;
+    private SampleView? _sampleView;
     private bool _initialFilterApplied;
     private bool _trackMode = true;
     private bool _expandAll;
@@ -226,7 +224,6 @@
     private Dictionary<string, double>? _savedColumnWeights;
     private Func<SampleData, bool>? _filterPredicate;
     private bool _viewDirty = true;
-    private int _lastAllSamplesCount = -1;
     private Action? _viewRebuiltHandler;
     private readonly Dictionary<FieldMetadata, Type> _fieldTopicTypes = new();
     private int _columnPickerRevision;
@@ -263,8 +260,14 @@
         _trackDebouncer = new DebouncedAction(TimeSpan.FromMilliseconds(TrackDebounceMs),
             () => _ = InvokeAsync(PublishPendingTrackSample));
         _viewRebuiltHandler = () => _ = InvokeAsync(HandleViewRebuiltAsync);
-        SampleStore.OnViewRebuilt += _viewRebuiltHandler;
-        StartRefreshTimer();
+
+        // Live mode: create a per-window view backed by the singleton store.
+        // Replay mode uses FixedSamples directly and needs no background view.
+        if (FixedSamples == null)
+        {
+            _sampleView = new SampleView(SampleStore);
+            _sampleView.OnViewRebuilt += _viewRebuiltHandler;
+        }
     }
 
     protected override void OnParametersSet()
@@ -424,58 +427,40 @@
         }
     }
 
-    private void StartRefreshTimer()
-    {
-        var refreshHz = Math.Max(MinimumUiRefreshHz, Settings.UiRefreshHz);
-        var interval = MillisecondsPerSecond / refreshHz;
-        _refreshTimer = new Timer(_ => _ = InvokeAsync(RefreshCounts), null, interval, interval);
-    }
-
-    private Task RefreshCounts()
-    {
-        var previousTotal = _totalCount;
-        var previousCurrent = _currentCount;
-        EnsureView();
-        var total = _totalCount;
-        var current = _currentCount;
-
-        if (total != previousTotal || current != previousCurrent)
-        {
-            _totalCount = total;
-            _currentCount = current;
-            _ = _virtualizeRef?.RefreshDataAsync();
-
-            if (_trackMode && _selectedIndex >= 0)
-            {
-                _ = InvokeAsync(async () =>
-                {
-                    await Task.Delay(50);
-                    await EnsureSelectionVisibleAsync(_selectedIndex);
-                });
-            }
-
-            StateHasChanged();
-        }
-
-        return Task.CompletedTask;
-    }
 
     private ValueTask<ItemsProviderResult<IndexedSample>> LoadItems(ItemsProviderRequest request)
     {
-        EnsureView();
-
         _lastRequestCount = Math.Max(1, request.Count);
         _lastRequestStartIndex = request.StartIndex;
-        var available = Math.Max(0, _viewCache.Count - request.StartIndex);
-        var sliceCount = Math.Min(request.Count, available);
-        var items = new IndexedSample[sliceCount];
-        for (var i = 0; i < sliceCount; i++)
+
+        // Replay mode: serve from the locally rebuilt view cache.
+        if (FixedSamples != null)
         {
-            items[i] = new IndexedSample(request.StartIndex + i, _viewCache[request.StartIndex + i]);
+            EnsureFixedView();
+            var availableLocal = Math.Max(0, _viewCache.Count - request.StartIndex);
+            var sliceCountLocal = Math.Min(request.Count, availableLocal);
+            var localItems = new IndexedSample[sliceCountLocal];
+            for (var i = 0; i < sliceCountLocal; i++)
+            {
+                localItems[i] = new IndexedSample(request.StartIndex + i, _viewCache[request.StartIndex + i]);
+            }
+
+            return new ValueTask<ItemsProviderResult<IndexedSample>>(
+                new ItemsProviderResult<IndexedSample>(localItems, _viewCache.Count));
+        }
+
+        // Live mode: fetch a zero-allocation slice from the background view.
+        var totalCount = _sampleView!.CurrentFilteredCount;
+        var slice = _sampleView.GetVirtualView(request.StartIndex, request.Count);
+        var span = slice.Span;
+        var items = new IndexedSample[span.Length];
+        for (var i = 0; i < span.Length; i++)
+        {
+            items[i] = new IndexedSample(request.StartIndex + i, span[i]);
         }
 
         return new ValueTask<ItemsProviderResult<IndexedSample>>(
-            new ItemsProviderResult<IndexedSample>(items, _viewCache.Count));
+            new ItemsProviderResult<IndexedSample>(items, totalCount));
     }
 
     private void ToggleTrackMode()
@@ -483,7 +468,26 @@
         _trackMode = !_trackMode;
         if (_trackMode)
         {
-            EnsureView();
+            if (FixedSamples != null)
+            {
+                EnsureFixedView();
+            }
+            else
+            {
+                // In live mode jump to the latest sample immediately.
+                var count = _sampleView!.CurrentFilteredCount;
+                if (count > 0)
+                {
+                    var latestIndex = _sortDirection == SortDirection.Ascending ? count - 1 : 0;
+                    _selectedIndex = latestIndex;
+                    var latestSlice = _sampleView.GetVirtualView(latestIndex, 1);
+                    if (!latestSlice.IsEmpty)
+                    {
+                        _selectedSample = latestSlice.Span[0];
+                    }
+                }
+            }
+
             if (_selectedIndex >= 0)
             {
                 _ = InvokeAsync(async () =>
@@ -685,6 +689,7 @@
                 _filterPredicate = null;
                 _viewDirty = true;
                 _filterError = null;
+                _sampleView?.SetFilter(null);
                 NotifyFilterChanged();
                 _ = _virtualizeRef?.RefreshDataAsync();
                 StateHasChanged();
@@ -701,6 +706,7 @@
             _filterError = null;
             _filterPredicate = allResult.Predicate;
             _viewDirty = true;
+            _sampleView?.SetFilter(_filterPredicate);
             NotifyFilterChanged();
             _ = _virtualizeRef?.RefreshDataAsync();
             StateHasChanged();
@@ -714,6 +720,7 @@
             _filterPredicate = topicPredicate;
             _viewDirty = true;
             _filterError = null;
+            _sampleView?.SetFilter(_filterPredicate);
             NotifyFilterChanged();
             _ = _virtualizeRef?.RefreshDataAsync();
             StateHasChanged();
@@ -730,6 +737,7 @@
         _filterError = null;
         _filterPredicate = sample => topicPredicate(sample) && result.Predicate(sample);
         _viewDirty = true;
+        _sampleView?.SetFilter(_filterPredicate);
         NotifyFilterChanged();
         _ = _virtualizeRef?.RefreshDataAsync();
         StateHasChanged();
@@ -764,8 +772,10 @@
             return;
         }
 
-        // Capture the current view so the export runs against a consistent snapshot.
-        var snapshot = _viewCache.ToList();
+        // Capture a consistent snapshot of the current filtered view.
+        IReadOnlyList<SampleData> snapshot = FixedSamples != null
+            ? _viewCache.ToList()
+            : _sampleView!.GetFilteredSnapshot();
         try
         {
             await ExportService.ExportSamplesAsync(path, snapshot);
@@ -782,9 +792,10 @@
         _selectedIndex = row.Index;
 
         // T11: Auto-manage track mode based on whether the latest item is selected.
-        var isLatest = _viewCache.Count > 0 && (
+        var viewCount = FixedSamples != null ? _viewCache.Count : _sampleView?.CurrentFilteredCount ?? 0;
+        var isLatest = viewCount > 0 && (
             _sortDirection == SortDirection.Ascending
-                ? row.Index == _viewCache.Count - 1
+                ? row.Index == viewCount - 1
                 : row.Index == 0);
         _trackMode = isLatest;
 
@@ -1006,21 +1017,44 @@
 
     private bool TrySelectByIndex(int index)
     {
-        EnsureView();
-        if (index < 0 || index >= _viewCache.Count)
+        if (FixedSamples != null)
+        {
+            EnsureFixedView();
+            if (index < 0 || index >= _viewCache.Count)
+            {
+                return false;
+            }
+
+            SelectSample(new IndexedSample(index, _viewCache[index]), false);
+            return true;
+        }
+
+        var total = _sampleView!.CurrentFilteredCount;
+        if (index < 0 || index >= total)
         {
             return false;
         }
 
-        var row = new IndexedSample(index, _viewCache[index]);
-        SelectSample(row, false);
+        var s = _sampleView.GetVirtualView(index, 1);
+        if (s.IsEmpty)
+        {
+            return false;
+        }
+
+        SelectSample(new IndexedSample(index, s.Span[0]), false);
         return true;
     }
 
     private bool TryGetTotalCount(out int totalCount)
     {
-        EnsureView();
-        totalCount = _viewCache.Count;
+        if (FixedSamples != null)
+        {
+            EnsureFixedView();
+            totalCount = _viewCache.Count;
+            return totalCount > 0;
+        }
+
+        totalCount = _sampleView!.CurrentFilteredCount;
         return totalCount > 0;
     }
 
@@ -1078,7 +1112,8 @@
             _sortDirection = SortDirection.Ascending;
         }
 
-        _viewDirty = true;
+        _viewDirty = true; // For replay mode.
+        _sampleView?.SetSortSpec(_sortField, _sortDirection); // For live mode.
         _ = _virtualizeRef?.RefreshDataAsync();
 
         if (_trackMode && _selectedIndex >= 0)
@@ -1197,81 +1232,54 @@
 
     private Task HandleViewRebuiltAsync()
     {
-        _viewDirty = true;
+        // Replay mode: mark dirty and let the next LoadItems call rebuild from FixedSamples.
+        if (FixedSamples != null)
+        {
+            _viewDirty = true;
+            _ = _virtualizeRef?.RefreshDataAsync();
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+
+        // Live mode: the background SampleView already rebuilt the sorted slice;
+        // we just update counts and tell the grid to re-virtualize.
+        var newCount = _sampleView!.CurrentFilteredCount;
+        _totalCount = newCount;
+        _currentCount = newCount;
+
+        if (_trackMode && newCount > 0)
+        {
+            var latestIndex = _sortDirection == SortDirection.Ascending ? newCount - 1 : 0;
+            _selectedIndex = latestIndex;
+            var latestSlice = _sampleView.GetVirtualView(latestIndex, 1);
+            if (!latestSlice.IsEmpty)
+            {
+                _selectedSample = latestSlice.Span[0];
+                _pendingTrackSample = _selectedSample;
+                _trackDebouncer?.Trigger();
+            }
+        }
+
         _ = _virtualizeRef?.RefreshDataAsync();
         StateHasChanged();
         return Task.CompletedTask;
     }
 
-    private void EnsureView()
+    /// <summary>
+    /// Rebuilds <see cref="_viewCache"/> from <see cref="FixedSamples"/> applying the active
+    /// filter and sort.  Only called in Replay mode.
+    /// </summary>
+    private void EnsureFixedView()
     {
-        // ── Fixed-samples mode (Replay filter panel) ──────────────────────
-        var fixedSamples = FixedSamples;
-        if (fixedSamples != null)
-        {
-            if (!_viewDirty)
-            {
-                return;
-            }
-
-            _viewCache.Clear();
-            foreach (var sample in fixedSamples)
-            {
-                if (_filterPredicate == null || _filterPredicate(sample))
-                {
-                    _viewCache.Add(sample);
-                }
-            }
-
-            ApplySortToViewCache();
-            _totalCount = fixedSamples.Count;
-            _currentCount = _viewCache.Count;
-            _viewDirty = false;
-            UpdateSelectionAndTracking();
-            return;
-        }
-
-        // ── Live store mode ───────────────────────────────────────────────
-        var snapshot = SampleStore.AllSamples;
-        if (!_viewDirty && snapshot.Count == _lastAllSamplesCount)
+        if (!_viewDirty)
         {
             return;
         }
 
-        _lastAllSamplesCount = snapshot.Count;
+        var fixedSamples = FixedSamples!;
         _viewCache.Clear();
-
-        if (TopicMetadata == null)
+        foreach (var sample in fixedSamples)
         {
-            // All-topics mode: include every sample without a topic-type filter.
-            foreach (var sample in snapshot)
-            {
-                if (_filterPredicate == null || _filterPredicate(sample))
-                {
-                    _viewCache.Add(sample);
-                }
-            }
-
-            ApplySortToViewCache();
-            _totalCount = snapshot.Count;
-            _currentCount = _viewCache.Count;
-            _viewDirty = false;
-            UpdateSelectionAndTracking();
-            return;
-        }
-
-        var topicType = TopicMetadata.TopicType;
-        var total = 0;
-
-        foreach (var sample in snapshot)
-        {
-            if (sample.TopicMetadata.TopicType != topicType)
-            {
-                continue;
-            }
-
-            total++;
-
             if (_filterPredicate == null || _filterPredicate(sample))
             {
                 _viewCache.Add(sample);
@@ -1279,7 +1287,7 @@
         }
 
         ApplySortToViewCache();
-        _totalCount = total;
+        _totalCount = fixedSamples.Count;
         _currentCount = _viewCache.Count;
         _viewDirty = false;
         UpdateSelectionAndTracking();
@@ -1873,13 +1881,18 @@
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
         _addColumnSubscription?.Dispose();
         _applyFilterSubscription?.Dispose();
         _trackDebouncer?.Dispose();
-        if (_viewRebuiltHandler != null)
+
+        if (_sampleView != null)
         {
-            SampleStore.OnViewRebuilt -= _viewRebuiltHandler;
+            if (_viewRebuiltHandler != null)
+            {
+                _sampleView.OnViewRebuilt -= _viewRebuiltHandler;
+            }
+
+            _sampleView.Dispose();
         }
     }
 }

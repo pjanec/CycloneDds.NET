@@ -18,7 +18,7 @@ public sealed class DdsIngestionServiceTests
     public async Task IngestionService_ProcessesSamplesFromChannel()
     {
         var channel = Channel.CreateUnbounded<SampleData>();
-        using var sampleStore = new SampleStore();
+        var sampleStore = new SampleStore();
         var instanceStore = new InstanceStore();
         var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore);
 
@@ -42,7 +42,7 @@ public sealed class DdsIngestionServiceTests
     public async Task IngestionService_RoutesKeyedSamplesToInstanceStore()
     {
         var channel = Channel.CreateUnbounded<SampleData>();
-        using var sampleStore = new SampleStore();
+        var sampleStore = new SampleStore();
         var instanceStore = new TrackingInstanceStore();
         var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore);
 
@@ -64,7 +64,7 @@ public sealed class DdsIngestionServiceTests
     public async Task IngestionService_StopsGracefullyOnCancellation()
     {
         var channel = Channel.CreateUnbounded<SampleData>();
-        using var sampleStore = new SampleStore();
+        var sampleStore = new SampleStore();
         var instanceStore = new InstanceStore();
         var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore);
 

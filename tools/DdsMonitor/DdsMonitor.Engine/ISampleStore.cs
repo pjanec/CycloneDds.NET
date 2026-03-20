@@ -4,7 +4,9 @@ using System.Collections.Generic;
 namespace DdsMonitor.Engine;
 
 /// <summary>
-/// Provides access to historical samples with filtering and sorting.
+/// Append-only concurrent store for DDS sample data.  All filtering, sorting, and
+/// virtualized views are the responsibility of <see cref="ISampleView"/> instances
+/// that each <c>SamplesPanel</c> creates independently.
 /// </summary>
 public interface ISampleStore
 {
@@ -12,6 +14,19 @@ public interface ISampleStore
     /// Gets all samples in append order.
     /// </summary>
     IReadOnlyList<SampleData> AllSamples { get; }
+
+    /// <summary>
+    /// Gets the total number of samples currently in the store.
+    /// Thread-safe; no allocation.
+    /// </summary>
+    int TotalCount { get; }
+
+    /// <summary>
+    /// Returns all samples starting from <paramref name="startIndex"/> as a fresh
+    /// array snapshot.  Used by <see cref="ISampleView"/> implementations to poll
+    /// for new arrivals without holding the store lock.
+    /// </summary>
+    SampleData[] GetSamples(int startIndex);
 
     /// <summary>
     /// Gets the per-topic sample ledger.
@@ -24,7 +39,7 @@ public interface ISampleStore
     void Append(SampleData sample);
 
     /// <summary>
-    /// Clears all samples and views.
+    /// Clears all samples.
     /// </summary>
     void Clear();
 
@@ -32,31 +47,6 @@ public interface ISampleStore
     /// Gets the total bytes received across all topics (best-effort estimate).
     /// </summary>
     long TotalBytesReceived { get; }
-
-    /// <summary>
-    /// Gets the count of samples passing the current filter.
-    /// </summary>
-    int CurrentFilteredCount { get; }
-
-    /// <summary>
-    /// Gets a virtualized slice of the current sorted view.
-    /// </summary>
-    ReadOnlyMemory<SampleData> GetVirtualView(int startIndex, int count);
-
-    /// <summary>
-    /// Sets the active filter predicate.
-    /// </summary>
-    void SetFilter(Func<SampleData, bool>? compiledFilterPredicate);
-
-    /// <summary>
-    /// Sets the active sort field and direction.
-    /// </summary>
-    void SetSortSpec(FieldMetadata? field, SortDirection direction);
-
-    /// <summary>
-    /// Raised whenever the sorted view is rebuilt.
-    /// </summary>
-    event Action? OnViewRebuilt;
 }
 
 /// <summary>

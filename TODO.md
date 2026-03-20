@@ -9,3 +9,7 @@ than string values and different for struct headers to the field data type is re
 and not accidentally visually mistaken with string representation for example
 
 
+[IMPROVEMENT]
+Topic Properties needs to show
+ - real DDS topic name string (not just CLR type)
+ - QoS settings
