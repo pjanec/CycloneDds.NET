@@ -99,7 +99,13 @@ public enum TransitionKind
     /// <summary>
     /// Instance was removed.
     /// </summary>
-    Removed
+    Removed,
+
+    /// <summary>
+    /// The entire store was cleared (Reset).  <see cref="InstanceTransitionEvent.Instance"/>
+    /// and <see cref="InstanceTransitionEvent.Sample"/> are <c>null</c> for this kind.
+    /// </summary>
+    Cleared
 }
 
 /// <summary>
@@ -223,4 +229,4 @@ public sealed record InstanceJournalRecord(TransitionKind Kind, InstanceData Ins
 /// <summary>
 /// Describes an instance transition event.
 /// </summary>
-public sealed record InstanceTransitionEvent(TransitionKind Kind, InstanceData Instance, SampleData Sample);
+public sealed record InstanceTransitionEvent(TransitionKind Kind, InstanceData? Instance, SampleData? Sample);

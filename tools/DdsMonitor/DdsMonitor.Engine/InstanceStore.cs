@@ -147,6 +147,9 @@ public sealed class InstanceStore : IInstanceStore
         {
             _topics.Clear();
         }
+
+        // Notify all observers so UI caches can drop their hard references.
+        _observable.Publish(new InstanceTransitionEvent(TransitionKind.Cleared, null, null));
     }
 
     private static InstanceKey ExtractKey(TopicMetadata metadata, object payload)

@@ -1439,8 +1439,17 @@ else
 
         public void OnNext(InstanceTransitionEvent value)
         {
+            if (value.Kind == TransitionKind.Cleared)
+            {
+                // Store was reset: bump the version so RefreshCounts marks the view
+                // dirty on the next tick and _viewCache gets cleared, releasing all
+                // hard references to SampleData / InstanceData objects.
+                Interlocked.Increment(ref _owner._changeVersion);
+                return;
+            }
+
             if (_owner._currentTopicType == null ||
-                value.Instance.TopicMetadata.TopicType != _owner._currentTopicType)
+                value.Instance!.TopicMetadata.TopicType != _owner._currentTopicType)
             {
                 return;
             }

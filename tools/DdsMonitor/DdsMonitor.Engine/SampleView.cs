@@ -275,6 +275,13 @@ public sealed class SampleView : ISampleView
                 lock (_viewLock)
                 {
                     _sortedView.Clear();
+                    // When the store was cleared and the new view is empty, release
+                    // the backing array so the GC can reclaim the LOH segment.
+                    if (storeCleared && filtered.Length == 0)
+                    {
+                        _sortedView.TrimExcess();
+                    }
+
                     _sortedView.AddRange(filtered);
                     _isDescendingOrdinalFastPath = direction == SortDirection.Descending;
                     Volatile.Write(ref _currentFilteredCount, _sortedView.Count);
@@ -298,6 +305,11 @@ public sealed class SampleView : ISampleView
                 lock (_viewLock)
                 {
                     _sortedView.Clear();
+                    if (storeCleared && newView.Length == 0)
+                    {
+                        _sortedView.TrimExcess();
+                    }
+
                     _sortedView.AddRange(newView);
                     _isDescendingOrdinalFastPath = false;
                     Volatile.Write(ref _currentFilteredCount, _sortedView.Count);

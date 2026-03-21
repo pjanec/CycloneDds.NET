@@ -89,6 +89,96 @@ public sealed class InstanceStoreTests
         Assert.Equal(2, topic.InstancesByKey.Count);
     }
 
+    // ── Clear ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Verifies that <see cref="InstanceStore.Clear"/> removes all tracked instances.
+    /// </summary>
+    [Fact]
+    public void InstanceStore_Clear_RemovesAllInstances()
+    {
+        var metadata = new TopicMetadata(typeof(InstanceKeyedMessage));
+        var store = new InstanceStore();
+
+        store.ProcessSample(CreateSample(metadata, new InstanceKeyedMessage { Id = 10, Value = 1 }, DdsInstanceState.Alive));
+        store.ProcessSample(CreateSample(metadata, new InstanceKeyedMessage { Id = 11, Value = 2 }, DdsInstanceState.Alive));
+
+        store.Clear();
+
+        var topic = store.GetTopicInstances(metadata.TopicType);
+        Assert.Equal(0, topic.InstancesByKey.Count);
+        Assert.Equal(0, topic.LiveCount);
+    }
+
+    /// <summary>
+    /// The critical regression test for the memory leak:
+    /// <see cref="InstanceStore.Clear"/> MUST publish a <see cref="TransitionKind.Cleared"/>
+    /// event so that observers (e.g. InstancesPanel) can drop their UI caches and allow
+    /// the GC to release sample memory.
+    /// Before the fix, Clear() silently emptied the dictionary without notifying observers,
+    /// causing the UI cache to hold hard references to all SampleData forever.
+    /// </summary>
+    [Fact]
+    public void InstanceStore_Clear_PublishesClearedEvent()
+    {
+        var metadata = new TopicMetadata(typeof(InstanceKeyedMessage));
+        var store = new InstanceStore();
+
+        store.ProcessSample(CreateSample(metadata, new InstanceKeyedMessage { Id = 20, Value = 1 }, DdsInstanceState.Alive));
+
+        var events = new List<TransitionKind>();
+        using var sub = store.OnInstanceChanged.Subscribe(new ActionObserver(e => events.Add(e.Kind)));
+
+        store.Clear();
+
+        Assert.Contains(TransitionKind.Cleared, events);
+    }
+
+    /// <summary>
+    /// Verifies that the Cleared event has null Instance and Sample fields
+    /// (observers must guard against null for this kind).
+    /// </summary>
+    [Fact]
+    public void InstanceStore_ClearedEvent_HasNullInstanceAndSample()
+    {
+        var store = new InstanceStore();
+        InstanceTransitionEvent? clearedEvent = null;
+
+        using var sub = store.OnInstanceChanged.Subscribe(
+            new ActionObserver(e =>
+            {
+                if (e.Kind == TransitionKind.Cleared) clearedEvent = e;
+            }));
+
+        store.Clear();
+
+        Assert.NotNull(clearedEvent);
+        Assert.Equal(TransitionKind.Cleared, clearedEvent!.Kind);
+        Assert.Null(clearedEvent.Instance);
+        Assert.Null(clearedEvent.Sample);
+    }
+
+    /// <summary>
+    /// Verifies that processing new samples after a Clear works correctly —
+    /// the store is back to a clean initial state.
+    /// </summary>
+    [Fact]
+    public void InstanceStore_ProcessSampleAfterClear_WorksCorrectly()
+    {
+        var metadata = new TopicMetadata(typeof(InstanceKeyedMessage));
+        var store = new InstanceStore();
+
+        store.ProcessSample(CreateSample(metadata, new InstanceKeyedMessage { Id = 30, Value = 1 }, DdsInstanceState.Alive));
+        store.Clear();
+
+        // After clear, a new sample for the same key should create a fresh instance.
+        store.ProcessSample(CreateSample(metadata, new InstanceKeyedMessage { Id = 30, Value = 2 }, DdsInstanceState.Alive));
+
+        var topic = store.GetTopicInstances(metadata.TopicType);
+        Assert.Equal(1, topic.LiveCount);
+        Assert.Single(topic.InstancesByKey);
+    }
+
     private static SampleData CreateSample<T>(TopicMetadata metadata, T payload, DdsInstanceState state)
     {
         return new SampleData

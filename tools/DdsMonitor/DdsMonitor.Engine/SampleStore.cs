@@ -111,6 +111,11 @@ public sealed class SampleStore : ISampleStore
         lock (_sync)
         {
             _allSamples.Clear();
+            // TrimExcess releases the large LOH backing array (8 bytes × N elements).
+            // Without this the array stays allocated at full capacity even though all
+            // entries have been nulled out by Clear(), keeping the list's segment in the
+            // LOH alive until the SampleStore itself is disposed.
+            _allSamples.TrimExcess();
             _samplesByTopic.Clear();
         }
 
