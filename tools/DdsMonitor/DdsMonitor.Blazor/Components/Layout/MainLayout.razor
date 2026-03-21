@@ -15,6 +15,7 @@
 @inject IEventBroker EventBroker
 @inject CloneRequestService CloneRequests
 @inject ISampleStore SampleStore
+@inject PerfCounters PerfCounters
 @implements IDisposable
 
 <div class="app-shell" @onclick="CloseMenus">
@@ -52,6 +53,15 @@
                 <button type="button" class="app-menu__dropdown-item" @onclick="ToggleSelfSending">
                     @(DevelSettings.SelfSendEnabled ? "✓ " : string.Empty)Enable Self-Sending
                 </button>
+                <div class="app-menu__dropdown-separator"></div>
+                <span class="app-menu__dropdown-label">Self-Send Rate</span>
+                <button type="button" class="app-menu__dropdown-item" @onclick='() => SetSelfSendRate(1)'>@RateCheckmark(1) 1 Hz</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick='() => SetSelfSendRate(10)'>@RateCheckmark(10) 10 Hz</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick='() => SetSelfSendRate(100)'>@RateCheckmark(100) 100 Hz</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick='() => SetSelfSendRate(1000)'>@RateCheckmark(1000) 1 kHz</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick='() => SetSelfSendRate(10000)'>@RateCheckmark(10000) 10 kHz</button>
+                <div class="app-menu__dropdown-separator"></div>
+                <button type="button" class="app-menu__dropdown-item" @onclick="ShowPerfStats">Perf Stats…</button>
             </div>
         </div>
 
@@ -94,6 +104,25 @@
         <ParticipantEditorDialog OnClose="CloseParticipantEditor" />
     }
 
+    @if (_showPerfStats)
+    {
+        <div class="perf-stats-overlay" @onclick="ShowPerfStats">
+            <div class="perf-stats-box" @onclick:stopPropagation="true">
+                <div class="perf-stats-box__title">Performance Stats <button @onclick="ShowPerfStats">✕</button></div>
+                <table class="perf-stats-box__table">
+                    <tr><td>Total Samples</td><td>@SampleStore.TotalCount.ToString("N0")</td></tr>
+                    <tr><td>Total Bytes Rx</td><td>@FormatBandwidth(SampleStore.TotalBytesReceived)</td></tr>
+                    <tr><td>Bandwidth</td><td>@FormatBandwidth(_currentBandwidth)/s</td></tr>
+                    <tr><td>Samples/s (store)</td><td>@_samplesPerSec.ToString("N0")</td></tr>
+                    <tr><td>Samples/s (ingest)</td><td>@PerfCounters.SamplesPerSec.ToString("N0")</td></tr>
+                    <tr><td>Instance ops/s</td><td>@PerfCounters.InstanceOpsPerSec.ToString("N0")</td></tr>
+                    <tr><td>Journal trims</td><td>@PerfCounters.TotalJournalTrims.ToString("N0")</td></tr>
+                    <tr><td>Self-Send Rate</td><td>@(DevelSettings.SelfSendEnabled ? $"{DevelSettings.SelfSendRateHz} Hz" : "off")</td></tr>
+                </table>
+            </div>
+        </div>
+    }
+
     <div class="app-shell__content">
         @Body
     </div>
@@ -114,6 +143,8 @@
     private System.Threading.Timer? _bandwidthTimer;
     private long _lastBytesReceived;
     private long _currentBandwidth;
+    private long _lastSampleCount;
+    private long _samplesPerSec;
 
     protected override void OnInitialized()
     {
@@ -126,6 +157,13 @@
         var currentBytes = SampleStore.TotalBytesReceived;
         _currentBandwidth = currentBytes - _lastBytesReceived;
         _lastBytesReceived = currentBytes;
+
+        var currentSamples = SampleStore.TotalCount;
+        _samplesPerSec = currentSamples - _lastSampleCount;
+        _lastSampleCount = currentSamples;
+
+        PerfCounters.Tick();
+
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -239,6 +277,25 @@
     {
         CloseMenus();
         DevelSettings.SelfSendEnabled = !DevelSettings.SelfSendEnabled;
+    }
+
+    private void SetSelfSendRate(int rateHz)
+    {
+        CloseMenus();
+        DevelSettings.SelfSendRateHz = rateHz;
+        // Auto-enable self-sending when a rate is explicitly selected.
+        DevelSettings.SelfSendEnabled = true;
+    }
+
+    private string RateCheckmark(int rateHz)
+        => DevelSettings.SelfSendEnabled && DevelSettings.SelfSendRateHz == rateHz ? "✓ " : string.Empty;
+
+    private bool _showPerfStats;
+
+    private void ShowPerfStats()
+    {
+        CloseMenus();
+        _showPerfStats = !_showPerfStats;
     }
 
     private void OpenTopicsPanel()

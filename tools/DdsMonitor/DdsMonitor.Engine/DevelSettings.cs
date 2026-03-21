@@ -9,6 +9,7 @@ namespace DdsMonitor.Engine;
 public sealed class DevelSettings
 {
     private bool _selfSendEnabled;
+    private int _selfSendRateHz = 2;
 
     /// <summary>
     /// Raised whenever any devel setting changes.
@@ -30,6 +31,26 @@ public sealed class DevelSettings
             }
 
             _selfSendEnabled = value;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the live self-send rate in samples per second (per topic).
+    /// Overrides <see cref="DdsSettings.SelfSendRateHz"/> when non-zero.
+    /// Changing this while self-sending is active takes effect immediately.
+    /// </summary>
+    public int SelfSendRateHz
+    {
+        get => _selfSendRateHz;
+        set
+        {
+            if (_selfSendRateHz == value)
+            {
+                return;
+            }
+
+            _selfSendRateHz = value;
             Changed?.Invoke(this, EventArgs.Empty);
         }
     }

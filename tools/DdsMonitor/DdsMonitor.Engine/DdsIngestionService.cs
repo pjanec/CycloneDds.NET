@@ -14,6 +14,7 @@ public sealed class DdsIngestionService : BackgroundService
     private readonly ChannelReader<SampleData> _channelReader;
     private readonly ISampleStore _sampleStore;
     private readonly IInstanceStore _instanceStore;
+    private readonly PerfCounters _perfCounters;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DdsIngestionService"/> class.
@@ -21,11 +22,13 @@ public sealed class DdsIngestionService : BackgroundService
     public DdsIngestionService(
         ChannelReader<SampleData> channelReader,
         ISampleStore sampleStore,
-        IInstanceStore instanceStore)
+        IInstanceStore instanceStore,
+        PerfCounters perfCounters)
     {
         _channelReader = channelReader ?? throw new ArgumentNullException(nameof(channelReader));
         _sampleStore = sampleStore ?? throw new ArgumentNullException(nameof(sampleStore));
         _instanceStore = instanceStore ?? throw new ArgumentNullException(nameof(instanceStore));
+        _perfCounters = perfCounters ?? throw new ArgumentNullException(nameof(perfCounters));
     }
 
     /// <inheritdoc />
@@ -39,10 +42,12 @@ public sealed class DdsIngestionService : BackgroundService
             while (_channelReader.TryRead(out var sample))
             {
                 _sampleStore.Append(sample);
+                _perfCounters.IncrementSamplesIngested(sample.SizeBytes);
 
                 if (sample.TopicMetadata.IsKeyed)
                 {
                     _instanceStore.ProcessSample(sample);
+                    _perfCounters.IncrementInstanceStoreOps();
                 }
             }
         }

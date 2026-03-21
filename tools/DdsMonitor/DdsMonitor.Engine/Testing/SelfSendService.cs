@@ -9,6 +9,7 @@ namespace DdsMonitor.Engine;
 public sealed class SelfSendService : BackgroundService
 {
     private const int MinimumRateHz = 1;
+    private const int MaxTickRateHz = 100;  // Windows timer resolution limit (~15ms); cap tick rate, increase batch size instead
     private const int SamplesPerPayload = 5;
     private const int IdleCheckMs = 500;
 
@@ -40,8 +41,6 @@ public sealed class SelfSendService : BackgroundService
         // even before the user enables self-sending.
         SelfSendTopics.Register(_topicRegistry);
 
-        var rateHz = Math.Max(MinimumRateHz, _settings.SelfSendRateHz);
-        var delay = TimeSpan.FromMilliseconds(1000d / rateHz);
         var keyCount = Math.Max(1, _settings.SelfSendKeyCount);
         var keyIndex = 0;
 
@@ -79,15 +78,28 @@ public sealed class SelfSendService : BackgroundService
 
                 if (isEnabled && writers != null && writers.Count > 0)
                 {
+                    // Compute current rate from DevelSettings (live-adjustable).
+                    var rateHz = Math.Max(MinimumRateHz, _develSettings.SelfSendRateHz);
+
+                    // For high rates, keep tick rate at ≤100 Hz and batch multiple samples per tick.
+                    // tickRateHz = min(rateHz, 100),  batchSize = rateHz / tickRateHz
+                    var tickRateHz = Math.Min(rateHz, MaxTickRateHz);
+                    var batchSize = Math.Max(1, rateHz / tickRateHz);
+                    var delayMs = 1000 / tickRateHz;
+
                     var topics = GetSelfSendTopics();
-                    for (var i = 0; i < Math.Min(topics.Count, writers.Count); i++)
+                    for (var b = 0; b < batchSize; b++)
                     {
-                        var payload = CreatePayload(topics[i].TopicType, keyIndex);
-                        writers[i].Write(payload);
+                        for (var i = 0; i < Math.Min(topics.Count, writers.Count); i++)
+                        {
+                            var payload = CreatePayload(topics[i].TopicType, keyIndex);
+                            writers[i].Write(payload);
+                        }
+
+                        keyIndex = (keyIndex + 1) % keyCount;
                     }
 
-                    keyIndex = (keyIndex + 1) % keyCount;
-                    await Task.Delay(delay, stoppingToken);
+                    await Task.Delay(delayMs, stoppingToken);
                 }
                 else
                 {

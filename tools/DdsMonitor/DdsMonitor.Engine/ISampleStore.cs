@@ -34,6 +34,12 @@ public interface ISampleStore
     ITopicSamples GetTopicSamples(Type topicType);
 
     /// <summary>
+    /// Returns the number of samples received for a specific topic without acquiring the store lock.
+    /// Returns 0 if no samples have been received for that topic yet.
+    /// </summary>
+    int GetTopicCount(Type topicType);
+
+    /// <summary>
     /// Appends a sample to the store.
     /// </summary>
     void Append(SampleData sample);

@@ -3439,3 +3439,80 @@ body {
   margin-top: 1px;
 }
 
+/* ── Devel Menu Additions ──────────────────────────────────────────── */
+
+.app-menu__dropdown-label {
+  display: block;
+  padding: 4px 12px 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--panel-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}
+
+/* ── Perf Stats Overlay ────────────────────────────────────────────── */
+
+.perf-stats-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: transparent;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 48px 16px 0 0;
+  pointer-events: none;
+}
+
+.perf-stats-box {
+  pointer-events: all;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  min-width: 280px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.4);
+  font-size: 0.85rem;
+}
+
+.perf-stats-box__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.perf-stats-box__title button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--panel-muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.perf-stats-box__table {
+  width: 100%;
+  border-collapse: collapse;
+  padding: 8px;
+}
+
+.perf-stats-box__table td {
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+.perf-stats-box__table td:first-child {
+  color: var(--panel-muted);
+  width: 130px;
+}
+
+.perf-stats-box__table td:last-child {
+  font-family: monospace;
+  font-weight: 600;
+}
+

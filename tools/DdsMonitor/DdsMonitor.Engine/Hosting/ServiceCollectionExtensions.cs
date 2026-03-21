@@ -50,7 +50,24 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(settings);
 
         // Runtime developer/debug settings (live-togglable from the UI).
-        services.AddSingleton<DevelSettings>();
+        // Initialise from DdsSettings so that CLI flags like
+        // --DdsSettings:SelfSendEnabled=true --DdsSettings:SelfSendRateHz=1000
+        // take effect immediately on startup without needing the UI.
+        services.AddSingleton<DevelSettings>(sp =>
+        {
+            var s = sp.GetRequiredService<DdsSettings>();
+            var devel = new DevelSettings();
+            devel.SelfSendEnabled = s.SelfSendEnabled;
+            if (s.SelfSendRateHz > 0)
+            {
+                devel.SelfSendRateHz = s.SelfSendRateHz;
+            }
+
+            return devel;
+        });
+
+        // Performance counters for monitoring the ingestion hot path.
+        services.AddSingleton<PerfCounters>();
 
         var topicRegistry = new TopicRegistry();
         var discoveryService = new TopicDiscoveryService(topicRegistry);

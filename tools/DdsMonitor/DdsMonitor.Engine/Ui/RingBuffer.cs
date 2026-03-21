@@ -41,6 +41,18 @@ public sealed class RingBuffer
     }
 
     /// <summary>
+    /// Atomically adds <paramref name="delta"/> to the counter for the current time slot.
+    /// Use this to record multiple events at once without looping.
+    /// </summary>
+    public void Add(int delta)
+    {
+        if (delta > 0)
+        {
+            Interlocked.Add(ref _currentCount, delta);
+        }
+    }
+
+    /// <summary>
     /// Commits the current slot count to the ring, advances to the next slot, and
     /// resets the counter.  Call this once per refresh interval (e.g. every second).
     /// </summary>

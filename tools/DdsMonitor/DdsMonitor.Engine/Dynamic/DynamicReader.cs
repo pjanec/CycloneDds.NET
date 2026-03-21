@@ -211,37 +211,55 @@ public sealed class DynamicReader<T> : IDynamicReader
     {
         var payload = sample.Data;
         var estimatedSize = _nativeSizer != null && payload != null ? _nativeSizer(payload) : UnknownSizeBytes;
-
-        // ME1-T07: Build a temporary sample (ordinal = 0) for filter evaluation.
-        // The ordinal counter is only incremented for samples that pass the filter,
-        // ensuring that filtered-out samples consume no ordinal slots.
-        var tempSample = new SampleData
-        {
-            Ordinal = 0,
-            Payload = payload!,
-            TopicMetadata = TopicMetadata,
-            SampleInfo = sample.Info,
-            Timestamp = DateTime.UtcNow,
-            SizeBytes = estimatedSize,
-            DomainId = _config?.DomainId ?? 0,
-            PartitionName = _config?.PartitionName ?? string.Empty,
-            ParticipantIndex = _config?.ParticipantIndex ?? 0
-        };
-
-        // Apply startup filter before allocating an ordinal.
         var filter = _config?.Filter;
-        if (filter != null && !filter(tempSample))
+
+        if (filter != null)
         {
-            return; // Reject without incrementing the ordinal.
+            // Filter check path: build a temporary (ordinal=0) sample for evaluation so
+            // the ordinal counter is only consumed by samples that actually pass.
+            var tempSample = new SampleData
+            {
+                Ordinal = 0,
+                Payload = payload!,
+                TopicMetadata = TopicMetadata,
+                SampleInfo = sample.Info,
+                Timestamp = DateTime.UtcNow,
+                SizeBytes = estimatedSize,
+                DomainId = _config?.DomainId ?? 0,
+                PartitionName = _config?.PartitionName ?? string.Empty,
+                ParticipantIndex = _config?.ParticipantIndex ?? 0
+            };
+
+            if (!filter(tempSample))
+            {
+                return; // Reject without incrementing the ordinal.
+            }
+
+            var ordinal = _config?.OrdinalCounter != null
+                ? _config.OrdinalCounter.Increment()
+                : Interlocked.Increment(ref _nextOrdinal);
+
+            OnSampleReceived?.Invoke(tempSample with { Ordinal = ordinal });
         }
+        else
+        {
+            // Fast path (no filter): build the final SampleData in a single allocation.
+            var ordinal = _config?.OrdinalCounter != null
+                ? _config.OrdinalCounter.Increment()
+                : Interlocked.Increment(ref _nextOrdinal);
 
-        // Allocate the ordinal: use the shared counter if available, otherwise per-reader.
-        var ordinal = _config?.OrdinalCounter != null
-            ? _config.OrdinalCounter.Increment()
-            : Interlocked.Increment(ref _nextOrdinal);
-
-        var sampleData = tempSample with { Ordinal = ordinal };
-
-        OnSampleReceived?.Invoke(sampleData);
+            OnSampleReceived?.Invoke(new SampleData
+            {
+                Ordinal = ordinal,
+                Payload = payload!,
+                TopicMetadata = TopicMetadata,
+                SampleInfo = sample.Info,
+                Timestamp = DateTime.UtcNow,
+                SizeBytes = estimatedSize,
+                DomainId = _config?.DomainId ?? 0,
+                PartitionName = _config?.PartitionName ?? string.Empty,
+                ParticipantIndex = _config?.ParticipantIndex ?? 0
+            });
+        }
     }
 }

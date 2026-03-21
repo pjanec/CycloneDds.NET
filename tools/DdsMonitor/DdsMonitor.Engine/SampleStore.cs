@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -14,6 +15,9 @@ public sealed class SampleStore : ISampleStore
     private readonly object _sync = new();
     private readonly List<SampleData> _allSamples = new();
     private readonly Dictionary<Type, TopicSamples> _samplesByTopic = new();
+
+    // Lock-free per-topic counters for cheap polling by the UI (TopicExplorer 30Hz tick).
+    private readonly ConcurrentDictionary<Type, int> _topicCountsLockFree = new();
 
     private long _totalBytesReceived;
 
@@ -65,6 +69,17 @@ public sealed class SampleStore : ISampleStore
     }
 
     /// <inheritdoc />
+    public int GetTopicCount(Type topicType)
+    {
+        if (topicType == null)
+        {
+            throw new ArgumentNullException(nameof(topicType));
+        }
+
+        return _topicCountsLockFree.TryGetValue(topicType, out var count) ? count : 0;
+    }
+
+    /// <inheritdoc />
     public ITopicSamples GetTopicSamples(Type topicType)
     {
         if (topicType == null)
@@ -94,6 +109,10 @@ public sealed class SampleStore : ISampleStore
 
         Interlocked.Add(ref _totalBytesReceived, sample.SizeBytes);
 
+        // Increment the lock-free per-topic counter first so the TopicExplorer
+        // can read it without acquiring _sync.
+        _topicCountsLockFree.AddOrUpdate(sample.TopicMetadata.TopicType, 1, static (_, c) => c + 1);
+
         lock (_sync)
         {
             _allSamples.Add(sample);
@@ -122,6 +141,7 @@ public sealed class SampleStore : ISampleStore
             _samplesByTopic.Clear();
         }
 
+        _topicCountsLockFree.Clear();
         Interlocked.Exchange(ref _totalBytesReceived, 0);
         Cleared?.Invoke();
     }

@@ -133,6 +133,8 @@
     private Timer? _refreshTimer;
     private Timer? _sparklineTimer;
     private string? _subscriptionError;
+    // Content hash of the last rendered topics list; we skip StateHasChanged when nothing changed.
+    private int _lastTopicsHash;
 
     protected override void OnInitialized()
     {
@@ -175,8 +177,8 @@
     {
         foreach (var topic in TopicRegistry.AllTopics)
         {
-            var topicSamples = SampleStore.GetTopicSamples(topic.TopicType);
-            var currentCount = topicSamples.TotalCount;
+            // Use lock-free topic count to avoid contending with DdsIngestionService.
+            var currentCount = SampleStore.GetTopicCount(topic.TopicType);
 
             if (!_sparklines.TryGetValue(topic.TopicType, out var buffer))
             {
@@ -187,10 +189,9 @@
             if (_lastSampleCounts.TryGetValue(topic.TopicType, out var previousCount))
             {
                 var delta = Math.Max(0, currentCount - previousCount);
-                for (var i = 0; i < delta; i++)
-                {
-                    buffer.Increment();
-                }
+                // Use Add() instead of a tight Increment() loop to avoid thousands of
+                // Interlocked.Increment calls at high sample rates.
+                buffer.Add(delta);
             }
 
             _lastSampleCounts[topic.TopicType] = currentCount;
@@ -201,9 +202,33 @@
     private Task RefreshAndRender()
     {
         RefreshTopics();
-        StateHasChanged();
+        // Compute a cheap content hash; skip the Blazor render pass if nothing changed.
+        var newHash = ComputeTopicsHash(_topics);
+        if (newHash != _lastTopicsHash)
+        {
+            _lastTopicsHash = newHash;
+            StateHasChanged();
+        }
+
         return Task.CompletedTask;
     }
+
+    // Compute a hash over topic counts + subscription flags so we can detect changes
+    // without a full structural comparison.
+    private static int ComputeTopicsHash(IReadOnlyList<TopicExplorerTopicSnapshot> topics)
+    {
+        var h = topics.Count;
+        foreach (var t in topics)
+        {
+            h = HashCombine(h, t.SampleCount);
+            h = HashCombine(h, t.LiveInstances);
+            h = HashCombine(h, t.IsSubscribed ? 1 : 0);
+        }
+
+        return h;
+    }
+
+    private static int HashCombine(int h, int v) => unchecked((h * 397) ^ v);
 
     private void HandleReadersChanged()
     {
@@ -311,11 +336,12 @@
 
         foreach (var meta in TopicRegistry.AllTopics)
         {
-            var samples = SampleStore.GetTopicSamples(meta.TopicType);
+            // Use lock-free count to avoid N lock acquisitions per 30Hz tick.
+            var sampleCount = SampleStore.GetTopicCount(meta.TopicType);
             var instances = InstanceStore.GetTopicInstances(meta.TopicType);
             var isSubscribed = activeReaders.ContainsKey(meta.TopicType);
 
-            snapshots.Add(new TopicExplorerTopicSnapshot(meta, samples.TotalCount, instances.LiveCount, isSubscribed));
+            snapshots.Add(new TopicExplorerTopicSnapshot(meta, sampleCount, instances.LiveCount, isSubscribed));
         }
 
         _topics = snapshots;

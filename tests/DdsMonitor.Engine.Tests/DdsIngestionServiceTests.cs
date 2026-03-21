@@ -29,7 +29,7 @@ public sealed class DdsIngestionServiceTests
         var channel = Channel.CreateUnbounded<SampleData>();
         var sampleStore = new SampleStore();
         var instanceStore = new InstanceStore();
-        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore);
+        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore, new PerfCounters());
 
         using var cts = new CancellationTokenSource();
         await service.StartAsync(cts.Token);
@@ -53,7 +53,7 @@ public sealed class DdsIngestionServiceTests
         var channel = Channel.CreateUnbounded<SampleData>();
         var sampleStore = new SampleStore();
         var instanceStore = new TrackingInstanceStore();
-        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore);
+        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore, new PerfCounters());
 
         using var cts = new CancellationTokenSource();
         await service.StartAsync(cts.Token);
@@ -75,7 +75,7 @@ public sealed class DdsIngestionServiceTests
         var channel = Channel.CreateUnbounded<SampleData>();
         var sampleStore = new SampleStore();
         var instanceStore = new InstanceStore();
-        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore);
+        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore, new PerfCounters());
 
         using var cts = new CancellationTokenSource();
         await service.StartAsync(cts.Token);
@@ -101,7 +101,7 @@ public sealed class DdsIngestionServiceTests
         var channel = Channel.CreateUnbounded<SampleData>();
         var sampleStore = new SampleStore();
         var instanceStore = new InstanceStore();
-        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore);
+        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore, new PerfCounters());
 
         var metadata = new TopicMetadata(typeof(SampleTopic));
 
@@ -139,7 +139,7 @@ public sealed class DdsIngestionServiceTests
         var channel = Channel.CreateUnbounded<SampleData>();
         var sampleStore = new SampleStore();
         var instanceStore = new InstanceStore();
-        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore);
+        var service = new DdsIngestionService(channel.Reader, sampleStore, instanceStore, new PerfCounters());
 
         using var cts = new CancellationTokenSource();
         await service.StartAsync(cts.Token);

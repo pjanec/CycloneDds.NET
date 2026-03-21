@@ -11,6 +11,9 @@ namespace DdsMonitor.Engine;
 /// </summary>
 public sealed class InstanceStore : IInstanceStore
 {
+    // Cap the per-topic journal so it never grows unboundedly; oldest entries are
+    // dropped.  The InstancesPanel only shows recent history anyway.
+    private const int MaxJournalEntriesPerTopic = 2000;
     private readonly object _sync = new();
     private readonly Dictionary<Type, TopicInstances> _topics = new();
     private readonly TransitionObservable _observable = new();
@@ -59,7 +62,7 @@ public sealed class InstanceStore : IInstanceStore
             return new InstanceSnapshot(
                 instances.LiveCount,
                 instances.InstancesByKeyInternal.Values.ToArray(),
-                instances.JournalInternal.ToArray());
+                instances.JournalQueue.ToArray());
         }
     }
 
@@ -127,8 +130,18 @@ public sealed class InstanceStore : IInstanceStore
                 else
                 {
                     instance.State = newState;
-                    journalRecord = new InstanceJournalRecord(TransitionKind.Updated, instance, sample);
-                    transitionEvent = new InstanceTransitionEvent(TransitionKind.Updated, instance, sample);
+                    // \"Updated\" state: still-alive instance received a new sample.
+                    // Fire the event so UI panels can track sample count changes, but do
+                    // NOT add to the journal — the journal records only lifecycle transitions
+                    // (Added/Removed).  This eliminates O(N) RemoveAt overhead and avoids
+                    // allocating a journal record for every single sample at high rates.
+                    //
+                    // Skip event allocation entirely when nobody is observing (fast path for
+                    // the common case where no InstancesPanel is open).
+                    if (_observable.HasObservers)
+                    {
+                        transitionEvent = new InstanceTransitionEvent(TransitionKind.Updated, instance, sample);
+                    }
                 }
             }
 
@@ -137,10 +150,25 @@ public sealed class InstanceStore : IInstanceStore
             instance.NumSamplesTotal++;
             instance.NumSamplesRecent++;
 
-            topicInstances.JournalInternal.Add(journalRecord!);
+            // Only record lifecycle transitions (Added/Removed) — not steady-state updates.
+            if (journalRecord != null)
+            {
+                topicInstances.JournalQueue.Enqueue(journalRecord);
+                // Trim oldest entry; Dequeue() is O(1) vs List.RemoveAt(0) which is O(N).
+                if (topicInstances.JournalQueue.Count > MaxJournalEntriesPerTopic)
+                {
+                    topicInstances.JournalQueue.Dequeue();
+                }
+            }
         }
 
-        _observable.Publish(transitionEvent!);
+        // Publish all events (Added, Removed, Updated) so UI panels stay in sync.
+        // At high sample rates with no active InstancesPanel observers the Publish
+        // call returns immediately after a single lock-acquire (no allocation).
+        if (transitionEvent != null)
+        {
+            _observable.Publish(transitionEvent);
+        }
     }
 
     /// <inheritdoc />
@@ -185,15 +213,22 @@ public sealed class InstanceStore : IInstanceStore
 
         public IReadOnlyDictionary<InstanceKey, InstanceData> InstancesByKey => InstancesByKeyInternal;
 
-        public List<InstanceJournalRecord> JournalInternal { get; } = new();
+        // Queue gives O(1) Enqueue + Dequeue; previously a List with RemoveAt(0) was O(N).
+        public Queue<InstanceJournalRecord> JournalQueue { get; } = new();
 
-        public IReadOnlyList<InstanceJournalRecord> Journal => JournalInternal;
+        public IReadOnlyList<InstanceJournalRecord> Journal => JournalQueue.ToArray();
     }
 
     private sealed class TransitionObservable : IObservable<InstanceTransitionEvent>
     {
         private readonly object _sync = new();
         private readonly List<IObserver<InstanceTransitionEvent>> _observers = new();
+
+        // Volatile counter for a fast lock-free check before acquiring the lock.
+        // Avoids allocating InstanceTransitionEvent objects when nobody is listening.
+        private volatile int _observerCount;
+
+        public bool HasObservers => _observerCount > 0;
 
         public IDisposable Subscribe(IObserver<InstanceTransitionEvent> observer)
         {
@@ -205,6 +240,7 @@ public sealed class InstanceStore : IInstanceStore
             lock (_sync)
             {
                 _observers.Add(observer);
+                _observerCount++;
             }
 
             return new Subscription(this, observer);
@@ -212,14 +248,27 @@ public sealed class InstanceStore : IInstanceStore
 
         public void Publish(InstanceTransitionEvent evt)
         {
-            List<IObserver<InstanceTransitionEvent>> observers;
+            // Fast path: no observers — avoid lock and array allocation.
+            if (_observerCount == 0)
+            {
+                return;
+            }
+
+            IObserver<InstanceTransitionEvent>[]? snapshot;
 
             lock (_sync)
             {
-                observers = new List<IObserver<InstanceTransitionEvent>>(_observers);
+                if (_observers.Count == 0)
+                {
+                    return;
+                }
+
+                // Copy to a stack-friendly array to avoid holding the lock while
+                // calling OnNext (which could re-enter or do expensive work).
+                snapshot = _observers.ToArray();
             }
 
-            foreach (var observer in observers)
+            foreach (var observer in snapshot)
             {
                 observer.OnNext(evt);
             }
@@ -230,6 +279,7 @@ public sealed class InstanceStore : IInstanceStore
             lock (_sync)
             {
                 _observers.Remove(observer);
+                _observerCount = _observers.Count;
             }
         }
 
