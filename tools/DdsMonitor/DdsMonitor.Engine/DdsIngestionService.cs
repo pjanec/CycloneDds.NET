@@ -31,13 +31,19 @@ public sealed class DdsIngestionService : BackgroundService
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await foreach (var sample in _channelReader.ReadAllAsync(stoppingToken))
+        // WaitToReadAsync yields to the thread pool only once per batch.
+        // The inner TryRead loop processes all queued samples synchronously,
+        // eliminating per-sample async state machine overhead under high load.
+        while (await _channelReader.WaitToReadAsync(stoppingToken).ConfigureAwait(false))
         {
-            _sampleStore.Append(sample);
-
-            if (sample.TopicMetadata.IsKeyed)
+            while (_channelReader.TryRead(out var sample))
             {
-                _instanceStore.ProcessSample(sample);
+                _sampleStore.Append(sample);
+
+                if (sample.TopicMetadata.IsKeyed)
+                {
+                    _instanceStore.ProcessSample(sample);
+                }
             }
         }
     }

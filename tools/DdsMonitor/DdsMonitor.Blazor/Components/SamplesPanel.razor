@@ -1854,8 +1854,12 @@
     {
         _addColumnSubscription?.Dispose();
         _applyFilterSubscription?.Dispose();
-        _trackDebouncer?.Dispose();
 
+        // Unhook and dispose the background SampleView first to stop new OnViewRebuilt events
+        // from being queued via InvokeAsync.  Running on the Blazor synchronization context means
+        // any already-queued HandleViewRebuiltAsync continuations will execute after this method
+        // returns, so we must null _sampleView and _trackDebouncer so those continuations
+        // short-circuit via the ?. null-checks rather than calling into disposed objects.
         if (_sampleView != null)
         {
             if (_viewRebuiltHandler != null)
@@ -1864,6 +1868,10 @@
             }
 
             _sampleView.Dispose();
+            _sampleView = null;
         }
+
+        _trackDebouncer?.Dispose();
+        _trackDebouncer = null;
     }
 }

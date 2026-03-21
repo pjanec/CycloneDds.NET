@@ -40,12 +40,13 @@ public sealed class SampleView : ISampleView
 
     private readonly ISampleStore _store;
     private readonly object _sync = new();
+    private readonly object _viewLock = new();
     private readonly CancellationTokenSource _disposeCts = new();
     private readonly Task _workerTask;
     private int _disposed;
 
-    // Written only by the background worker; read by both UI and background threads.
-    private SampleData[] _sortedView = Array.Empty<SampleData>();
+    // Written by the background worker; read by UI and background threads under _viewLock.
+    private readonly List<SampleData> _sortedView = new();
     private int _currentFilteredCount;
 
     // Tracks how many samples from the store have been incorporated into _sortedView.
@@ -93,61 +94,65 @@ public sealed class SampleView : ISampleView
             throw new ArgumentOutOfRangeException(nameof(count));
         }
 
-        var view = Volatile.Read(ref _sortedView);
-        var total = view.Length;
-
-        if (total == EmptyCount || count == EmptyCount || startIndex >= total)
+        lock (_viewLock)
         {
-            return ReadOnlyMemory<SampleData>.Empty;
-        }
+            var total = _sortedView.Count;
 
-        // Descending-ordinal fast path: read from the tail without reversing the entire array.
-        if (_isDescendingOrdinalFastPath)
-        {
-            var reverseEndIndex = total - 1 - startIndex;
-            if (reverseEndIndex < 0)
+            if (total == EmptyCount || count == EmptyCount || startIndex >= total)
             {
                 return ReadOnlyMemory<SampleData>.Empty;
             }
 
-            var actualCount = Math.Min(count, reverseEndIndex + 1);
-            var result = new SampleData[actualCount];
-            for (var i = 0; i < actualCount; i++)
+            // Descending-ordinal fast path: read from the tail without reversing the entire list.
+            if (_isDescendingOrdinalFastPath)
             {
-                result[i] = view[reverseEndIndex - i];
+                var reverseEndIndex = total - 1 - startIndex;
+                if (reverseEndIndex < 0)
+                {
+                    return ReadOnlyMemory<SampleData>.Empty;
+                }
+
+                var actualCount = Math.Min(count, reverseEndIndex + 1);
+                var result = new SampleData[actualCount];
+                for (var i = 0; i < actualCount; i++)
+                {
+                    result[i] = _sortedView[reverseEndIndex - i];
+                }
+
+                return new ReadOnlyMemory<SampleData>(result);
             }
 
-            return new ReadOnlyMemory<SampleData>(result);
+            var available = total - startIndex;
+            var finalCount = Math.Min(count, available);
+            var slice = new SampleData[finalCount];
+            _sortedView.CopyTo(startIndex, slice, 0, finalCount);
+            return new ReadOnlyMemory<SampleData>(slice);
         }
-
-        var available = total - startIndex;
-        return new ReadOnlyMemory<SampleData>(view, startIndex, Math.Min(count, available));
     }
 
     /// <inheritdoc />
     public SampleData[] GetFilteredSnapshot()
     {
-        var view = Volatile.Read(ref _sortedView);
-
-        if (view.Length == EmptyCount)
+        lock (_viewLock)
         {
-            return Array.Empty<SampleData>();
-        }
-
-        if (_isDescendingOrdinalFastPath)
-        {
-            var reversed = new SampleData[view.Length];
-            for (var i = 0; i < view.Length; i++)
+            if (_sortedView.Count == EmptyCount)
             {
-                reversed[i] = view[view.Length - 1 - i];
+                return Array.Empty<SampleData>();
             }
 
-            return reversed;
-        }
+            if (_isDescendingOrdinalFastPath)
+            {
+                var reversed = new SampleData[_sortedView.Count];
+                for (var i = 0; i < _sortedView.Count; i++)
+                {
+                    reversed[i] = _sortedView[_sortedView.Count - 1 - i];
+                }
 
-        var snapshot = new SampleData[view.Length];
-        Array.Copy(view, snapshot, view.Length);
-        return snapshot;
+                return reversed;
+            }
+
+            return _sortedView.ToArray();
+        }
     }
 
     /// <inheritdoc />
@@ -264,13 +269,16 @@ public sealed class SampleView : ISampleView
 
             var filtered = FilterAll(allData, filterPredicate);
             var isOrdinalFastPath = IsOrdinalOrTimestampField(sortField);
-            SampleData[] newView;
 
             if (isOrdinalFastPath)
             {
-                // Data in the store already arrives in ascending ordinal order.
-                newView = filtered;
-                _isDescendingOrdinalFastPath = direction == SortDirection.Descending;
+                lock (_viewLock)
+                {
+                    _sortedView.Clear();
+                    _sortedView.AddRange(filtered);
+                    _isDescendingOrdinalFastPath = direction == SortDirection.Descending;
+                    Volatile.Write(ref _currentFilteredCount, _sortedView.Count);
+                }
             }
             else
             {
@@ -280,18 +288,22 @@ public sealed class SampleView : ISampleView
                     return;
                 }
 
-                newView = SortSnapshot(filtered, sortField!, direction);
+                var newView = SortSnapshot(filtered, sortField!, direction);
 
                 if (Volatile.Read(ref _sortOpVersion) != opVersion)
                 {
                     return;
                 }
 
-                _isDescendingOrdinalFastPath = false;
+                lock (_viewLock)
+                {
+                    _sortedView.Clear();
+                    _sortedView.AddRange(newView);
+                    _isDescendingOrdinalFastPath = false;
+                    Volatile.Write(ref _currentFilteredCount, _sortedView.Count);
+                }
             }
 
-            Volatile.Write(ref _sortedView, newView);
-            Volatile.Write(ref _currentFilteredCount, newView.Length);
             OnViewRebuilt?.Invoke();
         }
         else if (newArrivals.Length > 0)
@@ -305,27 +317,29 @@ public sealed class SampleView : ISampleView
                 return;
             }
 
-            var existingSorted = Volatile.Read(ref _sortedView);
             var isOrdinalFastPath = IsOrdinalOrTimestampField(sortField);
-            SampleData[] newView;
 
-            if (isOrdinalFastPath)
+            lock (_viewLock)
             {
-                // Fast path: append (data arrives in ascending ordinal order).
-                newView = new SampleData[existingSorted.Length + filteredNew.Length];
-                Array.Copy(existingSorted, 0, newView, 0, existingSorted.Length);
-                Array.Copy(filteredNew, 0, newView, existingSorted.Length, filteredNew.Length);
-                _isDescendingOrdinalFastPath = direction == SortDirection.Descending;
-            }
-            else
-            {
-                // Merge-sort: insert the new arrivals into their correct sorted positions.
-                newView = MergeSorted(existingSorted, filteredNew, sortField!, direction);
-                _isDescendingOrdinalFastPath = false;
+                if (isOrdinalFastPath)
+                {
+                    // Fast path: O(new_items) append – no O(N) copy of history.
+                    _sortedView.AddRange(filteredNew);
+                    _isDescendingOrdinalFastPath = direction == SortDirection.Descending;
+                }
+                else
+                {
+                    // Merge-sort: build merged result then swap in.
+                    var existingSnapshot = _sortedView.ToArray();
+                    var merged = MergeSorted(existingSnapshot, filteredNew, sortField!, direction);
+                    _sortedView.Clear();
+                    _sortedView.AddRange(merged);
+                    _isDescendingOrdinalFastPath = false;
+                }
+
+                Volatile.Write(ref _currentFilteredCount, _sortedView.Count);
             }
 
-            Volatile.Write(ref _sortedView, newView);
-            Volatile.Write(ref _currentFilteredCount, newView.Length);
             OnViewRebuilt?.Invoke();
         }
     }

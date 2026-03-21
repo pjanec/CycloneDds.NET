@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CycloneDDS.Runtime.Interop;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace DdsMonitor.Engine.Tests;
 
@@ -19,6 +21,13 @@ public sealed class SampleViewTests
     private const int SliceCount = 5;
     private const int FilterThreshold = 50;
     private const int SampleCount = 100;
+
+    private readonly ITestOutputHelper _output;
+
+    public SampleViewTests(ITestOutputHelper output)
+    {
+        _output = output;
+    }
 
     // ── Filter ────────────────────────────────────────────────────────────────
 
@@ -60,6 +69,111 @@ public sealed class SampleViewTests
         await WaitForViewCountAsync(view, SampleCount);
 
         Assert.Equal(SampleCount, view.CurrentFilteredCount);
+    }
+
+    // ── Performance benchmarks ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Regression test for the O(N) Array.Copy allocation that caused a full CPU core
+    /// to be consumed whenever the SamplesPanel was open at high sample rates.
+    ///
+    /// Scenario: a store already contains a large baseline of samples (50 000); a second
+    /// burst of 50 000 additional samples is then added.  With the old code the worker
+    /// created a new 100 000-element array and Array.Copied all history every 50 ms,
+    /// allocating hundreds of MB/s onto the LOH.  With the fix (List&lt;T&gt; + AddRange)
+    /// each batch only touches the new items, making appends O(new_items) amortized.
+    ///
+    /// Wall-clock timing is reported via ITestOutputHelper; the test asserts that all
+    /// samples are visible within a tight absolute deadline so regressions can be caught.
+    /// </summary>
+    [Fact(Timeout = 15000)]
+    public async Task SampleView_IncrementalAppend_LargeStore_CompletesQuickly()
+    {
+        const int baselineCount = 50_000;
+        const int burstCount = 50_000;
+        const int totalCount = baselineCount + burstCount;
+        const int maxExpectedMs = 5_000; // generous wall-clock budget (50 ms worker × ~100 batches worst-case)
+
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        var store = new SampleStore();
+
+        // Pre-populate the baseline so the first ProcessBatch call sees a large store.
+        for (var i = 1; i <= baselineCount; i++)
+        {
+            store.Append(SampleStoreTests.CreateSample(metadata, i));
+        }
+
+        using var view = new SampleView(store);
+
+        // Wait for the view to absorb the baseline.
+        await WaitForViewCountAsync(view, baselineCount, timeoutMs: 8000);
+        Assert.Equal(baselineCount, view.CurrentFilteredCount);
+
+        // Now add the burst and measure how long the view takes to process it.
+        var sw = Stopwatch.StartNew();
+        for (var i = baselineCount + 1; i <= totalCount; i++)
+        {
+            store.Append(SampleStoreTests.CreateSample(metadata, i));
+        }
+
+        await WaitForViewCountAsync(view, totalCount, timeoutMs: maxExpectedMs);
+        sw.Stop();
+
+        _output.WriteLine(
+            $"IncrementalAppend: {totalCount:N0} samples total " +
+            $"(baseline={baselineCount:N0} + burst={burstCount:N0}) " +
+            $"processed in {sw.ElapsedMilliseconds} ms");
+
+        Assert.Equal(totalCount, view.CurrentFilteredCount);
+
+        // Verify ordinal correctness: the last visible item should be the latest sample.
+        var last = view.GetVirtualView(totalCount - 1, 1).Span[0];
+        Assert.Equal(totalCount, last.Ordinal);
+    }
+
+    /// <summary>
+    /// Measures the throughput of repeated ProcessBatch calls over a growing store
+    /// to detect per-call O(N) regressions.  Ten consecutive bursts of 10 000 samples
+    /// each are added; the view must absorb the full 100 000 within the timeout.
+    /// Reports per-burst latency to output.
+    /// </summary>
+    [Fact(Timeout = 30000)]
+    public async Task SampleView_RepeatedBursts_ThroughputIsAcceptable()
+    {
+        const int bursts = 10;
+        const int samplesPerBurst = 10_000;
+        const int burstWaitMs = 4_000;
+
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        var store = new SampleStore();
+        using var view = new SampleView(store);
+
+        long ordinal = 0;
+        var totalSw = Stopwatch.StartNew();
+
+        for (var burst = 1; burst <= bursts; burst++)
+        {
+            var target = (int)(ordinal + samplesPerBurst);
+            var burstSw = Stopwatch.StartNew();
+
+            for (var i = 0; i < samplesPerBurst; i++)
+            {
+                ordinal++;
+                store.Append(SampleStoreTests.CreateSample(metadata, (int)ordinal));
+            }
+
+            await WaitForViewCountAsync(view, target, timeoutMs: burstWaitMs);
+            burstSw.Stop();
+
+            _output.WriteLine(
+                $"Burst {burst:D2}: +{samplesPerBurst:N0} samples, " +
+                $"total={target:N0}, burst latency={burstSw.ElapsedMilliseconds} ms");
+        }
+
+        totalSw.Stop();
+        _output.WriteLine($"Total: {ordinal:N0} samples in {totalSw.ElapsedMilliseconds} ms");
+
+        Assert.Equal((int)ordinal, view.CurrentFilteredCount);
     }
 
     // ── Sort ──────────────────────────────────────────────────────────────────
@@ -336,7 +450,7 @@ public sealed class SampleViewTests
             true);
     }
 
-    private static async Task WaitForViewCountAsync(SampleView view, int expectedCount)
+    private static async Task WaitForViewCountAsync(SampleView view, int expectedCount, int timeoutMs = SortTimeoutMs)
     {
         if (view.CurrentFilteredCount == expectedCount || view.GetVirtualView(0, Math.Max(1, expectedCount)).Length == expectedCount)
         {
@@ -364,7 +478,7 @@ public sealed class SampleViewTests
             return;
         }
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(SortTimeoutMs));
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs));
         view.OnViewRebuilt -= Handler;
 
         Assert.Same(tcs.Task, completed);

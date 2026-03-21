@@ -22,6 +22,19 @@ public partial struct DynamicReaderMessage
     public int Value;
 }
 
+/// <summary>
+/// Topic type used by the burst-drain performance test.
+/// Uses KEEP_ALL + Reliable QoS so that multiple samples can be buffered
+/// in the DDS reader queue, allowing the drain loop to read more than one batch.
+/// </summary>
+[DdsTopic("DrainTestTopic")]
+[DdsQos(Reliability = DdsReliability.Reliable, HistoryKind = DdsHistoryKind.KeepAll)]
+public partial struct DrainTestMessage
+{
+    public int Id;
+    public int Value;
+}
+
 [DdsTopic("DynamicWriterTopic")]
 public partial struct DynamicWriterMessage
 {

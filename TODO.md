@@ -14,6 +14,20 @@ Topic Properties needs to show
  - real DDS topic name string (not just CLR type)
  - QoS settings
 
+
+[BUG] when all samples panel closed in the middle of receiving messages, exception thrown:
+>	DdsMonitor.Engine.dll!DdsMonitor.Engine.DebouncedAction.ThrowIfDisposed() Line 76	C#
+ 	DdsMonitor.Engine.dll!DdsMonitor.Engine.DebouncedAction.Trigger() Line 31	C#
+ 	DdsMonitor.dll!DdsMonitor.Components.SamplesPanel.HandleViewRebuiltAsync() Line 1251	C#
+ 	[External Code]	
+
+
+[BUG] DdsMonitor eats lots of CPU when receiving smaples even if no panel is opened in blazor web browser
+like if the sheer processing of samples was so demanding - something is wrong, very unoptimal inside...
+Usually samples shoudl be just added to append-only sample storage (and their size calculated for the bandwidth gauge)
+which should not be demanding so much.
+
+
 [BUG] Sample memory never released
 if in ddsmon i click "Reset" icon in the main menu bar  after receiving high amount of samples (taking high amount of memory),
  the samples disappear from the UI but the memory stays high.
@@ -35,4 +49,5 @@ The Cache is Never Cleared: The InstancesPanel relies on a UI timer calling Refr
 
 Conclusion: Even though the SampleStore successfully drops its references, the InstancesPanel's cache is unknowingly keeping a hard reference to every single sample. From the .NET Garbage Collector's perspective, those objects are "still in use" by the UI, so it refuses to release the 10GB of memory back to the OS.
 To fix this, the source code for InstanceStore.Clear() would need to be updated to broadcast a specific "cleared" event so that the InstancesPanel knows to dump its _viewCache.
+
 

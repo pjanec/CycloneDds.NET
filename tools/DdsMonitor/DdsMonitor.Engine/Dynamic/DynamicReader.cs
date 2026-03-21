@@ -165,10 +165,16 @@ public sealed class DynamicReader<T> : IDynamicReader
         {
             try
             {
-                var hasData = await reader.WaitDataAsync(cancellationToken);
+                var hasData = await reader.WaitDataAsync(cancellationToken).ConfigureAwait(false);
                 if (hasData)
                 {
-                    DrainReader(reader);
+                    // Loop synchronously until the reader queue is completely empty,
+                    // avoiding a redundant native peek (HasData/WaitDataAsync) between batches.
+                    bool moreData = true;
+                    while (moreData && !cancellationToken.IsCancellationRequested)
+                    {
+                        moreData = DrainReader(reader);
+                    }
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -184,18 +190,21 @@ public sealed class DynamicReader<T> : IDynamicReader
 
     // Synchronous helper: DdsLoan<T> is a ref struct and cannot be declared
     // inside an async method on C# < 13, so the Take/Emit work lives here.
-    private void DrainReader(DdsReader<T> reader)
+    // Returns true if samples were taken (there may be more); false when the queue is empty.
+    private bool DrainReader(DdsReader<T> reader)
     {
         using var loan = reader.Take(DefaultMaxSamples);
         if (loan.Count == 0)
         {
-            return;
+            return false; // Queue is empty.
         }
 
         foreach (var sample in loan)
         {
             EmitSample(sample);
         }
+
+        return true; // Took a full batch; there may still be more.
     }
 
     private void EmitSample(DdsSample<T> sample)
