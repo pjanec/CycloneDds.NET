@@ -18,6 +18,9 @@ public sealed class SampleStore : ISampleStore
     private long _totalBytesReceived;
 
     /// <inheritdoc />
+    public event Action? Cleared;
+
+    /// <inheritdoc />
     public IReadOnlyList<SampleData> AllSamples
     {
         get
@@ -120,6 +123,7 @@ public sealed class SampleStore : ISampleStore
         }
 
         Interlocked.Exchange(ref _totalBytesReceived, 0);
+        Cleared?.Invoke();
     }
 
     private sealed class TopicSamples : ITopicSamples

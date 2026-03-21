@@ -44,6 +44,12 @@ public interface ISampleStore
     void Clear();
 
     /// <summary>
+    /// Raised after all samples have been cleared.
+    /// Subscribers should drop any cached references to sample data.
+    /// </summary>
+    event Action? Cleared;
+
+    /// <summary>
     /// Gets the total bytes received across all topics (best-effort estimate).
     /// </summary>
     long TotalBytesReceived { get; }

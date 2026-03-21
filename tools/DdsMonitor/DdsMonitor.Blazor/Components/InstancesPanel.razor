@@ -193,6 +193,7 @@ else
         _trackDebouncer = new DebouncedAction(TimeSpan.FromMilliseconds(TrackDebounceMs),
             () => _ = InvokeAsync(PublishPendingTrackSample));
         _instanceSubscription = InstanceStore.OnInstanceChanged.Subscribe(new InstanceObserver(this));
+        InstanceStore.Cleared += OnInstanceStoreCleared;
         StartRefreshTimer();
     }
 
@@ -1439,17 +1440,8 @@ else
 
         public void OnNext(InstanceTransitionEvent value)
         {
-            if (value.Kind == TransitionKind.Cleared)
-            {
-                // Store was reset: bump the version so RefreshCounts marks the view
-                // dirty on the next tick and _viewCache gets cleared, releasing all
-                // hard references to SampleData / InstanceData objects.
-                Interlocked.Increment(ref _owner._changeVersion);
-                return;
-            }
-
             if (_owner._currentTopicType == null ||
-                value.Instance!.TopicMetadata.TopicType != _owner._currentTopicType)
+                value.Instance.TopicMetadata.TopicType != _owner._currentTopicType)
             {
                 return;
             }
@@ -1466,10 +1458,19 @@ else
         }
     }
 
+    private void OnInstanceStoreCleared()
+    {
+        // The instance store was reset: bump the change version so RefreshCounts marks
+        // the view dirty on the next tick, clearing _viewCache and releasing all hard
+        // references to SampleData / InstanceData objects.
+        Interlocked.Increment(ref _changeVersion);
+    }
+
     public void Dispose()
     {
         _refreshTimer?.Dispose();
         _trackDebouncer?.Dispose();
         _instanceSubscription?.Dispose();
+        InstanceStore.Cleared -= OnInstanceStoreCleared;
     }
 }

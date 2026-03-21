@@ -213,6 +213,8 @@ public sealed class DdsIngestionServiceTests
 
         public IObservable<InstanceTransitionEvent> OnInstanceChanged => new EmptyObservable();
 
+        public event Action? Cleared;
+
         public ITopicInstances GetTopicInstances(Type topicType) => throw new NotSupportedException();
 
         public InstanceSnapshot GetTopicSnapshot(Type topicType) => throw new NotSupportedException();

@@ -78,6 +78,7 @@ public sealed class SampleView : ISampleView
     public SampleView(ISampleStore store)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _store.Cleared += OnStoreCleared;
         _workerTask = Task.Run(ViewWorkerLoop);
     }
 
@@ -188,6 +189,7 @@ public sealed class SampleView : ISampleView
             return;
         }
 
+        _store.Cleared -= OnStoreCleared;
         _disposeCts.Cancel();
 
         try
@@ -218,13 +220,39 @@ public sealed class SampleView : ISampleView
         }
     }
 
+    /// <summary>
+    /// Called synchronously on the thread that called <see cref="ISampleStore.Clear"/>.
+    /// Immediately releases the sorted-view backing array and resets tracking state so
+    /// the next <see cref="ProcessBatch"/> tick starts from a clean slate.
+    /// </summary>
+    private void OnStoreCleared()
+    {
+        lock (_viewLock)
+        {
+            _sortedView.Clear();
+            _sortedView.TrimExcess();
+            Volatile.Write(ref _currentFilteredCount, 0);
+        }
+
+        lock (_sync)
+        {
+            _lastProcessedCount = 0;
+            _sortDirty = true;
+            _requiresFullSort = true;
+            Interlocked.Increment(ref _sortOpVersion);
+        }
+
+        OnViewRebuilt?.Invoke();
+    }
+
     private void ProcessBatch()
     {
         var currentStoreCount = _store.TotalCount;
 
-        // Detect store clear: if TotalCount dropped we must start from scratch.
-        var storeCleared = currentStoreCount < _lastProcessedCount;
-        if (storeCleared)
+        // Safety net: if the store count dropped since our last poll (rare race between
+        // SampleStore.Clear() completing and the Cleared event firing before this tick),
+        // reset the poll position so we don't attempt to read from a stale high index.
+        if (currentStoreCount < _lastProcessedCount)
         {
             _lastProcessedCount = 0;
         }
@@ -245,7 +273,7 @@ public sealed class SampleView : ISampleView
 
         lock (_sync)
         {
-            var hasWork = _sortDirty || newArrivals.Length > 0 || storeCleared;
+            var hasWork = _sortDirty || newArrivals.Length > 0;
             if (!hasWork)
             {
                 return;
@@ -254,7 +282,7 @@ public sealed class SampleView : ISampleView
             sortField = _sortField;
             direction = _sortDirection;
             filterPredicate = _filterPredicate;
-            fullSort = _requiresFullSort || storeCleared;
+            fullSort = _requiresFullSort;
             opVersion = Volatile.Read(ref _sortOpVersion);
 
             _sortDirty = false;
@@ -275,13 +303,6 @@ public sealed class SampleView : ISampleView
                 lock (_viewLock)
                 {
                     _sortedView.Clear();
-                    // When the store was cleared and the new view is empty, release
-                    // the backing array so the GC can reclaim the LOH segment.
-                    if (storeCleared && filtered.Length == 0)
-                    {
-                        _sortedView.TrimExcess();
-                    }
-
                     _sortedView.AddRange(filtered);
                     _isDescendingOrdinalFastPath = direction == SortDirection.Descending;
                     Volatile.Write(ref _currentFilteredCount, _sortedView.Count);
@@ -305,11 +326,6 @@ public sealed class SampleView : ISampleView
                 lock (_viewLock)
                 {
                     _sortedView.Clear();
-                    if (storeCleared && newView.Length == 0)
-                    {
-                        _sortedView.TrimExcess();
-                    }
-
                     _sortedView.AddRange(newView);
                     _isDescendingOrdinalFastPath = false;
                     Volatile.Write(ref _currentFilteredCount, _sortedView.Count);

@@ -19,6 +19,9 @@ public sealed class InstanceStore : IInstanceStore
     public IObservable<InstanceTransitionEvent> OnInstanceChanged => _observable;
 
     /// <inheritdoc />
+    public event Action? Cleared;
+
+    /// <inheritdoc />
     public ITopicInstances GetTopicInstances(Type topicType)
     {
         if (topicType == null)
@@ -148,8 +151,7 @@ public sealed class InstanceStore : IInstanceStore
             _topics.Clear();
         }
 
-        // Notify all observers so UI caches can drop their hard references.
-        _observable.Publish(new InstanceTransitionEvent(TransitionKind.Cleared, null, null));
+        Cleared?.Invoke();
     }
 
     private static InstanceKey ExtractKey(TopicMetadata metadata, object payload)

@@ -24,6 +24,12 @@ public interface IInstanceStore
     IObservable<InstanceTransitionEvent> OnInstanceChanged { get; }
 
     /// <summary>
+    /// Raised when all tracked instances are cleared (e.g. on a global Reset).
+    /// Subscribers should drop any cached references to instance or sample data.
+    /// </summary>
+    event Action? Cleared;
+
+    /// <summary>
     /// Processes a new sample for instance tracking.
     /// </summary>
     void ProcessSample(SampleData sample);
@@ -82,7 +88,7 @@ public enum InstanceState
 }
 
 /// <summary>
-/// Represents the type of transition.
+/// Represents the type of instance lifecycle transition.
 /// </summary>
 public enum TransitionKind
 {
@@ -99,13 +105,7 @@ public enum TransitionKind
     /// <summary>
     /// Instance was removed.
     /// </summary>
-    Removed,
-
-    /// <summary>
-    /// The entire store was cleared (Reset).  <see cref="InstanceTransitionEvent.Instance"/>
-    /// and <see cref="InstanceTransitionEvent.Sample"/> are <c>null</c> for this kind.
-    /// </summary>
-    Cleared
+    Removed
 }
 
 /// <summary>
@@ -229,4 +229,4 @@ public sealed record InstanceJournalRecord(TransitionKind Kind, InstanceData Ins
 /// <summary>
 /// Describes an instance transition event.
 /// </summary>
-public sealed record InstanceTransitionEvent(TransitionKind Kind, InstanceData? Instance, SampleData? Sample);
+public sealed record InstanceTransitionEvent(TransitionKind Kind, InstanceData Instance, SampleData Sample);

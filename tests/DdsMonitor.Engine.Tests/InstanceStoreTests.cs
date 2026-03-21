@@ -112,50 +112,23 @@ public sealed class InstanceStoreTests
 
     /// <summary>
     /// The critical regression test for the memory leak:
-    /// <see cref="InstanceStore.Clear"/> MUST publish a <see cref="TransitionKind.Cleared"/>
+    /// <see cref="InstanceStore.Clear"/> MUST fire the dedicated <see cref="IInstanceStore.Cleared"/>
     /// event so that observers (e.g. InstancesPanel) can drop their UI caches and allow
     /// the GC to release sample memory.
-    /// Before the fix, Clear() silently emptied the dictionary without notifying observers,
-    /// causing the UI cache to hold hard references to all SampleData forever.
     /// </summary>
     [Fact]
-    public void InstanceStore_Clear_PublishesClearedEvent()
+    public void InstanceStore_Clear_FiresClearedEvent()
     {
-        var metadata = new TopicMetadata(typeof(InstanceKeyedMessage));
         var store = new InstanceStore();
-
+        var metadata = new TopicMetadata(typeof(InstanceKeyedMessage));
         store.ProcessSample(CreateSample(metadata, new InstanceKeyedMessage { Id = 20, Value = 1 }, DdsInstanceState.Alive));
 
-        var events = new List<TransitionKind>();
-        using var sub = store.OnInstanceChanged.Subscribe(new ActionObserver(e => events.Add(e.Kind)));
+        var clearedFired = false;
+        store.Cleared += () => clearedFired = true;
 
         store.Clear();
 
-        Assert.Contains(TransitionKind.Cleared, events);
-    }
-
-    /// <summary>
-    /// Verifies that the Cleared event has null Instance and Sample fields
-    /// (observers must guard against null for this kind).
-    /// </summary>
-    [Fact]
-    public void InstanceStore_ClearedEvent_HasNullInstanceAndSample()
-    {
-        var store = new InstanceStore();
-        InstanceTransitionEvent? clearedEvent = null;
-
-        using var sub = store.OnInstanceChanged.Subscribe(
-            new ActionObserver(e =>
-            {
-                if (e.Kind == TransitionKind.Cleared) clearedEvent = e;
-            }));
-
-        store.Clear();
-
-        Assert.NotNull(clearedEvent);
-        Assert.Equal(TransitionKind.Cleared, clearedEvent!.Kind);
-        Assert.Null(clearedEvent.Instance);
-        Assert.Null(clearedEvent.Sample);
+        Assert.True(clearedFired);
     }
 
     /// <summary>

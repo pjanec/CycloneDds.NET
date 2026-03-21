@@ -74,9 +74,8 @@ public sealed class MemoryReleaseTests
     /// <c>_sortedView</c> references within its next polling cycle (≤ 50 ms) after the
     /// store is cleared, allowing the GC to reclaim all SampleData objects.
     ///
-    /// This proves that the "storeCleared" detection in
-    /// <c>SampleView.ProcessBatch</c> works and calls both <c>Clear()</c> and
-    /// <c>TrimExcess()</c> on the backing list.
+    /// This proves that <see cref="SampleView"/>'s <c>OnStoreCleared</c> handler fires
+    /// correctly and calls both <c>Clear()</c> and <c>TrimExcess()</c> on the backing list.
     /// </summary>
     [Fact(Timeout = 5000)]
     public async Task SampleView_AfterStoreClear_SamplesAreGcCollectible()
