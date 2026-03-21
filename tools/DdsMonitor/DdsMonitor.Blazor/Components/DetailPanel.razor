@@ -19,6 +19,7 @@
 @inject IJSRuntime JSRuntime
 @inject WorkspacePersistenceService WorkspacePersistence
 @inject IValueFormatterRegistry ValueFormatterRegistry
+@inject ISampleStore SampleStore
 
 @if (_currentSample == null)
 {
@@ -128,6 +129,8 @@ else
         {
             _subscription = EventBroker.Subscribe<SampleSelectedEvent>(OnSampleSelected);
         }
+
+        SampleStore.Cleared += OnSampleStoreCleared;
 
         _debouncer = new DebouncedAction(TimeSpan.FromMilliseconds(DebounceDelayMs),
             () => _ = InvokeAsync(ApplyPendingSample));
@@ -1267,8 +1270,20 @@ else
 
     public void Dispose()
     {
+        SampleStore.Cleared -= OnSampleStoreCleared;
         _subscription?.Dispose();
         _debouncer?.Dispose();
+    }
+
+    /// <summary>
+    /// Called synchronously when the sample store is cleared so the displayed sample
+    /// reference is dropped immediately, allowing the GC to reclaim it.
+    /// </summary>
+    private void OnSampleStoreCleared()
+    {
+        _currentSample = null;
+        _pendingSample = null;
+        _lastParameterSample = null;
     }
 
     private static string GetInstanceStateClass(SampleData? sample)

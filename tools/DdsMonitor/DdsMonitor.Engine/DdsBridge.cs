@@ -353,6 +353,20 @@ public sealed class DdsBridge : IDdsBridge
             _sampleStore?.Clear();
             _instanceStore?.Clear();
         }
+
+        // Trigger a compacting GC on a background thread so the freed LOH backing
+        // arrays and SampleData objects are returned to the OS immediately.
+        // This is appropriate here because Reset is an explicit user action that
+        // should result in a visible drop in Task Manager / process monitors.
+        // Running on a background thread avoids blocking the Blazor circuit.
+        _ = Task.Run(static () =>
+        {
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
+                System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────

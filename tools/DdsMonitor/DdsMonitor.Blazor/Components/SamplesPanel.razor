@@ -261,6 +261,8 @@
             () => _ = InvokeAsync(PublishPendingTrackSample));
         _viewRebuiltHandler = () => _ = InvokeAsync(HandleViewRebuiltAsync);
 
+        SampleStore.Cleared += OnSampleStoreCleared;
+
         // Live mode: create a per-window view backed by the singleton store.
         // Replay mode uses FixedSamples directly and needs no background view.
         if (FixedSamples == null)
@@ -1852,6 +1854,7 @@
 
     public void Dispose()
     {
+        SampleStore.Cleared -= OnSampleStoreCleared;
         _addColumnSubscription?.Dispose();
         _applyFilterSubscription?.Dispose();
 
@@ -1873,5 +1876,17 @@
 
         _trackDebouncer?.Dispose();
         _trackDebouncer = null;
+    }
+
+    /// <summary>
+    /// Called synchronously when <see cref="ISampleStore.Cleared"/> fires so all
+    /// SampleData references held by this panel are dropped before the GC runs.
+    /// </summary>
+    private void OnSampleStoreCleared()
+    {
+        _selectedSample = null;
+        _pendingTrackSample = null;
+        _selectedIndex = -1;
+        _viewCache.Clear();
     }
 }

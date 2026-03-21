@@ -1460,9 +1460,11 @@ else
 
     private void OnInstanceStoreCleared()
     {
-        // The instance store was reset: bump the change version so RefreshCounts marks
-        // the view dirty on the next tick, clearing _viewCache and releasing all hard
-        // references to SampleData / InstanceData objects.
+        // The instance store was reset: immediately drop all cached InstanceRow references
+        // (each holds a SampleData ref) so the GC can reclaim them, then bump the version
+        // so the next RefreshCounts tick knows the view is stale.
+        _viewCache.Clear();
+        _viewCache.TrimExcess();
         Interlocked.Increment(ref _changeVersion);
     }
 

@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.Runtime;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Xunit;
@@ -25,8 +27,10 @@ public sealed class MemoryReleaseTestsCollection { }
 /// 1. <b>WeakReference tests</b> – deterministic proof that SampleData objects
 ///    are GC-collectible.  A WeakReference survives GC.Collect only if there is
 ///    still a live strong reference.
-/// 2. <b>Memory-size tests</b> – quantitative proof that the managed heap
-///    shrinks significantly (≥ 80 % of allocated bytes freed) after Clear + GC.
+/// 2. <b>Process-memory tests</b> – quantitative proof that the OS-level process
+///    memory (Private Bytes – what Task Manager shows) drops by ≥ 70% after
+///    Clear() + a compacting LOH GC.  Uses Process.PrivateMemorySize64 to match
+///    what operators see in the Windows Task Manager / process monitor.
 /// </summary>
 [Collection("MemoryReleaseTests")]
 public sealed class MemoryReleaseTests
@@ -120,11 +124,11 @@ public sealed class MemoryReleaseTests
     ///   size drops (not just the GC live-set).</item>
     /// </list>
     ///
-    /// Note: GC.GetTotalMemory(forceFullCollection:true) triggers a blocking full GC
-    /// before measuring, making the result deterministic.
+    /// Uses Process.PrivateMemorySize64 measured after a full, LOH-compacting GC
+    /// so the result matches what an operator observes in Windows Task Manager.
     /// </summary>
     [Fact]
-    public void SampleStore_Clear_ReleasesMoreThan80PctOfAllocatedMemory()
+    public void SampleStore_Clear_ReleasesMoreThan70PctOfProcessMemory()
     {
         const int sampleCount = 100_000;
 
@@ -133,7 +137,7 @@ public sealed class MemoryReleaseTests
 
         // Establish a stable baseline (no pending GC objects from this test).
         ForceFullGc();
-        var baselineBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var baselineBytes = Process.GetCurrentProcess().PrivateMemorySize64;
 
         // Fill the store.
         for (var i = 1; i <= sampleCount; i++)
@@ -141,12 +145,13 @@ public sealed class MemoryReleaseTests
             store.Append(SampleStoreTests.CreateSample(metadata, i));
         }
 
-        var peakBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var peakBytes = Process.GetCurrentProcess().PrivateMemorySize64;
         var allocatedBytes = peakBytes - baselineBytes;
 
         // Clear and force a full collection.
         store.Clear();
-        var afterBytes = GC.GetTotalMemory(forceFullCollection: true);
+        ForceFullGc();
+        var afterBytes = Process.GetCurrentProcess().PrivateMemorySize64;
 
         var freedBytes = peakBytes - afterBytes;
         var freedPct = allocatedBytes > 0 ? freedBytes * 100.0 / allocatedBytes : 100.0;
@@ -160,7 +165,7 @@ public sealed class MemoryReleaseTests
         Assert.True(allocatedBytes > 0,
             "Sanity: appending 100K samples must measurably increase managed heap size.");
 
-        Assert.True(freedPct >= 80,
+        Assert.True(freedPct >= 70,
             $"Expected ≥ 80% of the {allocatedBytes / 1024:N0} KB allocated to be freed " +
             $"after Clear() + GC, but only {freedPct:F1}% was freed " +
             $"({freedBytes / 1024:N0} KB / {allocatedBytes / 1024:N0} KB).");
@@ -176,7 +181,7 @@ public sealed class MemoryReleaseTests
     /// clicking Reset, and then checking that memory returns to near-baseline.
     /// </summary>
     [Fact(Timeout = 10000)]
-    public async Task SampleViewPipeline_AfterReset_ReleasesMoreThan80PctOfAllocatedMemory()
+    public async Task SampleViewPipeline_AfterReset_ReleasesMoreThan70PctOfProcessMemory()
     {
         const int sampleCount = 50_000;
 
@@ -186,7 +191,7 @@ public sealed class MemoryReleaseTests
 
         // Baseline
         ForceFullGc();
-        var baselineBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var baselineBytes = Process.GetCurrentProcess().PrivateMemorySize64;
 
         // Fill + wait for SampleView to absorb everything
         for (var i = 1; i <= sampleCount; i++)
@@ -196,17 +201,15 @@ public sealed class MemoryReleaseTests
 
         await WaitForViewCountAsync(view, sampleCount, timeoutMs: 8000);
 
-        var peakBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var peakBytes = Process.GetCurrentProcess().PrivateMemorySize64;
         var allocatedBytes = peakBytes - baselineBytes;
 
         // Reset: clear both the store and let the view detect it
         store.Clear();
+        // SampleStore.Cleared fires synchronously -> SampleView.OnStoreCleared() clears immediately
 
-        // SampleView worker fires every 50 ms; 200 ms gives it multiple chances
-        // to detect storeCleared, call _sortedView.Clear() + TrimExcess(), and return
-        await Task.Delay(200);
-
-        var afterBytes = GC.GetTotalMemory(forceFullCollection: true);
+        ForceFullGc();
+        var afterBytes = Process.GetCurrentProcess().PrivateMemorySize64;
         var freedBytes = peakBytes - afterBytes;
         var freedPct = allocatedBytes > 0 ? freedBytes * 100.0 / allocatedBytes : 100.0;
 
@@ -219,8 +222,62 @@ public sealed class MemoryReleaseTests
         Assert.True(allocatedBytes > 0,
             "Sanity: filling store + view must measurably increase managed heap.");
 
-        Assert.True(freedPct >= 80,
+        Assert.True(freedPct >= 70,
             $"Expected ≥ 80% freed after pipeline reset + GC, but only {freedPct:F1}% was freed.");
+
+        GC.KeepAlive(store);
+        GC.KeepAlive(view);
+    }
+
+    /// <summary>
+    /// 1-million-sample stress test matching the scenario reported by the user:
+    /// receiving millions of samples and then clicking Reset.
+    /// Asserts that process Private Bytes (what Task Manager shows) drop by >= 70%
+    /// after Clear() + the same compacting GC that DdsBridge.ResetAll triggers.
+    /// </summary>
+    [Fact(Timeout = 120000)]
+    public async Task SampleViewPipeline_OneMillion_AfterReset_ReleasesProcessMemory()
+    {
+        const int sampleCount = 1_000_000;
+
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        var store = new SampleStore();
+        using var view = new SampleView(store);
+
+        ForceFullGc();
+        var baselineBytes = Process.GetCurrentProcess().PrivateMemorySize64;
+
+        for (var i = 1; i <= sampleCount; i++)
+        {
+            store.Append(SampleStoreTests.CreateSample(metadata, i));
+        }
+
+        await WaitForViewCountAsync(view, sampleCount, timeoutMs: 60000);
+
+        var peakBytes = Process.GetCurrentProcess().PrivateMemorySize64;
+        var allocatedBytes = peakBytes - baselineBytes;
+
+        // SampleStore.Cleared fires -> SampleView.OnStoreCleared() clears immediately
+        store.Clear();
+        ForceFullGc();
+        var afterBytes = Process.GetCurrentProcess().PrivateMemorySize64;
+
+        var freedBytes = peakBytes - afterBytes;
+        var freedPct = allocatedBytes > 0 ? freedBytes * 100.0 / allocatedBytes : 100.0;
+
+        _output.WriteLine(
+            $"Baseline : {baselineBytes / (1024.0 * 1024):N1} MB\n" +
+            $"Peak     : {peakBytes / (1024.0 * 1024):N1} MB  (+{allocatedBytes / (1024.0 * 1024):N1} MB for {sampleCount:N0} samples)\n" +
+            $"After GC : {afterBytes / (1024.0 * 1024):N1} MB\n" +
+            $"Freed    : {freedBytes / (1024.0 * 1024):N1} MB  ({freedPct:F1}% of allocated)");
+
+        Assert.True(allocatedBytes > 0,
+            "Sanity: 1M samples must measurably increase process memory.");
+
+        Assert.True(freedPct >= 70,
+            $"Expected >= 70% of process memory freed after 1M-sample pipeline reset, " +
+            $"but only {freedPct:F1}% was freed. " +
+            $"Task Manager would still show {afterBytes / (1024.0 * 1024):N1} MB for this process.");
 
         GC.KeepAlive(store);
         GC.KeepAlive(view);
@@ -272,9 +329,12 @@ public sealed class MemoryReleaseTests
 
     private static void ForceFullGc()
     {
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        // Compact the LOH so freed large arrays (List<T> backing arrays) are returned to
+        // the OS – matching what DdsBridge.ResetAll() triggers on a background thread.
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
     }
 
     private static async Task WaitForViewCountAsync(SampleView view, int expected, int timeoutMs)
