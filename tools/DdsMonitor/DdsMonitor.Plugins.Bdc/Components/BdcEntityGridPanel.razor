@@ -1,6 +1,8 @@
 @using DdsMonitor.Plugins.Bdc
 @using DdsMonitor.Engine
+@using System.Collections.Generic
 @inject EntityStore Store
+@inject IWindowManager WindowManager
 @implements IDisposable
 
 <div class="bdc-entity-grid-panel p-2">
@@ -163,10 +165,11 @@
 
     private void OpenDetail(Entity entity)
     {
-        // Detail panel spawn is handled by the host WindowManager; the menu item
-        // "Plugins/BDC/Entity Grid" is registered in BdcPlugin.Initialize so the
-        // WindowManager can route it. Future: inject IWindowManager when scoped DI
-        // is available in Blazor panels and call SpawnPanel("BDC Entity Detail").
-        _ = entity; // suppress unused warning until detail panel is implemented
+        WindowManager.SpawnPanel(
+            "BDC Entity Detail",
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["EntityId"] = entity.EntityId
+            });
     }
 }

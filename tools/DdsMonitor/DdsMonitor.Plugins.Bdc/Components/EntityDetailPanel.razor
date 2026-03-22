@@ -1,0 +1,240 @@
+@using DdsMonitor.Plugins.Bdc
+@using DdsMonitor.Engine
+@using System.Collections.Generic
+@inject EntityStore Store
+@inject TimeTravelEngine TravelEngine
+@implements IDisposable
+
+<div class="bdc-entity-detail-panel p-2">
+
+    @if (_entity is null)
+    {
+        <div class="alert alert-warning">Entity @EntityId not found in the store.</div>
+    }
+    else
+    {
+        <!-- Header -->
+        <div class="d-flex align-items-center mb-2 gap-2 flex-wrap">
+            <h5 class="mb-0">Entity <strong>@EntityId</strong></h5>
+            <span class="badge @StateBadge(_displayState) ms-1">@StateIcon(_displayState) @_displayState</span>
+            <small class="text-muted ms-2">@_descriptors.Count descriptor(s)</small>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                @if (!_historyMode)
+                {
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="EnterHistoryMode">
+                        ⏱ View History At…
+                    </button>
+                }
+                else
+                {
+                    <input type="datetime-local"
+                           step="0.001"
+                           class="form-control form-control-sm"
+                           style="width:230px"
+                           value="@_targetTimeString"
+                           @onchange="OnTargetTimeChanged" />
+                    <button class="btn btn-sm btn-primary" @onclick="ApplyHistoryTime">
+                        Go
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ExitHistoryMode">
+                        Live
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Frozen-snapshot banner -->
+        @if (_historyMode && _historicalState is not null)
+        {
+            <div class="alert alert-warning py-1 px-2 mb-2">
+                ⚠️ YOU ARE VIEWING A FROZEN HISTORICAL SNAPSHOT — @_historicalState.TargetTime.ToString("yyyy-MM-dd HH:mm:ss.fff") UTC
+            </div>
+        }
+
+        <!-- Descriptor cards -->
+        @if (_descriptors.Count == 0)
+        {
+            <p class="text-muted">No descriptors present at this time.</p>
+        }
+        else
+        {
+            @foreach (var kvp in _descriptors)
+            {
+                var descId = kvp.Key;
+                var sample = kvp.Value;
+                <div class="card mb-2">
+                    <div class="card-header py-1 px-2 d-flex align-items-center gap-2">
+                        <strong>@descId.TopicName</strong>
+                        @if (descId.PartId.HasValue)
+                        {
+                            <span class="badge bg-secondary">Part @descId.PartId</span>
+                        }
+                        <small class="text-muted ms-auto">@sample.Timestamp.ToString("HH:mm:ss.fff")</small>
+                    </div>
+                    <div class="card-body py-1 px-2">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                @foreach (var field in sample.TopicMetadata.AllFields.Where(f => !f.IsSynthetic && !f.IsWrapperField))
+                                {
+                                    var rawVal = field.Getter(sample.Payload);
+                                    <tr>
+                                        <td class="text-muted pe-2" style="white-space:nowrap">@field.StructuredName</td>
+                                        <td><code>@FormatValue(rawVal)</code></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        }
+
+        <!-- Live Journal section (not shown in history mode) -->
+        @if (!_historyMode && _entity.Journal.Count > 0)
+        {
+            <details class="mt-2">
+                <summary class="text-muted small">Journal (@_entity.Journal.Count entries)</summary>
+                <table class="table table-sm table-hover mt-1 mb-0">
+                    <thead><tr><th>Time</th><th>New State</th><th>Description</th></tr></thead>
+                    <tbody>
+                        @foreach (var rec in _entity.Journal.AsEnumerable().Reverse())
+                        {
+                            <tr>
+                                <td>@rec.Timestamp.ToString("HH:mm:ss.fff")</td>
+                                <td>@StateIcon(rec.NewState) @rec.NewState</td>
+                                <td>@rec.Description</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </details>
+        }
+    }
+</div>
+
+@code {
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter] public int EntityId { get; set; }
+
+    [CascadingParameter] public DdsMonitor.Engine.PanelState? PanelState { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private Entity? _entity;
+    private EntityState _displayState;
+    private IReadOnlyDictionary<DescriptorIdentity, SampleData> _descriptors =
+        new Dictionary<DescriptorIdentity, SampleData>();
+
+    // History-mode state
+    private bool _historyMode;
+    private string _targetTimeString = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fff");
+    private EntityHistoricalState? _historicalState;
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        // Resolve EntityId from cascaded PanelState.ComponentState when the panel is
+        // restored from workspace (the value may arrive as long/JsonElement).
+        if (EntityId == 0 && PanelState?.ComponentState.TryGetValue("EntityId", out var idObj) == true)
+            EntityId = Convert.ToInt32(idObj);
+    }
+
+    protected override void OnInitialized()
+    {
+        Store.Changed += OnStoreChanged;
+        RefreshLiveView();
+    }
+
+    public void Dispose()
+    {
+        Store.Changed -= OnStoreChanged;
+    }
+
+    private void OnStoreChanged()
+        => InvokeAsync(() =>
+        {
+            if (!_historyMode)
+                RefreshLiveView();
+            StateHasChanged();
+        });
+
+    // ── View helpers ──────────────────────────────────────────────────────────
+
+    private void RefreshLiveView()
+    {
+        var entities = Store.Entities;
+        if (entities.TryGetValue(EntityId, out _entity))
+        {
+            _displayState = _entity.State;
+            _descriptors  = _entity.Descriptors;
+        }
+        else
+        {
+            _entity       = null;
+            _displayState = EntityState.Dead;
+            _descriptors  = new Dictionary<DescriptorIdentity, SampleData>();
+        }
+    }
+
+    private void EnterHistoryMode()
+    {
+        _historyMode       = true;
+        _targetTimeString  = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fff");
+        _historicalState   = null;
+    }
+
+    private void ExitHistoryMode()
+    {
+        _historyMode     = false;
+        _historicalState = null;
+        RefreshLiveView();
+    }
+
+    private void OnTargetTimeChanged(ChangeEventArgs e)
+    {
+        _targetTimeString = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void ApplyHistoryTime()
+    {
+        if (!DateTime.TryParse(_targetTimeString, null,
+                System.Globalization.DateTimeStyles.RoundtripKind,
+                out var targetTime))
+            return;
+
+        // Treat the datetime-local input as UTC.
+        if (targetTime.Kind == DateTimeKind.Unspecified)
+            targetTime = DateTime.SpecifyKind(targetTime, DateTimeKind.Utc);
+
+        _historicalState = TravelEngine.GetHistoricalState(EntityId, targetTime.ToUniversalTime());
+        _displayState    = _historicalState.EntityState;
+        _descriptors     = _historicalState.Descriptors;
+    }
+
+    // ── Formatting ────────────────────────────────────────────────────────────
+
+    private static string FormatValue(object? value) => value switch
+    {
+        null   => "(null)",
+        string s => s,
+        _      => value.ToString() ?? string.Empty
+    };
+
+    private static string StateIcon(EntityState state) => state switch
+    {
+        EntityState.Alive  => "🟢",
+        EntityState.Zombie => "🟡",
+        EntityState.Dead   => "⚫",
+        _ => ""
+    };
+
+    private static string StateBadge(EntityState state) => state switch
+    {
+        EntityState.Alive  => "bg-success",
+        EntityState.Zombie => "bg-warning text-dark",
+        EntityState.Dead   => "bg-secondary",
+        _ => "bg-secondary"
+    };
+}

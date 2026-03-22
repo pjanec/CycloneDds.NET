@@ -5,10 +5,11 @@ namespace DdsMonitor.Plugins.Bdc;
 
 /// <summary>
 /// BDC domain-entity plugin entry point.
-/// Registers the aggregation engine as a singleton and exposes two panels via
+/// Registers the aggregation engine as a singleton and exposes UI panels via
 /// <see cref="IMonitorContext.PanelRegistry"/>:
 /// <list type="bullet">
 ///   <item><description>BDC Entity Grid — live entity overview.</description></item>
+///   <item><description>BDC Entity Detail — deep inspector for a single entity.</description></item>
 ///   <item><description>BDC Settings — runtime regex / namespace configuration.</description></item>
 /// </list>
 /// </summary>
@@ -30,6 +31,16 @@ public sealed class BdcPlugin : IMonitorPlugin
         // EntityStore is a singleton background service; it subscribes to
         // IInstanceStore via constructor injection (Plugin-API-deviations.md §3.1).
         services.AddSingleton<EntityStore>();
+
+        // BdcSettingsPersistenceService persists BdcSettings to bdc-settings.json.
+        // Registered as both a named singleton AND as IHostedService so the host
+        // starts it during application startup (loads saved settings before the UI
+        // renders for the first time).
+        services.AddSingleton<BdcSettingsPersistenceService>();
+        services.AddHostedService(sp => sp.GetRequiredService<BdcSettingsPersistenceService>());
+
+        // TimeTravelEngine provides historical state reconstruction.
+        services.AddSingleton<TimeTravelEngine>();
     }
 
     /// <inheritdoc />
@@ -39,6 +50,10 @@ public sealed class BdcPlugin : IMonitorPlugin
         context.PanelRegistry.RegisterPanelType(
             "BDC Entity Grid",
             typeof(Components.BdcEntityGridPanel));
+
+        context.PanelRegistry.RegisterPanelType(
+            "BDC Entity Detail",
+            typeof(Components.EntityDetailPanel));
 
         context.PanelRegistry.RegisterPanelType(
             "BDC Settings",
