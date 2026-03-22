@@ -693,6 +693,9 @@ public sealed class Batch24Tests
         public IReadOnlyDictionary<Type, IDynamicReader> ActiveReaders =>
             new Dictionary<Type, IDynamicReader>();
 
+        public IReadOnlySet<Type> ExplicitlyUnsubscribedTopicTypes =>
+            new HashSet<Type>();
+
         public event Action? ReadersChanged;
 
         public IDynamicReader Subscribe(TopicMetadata meta) =>

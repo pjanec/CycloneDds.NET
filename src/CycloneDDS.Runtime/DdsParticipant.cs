@@ -405,6 +405,22 @@ namespace CycloneDDS.Runtime
 
 
         /// <summary>
+        /// Enables receiver-only sender tracking for this participant.
+        /// Creates the internal <see cref="SenderRegistry"/> without publishing any
+        /// identity so that DDS readers can resolve remote sender identities from the
+        /// <c>__FcdcSenderIdentity</c> topic without advertising the current process.
+        /// Safe to call before or after creating readers.
+        /// </summary>
+        public void EnableSenderMonitoring()
+        {
+            lock (_trackingLock)
+            {
+                if (_senderRegistry != null) return; // already enabled
+                _senderRegistry = new SenderRegistry(this);
+            }
+        }
+
+        /// <summary>
         /// Enable sender tracking for this participant.
         /// MUST be called before creating any DdsWriter or DdsReader.
         /// </summary>

@@ -121,6 +121,141 @@ public sealed class DdsBridgeTests
         Assert.Same(sample, received);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // BUG FIX: Explicit-unsubscribe tracking (Bug 1 — Topics window restore)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void DdsBridge_Unsubscribe_AddsToExplicitlyUnsubscribedSet()
+    {
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        using var bridge = new DdsBridge(Channel.CreateUnbounded<SampleData>().Writer);
+
+        bridge.Subscribe(metadata);
+        bridge.Unsubscribe(metadata);
+
+        Assert.Contains(typeof(SampleTopic), bridge.ExplicitlyUnsubscribedTopicTypes);
+    }
+
+    [Fact]
+    public void DdsBridge_Subscribe_ClearsExplicitlyUnsubscribedEntry()
+    {
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        using var bridge = new DdsBridge(Channel.CreateUnbounded<SampleData>().Writer);
+
+        bridge.Subscribe(metadata);
+        bridge.Unsubscribe(metadata);
+
+        // User re-subscribes: explicit-unsubscribe flag must be cleared.
+        bridge.TrySubscribe(metadata, out _, out _);
+
+        Assert.DoesNotContain(typeof(SampleTopic), bridge.ExplicitlyUnsubscribedTopicTypes);
+    }
+
+    [Fact]
+    public void DdsBridge_Subscribe_WithoutPriorUnsubscribe_NotInExplicitSet()
+    {
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        using var bridge = new DdsBridge(Channel.CreateUnbounded<SampleData>().Writer);
+
+        bridge.Subscribe(metadata);
+
+        // Normal subscribe should never place the topic in the explicit-unsubscribe set.
+        Assert.DoesNotContain(typeof(SampleTopic), bridge.ExplicitlyUnsubscribedTopicTypes);
+    }
+
+    [Fact]
+    public void DdsBridge_ExplicitlyUnsubscribed_PreventedByAutoSubscribe()
+    {
+        // Simulate the auto-subscribe logic from TopicExplorerPanel.AutoSubscribeAll:
+        // topics that are in ExplicitlyUnsubscribedTopicTypes must not be re-subscribed.
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        using var bridge = new DdsBridge(Channel.CreateUnbounded<SampleData>().Writer);
+
+        bridge.Subscribe(metadata);
+        bridge.Unsubscribe(metadata);
+
+        // Assert: not active after unsubscribe
+        Assert.False(bridge.ActiveReaders.ContainsKey(typeof(SampleTopic)));
+        Assert.Contains(typeof(SampleTopic), bridge.ExplicitlyUnsubscribedTopicTypes);
+
+        // Simulate auto-subscribe (the fixed AutoSubscribeAll skips explicitly-unsubscribed topics).
+        var registry = new TopicRegistry();
+        registry.Register(metadata);
+
+        var explicitlyUnsubscribed = bridge.ExplicitlyUnsubscribedTopicTypes;
+        foreach (var topic in registry.AllTopics)
+        {
+            if (!explicitlyUnsubscribed.Contains(topic.TopicType))
+                bridge.TrySubscribe(topic, out _, out _);
+        }
+
+        // The topic must still NOT be active because the auto-subscribe skipped it.
+        Assert.False(bridge.ActiveReaders.ContainsKey(typeof(SampleTopic)),
+            "Auto-subscribe must not re-subscribe explicitly unsubscribed topics.");
+    }
+
+    [Fact]
+    public void DdsBridge_AutoSubscribe_SubscribesNewTopicNotInExplicitSet()
+    {
+        // New topics (never explicitly unsubscribed) must still be subscribed by auto-subscribe.
+        var metaA = new TopicMetadata(typeof(SampleTopic));
+        var metaB = new TopicMetadata(typeof(SimpleType));
+        using var bridge = new DdsBridge(Channel.CreateUnbounded<SampleData>().Writer);
+
+        bridge.Subscribe(metaA);
+        bridge.Unsubscribe(metaA);
+
+        // Simulate auto-subscribe for both topics (only A is explicitly unsubscribed).
+        var registry = new TopicRegistry();
+        registry.Register(metaA);
+        registry.Register(metaB);
+
+        var explicitlyUnsubscribed = bridge.ExplicitlyUnsubscribedTopicTypes;
+        foreach (var topic in registry.AllTopics)
+        {
+            if (!explicitlyUnsubscribed.Contains(topic.TopicType))
+                bridge.TrySubscribe(topic, out _, out _);
+        }
+
+        // Topic B (never explicitly unsubscribed) must be subscribed.
+        Assert.True(bridge.ActiveReaders.ContainsKey(typeof(SimpleType)),
+            "Auto-subscribe must subscribe topics that were never explicitly unsubscribed.");
+
+        // Topic A must remain unsubscribed.
+        Assert.False(bridge.ActiveReaders.ContainsKey(typeof(SampleTopic)),
+            "Auto-subscribe must not re-subscribe explicitly unsubscribed topics.");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BUG FIX: Sender registry created on participants (Bug 2 — Sender identity)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void DdsBridge_Participant_HasSenderRegistryAfterCreation()
+    {
+        // DdsBridge must call EnableSenderMonitoring() on all participants so that
+        // DynamicReaders can populate SampleData.Sender for live samples.
+        using var bridge = new DdsBridge(Channel.CreateUnbounded<SampleData>().Writer);
+
+        Assert.NotNull(bridge.Participant.SenderRegistry);
+    }
+
+    [Fact]
+    public void DdsBridge_AddParticipant_NewParticipantHasSenderRegistry()
+    {
+        using var bridge = new DdsBridge(Channel.CreateUnbounded<SampleData>().Writer);
+
+        // Add a second participant on the same domain as the default (domain 0).
+        bridge.AddParticipant(0, string.Empty);
+
+        // All participants must have a SenderRegistry for sender tracking to work.
+        foreach (var participant in bridge.Participants)
+        {
+            Assert.NotNull(participant.SenderRegistry);
+        }
+    }
+
     private static Type CreateInvalidTopicType()
     {
         var assemblyName = new AssemblyName("DdsBridgeInvalidTopicTests");

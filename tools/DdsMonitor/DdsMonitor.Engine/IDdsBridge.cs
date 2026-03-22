@@ -67,6 +67,13 @@ public interface IDdsBridge : IDisposable
     IReadOnlyDictionary<Type, IDynamicReader> ActiveReaders { get; }
 
     /// <summary>
+    /// Gets the set of topic types that the user has explicitly unsubscribed.
+    /// Auto-subscribe operations must skip these types so that opening or
+    /// restoring a window does not silently re-subscribe manually-removed topics.
+    /// </summary>
+    IReadOnlySet<Type> ExplicitlyUnsubscribedTopicTypes { get; }
+
+    /// <summary>
     /// Raised when the set of active readers changes (subscribe or unsubscribe).
     /// </summary>
     event Action? ReadersChanged;

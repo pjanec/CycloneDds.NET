@@ -3,6 +3,9 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using CycloneDDS.Runtime;
+using CycloneDDS.Runtime.Interop;
+using CycloneDDS.Runtime.Tracking;
+using RtSenderIdentity = CycloneDDS.Runtime.Tracking.SenderIdentity;
 
 namespace DdsMonitor.Engine;
 
@@ -27,6 +30,12 @@ public sealed class DynamicReaderConfig
 
     /// <summary>Zero-based index of the owning participant within <see cref="IDdsBridge.Participants"/>.</summary>
     public int ParticipantIndex { get; init; }
+
+    /// <summary>
+    /// Optional sender registry from the owning participant.  When set the reader enables
+    /// sender tracking so that <see cref="SampleData.Sender"/> is populated for live samples.
+    /// </summary>
+    public SenderRegistry? SenderRegistry { get; init; }
 }
 
 /// <summary>
@@ -104,6 +113,12 @@ public sealed class DynamicReader<T> : IDynamicReader
 
             var activePartition = partition ?? _initialPartition;
             _reader = new DdsReader<T>(_participant, TopicMetadata.TopicName, partition: activePartition);
+
+            // Wire up sender tracking when a registry is available so that
+            // SampleData.Sender gets populated for live samples.
+            if (_config?.SenderRegistry != null)
+                _reader.EnableSenderTracking(_config.SenderRegistry);
+
             _cancellation = new CancellationTokenSource();
 
             var reader = _reader;
@@ -199,19 +214,31 @@ public sealed class DynamicReader<T> : IDynamicReader
             return false; // Queue is empty.
         }
 
-        foreach (var sample in loan)
+        // Use index-based iteration so we can correlate each sample with its
+        // sender identity via DdsLoan.GetSender(i).
+        var infos = loan.Infos;
+        for (var i = 0; i < loan.Count; i++)
         {
-            EmitSample(sample);
+            EmitSample(loan[i], infos[i], loan.GetSender(i));
         }
 
         return true; // Took a full batch; there may still be more.
     }
 
-    private void EmitSample(DdsSample<T> sample)
+    private void EmitSample(T? payload, DdsApi.DdsSampleInfo info, RtSenderIdentity? runtimeSender)
     {
-        var payload = sample.Data;
         var estimatedSize = _nativeSizer != null && payload != null ? _nativeSizer(payload) : UnknownSizeBytes;
         var filter = _config?.Filter;
+
+        // Map the runtime tracking sender to the engine model, if available.
+        var sender = runtimeSender.HasValue
+            ? new SenderIdentity
+              {
+                  ProcessId = (uint)runtimeSender.Value.ProcessId,
+                  MachineName = runtimeSender.Value.ComputerName,
+                  IpAddress = null
+              }
+            : null;
 
         if (filter != null)
         {
@@ -222,7 +249,8 @@ public sealed class DynamicReader<T> : IDynamicReader
                 Ordinal = 0,
                 Payload = payload!,
                 TopicMetadata = TopicMetadata,
-                SampleInfo = sample.Info,
+                SampleInfo = info,
+                Sender = sender,
                 Timestamp = DateTime.UtcNow,
                 SizeBytes = estimatedSize,
                 DomainId = _config?.DomainId ?? 0,
@@ -253,7 +281,8 @@ public sealed class DynamicReader<T> : IDynamicReader
                 Ordinal = ordinal,
                 Payload = payload!,
                 TopicMetadata = TopicMetadata,
-                SampleInfo = sample.Info,
+                SampleInfo = info,
+                Sender = sender,
                 Timestamp = DateTime.UtcNow,
                 SizeBytes = estimatedSize,
                 DomainId = _config?.DomainId ?? 0,

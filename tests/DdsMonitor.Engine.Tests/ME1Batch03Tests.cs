@@ -385,6 +385,8 @@ public sealed class ME1Batch03Tests
         public bool IsPaused { get; set; }
         public IReadOnlyDictionary<Type, IDynamicReader> ActiveReaders =>
             new System.Collections.Generic.Dictionary<Type, IDynamicReader>();
+        public IReadOnlySet<Type> ExplicitlyUnsubscribedTopicTypes =>
+            new System.Collections.Generic.HashSet<Type>();
         public event Action? ReadersChanged { add { } remove { } }
         public IDynamicReader Subscribe(TopicMetadata meta) => throw new NotSupportedException();
         public bool TrySubscribe(TopicMetadata meta, out IDynamicReader? reader, out string? errorMessage)

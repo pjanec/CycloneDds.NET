@@ -154,10 +154,13 @@
 
     private void AutoSubscribeAll()
     {
+        // Skip topic types the user has explicitly unsubscribed so that opening or
+        // restoring the Topics panel does not silently undo manual unsubscriptions.
+        var explicitlyUnsubscribed = DdsBridge.ExplicitlyUnsubscribedTopicTypes;
         foreach (var topic in TopicRegistry.AllTopics)
         {
-            // Silently ignore topics that lack type descriptors; they cannot be subscribed.
-            DdsBridge.TrySubscribe(topic, out _, out _);
+            if (!explicitlyUnsubscribed.Contains(topic.TopicType))
+                DdsBridge.TrySubscribe(topic, out _, out _);
         }
     }
 

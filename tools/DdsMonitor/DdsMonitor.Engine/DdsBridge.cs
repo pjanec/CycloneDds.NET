@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Channels;
 using CycloneDDS.Runtime;
+using CycloneDDS.Runtime.Tracking;
 
 namespace DdsMonitor.Engine;
 
@@ -19,6 +20,9 @@ public sealed class DdsBridge : IDdsBridge
     private readonly Dictionary<Type, IDynamicReader> _activeReaders = new();
     // D04: auxiliary readers per extra participant (index 0 = participant 1, index 1 = participant 2, ...)
     private readonly List<Dictionary<Type, IDynamicReader>> _auxReadersPerParticipant = new();
+    // Tracks topic types explicitly unsubscribed by the user so that auto-subscribe
+    // on panel recreations (minimize/restore) does not silently undo the user's choice.
+    private readonly HashSet<Type> _explicitlyUnsubscribedTopicTypes = new();
     private readonly ChannelWriter<SampleData> _channelWriter;
     private readonly List<DdsParticipant> _participants = new();
     private readonly List<ParticipantConfig> _participantConfigs = new();
@@ -67,7 +71,11 @@ public sealed class DdsBridge : IDdsBridge
         foreach (var cfg in configs)
         {
             _participantConfigs.Add(cfg);
-            _participants.Add(new DdsParticipant(cfg.DomainId));
+            var participant = new DdsParticipant(cfg.DomainId);
+            // Enable receiver-only sender tracking so DynamicReaders can populate
+            // SampleData.Sender from the __FcdcSenderIdentity topic.
+            participant.EnableSenderMonitoring();
+            _participants.Add(participant);
             // Participants beyond index 0 each get an aux-reader slot.
             if (_participants.Count > 1)
                 _auxReadersPerParticipant.Add(new Dictionary<Type, IDynamicReader>());
@@ -116,6 +124,18 @@ public sealed class DdsBridge : IDdsBridge
         }
     }
 
+    /// <inheritdoc />
+    public IReadOnlySet<Type> ExplicitlyUnsubscribedTopicTypes
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return new HashSet<Type>(_explicitlyUnsubscribedTopicTypes);
+            }
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Subscription management
     // ─────────────────────────────────────────────────────────────────────────
@@ -142,6 +162,11 @@ public sealed class DdsBridge : IDdsBridge
 
             reader = null;
             errorMessage = null;
+
+            // A manual subscribe call always clears the explicit-unsubscribe marker,
+            // even if the topic is already active, so the user can re-check a topic
+            // that was previously unchecked and have auto-subscribe honour it again.
+            _explicitlyUnsubscribedTopicTypes.Remove(meta.TopicType);
 
             if (_activeReaders.TryGetValue(meta.TopicType, out var existing))
             {
@@ -198,6 +223,9 @@ public sealed class DdsBridge : IDdsBridge
             }
 
             _activeReaders.Remove(meta.TopicType);
+            // Record explicit unsubscription so auto-subscribe does not re-add it
+            // when the Topics panel is recreated after minimize/restore.
+            _explicitlyUnsubscribedTopicTypes.Add(meta.TopicType);
             reader.Dispose();
 
             // D04: also dispose auxiliary readers for this topic.
@@ -291,7 +319,9 @@ public sealed class DdsBridge : IDdsBridge
             ThrowIfDisposed();
             var cfg = new ParticipantConfig { DomainId = domainId, PartitionName = partitionName };
             _participantConfigs.Add(cfg);
-            _participants.Add(new DdsParticipant(domainId));
+            var newParticipant = new DdsParticipant(domainId);
+            newParticipant.EnableSenderMonitoring();
+            _participants.Add(newParticipant);
 
             // D04: Each new participant beyond index 0 gets an aux-reader slot.
             var auxMap = new Dictionary<Type, IDynamicReader>();
@@ -440,7 +470,8 @@ public sealed class DdsBridge : IDdsBridge
             Filter = _filter,
             DomainId = cfg.DomainId,
             PartitionName = cfg.PartitionName,
-            ParticipantIndex = participantIndex
+            ParticipantIndex = participantIndex,
+            SenderRegistry = participant.SenderRegistry
         };
 
         var partition = string.IsNullOrEmpty(cfg.PartitionName) ? CurrentPartition : cfg.PartitionName;
