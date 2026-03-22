@@ -56,7 +56,7 @@ public sealed class Batch28Tests : IDisposable
     }
 
     [Fact]
-    public void MenuRegistry_AddItem_Async_AppearsAtTopLevel()
+    public async Task MenuRegistry_AddItem_Async_AppearsAtTopLevel()
     {
         var registry = new MenuRegistry();
         var invoked = false;
@@ -72,6 +72,10 @@ public sealed class Batch28Tests : IDisposable
         Assert.Equal("Async Action", roots[0].Label);
         Assert.True(roots[0].IsLeaf);
         Assert.NotNull(roots[0].OnClickAsync);
+
+        // Invoke the async callback and verify the side-effect.
+        await roots[0].OnClickAsync!();
+        Assert.True(invoked);
     }
 
     [Fact]

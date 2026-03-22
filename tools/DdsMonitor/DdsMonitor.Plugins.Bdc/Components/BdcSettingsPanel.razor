@@ -1,0 +1,109 @@
+@using DdsMonitor.Plugins.Bdc
+@inject BdcSettings Settings
+@inject EntityStore Store
+
+<div class="bdc-settings-panel p-3">
+    <h5>BDC Plugin Settings</h5>
+
+    <div class="mb-3">
+        <label class="form-label" for="nsPrefix">Namespace Prefix</label>
+        <input id="nsPrefix"
+               class="form-control"
+               type="text"
+               placeholder="e.g. company.BDC."
+               value="@Settings.NamespacePrefix"
+               @onchange="e => OnChange(e, v => Settings.NamespacePrefix = v)" />
+        <div class="form-text">
+            Only topics whose namespace starts with this string are aggregated.
+            Leave empty to accept all namespaces.
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="entityIdPattern">EntityId Regex Pattern</label>
+        <input id="entityIdPattern"
+               class="form-control @(ValidEntityIdPattern ? "" : "is-invalid")"
+               type="text"
+               value="@Settings.EntityIdPattern"
+               @onchange="e => OnPatternChange(e, v => Settings.EntityIdPattern = v, ref _entityIdPatternValid)" />
+        @if (!ValidEntityIdPattern)
+        {
+            <div class="invalid-feedback">Invalid regular expression.</div>
+        }
+        <div class="form-text">
+            Regex matched against <code>FieldMetadata.StructuredName</code> to locate
+            the EntityId key field.
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="partIdPattern">PartId Regex Pattern</label>
+        <input id="partIdPattern"
+               class="form-control @(ValidPartIdPattern ? "" : "is-invalid")"
+               type="text"
+               value="@Settings.PartIdPattern"
+               @onchange="e => OnPatternChange(e, v => Settings.PartIdPattern = v, ref _partIdPatternValid)" />
+        @if (!ValidPartIdPattern)
+        {
+            <div class="invalid-feedback">Invalid regular expression.</div>
+        }
+        <div class="form-text">
+            Regex for the optional PartId key field. Leave empty to disable PartId tracking.
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="masterPattern">Master Topic Regex Pattern</label>
+        <input id="masterPattern"
+               class="form-control @(ValidMasterPattern ? "" : "is-invalid")"
+               type="text"
+               value="@Settings.MasterTopicPattern"
+               @onchange="e => OnPatternChange(e, v => Settings.MasterTopicPattern = v, ref _masterPatternValid)" />
+        @if (!ValidMasterPattern)
+        {
+            <div class="invalid-feedback">Invalid regular expression.</div>
+        }
+        <div class="form-text">
+            Topics matching this pattern are "Master" descriptors. An entity with a live
+            Master is <strong>Alive</strong>; without it, <strong>Zombie</strong>.
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _entityIdPatternValid = true;
+    private bool _partIdPatternValid   = true;
+    private bool _masterPatternValid   = true;
+
+    private bool ValidEntityIdPattern => _entityIdPatternValid;
+    private bool ValidPartIdPattern   => _partIdPatternValid;
+    private bool ValidMasterPattern   => _masterPatternValid;
+
+    private void OnChange(ChangeEventArgs e, Action<string> setter)
+    {
+        setter(e.Value?.ToString() ?? string.Empty);
+    }
+
+    private void OnPatternChange(ChangeEventArgs e, Action<string> setter, ref bool isValid)
+    {
+        var value = e.Value?.ToString() ?? string.Empty;
+        isValid = IsValidRegex(value);
+        if (isValid)
+            setter(value);
+        StateHasChanged();
+    }
+
+    private static bool IsValidRegex(string pattern)
+    {
+        if (string.IsNullOrEmpty(pattern)) return true;
+        try
+        {
+            _ = new System.Text.RegularExpressions.Regex(pattern);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+}
