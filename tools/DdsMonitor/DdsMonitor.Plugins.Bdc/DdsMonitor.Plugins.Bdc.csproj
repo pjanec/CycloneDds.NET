@@ -15,4 +15,14 @@
     <ProjectReference Include="..\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
   </ItemGroup>
 
+  <!-- Auto-stage the plugin DLL into the host's plugins folder after every build -->
+  <Target Name="StagePlugin" AfterTargets="Build">
+    <PropertyGroup>
+      <PluginsDir>$(MSBuildThisFileDirectory)..\DdsMonitor.Blazor\plugins\</PluginsDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(PluginsDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PluginsDir)" SkipUnchangedFiles="true" />
+    <Message Text="Staged $(TargetFileName) to $(PluginsDir)" Importance="high" />
+  </Target>
+
 </Project>

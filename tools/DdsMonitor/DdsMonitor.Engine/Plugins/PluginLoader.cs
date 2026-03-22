@@ -74,7 +74,10 @@ public sealed class PluginLoader
 
             foreach (var dllPath in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly))
             {
-                TryLoadPluginFromFile(dllPath, services);
+                // EnumerateFiles returns paths relative to the process cwd when
+                // `directory` is relative.  LoadFromAssemblyPath (and
+                // AssemblyDependencyResolver) require an absolute path.
+                TryLoadPluginFromFile(Path.GetFullPath(dllPath), services);
             }
         }
     }
@@ -129,8 +132,11 @@ public sealed class PluginLoader
 
     private int LoadPluginFromFileCore(string dllPath, IServiceCollection services)
     {
-        var loadContext = new PluginAssemblyLoadContext(dllPath);
-        var assembly = loadContext.LoadFromAssemblyPath(dllPath);
+        // Ensure the path is absolute; AssemblyLoadContext.LoadFromAssemblyPath
+        // and AssemblyDependencyResolver both require a rooted path.
+        var absolutePath = Path.GetFullPath(dllPath);
+        var loadContext = new PluginAssemblyLoadContext(absolutePath);
+        var assembly = loadContext.LoadFromAssemblyPath(absolutePath);
 
         _loadContexts.Add(loadContext);
 

@@ -14,7 +14,29 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
-    <ProjectReference Include="..\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
-  </ItemGroup>
+    <ProjectReference Include="..\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />    <!-- Build-only dependency: ensures Bdc plugin is built (and staged) before the host launches -->
+    <ProjectReference Include="..\DdsMonitor.Plugins.Bdc\DdsMonitor.Plugins.Bdc.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false"
+                      SkipGetTargetFrameworkProperties="true" />  </ItemGroup>
+
+  <!--
+    Copy the BDC plugin DLL into the host's OUTPUT plugins folder after each build.
+    This ensures the plugin is found regardless of whether the process working-directory
+    is the project folder (dotnet run) or the output folder (VS F5 / direct exe launch).
+    The plugin itself already stages to the project-level plugins\ via its own StagePlugin target.
+  -->
+  <Target Name="CopyBdcPluginToOutput" AfterTargets="Build">
+    <PropertyGroup>
+      <BdcPluginDll>$(MSBuildThisFileDirectory)..\DdsMonitor.Plugins.Bdc\bin\$(Configuration)\net8.0\DdsMonitor.Plugins.Bdc.dll</BdcPluginDll>
+      <OutputPluginsDir>$(OutputPath)plugins\</OutputPluginsDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(OutputPluginsDir)" />
+    <Copy SourceFiles="$(BdcPluginDll)"
+          DestinationFolder="$(OutputPluginsDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(BdcPluginDll)')" />
+    <Message Text="Staged BDC plugin to output: $(OutputPluginsDir)" Importance="high" />
+  </Target>
 
 </Project>

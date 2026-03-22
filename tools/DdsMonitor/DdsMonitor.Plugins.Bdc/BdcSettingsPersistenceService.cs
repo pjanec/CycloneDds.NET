@@ -6,6 +6,10 @@ using System.Threading.Tasks;
 using DdsMonitor.Engine;
 using Microsoft.Extensions.Hosting;
 
+// WorkspaceState is SCOPED; BdcSettingsPersistenceService is a SINGLETON (hosted-service).
+// Injecting IWorkspaceState directly would cause a scope-validation error at startup.
+// Instead, derive the settings file path the same way WorkspaceState does (AppData/DdsMonitor).
+
 namespace DdsMonitor.Plugins.Bdc;
 
 /// <summary>
@@ -34,13 +38,16 @@ public sealed class BdcSettingsPersistenceService : IHostedService, IDisposable
     private readonly DebouncedAction _debouncer;
 
     /// <summary>
-    /// Initialises the service.  The settings file is stored next to
-    /// <see cref="IWorkspaceState.WorkspaceFilePath"/>.
+    /// Initialises the service.  The settings file is stored in the same
+    /// <c>%APPDATA%\DdsMonitor\</c> folder that the host uses for <c>workspace.json</c>.
     /// </summary>
-    public BdcSettingsPersistenceService(BdcSettings settings, IWorkspaceState workspaceState)
+    public BdcSettingsPersistenceService(BdcSettings settings)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-        var folder = Path.GetDirectoryName(workspaceState.WorkspaceFilePath) ?? ".";
+        // Mirror WorkspaceState: %APPDATA%\DdsMonitor\
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var folder  = Path.Combine(appData, "DdsMonitor");
+        Directory.CreateDirectory(folder);
         _filePath = Path.Combine(folder, FileName);
         _debouncer = new DebouncedAction(TimeSpan.FromSeconds(2), SaveNow);
         _settings.SettingsChanged += OnSettingsChanged;

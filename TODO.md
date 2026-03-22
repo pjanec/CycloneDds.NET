@@ -1,7 +1,15 @@
 [TODO] Upgrade to cyclone dds 11.0.
 
+[BUG] On opening/restoring from minimized the Topics window, all topics get subscribed even if they were not before.
+Opening a topics window (or any other window) should NOT change the topic subscription! Subscription is the
+backend state and opening a window should not change anything on it!
 
-[IMPROVEMENTS] The tree tab of sample detail panel should have icons for "collapse all" and "expand all"
+
+[BUG] On Sample detail tab, 'Sender identity' tab always show 'No sender data' although the sender tracking is
+turned on for sending participants.
+
+
+[IMPROVEMENTS] The tree tab of sample detail panel should have icons for "collapse all" and "expand all".
 
 
 [IMPROVEMENT] dds mon enum field values should be shown in different color than numeric field values and different
@@ -46,4 +54,10 @@ The self-send topics should be extended to cover all possible data types (for te
 
 At least one field should vary each sample.
 
+[IMPROVEMENT]
+Plugin system need deep revamping for better decoupling and flexibility,
+see https://notebooklm.google.com/notebook/f41a7c82-1eaf-4608-b079-98f1d9e1d7ea
+
+[BUG] The design and layout of the BDC panels is ugly and clearly under-worked, looking like for last century.
+SHould be modern, keeping same style as other panels, using icons, no dense layouts
 
