@@ -5,6 +5,7 @@
 @using System.Linq
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Forms
+@using DdsMonitor.Engine.Plugins
 
 @inject IWindowManager WindowManager
 @inject IWorkspaceState WorkspaceState
@@ -16,6 +17,8 @@
 @inject CloneRequestService CloneRequests
 @inject ISampleStore SampleStore
 @inject PerfCounters PerfCounters
+@inject PluginPanelRegistry PluginPanelRegistry
+@inject IMenuRegistry MenuRegistry
 @implements IDisposable
 
 <div class="app-shell" @onclick="CloseMenus">
@@ -64,6 +67,34 @@
                 <button type="button" class="app-menu__dropdown-item" @onclick="ShowPerfStats">Perf Stats…</button>
             </div>
         </div>
+
+        @* ── Plugins menu – rendered only when at least one plugin has registered panels or menu items ── *@
+        @{
+            var pluginPanels = PluginPanelRegistry.RegisteredTypes;
+            var pluginMenus = MenuRegistry.GetTopLevelMenus();
+        }
+        @if (pluginPanels.Count > 0 || pluginMenus.Count > 0)
+        {
+            <div class="app-menu__item @(_openMenu == "plugins" ? "is-open" : string.Empty)">
+                <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("plugins")'>Plugins</button>
+                <div class="app-menu__dropdown">
+                    @foreach (var kv in pluginPanels)
+                    {
+                        var panelName = kv.Key;
+                        var panelType = kv.Value;
+                        <button type="button" class="app-menu__dropdown-item" @onclick="() => SpawnPluginPanel(panelName, panelType)">@panelName</button>
+                    }
+                    @if (pluginPanels.Count > 0 && pluginMenus.Count > 0)
+                    {
+                        <div class="app-menu__dropdown-separator"></div>
+                    }
+                    @foreach (var node in pluginMenus)
+                    {
+                        @RenderPluginMenuNode(node)
+                    }
+                </div>
+            </div>
+        }
 
         <div class="app-menu__transport">
             <button type="button"
@@ -150,6 +181,8 @@
     {
         _cloneSubscription = EventBroker.Subscribe<CloneAndSendRequestEvent>(OnCloneAndSend);
         _bandwidthTimer = new System.Threading.Timer(UpdateBandwidth, null, 1000, 1000);
+        PluginPanelRegistry.Changed += HandlePluginRegistriesChanged;
+        MenuRegistry.Changed += HandlePluginRegistriesChanged;
     }
 
     private void UpdateBandwidth(object? state)
@@ -192,6 +225,8 @@
     {
         _cloneSubscription?.Dispose();
         _bandwidthTimer?.Dispose();
+        PluginPanelRegistry.Changed -= HandlePluginRegistriesChanged;
+        MenuRegistry.Changed -= HandlePluginRegistriesChanged;
     }
 
     // ── Transport controls (ME1-T09) ──────────────────────────────────────────
@@ -440,5 +475,78 @@
     private string GetThemeLabel()
     {
         return _theme == "light" ? "Theme: Light" : "Theme: Dark";
+    }
+
+    // ── Plugin infrastructure (Phase 5) ──────────────────────────────────────
+
+    private void HandlePluginRegistriesChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Spawns a panel whose component type was registered by a plugin.
+    /// The type is first registered into the current <see cref="IWindowManager"/> instance
+    /// so that <see cref="IWindowManager.SpawnPanel"/> can resolve it.
+    /// </summary>
+    private void SpawnPluginPanel(string panelName, Type componentType)
+    {
+        CloseMenus();
+        WindowManager.RegisterPanelType(panelName, componentType);
+        var panel = WindowManager.SpawnPanel(panelName);
+        panel.Title = panelName;
+    }
+
+    /// <summary>
+    /// Renders a single <see cref="MenuNode"/> from <see cref="IMenuRegistry"/> into the
+    /// Plugins dropdown.  Branch nodes render as CSS hover sub-menus; leaf nodes render
+    /// as plain buttons.
+    /// </summary>
+    private RenderFragment RenderPluginMenuNode(MenuNode node) => builder =>
+    {
+        if (node.IsLeaf)
+        {
+            builder.OpenElement(0, "button");
+            builder.AddAttribute(1, "type", "button");
+            builder.AddAttribute(2, "class", "app-menu__dropdown-item");
+            builder.AddAttribute(3, "onclick", EventCallback.Factory.Create(this, () => InvokeMenuNodeAsync(node)));
+            builder.AddContent(4, node.Label);
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "app-menu__submenu-item");
+
+            builder.OpenElement(2, "button");
+            builder.AddAttribute(3, "type", "button");
+            builder.AddAttribute(4, "class", "app-menu__dropdown-item app-menu__dropdown-item--has-sub");
+            builder.AddContent(5, node.Label + " ›");
+            builder.CloseElement();
+
+            builder.OpenElement(6, "div");
+            builder.AddAttribute(7, "class", "app-menu__submenu");
+            foreach (var child in node.Children)
+            {
+                builder.AddContent(8, RenderPluginMenuNode(child));
+            }
+            builder.CloseElement();
+
+            builder.CloseElement();
+        }
+    };
+
+    private async Task InvokeMenuNodeAsync(MenuNode node)
+    {
+        CloseMenus();
+
+        if (node.OnClickAsync != null)
+        {
+            await node.OnClickAsync();
+        }
+        else
+        {
+            node.OnClick?.Invoke();
+        }
     }
 }

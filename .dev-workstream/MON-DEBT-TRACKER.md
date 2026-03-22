@@ -18,3 +18,5 @@
 | MON-DEBT-019 | 2026-03-19 | ME2-BATCH-02 | P2 | Samples Sorting | `ApplySortToViewCache` relies on monotonic ordinal insertion; this sorting technique faces determinism correctness hazards during out-of-order Replay mode data. | ME2-BATCH-03 | Resolved |
 | MON-DEBT-020 | 2026-03-19 | ME2-BATCH-06 | P1 | Dependency Injection | `TopicColorService` was registered as a Singleton, trapping the Scoped `IWorkspaceState` container and crashing Blazor startup instantly. | ME2-BATCH-07 | Resolved |
 | MON-DEBT-021 | 2026-03-19 | ME2-BATCH-07 | P1 | Runtime TypeReflection | Dynamically loading folders of external DLLs fails on explicit `Delegate.CreateDelegate` mappings targeting `.GetKeyDescriptors` inside Cyclone Runtime engines. | ME2-BATCH-08 | Pending |
+| MON-DEBT-022 | 2026-03-22 | MON-BATCH-28 | P3 | Plugins | No plugin hot-reload — plugins are loaded once at startup. A live-scan `IHostedService` could be added. | N/A | Pending |
+| MON-DEBT-023 | 2026-03-22 | MON-BATCH-28 | P3 | Plugins | No user-visible error boundary/UI for plugin load/Initialize crashes. | N/A | Pending |

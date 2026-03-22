@@ -206,6 +206,18 @@ public sealed class WindowManager : IWindowManager
     }
 
     /// <inheritdoc />
+    public IReadOnlyDictionary<string, Type> RegisteredPanelTypes
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return new Dictionary<string, Type>(_panelTypes, StringComparer.Ordinal);
+            }
+        }
+    }
+
+    /// <inheritdoc />
     public void SaveWorkspace(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath))

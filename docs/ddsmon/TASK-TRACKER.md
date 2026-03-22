@@ -77,10 +77,10 @@
 
 **Goal:** Hot-loadable Razor Class Library plugins with custom panels, menus, and formatters.
 
-- [ ] **DMON-041** — Plugin loading infrastructure &nbsp; [details](./TASK-DETAIL.md#dmon-041--plugin-loading-infrastructure)
-- [ ] **DMON-042** — Plugin panel registration &nbsp; [details](./TASK-DETAIL.md#dmon-042--plugin-panel-registration)
-- [ ] **DMON-043** — Plugin menu registration &nbsp; [details](./TASK-DETAIL.md#dmon-043--plugin-menu-registration)
-- [ ] **DMON-044** — IFormatterRegistry (custom value formatters) &nbsp; [details](./TASK-DETAIL.md#dmon-044--iformatterregistry-custom-value-formatters)
+- [x] **DMON-041** — Plugin loading infrastructure &nbsp; [details](./TASK-DETAIL.md#dmon-041--plugin-loading-infrastructure)
+- [x] **DMON-042** — Plugin panel registration &nbsp; [details](./TASK-DETAIL.md#dmon-042--plugin-panel-registration)
+- [x] **DMON-043** — Plugin menu registration &nbsp; [details](./TASK-DETAIL.md#dmon-043--plugin-menu-registration)
+- [x] **DMON-044** — IFormatterRegistry (custom value formatters) *solved via attributes* &nbsp; [details](./TASK-DETAIL.md#dmon-044--iformatterregistry-custom-value-formatters)
 
 ---
 
@@ -93,6 +93,9 @@
 - [ ] **DMON-047** — TKB Entity Folder Tree panel &nbsp; [details](./TASK-DETAIL.md#dmon-047--tkb-entity-folder-tree-panel)
 - [ ] **DMON-048** — Entity Detail Inspector &nbsp; [details](./TASK-DETAIL.md#dmon-048--entity-detail-inspector)
 - [ ] **DMON-049** — Historical State (time-travel) &nbsp; [details](./TASK-DETAIL.md#dmon-049--historical-state-time-travel)
+- [ ] **DMON-060** — BDC Settings Panel & Persistence (Addendum) &nbsp; [details](./BDC-plugin-addendum.md)
+- [ ] **DMON-061** — Regex-based Key Field Extraction (Addendum) &nbsp; [details](./BDC-plugin-addendum.md)
+- [ ] **DMON-062** — Key Field Numeric Validation (Addendum) &nbsp; [details](./BDC-plugin-addendum.md)
 
 ---
 

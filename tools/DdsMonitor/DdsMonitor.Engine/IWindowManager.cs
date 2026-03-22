@@ -55,6 +55,12 @@ public interface IWindowManager
     void RegisterPanelType(string typeName, Type blazorComponentType);
 
     /// <summary>
+    /// Returns a read-only snapshot of all panel types registered on this instance via
+    /// <see cref="RegisterPanelType"/>.
+    /// </summary>
+    IReadOnlyDictionary<string, Type> RegisteredPanelTypes { get; }
+
+    /// <summary>
     /// Saves the current workspace to disk.
     /// </summary>
     void SaveWorkspace(string filePath);

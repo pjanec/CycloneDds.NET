@@ -4,6 +4,7 @@ using System.Linq;
 using DdsMonitor.Components;
 using DdsMonitor.Engine;
 using DdsMonitor.Engine.Hosting;
+using DdsMonitor.Engine.Plugins;
 using DdsMonitor.Engine.Ui;
 using DdsMonitor.Services;
 using Microsoft.AspNetCore.Components.Server.Circuits;
@@ -62,6 +63,14 @@ if (!isHeadless)
 
     // Start the host (Kestrel begins listening).
     await app.StartAsync();
+
+    // ── Phase 5: Initialise plugins after the host has started ───────────────────────
+    var pluginLoader = app.Services.GetService<PluginLoader>();
+    if (pluginLoader != null)
+    {
+        var monitorContext = app.Services.GetRequiredService<IMonitorContext>();
+        pluginLoader.InitializePlugins(monitorContext);
+    }
 
     // ── ME1-T10: Open the system browser ─────────────────────────────────────────────
     var serverAddresses = app.Services.GetRequiredService<IServer>()

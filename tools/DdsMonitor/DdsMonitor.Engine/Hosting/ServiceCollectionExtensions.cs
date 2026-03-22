@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using DdsMonitor.Engine.AssemblyScanner;
 using DdsMonitor.Engine.Export;
 using DdsMonitor.Engine.Import;
+using DdsMonitor.Engine.Plugins;
 using DdsMonitor.Engine.Replay;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,6 +80,22 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITopicRegistry>(topicRegistry);
         services.AddSingleton(discoveryService);
         services.AddSingleton<IAssemblySourceService>(assemblySourceService);
+
+        // ── Phase 5: Plugin infrastructure ───────────────────────────────────────────
+        // Create plugin singletons eagerly (before the container is built) so that
+        // PluginLoader.LoadPlugins() can call ConfigureServices on each plugin while
+        // the IServiceCollection is still open for registration.
+        var menuRegistry = new MenuRegistry();
+        var panelRegistry = new PluginPanelRegistry();
+        var pluginLoader = new PluginLoader(settings);
+        pluginLoader.LoadPlugins(services);
+
+        services.AddSingleton<IMenuRegistry>(menuRegistry);
+        services.AddSingleton(panelRegistry);
+        services.AddSingleton(pluginLoader);
+        services.AddSingleton<IMonitorContext>(sp => new MonitorContext(
+            sp.GetRequiredService<IMenuRegistry>(),
+            sp.GetRequiredService<PluginPanelRegistry>()));
 
         // SelfSendService is always registered; it stays dormant until DevelSettings.SelfSendEnabled is set.
         services.AddHostedService<SelfSendService>();

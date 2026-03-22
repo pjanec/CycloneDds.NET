@@ -215,6 +215,39 @@ body {
   color: var(--accent-2);
 }
 
+/* ── Plugin sub-menus ──────────────────────────────────────────────── */
+
+/* Container for a branch node (has a sub-menu). */
+.app-menu__submenu-item {
+  position: relative;
+}
+
+/* The flyout submenu panel (shown on hover). */
+.app-menu__submenu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 100%;
+  min-width: 150px;
+  background: var(--dropdown-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 4px 0;
+  box-shadow: var(--shadow);
+  z-index: 10001;
+  flex-direction: column;
+}
+
+.app-menu__submenu-item:hover > .app-menu__submenu {
+  display: flex;
+}
+
+/* Visual hint that a dropdown item has a sub-menu. */
+.app-menu__dropdown-item--has-sub {
+  padding-right: 28px;
+  position: relative;
+}
+
 /* ── Transport control buttons ─────────────────────────────────────── */
 
 .app-menu__transport {
