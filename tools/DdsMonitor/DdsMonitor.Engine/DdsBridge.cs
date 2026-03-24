@@ -136,6 +136,22 @@ public sealed class DdsBridge : IDdsBridge
         }
     }
 
+    /// <inheritdoc />
+    public void InitializeExplicitlyUnsubscribed(IEnumerable<Type> types)
+    {
+        if (types == null) throw new ArgumentNullException(nameof(types));
+
+        lock (_sync)
+        {
+            foreach (var t in types)
+            {
+                // Only add to the excluded set if there is no active reader for this type.
+                if (!_activeReaders.ContainsKey(t))
+                    _explicitlyUnsubscribedTopicTypes.Add(t);
+            }
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Subscription management
     // ─────────────────────────────────────────────────────────────────────────

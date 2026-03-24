@@ -31,7 +31,7 @@
 else
 {
     <div class="detail-panel">
-        <div class="detail-panel__toolbar">
+        <div class="detail-panel__header">
             <button type="button"
                     title="@(_linked ? "Linked \u2013 follows sample selection" : "Detached \u2013 pinned to this sample")"
                     class="detail-panel__link @(_linked ? "is-on" : string.Empty)"
@@ -48,16 +48,16 @@ else
             <button type="button" title="Clone this sample payload to the Sender" class="detail-panel__clone" @onclick="CloneToSend">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             </button>
+            <span class="detail-panel__header-gap"></span>
+            <div class="detail-panel__tabs">
+                @RenderTab(DetailTab.Tree, "Tree")
+                @RenderTab(DetailTab.Table, "Table")
+                @RenderTab(DetailTab.Json, "JSON")
+                @RenderTab(DetailTab.SampleInfo, "Sample Info")
+                @RenderTab(DetailTab.Sender, "Sender")
+            </div>
             <span class="detail-state-badge @GetInstanceStateClass(_currentSample)"
                   title="Instance State: @GetInstanceStateTooltip(_currentSample)"></span>
-        </div>
-
-        <div class="detail-panel__tabs">
-            @RenderTab(DetailTab.Tree, "Tree")
-            @RenderTab(DetailTab.Table, "Table")
-            @RenderTab(DetailTab.Json, "JSON")
-            @RenderTab(DetailTab.SampleInfo, "Sample Info")
-            @RenderTab(DetailTab.Sender, "Sender")
         </div>
 
         <div class="detail-panel__content">
@@ -98,6 +98,8 @@ else
 
     // Expand/collapse state – keyed by node path; persists across sample switches.
     private readonly Dictionary<string, bool> _treeExpanded = new();
+    // null = per-node state; true = force-expand all; false = force-collapse all.
+    private bool? _treeExpandOverride;
     private readonly HashSet<string> _tableExpandedFields = new();
 
     // Active Tier 1 formatter per tree-node path (null = use Tier 2 / default rendering).
@@ -134,6 +136,17 @@ else
 
         _debouncer = new DebouncedAction(TimeSpan.FromMilliseconds(DebounceDelayMs),
             () => _ = InvokeAsync(ApplyPendingSample));
+
+        // On startup: if linked and no sample yet, pre-load the most recent sample from
+        // the store so the panel shows something immediately rather than "No sample selected."
+        if (_linked && _currentSample == null && !string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            var allSamples = SampleStore.AllSamples;
+            if (allSamples.Count > 0)
+            {
+                _currentSample = allSamples[allSamples.Count - 1];
+            }
+        }
     }
 
     protected override void OnParametersSet()
@@ -148,6 +161,13 @@ else
         {
             _lastParameterSample = Sample;
             _currentSample = Sample;
+        }
+
+        // If SourcePanelId arrives (or changes) after initialization, ensure subscription
+        // is (re-)established so a restored-from-workspace linked panel starts tracking.
+        if (!string.IsNullOrWhiteSpace(SourcePanelId) && _subscription == null)
+        {
+            _subscription = EventBroker.Subscribe<SampleSelectedEvent>(OnSampleSelected);
         }
     }
 
@@ -190,6 +210,10 @@ else
         }
 
         PanelState.ComponentState[nameof(IsLinked)] = _linked;
+        if (!string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            PanelState.ComponentState[nameof(SourcePanelId)] = SourcePanelId;
+        }
     }
 
     private RenderFragment RenderTab(DetailTab tab, string label) => @<text>
@@ -202,6 +226,16 @@ else
         @if (_currentSample != null)
         {
             var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
+            <div class="detail-tree__overlay-btns">
+                <button type="button" class="detail-tree__toolbar-btn" title="Expand all"
+                        @onclick="ExpandAllTree">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
+                </button>
+                <button type="button" class="detail-tree__toolbar-btn" title="Collapse all"
+                        @onclick="CollapseAllTree">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 6 12 11 7 6"/><polyline points="17 13 12 18 7 13"/></svg>
+                </button>
+            </div>
             <div class="detail-tree">
                 @RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty, traversal, 0)
             </div>
@@ -1011,8 +1045,25 @@ else
     // Expand / collapse helpers
     // ─────────────────────────────────────────────────────────────────────
 
+    private void ExpandAllTree()
+    {
+        _treeExpanded.Clear();
+        _treeExpandOverride = true;
+    }
+
+    private void CollapseAllTree()
+    {
+        _treeExpanded.Clear();
+        _treeExpandOverride = false;
+    }
+
     private bool IsTreeNodeExpanded(string nodePath, bool isArrayLike)
     {
+        if (_treeExpandOverride.HasValue)
+        {
+            return _treeExpandOverride.Value;
+        }
+
         if (_treeExpanded.TryGetValue(nodePath, out var val))
         {
             return val;
@@ -1024,6 +1075,8 @@ else
 
     private void ToggleTreeNode(string nodePath, bool isArrayLike)
     {
+        // Manual toggle clears the global override so individual nodes are tracked again.
+        _treeExpandOverride = null;
         _treeExpanded[nodePath] = !IsTreeNodeExpanded(nodePath, isArrayLike);
     }
 

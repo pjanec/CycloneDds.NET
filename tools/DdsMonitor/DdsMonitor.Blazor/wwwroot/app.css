@@ -6,7 +6,8 @@
   --bg-3: #dfe6f1;
   --panel-bg: #ffffff;
   --panel-border: #c9d3e6;
-  --panel-title: #eef2f8;
+  --panel-title: #f5f7fc;
+  --panel-title-btn-bg: #dce5f2;
   --panel-text: #1e2333;
   --panel-muted: #5f6a82;
   --accent: #d36a2b;
@@ -43,7 +44,8 @@
   --bg-3: #2d3650;
   --panel-bg: #141a28;
   --panel-border: #2a3550;
-  --panel-title: #1b2235;
+  --panel-title: #3b5280;
+  --panel-title-btn-bg: #1b2235;
   --panel-text: #e6eaf2;
   --panel-muted: #9aa6bf;
   --accent: #ffb347;
@@ -582,14 +584,17 @@ body {
   height: 22px;
   border-radius: 8px;
   border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--panel-muted);
+  background: var(--panel-title-btn-bg);
+  color: var(--panel-text);
   cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
 .panel-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--panel-title-btn-bg);
 }
 
 .panel-body {
@@ -1604,6 +1609,19 @@ body {
   gap: 8px;
 }
 
+/* Combined icon-buttons + tabs header row */
+.detail-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.detail-panel__header-gap {
+  width: 8px;
+  flex-shrink: 0;
+}
+
 .detail-panel__link,
 .detail-panel__clone {
   padding: 5px 9px;
@@ -1615,6 +1633,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .detail-panel__link.is-on {
@@ -1626,6 +1645,7 @@ body {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .detail-panel__tab {
@@ -1648,6 +1668,38 @@ body {
   border: 1px solid var(--panel-border);
   border-radius: 10px;
   padding: 12px;
+  /* Needed for the overlay positioning of expand/collapse buttons */
+  position: relative;
+}
+
+/* Expand/Collapse overlay buttons in the top-right corner of the tree content area */
+.detail-tree__overlay-btns {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 1;
+}
+
+.detail-tree__toolbar-btn {
+  width: 26px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--toolbar-button-bg);
+  color: var(--panel-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+.detail-tree__toolbar-btn:hover {
+  opacity: 1;
+  border-color: var(--accent-2);
+  color: var(--accent-2);
 }
 
 .detail-tree__node {
@@ -3122,6 +3174,20 @@ body {
   height: 100%;
   gap: 0;
   overflow: hidden;
+}
+
+.topic-sources__cli-notice {
+  padding: 6px 12px;
+  font-size: 0.80rem;
+  color: var(--warn-text, #b8860b);
+  background: var(--warn-bg, rgba(255, 200, 0, 0.08));
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+.topic-sources__cli-notice code {
+  font-family: monospace;
+  font-size: 0.79rem;
 }
 
 .topic-sources__toolbar {

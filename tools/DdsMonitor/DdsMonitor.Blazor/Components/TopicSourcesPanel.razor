@@ -18,10 +18,19 @@
 
 <div class="topic-sources">
 
+    @if (AssemblySourceService.IsCliOverride)
+    {
+        <div class="topic-sources__cli-notice" title="Use --AppSettings:TopicSources to change paths">
+            ⚠ Read-only — assembly sources set via <code>--AppSettings:TopicSources</code>. Changes are not saved.
+        </div>
+    }
+
     <!-- ── Toolbar ───────────────────────────────────────────────── -->
     <div class="topic-sources__toolbar">
         <span class="topic-sources__title">Assemblies</span>
-        <button class="topic-sources__btn" title="Add DLL assembly or folder containing assemblies" @onclick="OpenAddDialog">
+        <button class="topic-sources__btn" title="Add DLL assembly or folder containing assemblies"
+                disabled="@AssemblySourceService.IsCliOverride"
+                @onclick="OpenAddDialog">
             <!-- Plus icon -->
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -31,7 +40,7 @@
             Add
         </button>
         <button class="topic-sources__btn" title="Remove selected assembly"
-                disabled="@(_selectedIndex < 0)"
+                disabled="@(_selectedIndex < 0 || AssemblySourceService.IsCliOverride)"
                 @onclick="RemoveSelected">
             <!-- Trash icon -->
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -44,10 +53,10 @@
             Remove
         </button>
         <button class="topic-sources__btn" title="Move up"
-                disabled="@(_selectedIndex <= 0)"
+                disabled="@(_selectedIndex <= 0 || AssemblySourceService.IsCliOverride)"
                 @onclick="MoveSelectedUp">↑</button>
         <button class="topic-sources__btn" title="Move down"
-                disabled="@(_selectedIndex < 0 || _selectedIndex >= _entries.Count - 1)"
+                disabled="@(_selectedIndex < 0 || _selectedIndex >= _entries.Count - 1 || AssemblySourceService.IsCliOverride)"
                 @onclick="MoveSelectedDown">↓</button>
     </div>
 

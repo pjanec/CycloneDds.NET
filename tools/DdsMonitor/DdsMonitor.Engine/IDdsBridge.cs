@@ -74,6 +74,14 @@ public interface IDdsBridge : IDisposable
     IReadOnlySet<Type> ExplicitlyUnsubscribedTopicTypes { get; }
 
     /// <summary>
+    /// Pre-populates the explicit-unsubscribe set from previously persisted type references.
+    /// Called once on startup (after assembly/topic loading) to restore the saved subscription
+    /// state before any auto-subscribe pass runs.
+    /// Any types already referenced by an active reader are left subscribed.
+    /// </summary>
+    void InitializeExplicitlyUnsubscribed(IEnumerable<Type> types);
+
+    /// <summary>
     /// Raised when the set of active readers changes (subscribe or unsubscribe).
     /// </summary>
     event Action? ReadersChanged;

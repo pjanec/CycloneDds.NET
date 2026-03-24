@@ -37,6 +37,21 @@ public sealed class BrowserLifecycleService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // When KeepAlive is set (NoBrowser mode) the app should not shut down due to
+        // browser connectivity events – just stay alive until the host is stopped.
+        if (_options.KeepAlive)
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal shutdown.
+            }
+            return;
+        }
+
         var firstConnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void OnConnectionChanged(bool isConnected)

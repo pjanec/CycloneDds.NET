@@ -26,6 +26,7 @@ public sealed class AssemblySourceService : IAssemblySourceService
     private readonly TopicDiscoveryService _discoveryService;
     private readonly object _sync = new();
     private readonly List<AssemblySourceEntry> _entries = new();
+    private readonly string[]? _cliPaths; // non-null ⇒ CLI override mode
 
     // Maps entry index → list of topic types owned by that entry.
     private readonly List<List<TopicMetadata>> _entryTopics = new();
@@ -33,21 +34,42 @@ public sealed class AssemblySourceService : IAssemblySourceService
     /// <inheritdoc />
     public event EventHandler? Changed;
 
+    /// <inheritdoc />
+    public bool IsCliOverride => _cliPaths != null;
+
     public AssemblySourceService(ITopicRegistry topicRegistry, TopicDiscoveryService discoveryService)
+        : this(topicRegistry, discoveryService, appSettings: null) { }
+
+    /// <summary>
+    /// Constructs the service.  When <paramref name="appSettings"/> contains a non-empty
+    /// <see cref="AppSettings.TopicSources"/> list, the service operates in CLI-override mode:
+    /// those paths are scanned instead of <c>assembly-sources.json</c>, and any changes made
+    /// during the session are never written back to disk.
+    /// </summary>
+    public AssemblySourceService(ITopicRegistry topicRegistry, TopicDiscoveryService discoveryService, AppSettings? appSettings)
     {
         _topicRegistry = topicRegistry ?? throw new ArgumentNullException(nameof(topicRegistry));
         _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
 
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "DdsMonitor");
-        Directory.CreateDirectory(dir);
-        _configFilePath = Path.Combine(dir, ConfigFileName);
+        if (appSettings?.TopicSources is { Length: > 0 } overridePaths)
+        {
+            _cliPaths = overridePaths;
+            _configFilePath = string.Empty; // not used in CLI mode
+        }
+        else
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var dir = Path.Combine(appData, "DdsMonitor");
+            Directory.CreateDirectory(dir);
+            _configFilePath = Path.Combine(dir, ConfigFileName);
+        }
 
         LoadAndScanAll();
     }
 
     /// <summary>
     /// Internal constructor that accepts an explicit config file path for testing.
+    /// CLI override is not active when using this constructor.
     /// </summary>
     internal AssemblySourceService(ITopicRegistry topicRegistry, TopicDiscoveryService discoveryService, string configFilePath)
     {
@@ -173,19 +195,28 @@ public sealed class AssemblySourceService : IAssemblySourceService
     private void LoadAndScanAll()
     {
         List<string> paths;
-        try
+
+        if (_cliPaths != null)
         {
-            if (!File.Exists(_configFilePath))
+            // CLI-override mode: use the paths supplied on the command line.
+            paths = new List<string>(_cliPaths);
+        }
+        else
+        {
+            try
+            {
+                if (!File.Exists(_configFilePath))
+                {
+                    return;
+                }
+
+                var json = File.ReadAllText(_configFilePath);
+                paths = JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
+            }
+            catch
             {
                 return;
             }
-
-            var json = File.ReadAllText(_configFilePath);
-            paths = JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
-        }
-        catch
-        {
-            return;
         }
 
         lock (_sync)
@@ -254,6 +285,11 @@ public sealed class AssemblySourceService : IAssemblySourceService
 
     private void Persist()
     {
+        // In CLI-override mode the stored file must not be touched so that the
+        // per-user configuration is preserved for the next interactive session.
+        if (_cliPaths != null)
+            return;
+
         try
         {
             List<string> paths;

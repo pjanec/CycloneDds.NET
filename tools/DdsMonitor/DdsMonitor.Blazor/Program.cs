@@ -39,6 +39,17 @@ if (!isHeadless)
     var lifecycleOptions = builder.Configuration
         .GetSection("BrowserLifecycle")
         .Get<BrowserLifecycleOptions>() ?? new BrowserLifecycleOptions();
+
+    // When NoBrowser is enabled the app should keep running even if the browser
+    // disconnects or is never opened – do not apply connect/disconnect timeouts.
+    {
+        var noBrowserViaAppSettings = builder.Configuration.GetSection(AppSettings.SectionName)
+            .GetValue<bool>("NoBrowser");
+        var noBrowserViaTopLevel = builder.Configuration.GetValue<bool>("NoBrowser");
+        if (noBrowserViaAppSettings || noBrowserViaTopLevel)
+            lifecycleOptions.KeepAlive = true;
+    }
+
     builder.Services.AddSingleton(lifecycleOptions);
 
     builder.Services.AddSingleton<BrowserTrackingCircuitHandler>();
@@ -46,8 +57,11 @@ if (!isHeadless)
         sp.GetRequiredService<BrowserTrackingCircuitHandler>());
     builder.Services.AddHostedService<BrowserLifecycleService>();
 
-    // ── ME1-T10: HTTP-only on a dynamic local port ────────────────────────────────────
-    var port = GetFreePort();
+    // ── ME1-T10: HTTP-only on a configured or dynamic local port ─────────────────────
+    var portStr = builder.Configuration["BrowserPort"];
+    var port = int.TryParse(portStr, out var specifiedPort) && specifiedPort is > 0 and <= 65535
+        ? specifiedPort
+        : GetFreePort();
     builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 }
 
@@ -60,6 +74,18 @@ if (!isHeadless)
     app.UseAntiforgery();
     app.MapRazorComponents<App>()
         .AddInteractiveServerRenderMode();
+
+    // Pre-apply workspace and CLI exclusions BEFORE hosted services start.
+    // This ensures SelfSendService (and any other background service that calls
+    // IDdsBridge.Subscribe) respects the saved and/or CLI-driven exclusion set even
+    // when DdsSettings.SelfSendEnabled=true causes an immediate subscription attempt.
+    {
+        var bridge = app.Services.GetRequiredService<IDdsBridge>();
+        var registry = app.Services.GetRequiredService<ITopicRegistry>();
+        var appSettingsPre = app.Services.GetRequiredService<AppSettings>();
+        var wsFilePath = new WorkspaceState(appSettingsPre).WorkspaceFilePath;
+        TopicSubscriptionBootstrapper.Apply(bridge, registry, appSettingsPre, wsFilePath);
+    }
 
     // Start the host (Kestrel begins listening).
     await app.StartAsync();
@@ -80,7 +106,49 @@ if (!isHeadless)
 
     try
     {
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        var appSettings = app.Services.GetService<AppSettings>();
+
+        // Also allow a top-level CLI flag `--NoBrowser true` for backward compatibility.
+        var configNoBrowser = false;
+        try
+        {
+            var raw = builder.Configuration["NoBrowser"];
+            if (!string.IsNullOrWhiteSpace(raw))
+                configNoBrowser = bool.TryParse(raw, out var b) && b;
+        }
+        catch { }
+
+        if ((appSettings == null || !appSettings.NoBrowser) && !configNoBrowser)
+        {
+            // Launch Chrome/Edge in app mode with an isolated profile so the app opens
+            // in its own window rather than a tab in an existing browser instance.
+            var userDataDir = Path.Combine(Path.GetTempPath(), "ddsmon-spa-profile");
+            var browserArgs = $"--app=\"{url}\" --user-data-dir=\"{userDataDir}\"";
+            bool browserOpened = false;
+
+            try
+            {
+                Process.Start(new ProcessStartInfo("chrome", browserArgs) { UseShellExecute = true });
+                browserOpened = true;
+            }
+            catch { /* Chrome not found or failed to start */ }
+
+            if (!browserOpened)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo("msedge", browserArgs) { UseShellExecute = true });
+                    browserOpened = true;
+                }
+                catch { /* Edge not found or failed to start */ }
+            }
+
+            if (!browserOpened)
+            {
+                // Fallback: open with the default system browser (no app-mode flags).
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+        }
     }
     catch (Exception ex)
     {

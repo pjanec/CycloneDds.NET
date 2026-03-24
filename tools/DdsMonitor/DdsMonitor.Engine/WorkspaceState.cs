@@ -10,10 +10,34 @@ public sealed class WorkspaceState : IWorkspaceState
 {
 	private const string WorkspaceFileName = "workspace.json";
 
-	public WorkspaceState()
+	public WorkspaceState() : this(null) { }
+
+	public WorkspaceState(AppSettings? appSettings)
 	{
-		var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-		var workspaceDir = Path.Combine(appData, "DdsMonitor");
+		// Explicit workspace file takes highest priority.
+		if (!string.IsNullOrWhiteSpace(appSettings?.WorkspaceFile))
+		{
+			var dir = Path.GetDirectoryName(appSettings.WorkspaceFile);
+			if (!string.IsNullOrWhiteSpace(dir))
+			{
+				Directory.CreateDirectory(dir);
+			}
+			WorkspaceFilePath = appSettings.WorkspaceFile;
+			return;
+		}
+
+		// Explicit config folder overrides the default %APPDATA% location.
+		string workspaceDir;
+		if (!string.IsNullOrWhiteSpace(appSettings?.ConfigFolder))
+		{
+			workspaceDir = appSettings.ConfigFolder;
+		}
+		else
+		{
+			var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+			workspaceDir = Path.Combine(appData, "DdsMonitor");
+		}
+
 		Directory.CreateDirectory(workspaceDir);
 		WorkspaceFilePath = Path.Combine(workspaceDir, WorkspaceFileName);
 	}
@@ -21,3 +45,4 @@ public sealed class WorkspaceState : IWorkspaceState
 	/// <inheritdoc />
 	public string WorkspaceFilePath { get; }
 }
+

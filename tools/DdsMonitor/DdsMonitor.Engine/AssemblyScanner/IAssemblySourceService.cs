@@ -15,6 +15,12 @@ public interface IAssemblySourceService
     event EventHandler? Changed;
 
     /// <summary>
+    /// When <c>true</c> the assembly source list was set via CLI (<c>--AppSettings:TopicSources</c>)
+    /// and any changes made during the session are not persisted to <c>assembly-sources.json</c>.
+    /// </summary>
+    bool IsCliOverride { get; }
+
+    /// <summary>
     /// Gets the current ordered list of assembly source entries.
     /// </summary>
     IReadOnlyList<AssemblySourceEntry> Entries { get; }

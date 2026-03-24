@@ -53,6 +53,29 @@
             <span class="topic-properties__label">Keyed</span>
             <span class="topic-properties__value">@(TopicMetadata.IsKeyed ? "Yes" : "No")</span>
 
+            <!-- ── QoS ──────────────────────────────────────────── -->
+            @{
+                var qos = TopicMetadata.TopicType.GetCustomAttribute<DdsQosAttribute>();
+            }
+            @if (qos != null)
+            {
+                <span class="topic-properties__label">QoS Reliability</span>
+                <span class="topic-properties__value">@qos.Reliability</span>
+
+                <span class="topic-properties__label">QoS Durability</span>
+                <span class="topic-properties__value">@qos.Durability</span>
+
+                <span class="topic-properties__label">QoS History</span>
+                <span class="topic-properties__value">
+                    @qos.HistoryKind@(qos.HistoryKind == DdsHistoryKind.KeepLast ? $" ({qos.HistoryDepth})" : string.Empty)
+                </span>
+            }
+            else
+            {
+                <span class="topic-properties__label">QoS</span>
+                <span class="topic-properties__value" style="color:var(--panel-muted)">Default / not declared</span>
+            }
+
             <!-- ── Color ─────────────────────────────────────── -->
             <span class="topic-properties__label">Color</span>
             <div class="topic-properties__color-row">

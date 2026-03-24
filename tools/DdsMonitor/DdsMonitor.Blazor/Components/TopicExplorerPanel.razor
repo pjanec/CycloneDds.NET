@@ -8,8 +8,10 @@
 @inject IInstanceStore InstanceStore
 @inject IWindowManager WindowManager
 @inject DdsSettings Settings
+@inject AppSettings AppSettings
 @inject ContextMenuService ContextMenuService
 @inject TopicColorService TopicColorService
+@inject WorkspacePersistenceService WorkspacePersistence
 
 <div class="topic-explorer">
     <div class="topic-explorer__filters">
@@ -136,10 +138,18 @@
     // Content hash of the last rendered topics list; we skip StateHasChanged when nothing changed.
     private int _lastTopicsHash;
 
+    // Snapshot of the workspace-saved exclusion names captured at OnInitialized time.
+    // WindowManager.ExcludedTopics may be overwritten to [] by the debounced startup
+    // save before DDS topics are discovered; this cache survives that overwrite.
+    private IReadOnlyList<string> _savedExclusionsOnInit = Array.Empty<string>();
+
     protected override void OnInitialized()
     {
         DdsBridge.ReadersChanged += HandleReadersChanged;
         TopicRegistry.Changed += HandleRegistryChanged;
+
+        // Capture the loaded exclusion names before ANY debounced save can overwrite them.
+        _savedExclusionsOnInit = WindowManager.ExcludedTopics;
 
         // Auto-configure default UI filters
         _filters.Received = TriStateFilter.Include;
@@ -154,6 +164,35 @@
 
     private void AutoSubscribeAll()
     {
+        // Apply CLI include/exclude filters before the auto-subscribe pass.
+        // This ensures that on startup (and on assembly reload) the DdsBridge
+        // excluded set reflects the correct initial state.
+        if (AppSettings.IncludeTopics.Length > 0 || AppSettings.ExcludeTopics.Length > 0)
+        {
+            // CLI options override saved workspace exclusions.
+            var cliExcluded = TopicFilterService.ComputeExcluded(
+                TopicRegistry.AllTopics,
+                AppSettings.IncludeTopics,
+                AppSettings.ExcludeTopics,
+                savedExcludes: null);
+            DdsBridge.InitializeExplicitlyUnsubscribed(cliExcluded);
+        }
+        else if (_savedExclusionsOnInit.Count > 0 || WindowManager.ExcludedTopics.Count > 0)
+        {
+            // Prefer the startup snapshot; fall back to the live list (populated by user
+            // actions in the current session after the snapshot was taken).
+            var names = _savedExclusionsOnInit.Count > 0 ? _savedExclusionsOnInit : WindowManager.ExcludedTopics;
+            // Re-apply saved workspace exclusions now that plugin assemblies are fully
+            // loaded. WorkspacePersistenceService.LoadDefault() runs before plugins are
+            // scanned so type resolution may fail there; here the registry is complete.
+            var savedExcluded = TopicFilterService.ComputeExcluded(
+                TopicRegistry.AllTopics,
+                cliIncludes: null,
+                cliExcludes: null,
+                savedExcludes: names);
+            DdsBridge.InitializeExplicitlyUnsubscribed(savedExcluded);
+        }
+
         // Skip topic types the user has explicitly unsubscribed so that opening or
         // restoring the Topics panel does not silently undo manual unsubscriptions.
         var explicitlyUnsubscribed = DdsBridge.ExplicitlyUnsubscribedTopicTypes;
@@ -251,9 +290,7 @@
         {
             if (string.Equals(panel.ComponentTypeName, typeName, StringComparison.Ordinal))
             {
-                panel.IsMinimized = false;
-                panel.IsHidden = false;
-                WindowManager.BringToFront(panel.PanelId);
+                WindowManager.ShowPanel(panel.PanelId);
                 return;
             }
         }
@@ -303,10 +340,9 @@
             // Reuse hidden panels by updating them to show the new topic.
             if (panel.IsHidden)
             {
-                panel.IsHidden = false;
                 panel.ComponentState[nameof(TopicPropertiesPanel.TopicMetadata)] = metadata;
                 panel.Title = $"Properties [{metadata.ShortName}]";
-                WindowManager.BringToFront(panel.PanelId);
+                WindowManager.ShowPanel(panel.PanelId);
                 return;
             }
 
@@ -316,7 +352,7 @@
                 existing is TopicMetadata existingMeta &&
                 string.Equals(existingMeta.ShortName, metadata.ShortName, StringComparison.Ordinal))
             {
-                WindowManager.BringToFront(panel.PanelId);
+                WindowManager.ShowPanel(panel.PanelId);
                 return;
             }
         }
@@ -478,6 +514,8 @@
         }
 
         RefreshTopics();
+        // Persist the updated subscription state so it survives restart.
+        WorkspacePersistence.RequestSave();
     }
 
     private void ToggleAllSubscriptions(ChangeEventArgs args)
@@ -509,6 +547,8 @@
         _subscriptionError = null;
 
         RefreshTopics();
+        // Persist the updated subscription state so it survives restart.
+        WorkspacePersistence.RequestSave();
     }
 
     private static string? BuildSubscriptionErrorMessage(IReadOnlyList<string> invalidTopics)
@@ -570,9 +610,7 @@
             if (existingPanel.ComponentState.TryGetValue(nameof(SamplesPanel.TopicMetadata), out var stored) &&
                 stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
             {
-                existingPanel.IsHidden = false;
-                existingPanel.IsMinimized = false;
-                WindowManager.BringToFront(existingPanel.PanelId);
+                WindowManager.ShowPanel(existingPanel.PanelId);
                 return;
             }
         }
@@ -597,9 +635,7 @@
         {
             if (string.Equals(existingPanel.PanelId, stableId, StringComparison.Ordinal))
             {
-                existingPanel.IsHidden = false;
-                existingPanel.IsMinimized = false;
-                WindowManager.BringToFront(existingPanel.PanelId);
+                WindowManager.ShowPanel(existingPanel.PanelId);
                 return;
             }
         }
@@ -615,9 +651,7 @@
             if (existingPanel.ComponentState.TryGetValue(nameof(InstancesPanel.TopicMetadata), out var stored) &&
                 stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
             {
-                existingPanel.IsHidden = false;
-                existingPanel.IsMinimized = false;
-                WindowManager.BringToFront(existingPanel.PanelId);
+                WindowManager.ShowPanel(existingPanel.PanelId);
                 return;
             }
 
@@ -631,9 +665,7 @@
                     var resolved = Type.GetType(typeName);
                     if (resolved == metadata.TopicType)
                     {
-                        existingPanel.IsHidden = false;
-                        existingPanel.IsMinimized = false;
-                        WindowManager.BringToFront(existingPanel.PanelId);
+                        WindowManager.ShowPanel(existingPanel.PanelId);
                         return;
                     }
                 }
@@ -683,9 +715,7 @@
             if (existingPanel.ComponentState.TryGetValue(nameof(SendSamplePanel.InitialTopic), out var stored) &&
                 stored is TopicMetadata storedMeta && storedMeta.TopicType == metadata.TopicType)
             {
-                existingPanel.IsHidden = false;
-                existingPanel.IsMinimized = false;
-                WindowManager.BringToFront(existingPanel.PanelId);
+                WindowManager.ShowPanel(existingPanel.PanelId);
                 return;
             }
         }

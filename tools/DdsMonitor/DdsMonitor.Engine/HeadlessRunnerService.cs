@@ -37,19 +37,28 @@ public sealed class HeadlessRunnerService : BackgroundService
     private const int FlushEveryN = 200;
 
     private readonly DdsSettings _settings;
-    private readonly ChannelReader<SampleData>? _channelReader;
+    private readonly AppSettings _appSettings;
+    private readonly ITopicRegistry _topicRegistry;
+    private readonly IDdsBridge _ddsBridge;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<HeadlessRunnerService> _logger;
+    private readonly ChannelReader<SampleData>? _channelReader;
 
     public HeadlessRunnerService(
         DdsSettings settings,
+        AppSettings appSettings,
+        ITopicRegistry topicRegistry,
+        IDdsBridge ddsBridge,
         IServiceScopeFactory scopeFactory,
         IHostApplicationLifetime lifetime,
         ILogger<HeadlessRunnerService> logger,
         ChannelReader<SampleData>? channelReader = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _appSettings = appSettings ?? throw new ArgumentNullException(nameof(appSettings));
+        _topicRegistry = topicRegistry ?? throw new ArgumentNullException(nameof(topicRegistry));
+        _ddsBridge = ddsBridge ?? throw new ArgumentNullException(nameof(ddsBridge));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -60,6 +69,24 @@ public sealed class HeadlessRunnerService : BackgroundService
     {
         if (_settings.HeadlessMode == HeadlessMode.None)
             return;
+
+        // Apply saved/CLI topic exclusions and subscribe to (non-excluded) topics.
+        // We apply this read-only: headless mode never writes back to the workspace file.
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var workspaceState = scope.ServiceProvider.GetService<IWorkspaceState>();
+            TopicSubscriptionBootstrapper.Apply(
+                _ddsBridge,
+                _topicRegistry,
+                _appSettings,
+                workspaceState?.WorkspaceFilePath);
+        }
+
+        foreach (var topic in _topicRegistry.AllTopics)
+        {
+            if (!_ddsBridge.ExplicitlyUnsubscribedTopicTypes.Contains(topic.TopicType))
+                _ddsBridge.TrySubscribe(topic, out _, out _);
+        }
 
         try
         {

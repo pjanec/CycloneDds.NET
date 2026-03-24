@@ -82,7 +82,21 @@
     {
         WindowManager.PanelsChanged += HandlePanelsChanged;
         LoadWorkspace();
-        EnsureTopicsPanel();
+        // Keep _isLoadingWorkspace = true while EnsureTopicsPanel runs so that
+        // SpawnPanel → PanelsChanged → HandlePanelsChanged does NOT trigger a
+        // premature debounced save.  A save at this point would call
+        // SyncExcludedTopicsToWindowManager with an empty DdsBridge excluded set
+        // (DDS topics may not have been discovered yet), erasing the exclusions
+        // that were just loaded from the workspace file.
+        _isLoadingWorkspace = true;
+        try
+        {
+            EnsureTopicsPanel();
+        }
+        finally
+        {
+            _isLoadingWorkspace = false;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -96,7 +110,9 @@
 
     private void HandlePanelsChanged()
     {
-        // Ensure panels are visible after changes (e.g. loading workspace or restore)
+        // Render the new/updated panel immediately so it appears without waiting for
+        // JS interop. The async block then clamps coordinates and re-renders if needed.
+        StateHasChanged();
         _ = InvokeAsync(async () =>
         {
             await EnsurePanelsVisibleAsync();
@@ -173,8 +189,11 @@
             allPanel.Width = 1120;
             allPanel.Height = 360;
         }
-
-        SaveWorkspace();
+        // Do NOT call SaveWorkspace() here: this runs during OnInitialized with
+        // _isLoadingWorkspace = true, so the handler would suppress it anyway.  An
+        // explicit call would bypass that guard and queue a debounced save that fires
+        // 2 s later with an empty DdsBridge excluded set, erasing the loaded workspace
+        // exclusions before DDS topics have been discovered.
     }
 
     private void BeginDrag(PanelState panel, MouseEventArgs args)

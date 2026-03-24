@@ -54,11 +54,38 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <InputFile OnChange="LoadGridSettingsAsync" style="display:none" accept=".samplepanelsettings,application/json" />
         </label>
-        <div class="samples-panel__filter">
-            <input type="text"
-                   value="@_filterText"
-                   placeholder="Filter: Payload.Field == 42"
-                   @oninput="OnFilterInput" />
+        <div class="samples-panel__filter @(_filterExpanded ? "samples-panel__filter--expanded" : string.Empty)">
+            @if (_filterExpanded)
+            {
+                <textarea class="samples-panel__filter-textarea"
+                          rows="4"
+                          placeholder="Filter: Payload.Field == 42"
+                          value="@_filterText"
+                          @oninput="OnFilterInput"
+                          @onblur="ApplyFilter"></textarea>
+            }
+            else
+            {
+                <input type="text"
+                       value="@_filterText"
+                       placeholder="Filter: Payload.Field == 42"
+                       @oninput="OnFilterInput" />
+            }
+            <button type="button"
+                    class="samples-panel__filter-expand @(_filterExpanded ? "is-on" : string.Empty)"
+                    title="@(_filterExpanded ? "Collapse filter input" : "Expand filter input")"
+                    @onclick="ToggleFilterExpanded">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    @if (_filterExpanded)
+                    {
+                        <polyline points="18 15 12 9 6 15"/>
+                    }
+                    else
+                    {
+                        <polyline points="6 9 12 15 18 9"/>
+                    }
+                </svg>
+            </button>
             @if (!string.IsNullOrEmpty(_filterText))
             {
                 <button type="button"
@@ -199,6 +226,7 @@
     private bool _initialFilterApplied;
     private bool _trackMode = true;
     private bool _expandAll;
+    private bool _filterExpanded;
     private bool _showColumnPicker;
     private SampleData? _selectedSample;
     private SampleData? _pendingTrackSample;
@@ -523,6 +551,11 @@
         }
     }
 
+    private void ToggleFilterExpanded()
+    {
+        _filterExpanded = !_filterExpanded;
+    }
+
     private void OpenFilterBuilder()
     {
         var filterTypeName = typeof(FilterBuilderPanel).FullName!;
@@ -844,12 +877,12 @@
         }
         else
         {
-            panel.IsHidden = false;
-            panel.IsMinimized = false;
             panel.ComponentState[nameof(DetailPanel.Sample)] = sample;
             panel.ComponentState[nameof(DetailPanel.SourcePanelId)] = sourcePanelId;
             panel.ComponentState[nameof(DetailPanel.IsLinked)] = shouldLink;
-            WindowManager.BringToFront(panel.PanelId);
+            // ShowPanel sets IsHidden=false, IsMinimized=false, bumps ZIndex and fires
+            // PanelsChanged so Desktop re-renders immediately (fixes random open delay).
+            WindowManager.ShowPanel(panel.PanelId);
         }
     }
 
@@ -908,6 +941,11 @@
             {
                 ExcludeTopicFromFilter(row.Sample.TopicMetadata.ShortName);
                 return Task.CompletedTask;
+            }),
+            new("Show Only This Topic", null, () =>
+            {
+                ShowOnlyTopic(row.Sample.TopicMetadata.ShortName);
+                return Task.CompletedTask;
             })
         };
 
@@ -933,6 +971,17 @@
         _filterText = string.IsNullOrWhiteSpace(_filterText)
             ? condition
             : $"({_filterText}) AND {condition}";
+
+        ApplyFilter();
+        SavePanelState();
+        StateHasChanged();
+    }
+
+    private void ShowOnlyTopic(string topicName)
+    {
+        var escaped = topicName.Replace("\\", "\\\\", StringComparison.Ordinal)
+                               .Replace("\"", "\\\"", StringComparison.Ordinal);
+        _filterText = $"Sample.Topic == \"{escaped}\"";
 
         ApplyFilter();
         SavePanelState();

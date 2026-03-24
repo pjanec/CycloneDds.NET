@@ -33,6 +33,7 @@ public sealed class HostWiringTests
         var scoped = scope.ServiceProvider;
 
         _ = provider.GetRequiredService<DdsSettings>();
+        _ = provider.GetRequiredService<AppSettings>();
         _ = provider.GetRequiredService<ITopicRegistry>();
         _ = provider.GetRequiredService<IDdsBridge>();
         _ = provider.GetRequiredService<ISampleStore>();

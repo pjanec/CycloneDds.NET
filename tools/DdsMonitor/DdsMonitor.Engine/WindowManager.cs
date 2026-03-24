@@ -27,6 +27,7 @@ public sealed class WindowManager : IWindowManager
     private readonly object _sync = new();
     private readonly List<PanelState> _activePanels = new();
     private readonly Dictionary<string, Type> _panelTypes = new(StringComparer.Ordinal);
+    private List<string> _excludedTopics = new();
 
     /// <inheritdoc />
     public event Action<PanelState>? PanelClosed;
@@ -43,6 +44,28 @@ public sealed class WindowManager : IWindowManager
             {
                 return _activePanels.ToArray();
             }
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> ExcludedTopics
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _excludedTopics.ToArray();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void SetExcludedTopics(IEnumerable<string> topicTypeNames)
+    {
+        if (topicTypeNames == null) throw new ArgumentNullException(nameof(topicTypeNames));
+        lock (_sync)
+        {
+            _excludedTopics = new List<string>(topicTypeNames);
         }
     }
 
@@ -233,14 +256,21 @@ public sealed class WindowManager : IWindowManager
     public string SaveWorkspaceToJson()
     {
         PanelState[] snapshot;
+        List<string> excludedSnapshot;
 
         lock (_sync)
         {
             snapshot = _activePanels.ToArray();
+            excludedSnapshot = new List<string>(_excludedTopics);
         }
 
         var filtered = FilterPersistableState(snapshot);
-        return JsonSerializer.Serialize(filtered, WorkspaceSerializerOptions);
+        var doc = new WorkspaceDocument
+        {
+            Panels = filtered,
+            ExcludedTopics = excludedSnapshot.Count > 0 ? excludedSnapshot : null
+        };
+        return JsonSerializer.Serialize(doc, WorkspaceSerializerOptions);
     }
 
     /// <inheritdoc />
@@ -268,9 +298,27 @@ public sealed class WindowManager : IWindowManager
             throw new ArgumentException("Workspace JSON is required.", nameof(json));
         }
 
-        var loaded = JsonSerializer.Deserialize<List<PanelState>>(json, WorkspaceSerializerOptions) ?? new List<PanelState>();
+        List<PanelState> panels;
+        List<string> excludedTopics = new();
 
-        foreach (var panel in loaded)
+        // Support both the legacy format (plain JSON array of PanelState) and the new
+        // WorkspaceDocument format (object with "Panels" and optional "ExcludedTopics").
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            // Legacy: raw panel array.
+            panels = JsonSerializer.Deserialize<List<PanelState>>(json, WorkspaceSerializerOptions)
+                     ?? new List<PanelState>();
+        }
+        else
+        {
+            var workspaceDoc = JsonSerializer.Deserialize<WorkspaceDocument>(json, WorkspaceSerializerOptions)
+                               ?? new WorkspaceDocument();
+            panels = workspaceDoc.Panels ?? new List<PanelState>();
+            excludedTopics = workspaceDoc.ExcludedTopics ?? new List<string>();
+        }
+
+        foreach (var panel in panels)
         {
             panel.ComponentState ??= new Dictionary<string, object>(StringComparer.Ordinal);
         }
@@ -278,7 +326,8 @@ public sealed class WindowManager : IWindowManager
         lock (_sync)
         {
             _activePanels.Clear();
-            _activePanels.AddRange(loaded);
+            _activePanels.AddRange(panels);
+            _excludedTopics = excludedTopics;
         }
 
         PanelsChanged?.Invoke();

@@ -33,6 +33,7 @@ public static class ServiceCollectionExtensions
         }
 
         var settings = configuration.GetSection(DdsSettings.SectionName).Get<DdsSettings>() ?? new DdsSettings();
+        var appSettings = configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
 
         // Backward compat: if DomainId was changed from default but Participants is still the
         // default single-entry list (DomainId=0), migrate the legacy DomainId value into
@@ -49,6 +50,7 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddSingleton(settings);
+        services.AddSingleton(appSettings);
 
         // Runtime developer/debug settings (live-togglable from the UI).
         // Initialise from DdsSettings so that CLI flags like
@@ -75,11 +77,18 @@ public static class ServiceCollectionExtensions
         discoveryService.Discover(settings.PluginDirectories);
 
         // Eagerly instantiate to ensure saved dynamic DLLs are loaded immediately on startup.
-        var assemblySourceService = new AssemblySourceService(topicRegistry, discoveryService);
+        // Pass appSettings so CLI TopicSources overrides are honoured without modifying the file.
+        var assemblySourceService = new AssemblySourceService(topicRegistry, discoveryService, appSettings);
 
         services.AddSingleton<ITopicRegistry>(topicRegistry);
         services.AddSingleton(discoveryService);
         services.AddSingleton<IAssemblySourceService>(assemblySourceService);
+
+        // Register self-send topic types eagerly so they are present in the registry
+        // before any hosted service (e.g. SelfSendService) or pre-startup exclusion
+        // bootstrap runs.  SelfSendService.ExecuteAsync() previously did this, but
+        // that was too late when SelfSendEnabled=true causes an immediate subscription.
+        SelfSendTopics.Register(topicRegistry);
 
         // ── Phase 5: Plugin infrastructure ───────────────────────────────────────────
         // Create plugin singletons eagerly (before the container is built) so that
@@ -140,7 +149,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IReplayEngine, ReplayEngine>();
 
         services.AddScoped<IWindowManager, WindowManager>();
-        services.AddScoped<IWorkspaceState, WorkspaceState>();
+        services.AddScoped<IWorkspaceState>(sp =>
+            new WorkspaceState(sp.GetService<AppSettings>()));
 
         // ME1-T11: In Record-headless mode HeadlessRunnerService consumes the channel directly
         // so DdsIngestionService must not run (two readers on the same channel are not supported).

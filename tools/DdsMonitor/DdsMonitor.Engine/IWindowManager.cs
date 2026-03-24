@@ -24,6 +24,18 @@ public interface IWindowManager
     IReadOnlyList<PanelState> ActivePanels { get; }
 
     /// <summary>
+    /// Gets the in-memory list of fully-qualified CLR type names that are currently
+    /// marked as excluded from auto-subscription.  Persisted to the workspace file.
+    /// </summary>
+    IReadOnlyList<string> ExcludedTopics { get; }
+
+    /// <summary>
+    /// Replaces the in-memory excluded topics list.  Call before saving the workspace
+    /// so that the current DdsBridge state is captured.
+    /// </summary>
+    void SetExcludedTopics(IEnumerable<string> topicTypeNames);
+
+    /// <summary>
     /// Spawns a new panel using the provided component type name.
     /// </summary>
     PanelState SpawnPanel(string componentTypeName, Dictionary<string, object>? initialState = null);

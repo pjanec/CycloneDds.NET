@@ -18,4 +18,12 @@ public sealed class BrowserLifecycleOptions
     /// Default: 5 seconds.
     /// </summary>
     public int DisconnectTimeout { get; set; } = 5;
+
+    /// <summary>
+    /// When <c>true</c> the application runs indefinitely without waiting for a browser
+    /// to connect and without shutting down when the browser disconnects.
+    /// Set automatically when <c>--NoBrowser true</c> is used so the app survives tabs
+    /// being closed or the browser being killed.
+    /// </summary>
+    public bool KeepAlive { get; set; }
 }

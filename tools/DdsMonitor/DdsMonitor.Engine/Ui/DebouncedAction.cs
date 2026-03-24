@@ -39,6 +39,22 @@ public sealed class DebouncedAction : IDisposable
         _ = RunAsync(cts.Token);
     }
 
+    /// <summary>
+    /// If a debounced action is pending, cancels the timer and runs the action immediately.
+    /// Safe to call even when no action is pending.
+    /// </summary>
+    public void Flush()
+    {
+        if (_disposed || _cts == null)
+            return;
+
+        _cts.Cancel();
+        _cts.Dispose();
+        _cts = null;
+
+        _action();
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
@@ -50,6 +66,7 @@ public sealed class DebouncedAction : IDisposable
         _disposed = true;
         _cts?.Cancel();
         _cts?.Dispose();
+        _cts = null;
     }
 
     private async Task RunAsync(CancellationToken token)
@@ -65,6 +82,7 @@ public sealed class DebouncedAction : IDisposable
 
         if (!token.IsCancellationRequested)
         {
+            _cts = null;
             _action();
         }
     }

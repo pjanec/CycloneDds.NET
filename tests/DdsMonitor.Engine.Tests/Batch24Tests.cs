@@ -696,6 +696,8 @@ public sealed class Batch24Tests
         public IReadOnlySet<Type> ExplicitlyUnsubscribedTopicTypes =>
             new HashSet<Type>();
 
+        public void InitializeExplicitlyUnsubscribed(IEnumerable<Type> types) { }
+
         public event Action? ReadersChanged;
 
         public IDynamicReader Subscribe(TopicMetadata meta) =>
