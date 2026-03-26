@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace DdsMonitor.Plugins.Bdc;
+namespace DdsMonitor.Plugins.ECS;
 
 /// <summary>
 /// Live configuration for the BDC plugin. All fields are mutable so the
@@ -10,7 +10,7 @@ namespace DdsMonitor.Plugins.Bdc;
 /// When any property changes, <see cref="SettingsChanged"/> is raised so that
 /// <see cref="EntityStore"/> can reset and re-aggregate.
 /// </summary>
-public sealed class BdcSettings : INotifyPropertyChanged
+public sealed class EcsSettings : INotifyPropertyChanged
 {
     private string _namespacePrefix = string.Empty;
     private string _entityIdPattern = @"(?i)\bEntityId\b";

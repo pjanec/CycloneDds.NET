@@ -31,6 +31,6 @@ At least one field should vary each sample.
 Plugin system need deep revamping for better decoupling and flexibility,
 see https://notebooklm.google.com/notebook/f41a7c82-1eaf-4608-b079-98f1d9e1d7ea
 
-[BUG] The design and layout of the BDC panels is ugly and clearly under-worked, looking like for last century.
+[BUG] The design and layout of the ECS panels is ugly and clearly under-worked, looking like for last century.
 SHould be modern, keeping same style as other panels, using icons, no dense layouts
 

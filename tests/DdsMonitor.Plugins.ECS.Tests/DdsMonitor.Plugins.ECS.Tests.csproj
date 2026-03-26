@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\tools\DdsMonitor\DdsMonitor.Plugins.Bdc\DdsMonitor.Plugins.Bdc.csproj" />
+    <ProjectReference Include="..\..\tools\DdsMonitor\DdsMonitor.Plugins.ECS\DdsMonitor.Plugins.ECS.csproj" />
     <ProjectReference Include="..\..\tools\DdsMonitor\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
   </ItemGroup>
 

@@ -1357,7 +1357,7 @@ public interface IMenuRegistry
 }
 ```
 
-Menu path format: `"Plugins/BDC/Show Entities"` → creates nested menu structure.
+Menu path format: `"Plugins/ECS/Show Entities"` → creates nested menu structure.
 
 ### Success Conditions
 
@@ -1396,7 +1396,7 @@ Data Grid cells and Inspector values check this registry before defaulting to `T
 ---
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- PHASE 6 — DOMAIN ENTITY PLUGINS (BDC / TKB)                      -->
+<!-- PHASE 6 — DOMAIN ENTITY PLUGINS (ECS / TKB)                      -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 ## DMON-045 — EntityStore Core (Aggregation Engine)
@@ -1406,10 +1406,10 @@ Data Grid cells and Inspector values check this registry before defaulting to `T
 
 ### Description
 
-Implement the generic `EntityStore` (usable by both BDC and TKB plugins):
+Implement the generic `EntityStore` (usable by both ECS and TKB plugins):
 
 1. Subscribes to `IInstanceStore.OnInstanceChanged`.
-2. Filters events by a configurable namespace prefix (e.g. `"company.BDC."` or `"company.TKB."`).
+2. Filters events by a configurable namespace prefix (e.g. `"company.ECS."` or `"company.TKB."`).
 3. Extracts `EntityId` (Key1) and optional `PartId` (Key2) from the sample.
 4. Maintains `Dictionary<int, Entity>` mapping EntityId → aggregated Entity.
 5. Each Entity tracks:
@@ -1435,16 +1435,16 @@ Implement the generic `EntityStore` (usable by both BDC and TKB plugins):
 
 ---
 
-## DMON-046 — BDC Entity Grid Panel
+## DMON-046 — ECS Entity Grid Panel
 
 **Phase:** 6 — Domain Entity Plugins  
-**Design ref:** [§13.4](./DESIGN.md#134-entity-ui--live-grid-bdc)
+**Design ref:** [§13.4](./DESIGN.md#134-entity-ui--live-grid-ecs)
 
 ### Description
 
-Implement `BdcEntityGridPanel.razor`:
+Implement `EcsEntityGridPanel.razor`:
 
-1. Lists all BDC entities from the `EntityStore`.
+1. Lists all ECS entities from the `EntityStore`.
 2. Columns: Entity ID, State (icon), Info Name, Last Update, Actions.
 3. **Virtual columns** can pull values from any aggregated descriptor (e.g. `Info.Name` from the `EntityInfo` topic).
 4. **Live/History toggle** switches between current entities and chronological `EntityJournal`.

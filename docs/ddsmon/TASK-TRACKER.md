@@ -84,18 +84,18 @@
 
 ---
 
-## Phase 6: Domain Entity Plugins (BDC / TKB)
+## Phase 6: Domain Entity Plugins (ECS / TKB)
 
-**Goal:** Ship the BDC and TKB entity aggregation/tracking as isolated plugins with grid, tree, detail, and time-travel views.
+**Goal:** Ship the ECS and TKB entity aggregation/tracking as isolated plugins with grid, tree, detail, and time-travel views.
 
 - [x] **DMON-045** — EntityStore core (aggregation engine) &nbsp; [details](./TASK-DETAIL.md#dmon-045--entitystore-core-aggregation-engine)
-- [x] **DMON-046** — BDC Entity Grid panel &nbsp; [details](./TASK-DETAIL.md#dmon-046--bdc-entity-grid-panel)
+- [x] **DMON-046** — ECS Entity Grid panel &nbsp; [details](./TASK-DETAIL.md#dmon-046--ecs-entity-grid-panel)
 - [ ] **DMON-047** — TKB Entity Folder Tree panel &nbsp; [details](./TASK-DETAIL.md#dmon-047--tkb-entity-folder-tree-panel)
 - [x] **DMON-048** — Entity Detail Inspector &nbsp; [details](./TASK-DETAIL.md#dmon-048--entity-detail-inspector)
 - [x] **DMON-049** — Historical State (time-travel) &nbsp; [details](./TASK-DETAIL.md#dmon-049--historical-state-time-travel)
-- [x] **DMON-060** — BDC Settings Panel & Persistence (Addendum) &nbsp; [details](./BDC-plugin-addendum.md)
-- [x] **DMON-061** — Regex-based Key Field Extraction (Addendum) &nbsp; [details](./BDC-plugin-addendum.md)
-- [x] **DMON-062** — Key Field Numeric Validation (Addendum) &nbsp; [details](./BDC-plugin-addendum.md)
+- [x] **DMON-060** — ECS Settings Panel & Persistence (Addendum) &nbsp; [details](./ECS-plugin-addendum.md)
+- [x] **DMON-061** — Regex-based Key Field Extraction (Addendum) &nbsp; [details](./ECS-plugin-addendum.md)
+- [x] **DMON-062** — Key Field Numeric Validation (Addendum) &nbsp; [details](./ECS-plugin-addendum.md)
 
 ---
 

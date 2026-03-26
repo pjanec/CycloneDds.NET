@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -14,29 +14,23 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
-    <ProjectReference Include="..\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />    <!-- Build-only dependency: ensures Bdc plugin is built (and staged) before the host launches -->
-    <ProjectReference Include="..\DdsMonitor.Plugins.Bdc\DdsMonitor.Plugins.Bdc.csproj"
-                      ReferenceOutputAssembly="false"
-                      Private="false"
-                      SkipGetTargetFrameworkProperties="true" />  </ItemGroup>
+    <ProjectReference Include="..\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />    <!-- Build-only dependency: ensures ECS plugin is built (and staged) before the host launches -->
+    <ProjectReference Include="..\DdsMonitor.Plugins.ECS\DdsMonitor.Plugins.ECS.csproj" ReferenceOutputAssembly="false" Private="false" SkipGetTargetFrameworkProperties="true" />  </ItemGroup>
 
   <!--
-    Copy the BDC plugin DLL into the host's OUTPUT plugins folder after each build.
+    Copy the ECS plugin DLL into the host's OUTPUT plugins folder after each build.
     This ensures the plugin is found regardless of whether the process working-directory
     is the project folder (dotnet run) or the output folder (VS F5 / direct exe launch).
     The plugin itself already stages to the project-level plugins\ via its own StagePlugin target.
   -->
-  <Target Name="CopyBdcPluginToOutput" AfterTargets="Build">
+  <Target Name="CopyEcsPluginToOutput" AfterTargets="Build">
     <PropertyGroup>
-      <BdcPluginDll>$(MSBuildThisFileDirectory)..\DdsMonitor.Plugins.Bdc\bin\$(Configuration)\net8.0\DdsMonitor.Plugins.Bdc.dll</BdcPluginDll>
+      <EcsPluginDll>$(MSBuildThisFileDirectory)..\DdsMonitor.Plugins.ECS\bin\$(Configuration)\net8.0\DdsMonitor.Plugins.ECS.dll</EcsPluginDll>
       <OutputPluginsDir>$(OutputPath)plugins\</OutputPluginsDir>
     </PropertyGroup>
     <MakeDir Directories="$(OutputPluginsDir)" />
-    <Copy SourceFiles="$(BdcPluginDll)"
-          DestinationFolder="$(OutputPluginsDir)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(BdcPluginDll)')" />
-    <Message Text="Staged BDC plugin to output: $(OutputPluginsDir)" Importance="high" />
+    <Copy SourceFiles="$(EcsPluginDll)" DestinationFolder="$(OutputPluginsDir)" SkipUnchangedFiles="true" Condition="Exists('$(EcsPluginDll)')" />
+    <Message Text="Staged ECS plugin to output: $(OutputPluginsDir)" Importance="high" />
   </Target>
 
 </Project>

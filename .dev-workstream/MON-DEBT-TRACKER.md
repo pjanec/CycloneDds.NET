@@ -20,4 +20,4 @@
 | MON-DEBT-021 | 2026-03-19 | ME2-BATCH-07 | P1 | Runtime TypeReflection | Dynamically loading folders of external DLLs fails on explicit `Delegate.CreateDelegate` mappings targeting `.GetKeyDescriptors` inside Cyclone Runtime engines. | ME2-BATCH-08 | Pending |
 | MON-DEBT-022 | 2026-03-22 | MON-BATCH-28 | P3 | Plugins | No plugin hot-reload — plugins are loaded once at startup. A live-scan `IHostedService` could be added. | N/A | Pending |
 | MON-DEBT-023 | 2026-03-22 | MON-BATCH-28 | P3 | Plugins | No user-visible error boundary/UI for plugin load/Initialize crashes. | N/A | Pending |
-| MON-DEBT-024 | 2026-03-22 | MON-BATCH-29 | P2 | Plugins | BDC Settings do not persist to Workspace JSON. `BdcSettings` is an in-memory singleton that needs `WorkspacePersistenceService` integration. | MON-BATCH-30 | Resolved |
+| MON-DEBT-024 | 2026-03-22 | MON-BATCH-29 | P2 | Plugins | ECS Settings do not persist to Workspace JSON. `EcsSettings` is an in-memory singleton that needs `WorkspacePersistenceService` integration. | MON-BATCH-30 | Resolved |

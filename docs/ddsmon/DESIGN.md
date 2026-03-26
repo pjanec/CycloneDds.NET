@@ -56,7 +56,7 @@ The application is structured into three distinct layers:
 ├─────────────────────────────────────────────────────────┤
 │  Layer 2: Plugin Ecosystem (Middleware)                  │
 │  ┌──────────────┐ ┌──────────────┐ ┌────────────────┐  │
-│  │ BDC Plugin   │ │ TKB Plugin   │ │ Custom Plugins │  │
+│  │ ECS Plugin   │ │ TKB Plugin   │ │ Custom Plugins │  │
 │  └──────────────┘ └──────────────┘ └────────────────┘  │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 1: Headless Data Engine (Backend)                │
@@ -89,7 +89,7 @@ The core of the application. Knows nothing about Blazor or HTML. Can run headles
 
 ### 3.2 Layer 2 — Plugin Ecosystem
 
-Domain-specific logic (BDC entities, TKB entities, custom formatters) is encapsulated in hot-loadable Razor Class Library DLLs. Plugins are loaded from a configurable `plugins/` directory at startup. See [§12 Plugin Architecture](#12-plugin-architecture) for full details.
+Domain-specific logic (ECS entities, TKB entities, custom formatters) is encapsulated in hot-loadable Razor Class Library DLLs. Plugins are loaded from a configurable `plugins/` directory at startup. See [§12 Plugin Architecture](#12-plugin-architecture) for full details.
 
 ### 3.3 Layer 3 — Blazor Workspace Shell
 
@@ -510,7 +510,7 @@ Reusable incremental-search component for selecting a topic from a large list.
 +------------------------------------------------------------+
 | RobotState                  company.DDS.DM.State            |
 | RobotCommand                company.DDS.DM.Control          |
-| GeoSpatial_Robot            company.BDC.Extensions          |
+| GeoSpatial_Robot            company.ECS.Extensions          |
 +------------------------------------------------------------+
 ```
 
@@ -826,7 +826,7 @@ Here is how the data flows from the Core Engine to this panel:
     When the user scrolls the Blazor `<Virtualize>` grid in the Instances Panel, the panel asks the `InstanceStore`: *"Give me rows 50 to 80 of the Live Instances array."* The store provides an instant `ReadOnlySpan<InstanceData>`, and the UI extracts the `RecentSample.Payload` to render the custom columns.
 
 #### Summary
-The **Instances Panel** bridges the gap between raw network traffic (Samples) and high-level Domain logic (BDC/TKB Entities). It is the generic, out-of-the-box way to monitor the lifecycle of any keyed DDS object without writing custom plugins.
+The **Instances Panel** bridges the gap between raw network traffic (Samples) and high-level Domain logic (ECS/TKB Entities). It is the generic, out-of-the-box way to monitor the lifecycle of any keyed DDS object without writing custom plugins.
 
 
 
@@ -905,7 +905,7 @@ Plugins can:
 
 ---
 
-## 13. Domain Entity Specification (BDC / TKB Plugins)
+## 13. Domain Entity Specification (ECS / TKB Plugins)
 
 ### 13.1 Concepts & Glossary
 
@@ -914,7 +914,7 @@ Plugins can:
 | **Entity** | A logical object (e.g. a vehicle) that does not exist as a single DDS message; it is a grouping of multiple DDS messages sharing the same ID |
 | **Descriptor** | A specific DDS Topic that makes up part of an Entity (e.g. `GeoSpatial`) |
 | **EntityId** | The primary identifier; **always** the first `[DdsKey]` field in any descriptor topic |
-| **Master Descriptor** | The specific topic that defines entity existence (BDC: `EntityMaster`, TKB: `TkbMaster`) |
+| **Master Descriptor** | The specific topic that defines entity existence (ECS: `EntityMaster`, TKB: `TkbMaster`) |
 | **Multi-Instance Descriptor** | A descriptor with two `[DdsKey]` fields: Key1 = EntityId, Key2 = PartId (e.g. `ArticulatedPartSpatial` for a tank's turret vs. gun) |
 
 ### 13.2 Entity States
@@ -929,7 +929,7 @@ Plugins can:
 
 When the core `InstanceStore` fires an `InstanceTransitionEvent`:
 
-1. **Filter:** Does topic namespace match the domain (e.g. `company.BDC.*`)? If not, ignore.
+1. **Filter:** Does topic namespace match the domain (e.g. `company.ECS.*`)? If not, ignore.
 2. **Extract Identity:** Key1 → `EntityId`. If Key2 exists → `PartId`. Create `DescriptorIdentity { TopicType, PartId }`.
 3. **Update Entity:**
    - Alive sample → Add/Update in `entity.Descriptors[descrIdent]`
@@ -940,10 +940,10 @@ When the core `InstanceStore` fires an `InstanceTransitionEvent`:
    - Otherwise → Zombie
 5. **Journal:** If state changed or descriptor added/removed, append `EntityJournalRecord`
 
-### 13.4 Entity UI — Live Grid (BDC)
+### 13.4 Entity UI — Live Grid (ECS)
 
 ```
-[BDC Entities]                                                 [−][X]
+[ECS Entities]                                                 [−][X]
 +------------------------------------------------------------------------+
 | [🔍 Filter...] [🪟 Columns] [Toggle: Show Live / Show History]        |
 +------------------------------------------------------------------------+
@@ -1153,10 +1153,10 @@ CSS-based theming with a toggle in the top bar. Default to a dark theme (inspire
 
 ### Phase 4: Plugins — Domain Entity Aggregation
 
-**Goal:** Ship the BDC/TKB Entity tracking as isolated plugins.
+**Goal:** Ship the ECS/TKB Entity tracking as isolated plugins.
 
 - Plugin loading infrastructure (AssemblyLoadContext, IMonitorPlugin)
-- BDC Plugin: EntityStore, Entity Grid, Entity Detail Inspector, Time-Travel
+- ECS Plugin: EntityStore, Entity Grid, Entity Detail Inspector, Time-Travel
 - TKB Plugin: Folder Tree view, Path-based hierarchy
 - Custom type formatters (Vector3, FixedString, etc.)
 

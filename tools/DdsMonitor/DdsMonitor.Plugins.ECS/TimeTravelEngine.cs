@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using CycloneDDS.Runtime;
 using DdsMonitor.Engine;
 
-namespace DdsMonitor.Plugins.Bdc;
+namespace DdsMonitor.Plugins.ECS;
 
 /// <summary>
 /// Reconstructs the historical state of a BDC domain entity at a requested timestamp
@@ -38,12 +38,12 @@ public sealed class TimeTravelEngine
     };
 
     private readonly ISampleStore _sampleStore;
-    private readonly BdcSettings  _settings;
+    private readonly EcsSettings  _settings;
 
     /// <summary>
     /// Initialises the engine with the shared sample store and plugin settings.
     /// </summary>
-    public TimeTravelEngine(ISampleStore sampleStore, BdcSettings settings)
+    public TimeTravelEngine(ISampleStore sampleStore, EcsSettings settings)
     {
         _sampleStore = sampleStore ?? throw new ArgumentNullException(nameof(sampleStore));
         _settings    = settings    ?? throw new ArgumentNullException(nameof(settings));

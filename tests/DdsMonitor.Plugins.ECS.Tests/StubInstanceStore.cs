@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using DdsMonitor.Engine;
 
-namespace DdsMonitor.Plugins.Bdc.Tests;
+namespace DdsMonitor.Plugins.ECS.Tests;
 
 /// <summary>
 /// Minimal IInstanceStore stub for unit-testing EntityStore without a live DDS bus.

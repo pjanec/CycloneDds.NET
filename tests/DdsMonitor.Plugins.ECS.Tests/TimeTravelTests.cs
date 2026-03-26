@@ -3,21 +3,21 @@ using System.Collections.Generic;
 using CycloneDDS.Runtime;
 using CycloneDDS.Runtime.Interop;
 using DdsMonitor.Engine;
-using DdsMonitor.Plugins.Bdc;
+using DdsMonitor.Plugins.ECS;
 
-namespace DdsMonitor.Plugins.Bdc.Tests;
+namespace DdsMonitor.Plugins.ECS.Tests;
 
 /// <summary>
 /// Unit tests for the <see cref="TimeTravelEngine"/> (DMON-049).
 ///
 /// All tests operate with a <see cref="StubSampleStore"/> populated with manually
-/// crafted chronological samples and a fresh <see cref="BdcSettings"/> instance —
+/// crafted chronological samples and a fresh <see cref="EcsSettings"/> instance —
 /// no live DDS bus is required.
 /// </summary>
 public sealed class TimeTravelTests
 {
     private readonly StubSampleStore _sampleStore;
-    private readonly BdcSettings     _settings;
+    private readonly EcsSettings     _settings;
     private readonly TimeTravelEngine _engine;
 
     // ── Common timestamps ─────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ public sealed class TimeTravelTests
     public TimeTravelTests()
     {
         _sampleStore = new StubSampleStore();
-        _settings = new BdcSettings
+        _settings = new EcsSettings
         {
             NamespacePrefix    = "company.BDC",
             EntityIdPattern    = @"(?i)\bEntityId\b",
@@ -50,9 +50,9 @@ public sealed class TimeTravelTests
     public void TimeTravel_FindsCorrectDescriptorsAtTimestamp()
     {
         // Arrange: three updates to the Master topic for entity 10 at T1, T2, T3.
-        _sampleStore.Add(MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 10, Name = "v1" }, T1));
-        _sampleStore.Add(MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 10, Name = "v2" }, T2));
-        _sampleStore.Add(MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 10, Name = "v3" }, T3));
+        _sampleStore.Add(MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 10, Name = "v1" }, T1));
+        _sampleStore.Add(MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 10, Name = "v2" }, T2));
+        _sampleStore.Add(MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 10, Name = "v3" }, T3));
 
         // Query halfway between T2 and T3 — should see v2.
         var result = _engine.GetHistoricalState(10, T2.AddMilliseconds(500));
@@ -61,7 +61,7 @@ public sealed class TimeTravelTests
         Assert.Single(result.Descriptors);
         var found = Assert.Single(result.Descriptors).Value;
         Assert.Equal(T2, found.Timestamp);
-        Assert.Equal("v2", ((BdcEntityMasterTopic)found.Payload).Name);
+        Assert.Equal("v2", ((EcsEntityMasterTopic)found.Payload).Name);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -73,9 +73,9 @@ public sealed class TimeTravelTests
     public void TimeTravel_ExcludesDisposedDescriptors()
     {
         // Arrange: Info descriptor added at T1, disposed at T=1.5, query at T2.
-        _sampleStore.Add(MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 20 }, T1));
-        _sampleStore.Add(MakeAliveSample<BdcEntityInfoTopic>(new BdcEntityInfoTopic { EntityId = 20, Description = "alive" }, T1));
-        _sampleStore.Add(MakeDisposalSample<BdcEntityInfoTopic>(new BdcEntityInfoTopic { EntityId = 20 }, T1.AddMilliseconds(500)));
+        _sampleStore.Add(MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 20 }, T1));
+        _sampleStore.Add(MakeAliveSample<EcsEntityInfoTopic>(new EcsEntityInfoTopic { EntityId = 20, Description = "alive" }, T1));
+        _sampleStore.Add(MakeDisposalSample<EcsEntityInfoTopic>(new EcsEntityInfoTopic { EntityId = 20 }, T1.AddMilliseconds(500)));
 
         // Query at T2 — the Info descriptor was disposed at T=1.5; should not appear.
         var result = _engine.GetHistoricalState(20, T2);
@@ -95,8 +95,8 @@ public sealed class TimeTravelTests
     public void TimeTravel_EntityDeadAtTimestamp_ReturnsEmpty()
     {
         // Arrange: Master born at T1, disposed at T=1.5.  No resurrection before T2.
-        _sampleStore.Add(MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 30 }, T1));
-        _sampleStore.Add(MakeDisposalSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 30 }, T1.AddMilliseconds(500)));
+        _sampleStore.Add(MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 30 }, T1));
+        _sampleStore.Add(MakeDisposalSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 30 }, T1.AddMilliseconds(500)));
 
         var result = _engine.GetHistoricalState(30, T2);
 
@@ -113,9 +113,9 @@ public sealed class TimeTravelTests
     public void TimeTravel_MultiInstance_FindsAllPartIds()
     {
         // Arrange: entity 40 has a Master + two part descriptors (PartId=1 and PartId=2).
-        _sampleStore.Add(MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 40 }, T1));
-        _sampleStore.Add(MakeAliveSample<BdcPartDescriptorTopic>(new BdcPartDescriptorTopic { EntityId = 40, PartId = 1, Value = 100 }, T1));
-        _sampleStore.Add(MakeAliveSample<BdcPartDescriptorTopic>(new BdcPartDescriptorTopic { EntityId = 40, PartId = 2, Value = 200 }, T1));
+        _sampleStore.Add(MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 40 }, T1));
+        _sampleStore.Add(MakeAliveSample<EcsPartDescriptorTopic>(new EcsPartDescriptorTopic { EntityId = 40, PartId = 1, Value = 100 }, T1));
+        _sampleStore.Add(MakeAliveSample<EcsPartDescriptorTopic>(new EcsPartDescriptorTopic { EntityId = 40, PartId = 2, Value = 200 }, T1));
 
         var result = _engine.GetHistoricalState(40, T2);
 
@@ -143,8 +143,8 @@ public sealed class TimeTravelTests
 
         for (int i = 0; i < 5; i++)
         {
-            _sampleStore.Add(MakeAliveSample<BdcEntityMasterTopic>(
-                new BdcEntityMasterTopic { EntityId = 50, Name = $"state-{i + 1}" },
+            _sampleStore.Add(MakeAliveSample<EcsEntityMasterTopic>(
+                new EcsEntityMasterTopic { EntityId = 50, Name = $"state-{i + 1}" },
                 times[i]));
         }
 
@@ -155,7 +155,7 @@ public sealed class TimeTravelTests
         Assert.Equal(EntityState.Alive, result.EntityState);
         var found = Assert.Single(result.Descriptors).Value;
         // Must be the event #3 payload (index 2 → "state-3").
-        Assert.Equal("state-3", ((BdcEntityMasterTopic)found.Payload).Name);
+        Assert.Equal("state-3", ((EcsEntityMasterTopic)found.Payload).Name);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ public sealed class TimeTravelTests
     [Fact]
     public void BinarySearch_EmptySamples_ReturnsEmpty()
     {
-        var meta = new TopicMetadata(typeof(BdcEntityMasterTopic));
+        var meta = new TopicMetadata(typeof(EcsEntityMasterTopic));
         var entityField = meta.KeyFields[0]; // EntityId
 
         var result = TimeTravelEngine.FindLatestBeforeTime(
@@ -177,10 +177,10 @@ public sealed class TimeTravelTests
     [Fact]
     public void BinarySearch_AllSamplesAfterTarget_ReturnsEmpty()
     {
-        var meta    = new TopicMetadata(typeof(BdcEntityMasterTopic));
+        var meta    = new TopicMetadata(typeof(EcsEntityMasterTopic));
         var samples = new List<SampleData>
         {
-            MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 1 }, T3),
+            MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 1 }, T3),
         };
 
         var result = TimeTravelEngine.FindLatestBeforeTime(
@@ -192,11 +192,11 @@ public sealed class TimeTravelTests
     [Fact]
     public void BinarySearch_IgnoresDifferentEntityIds()
     {
-        var meta    = new TopicMetadata(typeof(BdcEntityMasterTopic));
+        var meta    = new TopicMetadata(typeof(EcsEntityMasterTopic));
         var samples = new List<SampleData>
         {
-            MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 99, Name = "other" }, T1),
-            MakeAliveSample<BdcEntityMasterTopic>(new BdcEntityMasterTopic { EntityId = 1,  Name = "mine"  }, T2),
+            MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 99, Name = "other" }, T1),
+            MakeAliveSample<EcsEntityMasterTopic>(new EcsEntityMasterTopic { EntityId = 1,  Name = "mine"  }, T2),
         };
 
         var result = TimeTravelEngine.FindLatestBeforeTime(
@@ -205,7 +205,7 @@ public sealed class TimeTravelTests
         // Only entity 1 should appear.
         var (partId, sample) = Assert.Single(result);
         Assert.Null(partId); // no PartId field
-        Assert.Equal("mine", ((BdcEntityMasterTopic)sample.Payload).Name);
+        Assert.Equal("mine", ((EcsEntityMasterTopic)sample.Payload).Name);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

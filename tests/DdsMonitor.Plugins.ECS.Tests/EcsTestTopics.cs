@@ -1,33 +1,33 @@
 using CycloneDDS.Schema;
 #pragma warning disable CS0649  // Test topic fields are filled via reflection / TopicMetadata accessors
 
-namespace DdsMonitor.Plugins.Bdc.Tests;
+namespace DdsMonitor.Plugins.ECS.Tests;
 
-// ── BDC-style topics used by EntityStore unit tests ──────────────────────────
+// ── ECS-style topics used by EntityStore unit tests ──────────────────────────
 // These are non-partial structs; no DDS code generation is required because
 // TopicMetadata is built via pure reflection on [DdsTopic] / [DdsKey] attributes.
 
-/// <summary>Simulates a BDC Master descriptor topic (entity lifecycle token).</summary>
-[DdsTopic("company.BDC.EntityMaster")]
-internal struct BdcEntityMasterTopic
+/// <summary>Simulates a ECS Master descriptor topic (entity lifecycle token).</summary>
+[DdsTopic("company.ECS.EntityMaster")]
+internal struct EcsEntityMasterTopic
 {
     [DdsKey]
     public int EntityId;
     public string Name;
 }
 
-/// <summary>Simulates a BDC non-master descriptor (entity data).</summary>
-[DdsTopic("company.BDC.EntityInfo")]
-internal struct BdcEntityInfoTopic
+/// <summary>Simulates a ECS non-master descriptor (entity data).</summary>
+[DdsTopic("company.ECS.EntityInfo")]
+internal struct EcsEntityInfoTopic
 {
     [DdsKey]
     public int EntityId;
     public string Description;
 }
 
-/// <summary>Simulates a BDC topic that supports both EntityId and PartId keys.</summary>
-[DdsTopic("company.BDC.PartDescriptor")]
-internal struct BdcPartDescriptorTopic
+/// <summary>Simulates a ECS topic that supports both EntityId and PartId keys.</summary>
+[DdsTopic("company.ECS.PartDescriptor")]
+internal struct EcsPartDescriptorTopic
 {
     [DdsKey]
     public int EntityId;
@@ -39,8 +39,8 @@ internal struct BdcPartDescriptorTopic
 }
 
 /// <summary>A topic whose key field has an invalid (double) type for DMON-062 testing.</summary>
-[DdsTopic("company.BDC.InvalidKeyTopic")]
-internal struct BdcInvalidKeyTopic
+[DdsTopic("company.ECS.InvalidKeyTopic")]
+internal struct EcsInvalidKeyTopic
 {
     [DdsKey]
     public double EntityId;   // double is NOT a valid integer key type → must be rejected
@@ -58,9 +58,9 @@ internal struct OtherNamespaceTopic
     public int Value;
 }
 
-/// <summary>A non-BDC topic with no EntityId-matching field.</summary>
-[DdsTopic("company.BDC.NoEntityIdTopic")]
-internal struct BdcNoEntityIdTopic
+/// <summary>A non-ECS topic with no EntityId-matching field.</summary>
+[DdsTopic("company.ECS.NoEntityIdTopic")]
+internal struct EcsNoEntityIdTopic
 {
     [DdsKey]
     public int SomeOtherId;   // "SomeOtherId" won't match the default EntityId regex

@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using DdsMonitor.Engine;
-using DdsMonitor.Plugins.Bdc;
+using DdsMonitor.Plugins.ECS;
 
-namespace DdsMonitor.Plugins.Bdc.Tests;
+namespace DdsMonitor.Plugins.ECS.Tests;
 
 /// <summary>
 /// Unit tests for MON-BATCH-29:
@@ -16,15 +16,15 @@ namespace DdsMonitor.Plugins.Bdc.Tests;
 public sealed class EntityStoreTests : System.IDisposable
 {
     private readonly StubInstanceStore _instanceStore;
-    private readonly BdcSettings _settings;
+    private readonly EcsSettings _settings;
     private readonly EntityStore _store;
 
     public EntityStoreTests()
     {
         _instanceStore = new StubInstanceStore();
-        _settings = new BdcSettings
+        _settings = new EcsSettings
         {
-            NamespacePrefix    = "company.BDC",
+            NamespacePrefix    = "company.ECS",
             EntityIdPattern    = @"(?i)\bEntityId\b",
             PartIdPattern      = @"(?i)\bPartId\b",
             MasterTopicPattern = @"Master$"
@@ -42,7 +42,7 @@ public sealed class EntityStoreTests : System.IDisposable
     public void EntityStore_NewMasterDescriptor_CreatesAliveEntity()
     {
         // Arrange — fire an Alive event for the Master topic.
-        var evt = TestEventFactory.AliveEvent<BdcEntityMasterTopic>(
+        var evt = TestEventFactory.AliveEvent<EcsEntityMasterTopic>(
             TransitionKind.Added,
             keyValues: new object[] { 42 });
 
@@ -59,7 +59,7 @@ public sealed class EntityStoreTests : System.IDisposable
     public void EntityStore_NonMasterOnly_CreatesZombieEntity()
     {
         // Arrange — fire an Alive event for a NON-master topic (EntityInfo).
-        var evt = TestEventFactory.AliveEvent<BdcEntityInfoTopic>(
+        var evt = TestEventFactory.AliveEvent<EcsEntityInfoTopic>(
             TransitionKind.Added,
             keyValues: new object[] { 7 });
 
@@ -76,13 +76,13 @@ public sealed class EntityStoreTests : System.IDisposable
     public void EntityStore_DisposeMaster_TransitionsToZombie()
     {
         // Arrange — add both Master and Info descriptors.
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityMasterTopic>(TransitionKind.Added, new object[] { 10 }));
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityInfoTopic>(TransitionKind.Added, new object[] { 10 }));
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityMasterTopic>(TransitionKind.Added, new object[] { 10 }));
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityInfoTopic>(TransitionKind.Added, new object[] { 10 }));
 
         Assert.Equal(EntityState.Alive, _store.Entities[10].State);
 
         // Act — dispose the Master.
-        _instanceStore.Raise(TestEventFactory.RemovedEvent<BdcEntityMasterTopic>(new object[] { 10 }));
+        _instanceStore.Raise(TestEventFactory.RemovedEvent<EcsEntityMasterTopic>(new object[] { 10 }));
 
         // Assert — still has Info → Zombie.
         Assert.Equal(EntityState.Zombie, _store.Entities[10].State);
@@ -92,12 +92,12 @@ public sealed class EntityStoreTests : System.IDisposable
     public void EntityStore_DisposeAllDescriptors_TransitionsToDead()
     {
         // Arrange — add both descriptors.
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityMasterTopic>(TransitionKind.Added, new object[] { 5 }));
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityInfoTopic>(TransitionKind.Added, new object[] { 5 }));
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityMasterTopic>(TransitionKind.Added, new object[] { 5 }));
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityInfoTopic>(TransitionKind.Added, new object[] { 5 }));
 
         // Act — dispose both.
-        _instanceStore.Raise(TestEventFactory.RemovedEvent<BdcEntityMasterTopic>(new object[] { 5 }));
-        _instanceStore.Raise(TestEventFactory.RemovedEvent<BdcEntityInfoTopic>(new object[] { 5 }));
+        _instanceStore.Raise(TestEventFactory.RemovedEvent<EcsEntityMasterTopic>(new object[] { 5 }));
+        _instanceStore.Raise(TestEventFactory.RemovedEvent<EcsEntityInfoTopic>(new object[] { 5 }));
 
         // Assert
         Assert.Equal(EntityState.Dead, _store.Entities[5].State);
@@ -108,13 +108,13 @@ public sealed class EntityStoreTests : System.IDisposable
     public void EntityStore_MultiInstanceDescriptor_TracksPartIdsSeparately()
     {
         // Arrange — two samples for the same EntityId but different PartIds.
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcPartDescriptorTopic>(
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsPartDescriptorTopic>(
             TransitionKind.Added, keyValues: new object[] { 99, 1 }));
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcPartDescriptorTopic>(
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsPartDescriptorTopic>(
             TransitionKind.Added, keyValues: new object[] { 99, 2 }));
 
         // Also add the Master so we can confirm the full descriptor count.
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityMasterTopic>(
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityMasterTopic>(
             TransitionKind.Added, keyValues: new object[] { 99 }));
 
         // Assert — Master(no partId) + PartDescriptor(partId=1) + PartDescriptor(partId=2) = 3 descriptors.
@@ -130,13 +130,13 @@ public sealed class EntityStoreTests : System.IDisposable
         int id = 77;
 
         // Dead → Zombie (first non-master descriptor)
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityInfoTopic>(TransitionKind.Added, new object[] { id }));
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityInfoTopic>(TransitionKind.Added, new object[] { id }));
         // Zombie → Alive (Master added)
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityMasterTopic>(TransitionKind.Added, new object[] { id }));
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityMasterTopic>(TransitionKind.Added, new object[] { id }));
         // Alive → Zombie (Master removed)
-        _instanceStore.Raise(TestEventFactory.RemovedEvent<BdcEntityMasterTopic>(new object[] { id }));
+        _instanceStore.Raise(TestEventFactory.RemovedEvent<EcsEntityMasterTopic>(new object[] { id }));
         // Zombie → Dead (non-master removed)
-        _instanceStore.Raise(TestEventFactory.RemovedEvent<BdcEntityInfoTopic>(new object[] { id }));
+        _instanceStore.Raise(TestEventFactory.RemovedEvent<EcsEntityInfoTopic>(new object[] { id }));
 
         var journal = _store.Entities[id].Journal;
 
@@ -156,7 +156,7 @@ public sealed class EntityStoreTests : System.IDisposable
     public void EntityStore_RegexExtractsCorrectKeyFields_EntityId()
     {
         // Verify that the EntityId field index is found via the regex, not by position.
-        var meta = new TopicMetadata(typeof(BdcEntityMasterTopic));
+        var meta = new TopicMetadata(typeof(EcsEntityMasterTopic));
         var regex = new Regex(@"(?i)\bEntityId\b", RegexOptions.Compiled);
 
         bool found = EntityStore.TryFindKeyField(meta, regex, out int idx);
@@ -169,7 +169,7 @@ public sealed class EntityStoreTests : System.IDisposable
     public void EntityStore_RegexExtractsCorrectKeyFields_PartId()
     {
         // Verify that the PartId field is correctly located in a multi-key topic.
-        var meta = new TopicMetadata(typeof(BdcPartDescriptorTopic));
+        var meta = new TopicMetadata(typeof(EcsPartDescriptorTopic));
         var entityIdRegex = new Regex(@"(?i)\bEntityId\b", RegexOptions.Compiled);
         var partIdRegex   = new Regex(@"(?i)\bPartId\b",   RegexOptions.Compiled);
 
@@ -186,8 +186,8 @@ public sealed class EntityStoreTests : System.IDisposable
     [Fact]
     public void EntityStore_TopicWithNoEntityIdField_IsIgnored()
     {
-        // BdcNoEntityIdTopic has a key field "SomeOtherId" that won't match the EntityId regex.
-        var evt = TestEventFactory.AliveEvent<BdcNoEntityIdTopic>(
+        // EcsNoEntityIdTopic has a key field "SomeOtherId" that won't match the EntityId regex.
+        var evt = TestEventFactory.AliveEvent<EcsNoEntityIdTopic>(
             TransitionKind.Added, keyValues: new object[] { 1 });
 
         _instanceStore.Raise(evt);
@@ -203,9 +203,9 @@ public sealed class EntityStoreTests : System.IDisposable
     [Fact]
     public void EntityStore_InvalidNumericKeyType_TopicIsRejected()
     {
-        // BdcInvalidKeyTopic has a double EntityId, which must cause the topic to be
+        // EcsInvalidKeyTopic has a double EntityId, which must cause the topic to be
         // rejected even though the field name matches the EntityId regex.
-        var evt = TestEventFactory.AliveEvent<BdcInvalidKeyTopic>(
+        var evt = TestEventFactory.AliveEvent<EcsInvalidKeyTopic>(
             TransitionKind.Added, keyValues: new object[] { 3.14 });
 
         _instanceStore.Raise(evt);
@@ -246,7 +246,7 @@ public sealed class EntityStoreTests : System.IDisposable
     [Fact]
     public void EntityStore_TopicOutsideNamespacePrefix_IsIgnored()
     {
-        // OtherNamespaceTopic is in "other.NS." which does NOT start with "company.BDC".
+        // OtherNamespaceTopic is in "other.NS." which does NOT start with "company.ECS".
         var evt = TestEventFactory.AliveEvent<OtherNamespaceTopic>(
             TransitionKind.Added, keyValues: new object[] { 100 });
 
@@ -277,7 +277,7 @@ public sealed class EntityStoreTests : System.IDisposable
     public void EntityStore_ChangingRegex_ResetsAggregation()
     {
         // Seed an entity.
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityMasterTopic>(
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityMasterTopic>(
             TransitionKind.Added, keyValues: new object[] { 1 }));
         Assert.NotEmpty(_store.Entities);
 
@@ -306,7 +306,7 @@ public sealed class EntityStoreTests : System.IDisposable
     [Fact]
     public void EntityStore_OnInstanceStoreClear_ResetsAllEntities()
     {
-        _instanceStore.Raise(TestEventFactory.AliveEvent<BdcEntityMasterTopic>(
+        _instanceStore.Raise(TestEventFactory.AliveEvent<EcsEntityMasterTopic>(
             TransitionKind.Added, keyValues: new object[] { 20 }));
         Assert.NotEmpty(_store.Entities);
 

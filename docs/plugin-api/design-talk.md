@@ -7,10 +7,10 @@ Current State of the Plugin API
 
 Right now, the `IMonitorPlugin` interface only provides two extension points:
 
--   **ConfigureServices(IServiceCollection services)**: This allows the plugin to register background workers and inject dependencies into the host's DI container. For example, the BDC plugin uses this to run its `EntityStore` in the background to aggregate DDS samples.-   **Initialize(IMonitorContext context)**: This provides access to an `IMonitorContext`. However, this context currently only exposes two registries:
+-   **ConfigureServices(IServiceCollection services)**: This allows the plugin to register background workers and inject dependencies into the host's DI container. For example, the ECS plugin uses this to run its `EntityStore` in the background to aggregate DDS samples.-   **Initialize(IMonitorContext context)**: This provides access to an `IMonitorContext`. However, this context currently only exposes two registries:
     -   `MenuRegistry`: To add custom drop-down menus to the top application navigation bar.-   `PanelRegistry`: To register standalone floating windows (panels).
 
-**The Settings Limitation:** As you noticed, the plugin API lacks unified state management. Because there is no central `IPluginSettingsManager` provided by the host, plugins are forced to do their own file I/O. The BDC plugin works around this by injecting `IWorkspaceState` to guess the application data directory, and then manually serializes its own `bdc-settings.json` file to sit alongside the main workspace file.
+**The Settings Limitation:** As you noticed, the plugin API lacks unified state management. Because there is no central `IPluginSettingsManager` provided by the host, plugins are forced to do their own file I/O. The ECS plugin works around this by injecting `IWorkspaceState` to guess the application data directory, and then manually serializes its own `ecs-settings.json` file to sit alongside the main workspace file.
 
 How to Improve the Plugin API
 
@@ -18,7 +18,7 @@ To make the API more powerful and deeply integrated, the following architectural
 
 **1\. Unified Settings Management** Instead of forcing plugins to manage their own I/O, the `IMonitorContext` (or a dedicated injected service) should allow plugins to register setting objects. The host's `WorkspacePersistenceService` could automatically serialize these plugin configurations directly into the main `workspace.json` file.
 
-**2\. Deep UI Integration (Context Menus & Toolbars)** Currently, right-click context menus in core panels like the `SamplesPanel` or `InstancesPanel` are hardcoded with fixed options like "Show Detail" or "Clone to Send". The API should be expanded to allow plugins to register contextual actions. For example, the BDC plugin could register an action that appears when you right-click a raw DDS sample, allowing you to "Inspect as BDC Entity".
+**2\. Deep UI Integration (Context Menus & Toolbars)** Currently, right-click context menus in core panels like the `SamplesPanel` or `InstancesPanel` are hardcoded with fixed options like "Show Detail" or "Clone to Send". The API should be expanded to allow plugins to register contextual actions. For example, the ECS plugin could register an action that appears when you right-click a raw DDS sample, allowing you to "Inspect as ECS Entity".
 
 **3\. Exposing Formatters and Type Drawers** DdsMonitor already has sophisticated internal registries for how data is displayed and edited, which plugins should be able to tap into via `IMonitorContext`:
 
@@ -38,7 +38,7 @@ Here are other highly valuable extension points that could be exposed to plugins
 
 **3\. Rich Tooltip Generators** The UI utilizes a global **TooltipService** that currently renders basic syntax-highlighted JSON when a user hovers over a payload string or a "D" (Detail) button. If plugins could register custom tooltip providers based on payload types, they could render domain-specific HTML popups—such as showing a mini-map preview when hovering over a geospatial coordinate, or a status gauge when hovering over health metrics.
 
-**4\. Custom Filter Functions** The application evaluates user search queries using an **IFilterCompiler** backed by Dynamic LINQ. An extension point here could allow plugins to register custom macro functions or operators that users can type into the filter bar. For example, the BDC plugin could register a `DistanceTo()` function, allowing users to type `Payload.DistanceTo(lat, lon) < 1000` into the standard Samples Panel filter.
+**4\. Custom Filter Functions** The application evaluates user search queries using an **IFilterCompiler** backed by Dynamic LINQ. An extension point here could allow plugins to register custom macro functions or operators that users can type into the filter bar. For example, the ECS plugin could register a `DistanceTo()` function, allowing users to type `Payload.DistanceTo(lat, lon) < 1000` into the standard Samples Panel filter.
 
 **5\. Programmatic Topic Coloring** The **TopicColorService** currently assigns colors to topics deterministically based on a hash of their `ShortName`, or via manual user overrides saved to disk. An extension point here would allow plugins to register programmatic coloring rules. A plugin could ensure that any topic name containing "Error" or "Alarm" is always rendered in red across all panels.
 
@@ -76,7 +76,7 @@ The `IValueFormatter` is strictly designed as a "Tier 1 value formatter contract
 
 If you want to display a customized form or entirely replace the default inspection UI for a specific topic, you have two different paths depending on your goal:
 
-**1\. For Inspecting/Viewing a Whole Sample (Custom Panel)** If you want a completely bespoke UI to view a sample, you should bypass the default `DetailPanel` entirely and register a brand new custom panel via the `PanelRegistry`. For example, the BDC plugin uses this exact approach: instead of relying on the default tree view, it registers its own custom `"BDC Entity Detail"` panel to render a specialized, domain-specific UI for its entities.
+**1\. For Inspecting/Viewing a Whole Sample (Custom Panel)** If you want a completely bespoke UI to view a sample, you should bypass the default `DetailPanel` entirely and register a brand new custom panel via the `PanelRegistry`. For example, the ECS plugin uses this exact approach: instead of relying on the default tree view, it registers its own custom `"ECS Entity Detail"` panel to render a specialized, domain-specific UI for its entities.
 
 **2\. For Editing a Whole Sample (Type Drawers)** If your goal is to build a customized form for _editing_ and sending a sample (such as in the "Send Sample" panel), you should use the `ITypeDrawerRegistry`. This registry allows plugins to map a specific CLR type to a Blazor `RenderFragment`, enabling you to inject fully interactive, custom UI input controls directly into the application's `DynamicForm` engine.
 
@@ -160,19 +160,19 @@ public interface IMonitorContext
 }
 ```
 
-**3\. Example Plugin Usage** With this API, the BDC plugin could easily inject a domain-specific action whenever a user right-clicks a raw sample anywhere in the application:
+**3\. Example Plugin Usage** With this API, the ECS plugin could easily inject a domain-specific action whenever a user right-clicks a raw sample anywhere in the application:
 
 ```
 public void Initialize(IMonitorContext context)
 {
     context.ContextMenuRegistry.RegisterProvider<SampleData>(sample => 
     {
-        if (sample.TopicMetadata.ShortName.StartsWith("BDC"))
+        if (sample.TopicMetadata.ShortName.StartsWith("ECS"))
         {
             yield return new ContextMenuItem(
-                Label: "Inspect BDC Entity", 
+                Label: "Inspect ECS Entity", 
                 Icon: "🔍", 
-                Action: () => OpenBdcInspector(sample)
+                Action: () => OpenEcsInspector(sample)
             );
         }
     });
@@ -347,13 +347,13 @@ Rather than passing strongly-typed configuration objects between the host and pl
 
 This is exactly how the `IWindowManager` currently spawns windows. The `SpawnPanel` method accepts a `string componentTypeName` and a `Dictionary<string, object>? initialState`.
 
--   When the BDC plugin spawns an Entity Detail panel, it simply passes `["EntityId"] = entity.EntityId` as a dictionary string key.-   The host then dynamically attempts to convert those dictionary values into the Blazor component parameters using `TryConvertParameterValue`.
+-   When the ECS plugin spawns an Entity Detail panel, it simply passes `["EntityId"] = entity.EntityId` as a dictionary string key.-   The host then dynamically attempts to convert those dictionary values into the Blazor component parameters using `TryConvertParameterValue`.
 
 If you expand the Plugin API to allow plugins to pass `Dictionary<string, object>` to the host for custom settings or menu definitions, you completely eliminate the need for shared data-transfer structs.
 
 4\. String-Path Registries
 
-You can define UI extension points entirely via strings. The current `IMenuRegistry` already does this: plugins add menus by passing a slash-delimited string path like `"Plugins/BDC"` rather than dealing with nested object trees.
+You can define UI extension points entirely via strings. The current `IMenuRegistry` already does this: plugins add menus by passing a slash-delimited string path like `"Plugins/ECS"` rather than dealing with nested object trees.
 
 You could implement future extension points the exact same way:
 
@@ -406,13 +406,13 @@ that sound good! pls summarize what we discussed so far
 
 **2\. Concepts for a Highly Decoupled, Flexible API**
 
--   **Feature Provider (Capability Querying):** Moving away from hardcoded interface properties and instead using a `GetFeature<T>()` or `IServiceProvider` pattern. Plugins dynamically ask the host for capabilities at runtime, allowing them to gracefully degrade if loaded into an older host version.-   **Event-Driven Decoupling:** Relying heavily heavily on the `IEventBroker` to broadcast lifecycle and UI events. Plugins can subscribe to events (like a user selecting a sample) without needing rigid, highly-versioned API hooks.-   **Duck Typing via String Reflection:** Using string-based reflection to check if a plugin exposes certain extension methods before invoking them. This prevents `MissingMethodException` crashes when mixing new plugins with old hosts.-   **Relaxed Type Matching (The ME2-T25-B Pattern):** Resolving plugin types and UI components by their `FullName` string while deliberately stripping out strict assembly versions or culture tags, ensuring updates to underlying DLLs don't break compatibility.-   **Dictionary-Based State Passing:** Spawning windows and passing configuration state using a simple `Dictionary<string, object>`. This completely eliminates the need for shared, strictly-typed data transfer objects between the host and plugins.-   **String-Path Registries:** Defining UI extension points using straightforward slash-delimited string paths (e.g., `"Plugins/BDC"`) instead of nested object trees.-   **The Schema and Getter Pattern:** To handle high-frequency sample data without introducing massive dynamic language runtime (DLR) penalties or garbage collection overhead, plugins explore opaque payload objects using `TopicMetadata` and `FieldMetadata`. They locate the data they need via string paths (`StructuredName`) and extract it using pre-compiled, fast-execution `Getter` delegates.
+-   **Feature Provider (Capability Querying):** Moving away from hardcoded interface properties and instead using a `GetFeature<T>()` or `IServiceProvider` pattern. Plugins dynamically ask the host for capabilities at runtime, allowing them to gracefully degrade if loaded into an older host version.-   **Event-Driven Decoupling:** Relying heavily heavily on the `IEventBroker` to broadcast lifecycle and UI events. Plugins can subscribe to events (like a user selecting a sample) without needing rigid, highly-versioned API hooks.-   **Duck Typing via String Reflection:** Using string-based reflection to check if a plugin exposes certain extension methods before invoking them. This prevents `MissingMethodException` crashes when mixing new plugins with old hosts.-   **Relaxed Type Matching (The ME2-T25-B Pattern):** Resolving plugin types and UI components by their `FullName` string while deliberately stripping out strict assembly versions or culture tags, ensuring updates to underlying DLLs don't break compatibility.-   **Dictionary-Based State Passing:** Spawning windows and passing configuration state using a simple `Dictionary<string, object>`. This completely eliminates the need for shared, strictly-typed data transfer objects between the host and plugins.-   **String-Path Registries:** Defining UI extension points using straightforward slash-delimited string paths (e.g., `"Plugins/ECS"`) instead of nested object trees.-   **The Schema and Getter Pattern:** To handle high-frequency sample data without introducing massive dynamic language runtime (DLR) penalties or garbage collection overhead, plugins explore opaque payload objects using `TopicMetadata` and `FieldMetadata`. They locate the data they need via string paths (`StructuredName`) and extract it using pre-compiled, fast-execution `Getter` delegates.
 
 how can we enable the plugins to save their settings to the same file as the rest of ddsmonitor, while keeping the decoupled flexible API architecture?
 
 To enable plugins to save their global settings directly into the main `workspace.json` file while maintaining the decoupled, future-proof architecture we discussed, you can combine the **Event-Driven Decoupling** and **Dictionary-Based State Passing** patterns.
 
-Currently, DdsMonitor serializes the workspace purely as a `List<PanelState>`, and the BDC plugin is forced to manually read/write its own `bdc-settings.json` file via its `BdcSettingsPersistenceService`.
+Currently, DdsMonitor serializes the workspace purely as a `List<PanelState>`, and the ECS plugin is forced to manually read/write its own `ecs-settings.json` file via its `EcsSettingsPersistenceService`.
 
 Here is how you can seamlessly integrate plugin settings into the main workspace file without introducing rigid API contracts:
 
@@ -426,8 +426,8 @@ The new `workspace.json` format would look like this:
 {
   "Panels": [ ... ],
   "PluginSettings": {
-    "BDC": {
-      "NamespacePrefix": "company.BDC.",
+    "ECS": {
+      "NamespacePrefix": "company.ECS.",
       "EntityIdPattern": "(?i)\\bEntityId\\b"
     }
   }
@@ -459,24 +459,24 @@ _eventBroker.Publish(new WorkspaceSavingEvent(pluginSettings));
 
 3\. Dictionary-Based State Passing
 
-To remain decoupled, plugins will not pass their strongly typed objects (like `BdcSettingsDto`) to the host. Instead, they convert their settings into a `Dictionary<string, object>`.
+To remain decoupled, plugins will not pass their strongly typed objects (like `EcsSettingsDto`) to the host. Instead, they convert their settings into a `Dictionary<string, object>`.
 
-The beauty of this is that the DdsMonitor host already has a highly robust `TrySanitizeValue` method used for panel states, which recursively sanitizes and safely serializes `Dictionary<string, object>` into JSON. The host doesn't need to know anything about the BDC plugin's schema to save it perfectly.
+The beauty of this is that the DdsMonitor host already has a highly robust `TrySanitizeValue` method used for panel states, which recursively sanitizes and safely serializes `Dictionary<string, object>` into JSON. The host doesn't need to know anything about the ECS plugin's schema to save it perfectly.
 
-4\. Refactoring the BDC Plugin
+4\. Refactoring the ECS Plugin
 
-With this architecture, you can completely delete the file I/O logic in the `BdcSettingsPersistenceService`. Instead, the plugin simply subscribes to the workspace events during initialization.
+With this architecture, you can completely delete the file I/O logic in the `EcsSettingsPersistenceService`. Instead, the plugin simply subscribes to the workspace events during initialization.
 
-Here is how the BDC plugin would interact with the host:
+Here is how the ECS plugin would interact with the host:
 
 ```
-public class BdcSettingsManager : IDisposable
+public class EcsSettingsManager : IDisposable
 {
-    private readonly BdcSettings _settings;
+    private readonly EcsSettings _settings;
     private readonly IDisposable _saveSub;
     private readonly IDisposable _loadSub;
 
-    public BdcSettingsManager(BdcSettings settings, IEventBroker broker)
+    public EcsSettingsManager(EcsSettings settings, IEventBroker broker)
     {
         _settings = settings;
         // Subscribe to the decoupled events
@@ -494,16 +494,16 @@ public class BdcSettingsManager : IDisposable
         };
 
         // 2. Hand it to the host
-        evt.PluginSettings["BDC"] = mySettings;
+        evt.PluginSettings["ECS"] = mySettings;
     }
 
     private void OnWorkspaceLoaded(WorkspaceLoadedEvent evt)
     {
         // 1. Check if the host has our settings
-        if (evt.PluginSettings.TryGetValue("BDC", out var raw) && 
+        if (evt.PluginSettings.TryGetValue("ECS", out var raw) && 
             raw is Dictionary<string, object> dict) // Or JsonElement depending on deserializer
         {
-            // 2. Unpack the dictionary back into the live BdcSettings
+            // 2. Unpack the dictionary back into the live EcsSettings
             if (dict.TryGetValue("NamespacePrefix", out var ns))
                 _settings.NamespacePrefix = ns.ToString();
         }
@@ -772,7 +772,7 @@ public class FeatureDemoPlugin : IMonitorPlugin
     // 1. Register background services
     public void ConfigureServices(IServiceCollection services)
     {
-        // Registers a background worker, just like the BDC plugin does [1].
+        // Registers a background worker, just like the ECS plugin does [1].
         services.AddSingleton<DemoBackgroundProcessor>();
     }
 

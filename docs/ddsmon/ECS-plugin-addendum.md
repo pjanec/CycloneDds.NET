@@ -1,9 +1,9 @@
-﻿### Addendum to Phase 6: Domain Entity Plugins (BDC)
+﻿### Addendum to Phase 6: Domain Entity Plugins (ECS)
 
 #### 1. Dynamic Configuration via Plugin UI
-The original design notes that the `EntityStore` filters events by a configurable namespace prefix (e.g., `company.BDC.*`). To support runtime configuration of this prefix, as well as the new regex patterns, the BDC plugin will expose a custom settings panel.
-*   **Settings Panel Registration:** The plugin will implement a new Blazor component (e.g., `BdcSettingsPanel.razor`) and register it during the `Initialize` phase using the `IMonitorContext.PanelRegistry` (the `PluginPanelRegistry` introduced in Batch 28). 
-*   **Menu Integration:** The plugin will also add a menu item using `IMonitorContext.MenuRegistry` (e.g., "Plugins/BDC/Settings") to spawn this panel.
+The original design notes that the `EntityStore` filters events by a configurable namespace prefix (e.g., `company.ECS.*`). To support runtime configuration of this prefix, as well as the new regex patterns, the ECS plugin will expose a custom settings panel.
+*   **Settings Panel Registration:** The plugin will implement a new Blazor component (e.g., `EcsSettingsPanel.razor`) and register it during the `Initialize` phase using the `IMonitorContext.PanelRegistry` (the `PluginPanelRegistry` introduced in Batch 28). 
+*   **Menu Integration:** The plugin will also add a menu item using `IMonitorContext.MenuRegistry` (e.g., "Plugins/ECS/Settings") to spawn this panel.
 *   **State Persistence:** The settings (namespace prefix, EntityId regex, PartId regex) should be persisted using the `WorkspacePersistenceService` so they are restored between browser sessions.
 
 #### 2. Key Field Regex Resolution
@@ -14,4 +14,4 @@ The original domain specification strictly defined the `EntityId` as **always** 
 Once the regex successfully matches a key field, the plugin must validate the underlying data type before attempting to extract the `EntityId` or `PartId`.
 *   **Type Checking:** The plugin will inspect the `FieldMetadata.ValueType` property. 
 *   **Supported Primitives:** The validation must confirm that the `ValueType` corresponds to a standard 32-bit or 64-bit integer, regardless of sign. Specifically, it should allow types such as `sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, and `ulong`. 
-*   **Error Handling:** If the regex matches a field but the `ValueType` is a non-integer type (like a floating-point number, string, or boolean), the `EntityStore` should gracefully reject the topic as an invalid BDC descriptor and exclude it from the aggregated `Entity`.
+*   **Error Handling:** If the regex matches a field but the `ValueType` is a non-integer type (like a floating-point number, string, or boolean), the `EntityStore` should gracefully reject the topic as an invalid ECS descriptor and exclude it from the aggregated `Entity`.

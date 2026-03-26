@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using DdsMonitor.Engine;
 
-namespace DdsMonitor.Plugins.Bdc;
+namespace DdsMonitor.Plugins.ECS;
 
 /// <summary>
 /// Represents the reconstructed state of a BDC domain entity at a specific point in time.

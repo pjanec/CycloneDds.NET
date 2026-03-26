@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using DdsMonitor.Engine;
 
-namespace DdsMonitor.Plugins.Bdc;
+namespace DdsMonitor.Plugins.ECS;
 
 /// <summary>
 /// Singleton background service that ingests <see cref="IInstanceStore.OnInstanceChanged"/>
@@ -29,7 +29,7 @@ public sealed class EntityStore : IObserver<InstanceTransitionEvent>, IDisposabl
     };
 
     private readonly IInstanceStore _instanceStore;
-    private readonly BdcSettings _settings;
+    private readonly EcsSettings _settings;
     private readonly object _sync = new();
     private readonly Dictionary<int, Entity> _entities = new();
     private IDisposable? _subscription;
@@ -42,7 +42,7 @@ public sealed class EntityStore : IObserver<InstanceTransitionEvent>, IDisposabl
     /// <summary>
     /// Initializes the store and subscribes to <see cref="IInstanceStore.OnInstanceChanged"/>.
     /// </summary>
-    public EntityStore(IInstanceStore instanceStore, BdcSettings settings)
+    public EntityStore(IInstanceStore instanceStore, EcsSettings settings)
     {
         _instanceStore = instanceStore ?? throw new ArgumentNullException(nameof(instanceStore));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));

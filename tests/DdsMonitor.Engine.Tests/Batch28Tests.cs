@@ -81,10 +81,10 @@ public sealed class Batch28Tests : IDisposable
     [Fact]
     public void MenuRegistry_AddItem_NestedPath_CreatesCorrectHierarchy()
     {
-        // "Plugins/BDC/Show Entities" → three levels: Plugins → BDC → Show Entities (leaf)
+        // "Plugins/ECS/Show Entities" → three levels: Plugins → ECS → Show Entities (leaf)
         var registry = new MenuRegistry();
 
-        registry.AddMenuItem("Plugins/BDC", "Show Entities", () => { });
+        registry.AddMenuItem("Plugins/ECS", "Show Entities", () => { });
 
         var roots = registry.GetTopLevelMenus();
         Assert.Single(roots);
@@ -94,12 +94,12 @@ public sealed class Batch28Tests : IDisposable
         Assert.False(plugins.IsLeaf);
         Assert.Single(plugins.Children);
 
-        var bdc = plugins.Children[0];
-        Assert.Equal("BDC", bdc.Label);
-        Assert.False(bdc.IsLeaf);
-        Assert.Single(bdc.Children);
+        var ecs = plugins.Children[0];
+        Assert.Equal("ECS", ecs.Label);
+        Assert.False(ecs.IsLeaf);
+        Assert.Single(ecs.Children);
 
-        var leaf = bdc.Children[0];
+        var leaf = ecs.Children[0];
         Assert.Equal("Show Entities", leaf.Label);
         Assert.True(leaf.IsLeaf);
     }

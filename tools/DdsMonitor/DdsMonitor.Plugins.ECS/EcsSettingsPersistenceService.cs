@@ -10,20 +10,20 @@ using Microsoft.Extensions.Hosting;
 // Injecting IWorkspaceState directly would cause a scope-validation error at startup.
 // Instead, derive the settings file path the same way WorkspaceState does (AppData/DdsMonitor).
 
-namespace DdsMonitor.Plugins.Bdc;
+namespace DdsMonitor.Plugins.ECS;
 
 /// <summary>
-/// Singleton hosted service that persists <see cref="BdcSettings"/> to a JSON file
+/// Singleton hosted service that persists <see cref="EcsSettings"/> to a JSON file
 /// (<c>bdc-settings.json</c>) stored alongside the main <c>workspace.json</c>.
 ///
 /// <para>
 /// On application startup (<see cref="StartAsync"/>) the saved file is loaded back and
-/// applied to the in-memory <see cref="BdcSettings"/> singleton.  Whenever the user
-/// modifies a setting, <see cref="BdcSettings.SettingsChanged"/> triggers a 2-second
+/// applied to the in-memory <see cref="EcsSettings"/> singleton.  Whenever the user
+/// modifies a setting, <see cref="EcsSettings.SettingsChanged"/> triggers a 2-second
 /// debounced write so persistence is transparent and non-blocking.
 /// </para>
 /// </summary>
-public sealed class BdcSettingsPersistenceService : IHostedService, IDisposable
+public sealed class EcsSettingsPersistenceService : IHostedService, IDisposable
 {
     private const string FileName = "bdc-settings.json";
 
@@ -33,7 +33,7 @@ public sealed class BdcSettingsPersistenceService : IHostedService, IDisposable
         PropertyNameCaseInsensitive = true,
     };
 
-    private readonly BdcSettings _settings;
+    private readonly EcsSettings _settings;
     private readonly string _filePath;
     private readonly DebouncedAction _debouncer;
 
@@ -41,7 +41,7 @@ public sealed class BdcSettingsPersistenceService : IHostedService, IDisposable
     /// Initialises the service.  The settings file is stored in the same
     /// <c>%APPDATA%\DdsMonitor\</c> folder that the host uses for <c>workspace.json</c>.
     /// </summary>
-    public BdcSettingsPersistenceService(BdcSettings settings)
+    public EcsSettingsPersistenceService(EcsSettings settings)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         // Mirror WorkspaceState: %APPDATA%\DdsMonitor\

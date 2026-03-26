@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DdsMonitor.Engine;
 
-namespace DdsMonitor.Plugins.Bdc.Tests;
+namespace DdsMonitor.Plugins.ECS.Tests;
 
 /// <summary>
 /// Minimal <see cref="ISampleStore"/> stub for unit-testing

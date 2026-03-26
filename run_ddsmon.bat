@@ -1,1 +1,1 @@
-start dotnet run --project D:\Work\FastCycloneDdsCsharpBindings\tools\DdsMonitor\DdsMonitor.Blazor\DdsMonitor.csproj
+start dotnet run --project %~dp0\tools\DdsMonitor\DdsMonitor.Blazor\DdsMonitor.csproj

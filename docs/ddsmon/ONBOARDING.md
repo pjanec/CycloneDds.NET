@@ -116,7 +116,7 @@ dotnet test tests/DdsMonitor.Engine.Tests/DdsMonitor.Engine.Tests.csproj
 The application has three layers (see [DESIGN.md §3](./DESIGN.md#3-architecture-overview)):
 
 1. **Headless Data Engine** — Topic discovery, DDS bridge, SampleStore, InstanceStore, FilterCompiler, Import/Export, Replay. No Blazor dependency. Can run as CLI.
-2. **Plugin Ecosystem** — Hot-loadable Razor Class Libraries for domain-specific features (BDC entities, TKB entities, custom formatters).
+2. **Plugin Ecosystem** — Hot-loadable Razor Class Libraries for domain-specific features (ECS entities, TKB entities, custom formatters).
 3. **Blazor Workspace Shell** — Web Desktop with floating panels, virtualized grids, master-detail linking.
 
 **Data flow:** `Native DDS → DynamicReader<T> → Channel → DdsIngestionService → SampleStore/InstanceStore → Blazor UI (30 Hz)`

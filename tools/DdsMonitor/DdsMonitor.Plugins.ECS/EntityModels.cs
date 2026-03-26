@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace DdsMonitor.Plugins.Bdc;
+namespace DdsMonitor.Plugins.ECS;
 
 /// <summary>
 /// Lifecycle state of a BDC domain entity.

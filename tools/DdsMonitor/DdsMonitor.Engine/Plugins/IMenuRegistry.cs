@@ -10,7 +10,7 @@ public interface IMenuRegistry
     /// Adds a synchronous menu item.
     /// </summary>
     /// <param name="menuPath">
-    /// Slash-delimited path describing the parent hierarchy, e.g. <c>"Plugins/BDC"</c>.
+    /// Slash-delimited path describing the parent hierarchy, e.g. <c>"Plugins/ECS"</c>.
     /// Use an empty string or <c>null</c> to place the item at the top level.
     /// </param>
     /// <param name="label">Display label for the leaf menu item.</param>
@@ -21,7 +21,7 @@ public interface IMenuRegistry
     /// Adds an asynchronous menu item.
     /// </summary>
     /// <param name="menuPath">
-    /// Slash-delimited path describing the parent hierarchy, e.g. <c>"Plugins/BDC"</c>.
+    /// Slash-delimited path describing the parent hierarchy, e.g. <c>"Plugins/ECS"</c>.
     /// Use an empty string or <c>null</c> to place the item at the top level.
     /// </param>
     /// <param name="label">Display label for the leaf menu item.</param>
