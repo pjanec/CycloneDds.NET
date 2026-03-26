@@ -6,11 +6,13 @@
 @using System.Reflection
 @using System.IO
 @using System.Text.Json
+@using DdsMonitor.Engine.Plugins
 
 @inject IWindowManager WindowManager
 @inject IWorkspaceState WorkspaceState
 @inject WorkspacePersistenceService WorkspacePersistence
 @inject IJSRuntime JSRuntime
+@inject PluginPanelRegistry PluginPanelRegistry
 
 <div class="desktop" @ref="_desktopRef" @onmousemove="HandleMouseMove" @onmouseup="EndDrag" @onmouseleave="EndDrag">
     @foreach (var panel in WindowManager.ActivePanels)
@@ -29,7 +31,15 @@
                 </div>
             </div>
             <div class="panel-body">
-                @RenderPanelBody(panel)
+                <ErrorBoundary>
+                    <ChildContent>@RenderPanelBody(panel)</ChildContent>
+                    <ErrorContent Context="ex">
+                        <div class="panel-error">
+                            <strong>Panel error</strong>
+                            <p>@ex.Message</p>
+                        </div>
+                    </ErrorContent>
+                </ErrorBoundary>
             </div>
 
             <div class="resize-handle handle-top" @onmousedown="(e) => BeginResize(panel, ResizeEdge.Top, e)" @onmousedown:stopPropagation="true"></div>
@@ -446,7 +456,9 @@
 
     private RenderFragment RenderPanelBody(PanelState panel) => builder =>
     {
-        var componentType = ResolveComponentType(panel.ComponentTypeName);
+        // Prefer types registered by plugins (they carry the correct AssemblyLoadContext
+        // identity so that DI injection resolves the right service instances).
+        var componentType = ResolveComponentType(panel.ComponentTypeName, WindowManager.RegisteredPanelTypes, PluginPanelRegistry.RegisteredTypes);
         if (componentType != null)
         {
             builder.OpenComponent<CascadingValue<PanelState>>(0);
@@ -476,11 +488,30 @@
         }
     };
 
-    private static Type? ResolveComponentType(string componentTypeName)
+    private static Type? ResolveComponentType(string componentTypeName,
+        IReadOnlyDictionary<string, Type>? windowManagerTypes = null,
+        IReadOnlyDictionary<string, Type>? pluginRegistryTypes = null)
     {
         if (string.IsNullOrWhiteSpace(componentTypeName))
         {
             return null;
+        }
+
+        // Prefer registered plugin panel types: these carry the correct
+        // AssemblyLoadContext identity so that DI injection resolves the right
+        // service instances.  Blazor may load the same assembly in both the
+        // Default and an isolated context during development; always prefer the
+        // explicitly-registered (plugin loader) version.
+        foreach (var dict in new[] { windowManagerTypes, pluginRegistryTypes })
+        {
+            if (dict == null) continue;
+            foreach (var kv in dict)
+            {
+                if (string.Equals(kv.Value.FullName, componentTypeName, StringComparison.Ordinal))
+                {
+                    return kv.Value;
+                }
+            }
         }
 
         // First try the standard resolution (works for current-assembly and mscorlib types).

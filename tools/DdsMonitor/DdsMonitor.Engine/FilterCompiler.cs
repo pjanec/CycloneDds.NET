@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Dynamic.Core;
+using System.Linq.Dynamic.Core.CustomTypeProviders;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -9,10 +10,61 @@ using System.Text.RegularExpressions;
 namespace DdsMonitor.Engine;
 
 /// <summary>
+/// Static shim type discovered by the Dynamic LINQ <see cref="DefaultDynamicLinqCustomTypeProvider"/>
+/// via the <see cref="DynamicLinqTypeAttribute"/>.  <see cref="FilterCompiler"/> rewrites macro
+/// calls (e.g. <c>DistanceTo(a,b,c,d)</c>) to <c>MacroShim.Invoke("DistanceTo", a, b, c, d)</c>
+/// so that Dynamic LINQ can resolve and call the method.  The active registry is stored in
+/// a static field and refreshed by <see cref="FilterCompiler"/> before each compilation.
+/// </summary>
+[DynamicLinqType]
+internal static class MacroShim
+{
+    /// <summary>
+    /// The macro registry populated by <see cref="FilterCompiler"/> at creation/compile time.
+    /// At predicate evaluation time the registry is consulted to look up the named macro.
+    /// </summary>
+    internal static IFilterMacroRegistry? Registry;
+
+    // Overloads for 0–5 arguments; add more if required by consumers.
+    public static object? Invoke(string name)                                                           => Call(name, Array.Empty<object?>());
+    public static object? Invoke(string name, object? a0)                                              => Call(name, new[] { a0 });
+    public static object? Invoke(string name, object? a0, object? a1)                                  => Call(name, new[] { a0, a1 });
+    public static object? Invoke(string name, object? a0, object? a1, object? a2)                      => Call(name, new[] { a0, a1, a2 });
+    public static object? Invoke(string name, object? a0, object? a1, object? a2, object? a3)          => Call(name, new[] { a0, a1, a2, a3 });
+    public static object? Invoke(string name, object? a0, object? a1, object? a2, object? a3, object? a4) => Call(name, new[] { a0, a1, a2, a3, a4 });
+
+    private static object? Call(string name, object?[] args)
+    {
+        var macros = Registry?.GetMacros();
+        if (macros != null && macros.TryGetValue(name, out var fn))
+            return fn(args);
+        throw new InvalidOperationException($"Filter macro '{name}' is not registered.");
+    }
+}
+
+/// <summary>
 /// Compiles user filter expressions into predicates using Dynamic LINQ.
 /// </summary>
 public sealed class FilterCompiler : IFilterCompiler
 {
+    private readonly IFilterMacroRegistry? _macroRegistry;
+
+    /// <summary>
+    /// Initialises a <see cref="FilterCompiler"/> with no macro support.
+    /// </summary>
+    public FilterCompiler() { }
+
+    /// <summary>
+    /// Initialises a <see cref="FilterCompiler"/> that resolves filter macros from
+    /// <paramref name="macroRegistry"/> when compiling expressions.
+    /// </summary>
+    public FilterCompiler(IFilterMacroRegistry? macroRegistry)
+    {
+        _macroRegistry = macroRegistry;
+        if (macroRegistry != null)
+            MacroShim.Registry = macroRegistry;
+    }
+
     private static readonly Regex PayloadFieldRegex = new(
         "\\b(?:Payload|Sample)\\.([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
         RegexOptions.Compiled);
@@ -59,6 +111,11 @@ public sealed class FilterCompiler : IFilterCompiler
         {
             // ME1-T05: Normalize CLI-safe alphabetical operators before any other processing.
             expression = NormalizeCliOperators(expression);
+
+            // P6-T09: Expand registered macro calls before Dynamic LINQ parses the expression.
+            // e.g. DistanceTo(Payload.X, Payload.Y, 0, 0) → MacroShim.Invoke("DistanceTo", Payload.X, Payload.Y, 0, 0)
+            if (_macroRegistry != null)
+                expression = ExpandMacros(expression, _macroRegistry.GetMacros());
 
             var config = new ParsingConfig
             {
@@ -143,6 +200,30 @@ public sealed class FilterCompiler : IFilterCompiler
         foreach (var (pattern, replacement) in CliOperatorReplacements)
         {
             expression = pattern.Replace(expression, replacement);
+        }
+
+        return expression;
+    }
+
+    /// <summary>
+    /// Rewrites registered macro calls to <c>MacroShim.Invoke("MacroName", args…)</c> so that
+    /// Dynamic LINQ can resolve them via the <see cref="MacroShim"/> helper.
+    /// Example: <c>DistanceTo(Payload.X, Payload.Y, 0, 0)</c>
+    ///       → <c>MacroShim.Invoke("DistanceTo", Payload.X, Payload.Y, 0, 0)</c>
+    /// </summary>
+    private static string ExpandMacros(
+        string expression,
+        IReadOnlyDictionary<string, Func<object?[], object?>> macros)
+    {
+        foreach (var name in macros.Keys)
+        {
+            // Use a negative look-behind so that method calls on properties (e.g. Payload.DistanceTo)
+            // are NOT expanded — only free-standing calls like DistanceTo(...) are.
+            var pattern = new Regex(
+                $@"(?<![.\w]){Regex.Escape(name)}\s*\(",
+                RegexOptions.Compiled);
+
+            expression = pattern.Replace(expression, $"MacroShim.Invoke(\"{name}\", ");
         }
 
         return expression;

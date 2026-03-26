@@ -1,0 +1,25 @@
+@using DdsMonitor.Engine.Plugins
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Rendering
+
+@* Minimal testable stub that mirrors the GetViewer logic from DetailPanel.RenderTreeView.
+   Used by DEBT-008 regression tests to verify that ISampleViewRegistry.GetViewer is
+   consulted before falling back to a default tree. *@
+
+@if (Sample != null && Registry != null)
+{
+    var viewer = Registry.GetViewer(Sample.TopicMetadata.TopicType);
+    if (viewer != null)
+    {
+        @viewer(Sample)
+    }
+    else
+    {
+        <span class="default-tree">default-tree</span>
+    }
+}
+
+@code {
+    [Parameter] public SampleData? Sample { get; set; }
+    [Parameter] public ISampleViewRegistry? Registry { get; set; }
+}

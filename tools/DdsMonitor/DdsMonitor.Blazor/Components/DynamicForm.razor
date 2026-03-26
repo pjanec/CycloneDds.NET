@@ -300,7 +300,12 @@ else
             _expandedElements.Clear();
 
             // Rebuild O(1) discriminator lookup caches (ME2-T22-A).
-            _fieldByStructuredName = ActiveFields.ToDictionary(f => f.StructuredName, StringComparer.Ordinal);
+            // Use TryAdd to gracefully handle duplicate StructuredNames (e.g. a synthetic
+            // wrapper field and a topic field sharing the same name like "Timestamp").
+            var fieldDict = new Dictionary<string, FieldMetadata>(StringComparer.Ordinal);
+            foreach (var f in ActiveFields)
+                fieldDict.TryAdd(f.StructuredName, f);
+            _fieldByStructuredName = fieldDict;
             _explicitCaseValuesByDiscPath = ActiveFields
                 .Where(f => !f.IsDefaultUnionCase
                          && f.DependentDiscriminatorPath != null

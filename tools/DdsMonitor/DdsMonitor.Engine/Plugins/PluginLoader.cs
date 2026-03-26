@@ -36,28 +36,50 @@ public sealed class PluginLoader
         "System.Runtime",
     };
 
-    private readonly string[] _pluginDirectories;
+    private readonly string _pluginDirectory;
     private readonly ILogger<PluginLoader>? _logger;
+    private readonly PluginConfigService? _configService;
     private readonly List<AssemblyLoadContext> _loadContexts = new();
     private readonly List<IMonitorPlugin> _plugins = new();
+    private readonly List<DiscoveredPlugin> _discovered = new();
 
     /// <summary>
-    /// Initialises a new <see cref="PluginLoader"/> with directories taken from
-    /// <see cref="DdsSettings.PluginDirectories"/>.
+    /// Initialises a new <see cref="PluginLoader"/> that scans the <c>plugins</c>
+    /// sub-folder of <see cref="AppContext.BaseDirectory"/>.
     /// </summary>
-    public PluginLoader(DdsSettings settings, ILogger<PluginLoader>? logger = null)
+    /// <param name="configService">
+    /// Optional service that tracks which plugins are enabled.  When <c>null</c> every
+    /// discovered plugin is treated as enabled (default behaviour).
+    /// </param>
+    /// <param name="logger">Optional logger.</param>
+    /// <param name="pluginDirectory">
+    /// Override the plugin directory path (intended for unit tests).  When <c>null</c>
+    /// defaults to <c>AppContext.BaseDirectory/plugins</c>.
+    /// </param>
+    public PluginLoader(
+        PluginConfigService? configService = null,
+        ILogger<PluginLoader>? logger = null,
+        string? pluginDirectory = null)
     {
-        ArgumentNullException.ThrowIfNull(settings);
-        _pluginDirectories = settings.PluginDirectories ?? Array.Empty<string>();
+        _pluginDirectory = pluginDirectory ?? Path.Combine(AppContext.BaseDirectory, "plugins");
+        _configService = configService;
         _logger = logger;
     }
 
-    /// <summary>Gets the plugin instances that were successfully loaded.</summary>
+    /// <summary>Gets the plugin instances that were successfully loaded and enabled.</summary>
     public IReadOnlyList<IMonitorPlugin> LoadedPlugins => _plugins;
 
     /// <summary>
-    /// Scans all configured plugin directories, loads valid plugin DLLs, and calls
-    /// <see cref="IMonitorPlugin.ConfigureServices"/> on each discovered plugin.
+    /// Gets all <see cref="DiscoveredPlugin"/> entries found during the last
+    /// <see cref="LoadPlugins"/> scan, including plugins that are disabled.
+    /// </summary>
+    public IReadOnlyList<DiscoveredPlugin> DiscoveredPlugins => _discovered;
+
+    /// <summary>
+    /// Scans all configured plugin directories, loads valid plugin DLLs, and records each
+    /// in <see cref="DiscoveredPlugins"/>.  Calls <see cref="IMonitorPlugin.ConfigureServices"/>
+    /// only for plugins that are enabled according to <see cref="PluginConfigService"/> (or
+    /// all of them when no config service is supplied).
     /// Invalid or non-plugin DLLs are skipped gracefully.
     /// </summary>
     /// <param name="services">The host service collection (before the container is built).</param>
@@ -65,20 +87,17 @@ public sealed class PluginLoader
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        foreach (var directory in _pluginDirectories)
+        if (string.IsNullOrWhiteSpace(_pluginDirectory) || !Directory.Exists(_pluginDirectory))
         {
-            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
-            {
-                continue;
-            }
+            return;
+        }
 
-            foreach (var dllPath in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly))
-            {
-                // EnumerateFiles returns paths relative to the process cwd when
-                // `directory` is relative.  LoadFromAssemblyPath (and
-                // AssemblyDependencyResolver) require an absolute path.
-                TryLoadPluginFromFile(Path.GetFullPath(dllPath), services);
-            }
+        foreach (var dllPath in Directory.EnumerateFiles(_pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly))
+        {
+            // EnumerateFiles returns paths relative to the process cwd when
+            // `_pluginDirectory` is relative.  LoadFromAssemblyPath (and
+            // AssemblyDependencyResolver) require an absolute path.
+            TryLoadPluginFromFile(Path.GetFullPath(dllPath), services);
         }
     }
 
@@ -155,15 +174,29 @@ public sealed class PluginLoader
             }
 
             var plugin = (IMonitorPlugin)Activator.CreateInstance(type)!;
-            _plugins.Add(plugin);
 
-            try
+            // Determine enabled state: when no config service is present every plugin is
+            // enabled (backward-compatible default for headless / test environments).
+            // Otherwise only plugins explicitly listed in EnabledPlugins are activated.
+            // Plugins are disabled by default on first run; the user enables them via
+            // the Plugin Manager UI, after which the list is persisted to the workspace.
+            var isEnabled = _configService == null
+                || _configService.EnabledPlugins.Contains(plugin.Name);
+
+            _discovered.Add(new DiscoveredPlugin(plugin, absolutePath, isEnabled));
+
+            if (isEnabled)
             {
-                plugin.ConfigureServices(services);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "PluginLoader: plugin '{Name}' threw during ConfigureServices().", plugin.Name);
+                _plugins.Add(plugin);
+
+                try
+                {
+                    plugin.ConfigureServices(services);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "PluginLoader: plugin '{Name}' threw during ConfigureServices().", plugin.Name);
+                }
             }
 
             count++;

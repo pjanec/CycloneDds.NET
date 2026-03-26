@@ -108,4 +108,48 @@ public sealed class FilterCompilerTests
             SizeBytes = 0
         };
     }
+
+    // ── PLA1-P6-T09: Filter macro tests ───────────────────────────────────
+
+    [Fact]
+    public void FilterCompiler_WithRegisteredMacro_ExecutesCorrectly()
+    {
+        // Arrange: register a simple "Squared" macro and compile a filter that uses it.
+        var macroRegistry = new FilterMacroRegistry();
+        macroRegistry.RegisterMacro("Squared", args =>
+        {
+            // Return int so that comparison against integer literals works without
+            // a type mismatch in Dynamic LINQ's ConvertObjectToSupportComparison.
+            var x = Convert.ToInt32(args[0]);
+            return (object?)(x * x);
+        });
+
+        var compiler = new FilterCompiler(macroRegistry);
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+
+        // Expression: Squared(Payload.Id) > 100  →  matches when |Id| > 10
+        var result = compiler.Compile("Squared(Payload.Id) > 100", metadata);
+
+        Assert.True(result.IsValid, result.ErrorMessage);
+        var predicate = Assert.IsType<Func<SampleData, bool>>(result.Predicate);
+
+        var match = CreateSample(metadata, 1, new SampleTopic { Id = 11 }); // 11^2 = 121 > 100
+        var miss  = CreateSample(metadata, 2, new SampleTopic { Id = 9 });  // 9^2  = 81  ≤ 100
+
+        Assert.True(predicate(match));
+        Assert.False(predicate(miss));
+    }
+
+    [Fact]
+    public void FilterCompiler_WithUnknownMethodName_ReturnsError()
+    {
+        // An expression referencing an unregistered "method" should fail to compile,
+        // not silently succeed with an unexpected result.
+        var compiler = new FilterCompiler();
+
+        var result = compiler.Compile("UnknownFunc(Ordinal) > 0", null);
+
+        Assert.False(result.IsValid);
+        Assert.NotNull(result.ErrorMessage);
+    }
 }

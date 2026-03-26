@@ -21,4 +21,13 @@ public sealed class WorkspaceDocument
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? ExcludedTopics { get; set; }
+
+    /// <summary>
+    /// Gets or sets a plugin-keyed bag of settings persisted by individual plugins.
+    /// Each plugin uses a unique string key (e.g. <c>"ECS"</c>) to store and retrieve
+    /// its own settings dictionary.  This property is omitted from the JSON when no
+    /// plugin has written settings.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, object>? PluginSettings { get; set; }
 }

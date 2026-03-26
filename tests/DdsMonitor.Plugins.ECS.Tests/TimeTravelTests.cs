@@ -33,7 +33,9 @@ public sealed class TimeTravelTests
         _sampleStore = new StubSampleStore();
         _settings = new EcsSettings
         {
-            NamespacePrefix    = "company.BDC",
+            // Use "company.ECS" to match the ECS test topics defined in EcsTestTopics.cs.
+            // (The real BDC deployment would use "company.BDC"; the test topics use "company.ECS".)
+            NamespacePrefix    = "company.ECS",
             EntityIdPattern    = @"(?i)\bEntityId\b",
             PartIdPattern      = @"(?i)\bPartId\b",
             MasterTopicPattern = @"Master$"

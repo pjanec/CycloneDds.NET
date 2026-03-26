@@ -20,6 +20,7 @@
 @inject WorkspacePersistenceService WorkspacePersistence
 @inject IValueFormatterRegistry ValueFormatterRegistry
 @inject ISampleStore SampleStore
+@inject ISampleViewRegistry SampleViewRegistry
 
 @if (_currentSample == null)
 {
@@ -225,20 +226,28 @@ else
     private RenderFragment RenderTreeView() => @<text>
         @if (_currentSample != null)
         {
-            var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
-            <div class="detail-tree__overlay-btns">
-                <button type="button" class="detail-tree__toolbar-btn" title="Expand all"
-                        @onclick="ExpandAllTree">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
-                </button>
-                <button type="button" class="detail-tree__toolbar-btn" title="Collapse all"
-                        @onclick="CollapseAllTree">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 6 12 11 7 6"/><polyline points="17 13 12 18 7 13"/></svg>
-                </button>
-            </div>
-            <div class="detail-tree">
-                @RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty, traversal, 0)
-            </div>
+            var customViewer = SampleViewRegistry?.GetViewer(_currentSample.TopicMetadata.TopicType);
+            if (customViewer != null)
+            {
+                @customViewer(_currentSample)
+            }
+            else
+            {
+                var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
+                <div class="detail-tree__overlay-btns">
+                    <button type="button" class="detail-tree__toolbar-btn" title="Expand all"
+                            @onclick="ExpandAllTree">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
+                    </button>
+                    <button type="button" class="detail-tree__toolbar-btn" title="Collapse all"
+                            @onclick="CollapseAllTree">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 6 12 11 7 6"/><polyline points="17 13 12 18 7 13"/></svg>
+                    </button>
+                </div>
+                <div class="detail-tree">
+                    @RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty, traversal, 0)
+                </div>
+            }
         }
     </text>;
 
@@ -455,7 +464,7 @@ else
                     </button>
                 }
 
-                <span class="detail-tree__label">@label</span>
+                <span class="detail-tree__label @(!isLeaf && !isRoot ? "is-struct-label" : string.Empty)">@label</span>
 
                 @{
                     var fmtMethodForNode = !isCycle && !isMaxDepth && displayType != null
@@ -737,7 +746,12 @@ else
         }
 
         var html = JsonSyntaxHighlighter.ToHtml(formatted);
-        TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+        TooltipService.Show(new TooltipState(
+            html,
+            args.ClientX + 12,
+            args.ClientY + 12,
+            ContextType: _currentSample?.TopicMetadata?.TopicType,
+            ContextValue: _currentSample?.Payload));
     }
 
     private void HideTooltip()

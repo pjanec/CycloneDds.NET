@@ -243,7 +243,11 @@ public sealed class TypeDrawerRegistry : ITypeDrawerRegistry
         return ctx => builder =>
         {
             var seq = 0;
-            var current = ctx.ValueGetter()?.ToString() ?? "0";
+            var rawVal = ctx.ValueGetter();
+            var current = (rawVal as System.IFormattable)
+                              ?.ToString(null, System.Globalization.CultureInfo.InvariantCulture)
+                          ?? rawVal?.ToString()
+                          ?? "0";
             var cb = EventCallback.Factory.Create<ChangeEventArgs>(ctx.Receiver!,
                 args =>
                 {

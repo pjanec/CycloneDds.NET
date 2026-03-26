@@ -77,11 +77,6 @@ public sealed class DdsSettings
     public int DomainId { get; set; } = DefaultDomainId;
 
     /// <summary>
-    /// Gets or sets plugin directories to scan for topic metadata.
-    /// </summary>
-    public string[] PluginDirectories { get; set; } = new[] { "plugins" };
-
-    /// <summary>
     /// Gets or sets the UI refresh frequency in Hz.
     /// </summary>
     public int UiRefreshHz { get; set; } = DefaultUiRefreshHz;

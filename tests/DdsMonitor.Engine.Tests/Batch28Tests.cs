@@ -264,10 +264,9 @@ public sealed class Batch28Tests : IDisposable
         var badDllPath = Path.Combine(_tempDir, "corrupt.dll");
         File.WriteAllBytes(badDllPath, new byte[] { 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01 });
 
-        var settings = new DdsSettings { PluginDirectories = new[] { _tempDir } };
         var services = new ServiceCollection();
 
-        var loader = new PluginLoader(settings);
+        var loader = new PluginLoader(pluginDirectory: _tempDir);
 
         // Must not throw.
         var ex = Record.Exception(() => loader.LoadPlugins(services));
@@ -280,8 +279,7 @@ public sealed class Batch28Tests : IDisposable
     public void PluginLoader_EmptyDirectory_LoadsNothingGracefully()
     {
         // Pointing at an empty directory must not crash.
-        var settings = new DdsSettings { PluginDirectories = new[] { _tempDir } };
-        var loader = new PluginLoader(settings);
+        var loader = new PluginLoader(pluginDirectory: _tempDir);
         var services = new ServiceCollection();
 
         var ex = Record.Exception(() => loader.LoadPlugins(services));
@@ -294,8 +292,7 @@ public sealed class Batch28Tests : IDisposable
     public void PluginLoader_MissingDirectory_SkipsGracefully()
     {
         // A directory that doesn't exist must be silently ignored.
-        var settings = new DdsSettings { PluginDirectories = new[] { @"C:\this\does\not\exist\abc123" } };
-        var loader = new PluginLoader(settings);
+        var loader = new PluginLoader(pluginDirectory: @"C:\this\does\not\exist\abc123");
         var services = new ServiceCollection();
 
         var ex = Record.Exception(() => loader.LoadPlugins(services));
@@ -333,8 +330,7 @@ public sealed class ConfigTestPlugin : IMonitorPlugin
 
         var dllPath = CompilePlugin("ConfigTestPlugin", pluginSource, _tempDir);
 
-        var settings = new DdsSettings { PluginDirectories = Array.Empty<string>() };
-        var loader = new PluginLoader(settings);
+        var loader = new PluginLoader();
         var services = new ServiceCollection();
 
         var loaded = loader.TryLoadPluginFromFile(dllPath, services);
@@ -369,21 +365,21 @@ public sealed class InitTestPlugin : IMonitorPlugin
 
     public void Initialize(IMonitorContext context)
     {
-        context.MenuRegistry.AddMenuItem(""Plugins/InitTest"", ""WasHere"", () => { });
+        context.GetFeature<IMenuRegistry>()?.AddMenuItem(""Plugins/InitTest"", ""WasHere"", () => { });
     }
 }";
 
         var dllPath = CompilePlugin("InitTestPlugin", pluginSource, _tempDir);
 
-        var settings = new DdsSettings { PluginDirectories = Array.Empty<string>() };
-        var loader = new PluginLoader(settings);
+        var loader = new PluginLoader();
         var services = new ServiceCollection();
         loader.TryLoadPluginFromFile(dllPath, services);
 
         // Build a minimal context with real registries.
         var menuRegistry = new MenuRegistry();
-        var panelRegistry = new PluginPanelRegistry();
-        var context = new MonitorContext(menuRegistry, panelRegistry);
+        services.AddSingleton<IMenuRegistry>(menuRegistry);
+        using var provider = services.BuildServiceProvider();
+        var context = new MonitorContext(provider);
 
         loader.InitializePlugins(context);
 
@@ -418,8 +414,7 @@ public sealed class IsolationPlugin : IMonitorPlugin
 
         var dllPath = CompilePlugin("IsolationPlugin", pluginSource, _tempDir);
 
-        var settings = new DdsSettings { PluginDirectories = Array.Empty<string>() };
-        var loader = new PluginLoader(settings);
+        var loader = new PluginLoader();
         var services = new ServiceCollection();
 
         loader.TryLoadPluginFromFile(dllPath, services);
@@ -442,9 +437,15 @@ public sealed class IsolationPlugin : IMonitorPlugin
         // Collect all assemblies already loaded in the current AppDomain as references.
         // This ensures that transitive dependencies (e.g. System.ComponentModel, netstandard,
         // Microsoft.Extensions.*) are available without enumerating them manually.
+        //
+        // Filter out assemblies under the system temp directory: parallel tests may have
+        // compiled and loaded plugin DLLs into isolated AssemblyLoadContexts, leaving those
+        // files locked.  We don't reference plugin DLLs when compiling test plugins anyway.
+        var tempPath = Path.GetTempPath();
         var loadedRefs = AppDomain.CurrentDomain
             .GetAssemblies()
-            .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
+            .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location)
+                        && !a.Location.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase))
             .Select(a => MetadataReference.CreateFromFile(a.Location))
             .ToList<MetadataReference>();
 

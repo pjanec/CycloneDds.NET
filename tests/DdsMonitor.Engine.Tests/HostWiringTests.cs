@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading.Channels;
 using DdsMonitor.Engine;
 using DdsMonitor.Engine.Hosting;
+using DdsMonitor.Engine.Plugins;
+using DdsMonitor.Engine.Ui;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -49,6 +51,82 @@ public sealed class HostWiringTests
 
         var hostedServices = provider.GetServices<IHostedService>();
         Assert.Contains(hostedServices, service => service is DdsIngestionService);
+    }
+
+    // ── PLA1-P6-T01: IValueFormatterRegistry exposed via GetFeature ────────
+
+    [Fact]
+    public void GetFeature_IValueFormatterRegistry_ReturnsNonNull()
+    {
+        var services = new ServiceCollection();
+        services.AddDdsMonitorServices(new TestConfiguration(new Dictionary<string, string?>
+        {
+            ["DdsSettings:DomainId"] = "0",
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var context = provider.GetRequiredService<IMonitorContext>();
+
+        var registry = context.GetFeature<IValueFormatterRegistry>();
+
+        Assert.NotNull(registry);
+    }
+
+    // ── PLA1-P6-T02: ITypeDrawerRegistry exposed via GetFeature ───────────
+
+    [Fact]
+    public void GetFeature_ITypeDrawerRegistry_ReturnsNonNull()
+    {
+        var services = new ServiceCollection();
+        services.AddDdsMonitorServices(new TestConfiguration(new Dictionary<string, string?>
+        {
+            ["DdsSettings:DomainId"] = "0",
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var context = provider.GetRequiredService<IMonitorContext>();
+
+        var registry = context.GetFeature<ITypeDrawerRegistry>();
+
+        Assert.NotNull(registry);
+    }
+
+    // ── PLA1-P6-T06: ITooltipProviderRegistry exposed via GetFeature ──────
+
+    [Fact]
+    public void GetFeature_ITooltipProviderRegistry_ReturnsNonNull()
+    {
+        var services = new ServiceCollection();
+        services.AddDdsMonitorServices(new TestConfiguration(new Dictionary<string, string?>
+        {
+            ["DdsSettings:DomainId"] = "0",
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var context = provider.GetRequiredService<IMonitorContext>();
+
+        var registry = context.GetFeature<DdsMonitor.Engine.Ui.ITooltipProviderRegistry>();
+
+        Assert.NotNull(registry);
+    }
+
+    // ── PLA1-P6-T08: IFilterMacroRegistry exposed via GetFeature ──────────
+
+    [Fact]
+    public void GetFeature_IFilterMacroRegistry_ReturnsNonNull()
+    {
+        var services = new ServiceCollection();
+        services.AddDdsMonitorServices(new TestConfiguration(new Dictionary<string, string?>
+        {
+            ["DdsSettings:DomainId"] = "0",
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var context = provider.GetRequiredService<IMonitorContext>();
+
+        var registry = context.GetFeature<DdsMonitor.Engine.IFilterMacroRegistry>();
+
+        Assert.NotNull(registry);
     }
 
     private sealed class TestConfiguration : IConfiguration

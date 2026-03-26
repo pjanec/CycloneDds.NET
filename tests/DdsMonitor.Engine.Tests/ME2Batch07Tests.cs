@@ -53,12 +53,16 @@ public sealed class ME2Batch07Tests : IDisposable
     [Fact]
     public void TopicColorService_AfterFix_UserOverridesStillPersist()
     {
-        var service1 = CreateColorService(_tempDir);
-        service1.SetUserColor("FixedTopic", "#cafeba");
+        // Colors are now persisted to workspace.json via WorkspaceSavingEvent.
+        // To verify round-trip: write a workspace.json with a color override,
+        // then construct TopicColorService and assert the override is loaded.
+        var workspacePath = Path.Combine(_tempDir, "workspace.json");
+        var workspaceJson = "{\"PluginSettings\":{\"TopicColors\":{\"FixedTopic\":\"#cafeba\"}}}";
+        File.WriteAllText(workspacePath, workspaceJson);
 
-        var service2 = CreateColorService(_tempDir);
+        var service = new TopicColorService(new FakeWorkspaceState(_tempDir));
 
-        Assert.Equal("#cafeba", service2.GetUserColor("FixedTopic"));
+        Assert.Equal("#cafeba", service.GetUserColor("FixedTopic"));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

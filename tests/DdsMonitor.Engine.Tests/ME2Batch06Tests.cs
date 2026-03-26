@@ -278,19 +278,20 @@ public sealed class ME2Batch06Tests
     [Fact]
     public void TopicColorService_OverridesRoundTripThroughPersistence()
     {
-        // Arrange: create a service and set an override.
+        // Colors are now persisted to workspace.json via WorkspaceSavingEvent.
+        // Write a workspace.json with a color override and verify a new service reads it.
         var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
         try
         {
-            var service1 = CreateColorService(tempDir);
-            service1.SetUserColor("PersistTopic", "#deadbe");
+            var workspacePath = Path.Combine(tempDir, "workspace.json");
+            var json = "{\"PluginSettings\":{\"TopicColors\":{\"PersistTopic\":\"#deadbe\"}}}";
+            File.WriteAllText(workspacePath, json);
 
-            // Act: create a second service pointing to the same directory.
-            var service2 = CreateColorService(tempDir);
+            var service = CreateColorService(tempDir);
 
-            // Assert: the override was persisted and reloaded.
-            Assert.Equal("#deadbe", service2.GetUserColor("PersistTopic"));
+            // Assert: color is read from workspace.json.
+            Assert.Equal("#deadbe", service.GetUserColor("PersistTopic"));
         }
         finally
         {

@@ -12,6 +12,7 @@
 @inject ContextMenuService ContextMenuService
 @inject TopicColorService TopicColorService
 @inject WorkspacePersistenceService WorkspacePersistence
+@inject IContextMenuRegistry ContextMenuRegistry
 
 <div class="topic-explorer">
     <div class="topic-explorer__filters">
@@ -308,7 +309,7 @@
         const int rightMouseButton = 2;
         if (args.Button == rightMouseButton)
         {
-            var items = new List<ContextMenuItem>
+            var defaults = new List<ContextMenuItem>
             {
                 new("Topic Properties", null, () =>
                 {
@@ -321,6 +322,8 @@
                     return Task.CompletedTask;
                 }),
             };
+
+            var items = ContextMenuComposer.Compose(defaults, ContextMenuRegistry, metadata);
             ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
         }
     }

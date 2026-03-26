@@ -1,11 +1,22 @@
 @implements IDisposable
 @inject TooltipService TooltipService
+@inject DdsMonitor.Engine.Ui.ITooltipProviderRegistry TooltipProviderRegistry
 
 <div class="tooltip-portal">
 @if (TooltipService.Current is { } tooltip)
 {
     <div class="tooltip-bubble" style="@($"left: {tooltip.X}px; top: {tooltip.Y}px;")">
+    @{
+        var providerHtml = GetOverrideHtml(tooltip);
+    }
+    @if (providerHtml != null)
+    {
+        @((MarkupString)providerHtml)
+    }
+    else
+    {
         <pre class="tooltip-content">@((MarkupString)tooltip.Html)</pre>
+    }
     </div>
 }
 </div>
@@ -24,5 +35,18 @@
     public void Dispose()
     {
         TooltipService.OnChanged -= HandleChanged;
+    }
+
+    /// <summary>
+    /// Returns plugin-overridden HTML from a registered provider when
+    /// <see cref="TooltipState.ContextType"/> is set and a provider matches (P6-T07 / DEBT-017).
+    /// Returns <c>null</c> when no provider matches, causing the portal to fall back to the
+    /// pre-rendered default JSON wrapped in <c>&lt;pre&gt;</c>.
+    /// </summary>
+    private string? GetOverrideHtml(TooltipState tooltip)
+    {
+        if (tooltip.ContextType != null && TooltipProviderRegistry != null)
+            return TooltipProviderRegistry.GetTooltipHtml(tooltip.ContextType, tooltip.ContextValue);
+        return null;
     }
 }

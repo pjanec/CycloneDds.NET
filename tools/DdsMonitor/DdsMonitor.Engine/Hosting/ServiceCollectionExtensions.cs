@@ -5,8 +5,10 @@ using DdsMonitor.Engine.Export;
 using DdsMonitor.Engine.Import;
 using DdsMonitor.Engine.Plugins;
 using DdsMonitor.Engine.Replay;
+using DdsMonitor.Engine.Ui;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace DdsMonitor.Engine.Hosting;
 
@@ -20,7 +22,8 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddDdsMonitorServices(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILoggerFactory? loggerFactory = null)
     {
         if (services == null)
         {
@@ -74,7 +77,7 @@ public static class ServiceCollectionExtensions
 
         var topicRegistry = new TopicRegistry();
         var discoveryService = new TopicDiscoveryService(topicRegistry);
-        discoveryService.Discover(settings.PluginDirectories);
+        discoveryService.Discover(Path.Combine(AppContext.BaseDirectory, "plugins"));
 
         // Eagerly instantiate to ensure saved dynamic DLLs are loaded immediately on startup.
         // Pass appSettings so CLI TopicSources overrides are honoured without modifying the file.
@@ -83,6 +86,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITopicRegistry>(topicRegistry);
         services.AddSingleton(discoveryService);
         services.AddSingleton<IAssemblySourceService>(assemblySourceService);
+        services.AddHostedService<AssemblySourcePersistenceService>();
 
         // Register self-send topic types eagerly so they are present in the registry
         // before any hosted service (e.g. SelfSendService) or pre-startup exclusion
@@ -96,18 +100,55 @@ public static class ServiceCollectionExtensions
         // the IServiceCollection is still open for registration.
         var menuRegistry = new MenuRegistry();
         var panelRegistry = new PluginPanelRegistry();
-        var pluginLoader = new PluginLoader(settings);
+        var pluginConfigService = new PluginConfigService(loggerFactory, appSettings);
+        var pluginLoader = new PluginLoader(pluginConfigService);
         pluginLoader.LoadPlugins(services);
 
         services.AddSingleton<IMenuRegistry>(menuRegistry);
         services.AddSingleton(panelRegistry);
         services.AddSingleton(pluginLoader);
-        services.AddSingleton<IMonitorContext>(sp => new MonitorContext(
-            sp.GetRequiredService<IMenuRegistry>(),
-            sp.GetRequiredService<PluginPanelRegistry>()));
+        services.AddSingleton(pluginConfigService);
+        services.AddHostedService<PluginConfigPersistenceService>();
+        services.AddSingleton<IContextMenuRegistry, ContextMenuRegistry>();
+        services.AddSingleton<ISampleViewRegistry, SampleViewRegistry>();
+        services.AddSingleton<IMonitorContext>(sp => new MonitorContext(sp));
+
+        // Phase 6: Plugin-accessible UI registries ──────────────────────────────────────
+        // Registered here (Engine layer) so that GetFeature<IValueFormatterRegistry>() and
+        // GetFeature<ITypeDrawerRegistry>() work for plugins without coupling to the Blazor host.
+        // Program.cs registers these too for the interactive UI; duplicate singletons are harmless
+        // because DI returns the last registration and both registrations use the same concrete types.
+        services.AddSingleton<IValueFormatterRegistry, ValueFormatterRegistry>();
+        services.AddSingleton<ITypeDrawerRegistry, TypeDrawerRegistry>();
+
+        // IExportFormatRegistry: allows plugins to contribute custom export formats.
+        services.AddSingleton<IExportFormatRegistry, ExportFormatRegistry>();
+
+        // ITooltipProviderRegistry: allows plugins to contribute custom tooltip HTML (P6-T06).
+        services.AddSingleton<ITooltipProviderRegistry, TooltipProviderRegistry>();
+
+        // IFilterMacroRegistry: allows plugins to register custom filter macro functions (P6-T08).
+        services.AddSingleton<IFilterMacroRegistry, FilterMacroRegistry>();
+
+        // TopicColorService: registered as singleton so all plugin code (incl. FeatureDemoPlugin
+        // running in the root scope at Initialize time) can resolve it via GetFeature<TopicColorService>()
+        // (DEBT-018). Uses the same WorkspaceState factory path as IWorkspaceState above.
+        //
+        // DEBT-022 design note: workspace path is immutable at runtime.
+        // WorkspaceState.WorkspaceFilePath is computed once in its constructor from AppSettings,
+        // which is bound from IConfiguration at host build time and never mutated afterward.
+        // Therefore the singleton TopicColorService and scoped IWorkspaceState instances always
+        // resolve to the same workspace directory — no desync is possible without a host restart.
+        services.AddSingleton<TopicColorService>(sp =>
+            new TopicColorService(
+                new WorkspaceState(sp.GetService<AppSettings>()),
+                sp.GetService<IEventBroker>()));
 
         // SelfSendService is always registered; it stays dormant until DevelSettings.SelfSendEnabled is set.
         services.AddHostedService<SelfSendService>();
+        // Persists DevelSettings.SelfSendEnabled to the workspace file so the toggle
+        // state survives restarts.
+        services.AddHostedService<SelfSendPersistenceService>();
 
         // Shared ordinal counter (ME1-T07).
         services.AddSingleton<OrdinalCounter>();
@@ -115,7 +156,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISampleStore, SampleStore>();
         services.AddSingleton<IInstanceStore, InstanceStore>();
         services.AddSingleton<IEventBroker, EventBroker>();
-        services.AddSingleton<IFilterCompiler, FilterCompiler>();
+        services.AddSingleton<IFilterCompiler>(sp =>
+            new FilterCompiler(sp.GetService<IFilterMacroRegistry>()));
 
         // DdsBridge with full multi-participant and ordinal wiring (ME1-T06, ME1-T07).
         services.AddSingleton<IDdsBridge>(sp =>

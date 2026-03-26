@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using DdsMonitor.Engine.Plugins;
 
 namespace DdsMonitor.Services;
 
@@ -48,7 +49,4 @@ public sealed class ContextMenuService
 /// </summary>
 public sealed record ContextMenuState(IReadOnlyList<ContextMenuItem> Items, double X, double Y);
 
-/// <summary>
-/// Defines a context menu item.
-/// </summary>
-public sealed record ContextMenuItem(string Label, string? Icon, Func<Task> Action);
+// ContextMenuItem is defined in DdsMonitor.Engine.Plugins and re-exported via the using above.

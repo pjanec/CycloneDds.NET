@@ -145,7 +145,7 @@ namespace CycloneDDS.CodeGen
             });
 
             sb.AppendLine();
-            sb.AppendLine($"        public override string ToString() => $\"{EscapeInterpolatedString(interpolation)}\";");
+            sb.AppendLine($"        public override string ToString() => string.Create(System.Globalization.CultureInfo.InvariantCulture, $\"{EscapeInterpolatedString(interpolation)}\");");
 
             // ── GetFormatTokens() ───────────────────────────────────────────────
             sb.AppendLine();
@@ -169,12 +169,13 @@ namespace CycloneDDS.CodeGen
                 // Resolve TokenType — default to Default when not specified
                 var tokenType = string.IsNullOrEmpty(tokenTypeName) ? "Default" : tokenTypeName;
 
-                // Emit field token
+                // Emit field token — always use InvariantCulture so that float/double
+                // values render with "." as the decimal separator regardless of OS locale.
                 var toStringCall = string.IsNullOrEmpty(formatStr)
-                    ? $"this.{fieldName}.ToString()"
-                    : $"this.{fieldName}.ToString(\"{EscapeString(formatStr)}\")";
+                    ? $"System.String.Format(System.Globalization.CultureInfo.InvariantCulture, \"{{0}}\", this.{fieldName})"
+                    : $"System.String.Format(System.Globalization.CultureInfo.InvariantCulture, \"{{0:{EscapeString(formatStr)}}}\", this.{fieldName})";
 
-                sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken({toStringCall} ?? string.Empty, CycloneDDS.Schema.Formatting.TokenType.{tokenType});");
+                sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken({toStringCall}, CycloneDDS.Schema.Formatting.TokenType.{tokenType});");
 
                 lastIndex = m.Index + m.Length;
             }

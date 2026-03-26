@@ -1,0 +1,31 @@
+@inject DdsMonitor.Engine.Ui.ITooltipProviderRegistry? Registry
+
+@{
+    var providerHtml = GetProviderHtml();
+}
+@if (providerHtml != null)
+{
+    <div class="tooltip-stub-provider">@((MarkupString)providerHtml)</div>
+}
+else
+{
+    <pre class="tooltip-content tooltip-stub-default">@((MarkupString)DefaultHtml)</pre>
+}
+
+@code {
+    /// <summary>CLR type passed as <c>ContextType</c> to the tooltip registry lookup.</summary>
+    [Parameter] public Type? ContextType { get; set; }
+
+    /// <summary>Value passed as <c>ContextValue</c> to the tooltip registry lookup.</summary>
+    [Parameter] public object? ContextValue { get; set; }
+
+    /// <summary>Fallback HTML rendered inside <c>&lt;pre&gt;</c> when no provider matches.</summary>
+    [Parameter] public string DefaultHtml { get; set; } = string.Empty;
+
+    private string? GetProviderHtml()
+    {
+        if (ContextType != null && Registry != null)
+            return Registry.GetTooltipHtml(ContextType, ContextValue);
+        return null;
+    }
+}

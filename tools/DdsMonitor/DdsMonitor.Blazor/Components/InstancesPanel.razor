@@ -18,6 +18,7 @@
 @inject TooltipService TooltipService
 @inject IJSRuntime JSRuntime
 @inject ContextMenuService ContextMenuService
+@inject IContextMenuRegistry ContextMenuRegistry
 
 @if (TopicMetadata == null)
 {
@@ -586,7 +587,9 @@ else
                 }
                 return JsonSyntaxHighlighter.ToHtml(json);
             });
-            TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+            TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12,
+                ContextType: sample.TopicMetadata.TopicType,
+                ContextValue: sample.Payload));
         }
         catch
         {
@@ -823,7 +826,7 @@ else
 
     private void OpenRowContextMenu(IndexedInstance row, MouseEventArgs args)
     {
-        var items = new List<ContextMenuItem>
+        var defaults = new List<ContextMenuItem>
         {
             new("Show Instance Samples", null, () =>
             {
@@ -842,6 +845,7 @@ else
             })
         };
 
+        var items = ContextMenuComposer.Compose(defaults, ContextMenuRegistry, row.Row.Instance);
         ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
     }
 

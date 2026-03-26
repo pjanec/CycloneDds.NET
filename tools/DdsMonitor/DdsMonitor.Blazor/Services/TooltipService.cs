@@ -43,5 +43,13 @@ public sealed class TooltipService
 
 /// <summary>
 /// Holds tooltip content and positioning.
+/// An optional <see cref="ContextType"/>/<see cref="ContextValue"/> pair allows
+/// <see cref="DdsMonitor.Engine.Ui.ITooltipProviderRegistry"/> to override the
+/// default <see cref="Html"/> with plugin-supplied content (P6-T07).
 /// </summary>
-public sealed record TooltipState(string Html, double X, double Y);
+public sealed record TooltipState(
+    string Html,
+    double X,
+    double Y,
+    Type? ContextType = null,
+    object? ContextValue = null);

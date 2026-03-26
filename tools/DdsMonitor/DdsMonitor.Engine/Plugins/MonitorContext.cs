@@ -1,24 +1,29 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace DdsMonitor.Engine.Plugins;
 
 /// <summary>
-/// Default implementation of <see cref="IMonitorContext"/> backed by singleton-lifetime services.
+/// Default implementation of <see cref="IMonitorContext"/> backed by the host's DI container.
+/// Feature resolution is delegated to <see cref="ServiceProviderServiceExtensions.GetService{T}"/>
+/// so any service registered in the container is automatically available to plugins via
+/// <see cref="GetFeature{TFeature}"/>.
 /// An instance is created after the DI container is built and passed to every loaded plugin
 /// during <see cref="IMonitorPlugin.Initialize"/>.
 /// </summary>
 public sealed class MonitorContext : IMonitorContext
 {
+    private readonly IServiceProvider _services;
+
     /// <summary>
     /// Initialises a new <see cref="MonitorContext"/>.
     /// </summary>
-    public MonitorContext(IMenuRegistry menuRegistry, PluginPanelRegistry panelRegistry)
+    /// <param name="services">The built host service provider.</param>
+    public MonitorContext(IServiceProvider services)
     {
-        MenuRegistry = menuRegistry ?? throw new ArgumentNullException(nameof(menuRegistry));
-        PanelRegistry = panelRegistry ?? throw new ArgumentNullException(nameof(panelRegistry));
+        _services = services ?? throw new ArgumentNullException(nameof(services));
     }
 
     /// <inheritdoc />
-    public IMenuRegistry MenuRegistry { get; }
-
-    /// <inheritdoc />
-    public PluginPanelRegistry PanelRegistry { get; }
+    public TFeature? GetFeature<TFeature>() where TFeature : class
+        => _services.GetService<TFeature>();
 }

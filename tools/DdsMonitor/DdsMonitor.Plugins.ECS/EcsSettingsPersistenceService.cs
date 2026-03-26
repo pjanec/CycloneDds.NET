@@ -6,58 +6,60 @@ using System.Threading.Tasks;
 using DdsMonitor.Engine;
 using Microsoft.Extensions.Hosting;
 
-// WorkspaceState is SCOPED; BdcSettingsPersistenceService is a SINGLETON (hosted-service).
-// Injecting IWorkspaceState directly would cause a scope-validation error at startup.
-// Instead, derive the settings file path the same way WorkspaceState does (AppData/DdsMonitor).
-
 namespace DdsMonitor.Plugins.ECS;
 
 /// <summary>
-/// Singleton hosted service that persists <see cref="EcsSettings"/> to a JSON file
-/// (<c>bdc-settings.json</c>) stored alongside the main <c>workspace.json</c>.
+/// Singleton hosted service that persists <see cref="EcsSettings"/> by hooking the
+/// workspace save/load events published by <see cref="IEventBroker"/>.
 ///
 /// <para>
-/// On application startup (<see cref="StartAsync"/>) the saved file is loaded back and
-/// applied to the in-memory <see cref="EcsSettings"/> singleton.  Whenever the user
-/// modifies a setting, <see cref="EcsSettings.SettingsChanged"/> triggers a 2-second
-/// debounced write so persistence is transparent and non-blocking.
+/// On <see cref="WorkspaceLoadedEvent"/> the ECS section is read from
+/// <c>PluginSettings["ECS"]</c>.  If the section is absent a one-time migration is
+/// attempted from the legacy <c>ecs-settings.json</c> file; that file is deleted after
+/// a successful migration.
+/// </para>
+/// <para>
+/// On <see cref="WorkspaceSavingEvent"/> the current settings are written to
+/// <c>PluginSettings["ECS"]</c> so they are persisted with the workspace JSON.
 /// </para>
 /// </summary>
 public sealed class EcsSettingsPersistenceService : IHostedService, IDisposable
 {
-    private const string FileName = "bdc-settings.json";
+    private const string WorkspaceKey = "ECS";
+    private const string LegacyFileName = "ecs-settings.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        WriteIndented = true,
+        WriteIndented = false,
         PropertyNameCaseInsensitive = true,
     };
 
     private readonly EcsSettings _settings;
-    private readonly string _filePath;
-    private readonly DebouncedAction _debouncer;
+    private readonly IEventBroker _eventBroker;
+    private readonly string _legacyFilePath;
+
+    private IDisposable? _savingSub;
+    private IDisposable? _loadedSub;
 
     /// <summary>
-    /// Initialises the service.  The settings file is stored in the same
-    /// <c>%APPDATA%\DdsMonitor\</c> folder that the host uses for <c>workspace.json</c>.
+    /// Initialises the service.
     /// </summary>
-    public EcsSettingsPersistenceService(EcsSettings settings)
+    public EcsSettingsPersistenceService(EcsSettings settings, IEventBroker eventBroker)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-        // Mirror WorkspaceState: %APPDATA%\DdsMonitor\
+        _eventBroker = eventBroker ?? throw new ArgumentNullException(nameof(eventBroker));
+
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var folder  = Path.Combine(appData, "DdsMonitor");
+        var folder = Path.Combine(appData, "DdsMonitor");
         Directory.CreateDirectory(folder);
-        _filePath = Path.Combine(folder, FileName);
-        _debouncer = new DebouncedAction(TimeSpan.FromSeconds(2), SaveNow);
-        _settings.SettingsChanged += OnSettingsChanged;
+        _legacyFilePath = Path.Combine(folder, LegacyFileName);
     }
 
     /// <inheritdoc />
-    /// <remarks>Loads previously saved settings from disk before the UI starts.</remarks>
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Load();
+        _savingSub = _eventBroker.Subscribe<WorkspaceSavingEvent>(OnWorkspaceSaving);
+        _loadedSub = _eventBroker.Subscribe<WorkspaceLoadedEvent>(OnWorkspaceLoaded);
         return Task.CompletedTask;
     }
 
@@ -67,60 +69,102 @@ public sealed class EcsSettingsPersistenceService : IHostedService, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        _settings.SettingsChanged -= OnSettingsChanged;
-        _debouncer.Dispose();
+        _savingSub?.Dispose();
+        _loadedSub?.Dispose();
     }
 
-    // ── Internal ──────────────────────────────────────────────────────────────
+    // ── Event handlers ────────────────────────────────────────────────────────
 
-    private void OnSettingsChanged() => _debouncer.Trigger();
-
-    private void SaveNow()
+    private void OnWorkspaceSaving(WorkspaceSavingEvent e)
     {
         try
         {
-            var dto = new BdcSettingsDto
+            var dto = new EcsSettingsDto
             {
                 NamespacePrefix    = _settings.NamespacePrefix,
                 EntityIdPattern    = _settings.EntityIdPattern,
                 PartIdPattern      = _settings.PartIdPattern,
                 MasterTopicPattern = _settings.MasterTopicPattern,
             };
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(dto, JsonOptions));
+            e.PluginSettings[WorkspaceKey] = dto;
         }
         catch
         {
-            // Ignore persistence errors – they must not crash the UI loop.
+            // Ignore persistence errors – they must not crash the save path.
         }
     }
 
-    private void Load()
+    private void OnWorkspaceLoaded(WorkspaceLoadedEvent e)
     {
-        if (!File.Exists(_filePath))
+        if (e.PluginSettings.TryGetValue(WorkspaceKey, out var raw))
+        {
+            ApplyFromObject(raw);
+        }
+        else
+        {
+            TryMigrateFromLegacy();
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private void ApplyFromObject(object raw)
+    {
+        try
+        {
+            EcsSettingsDto? dto;
+            if (raw is JsonElement elem)
+            {
+                dto = elem.Deserialize<EcsSettingsDto>(JsonOptions);
+            }
+            else
+            {
+                var json = JsonSerializer.Serialize(raw, JsonOptions);
+                dto = JsonSerializer.Deserialize<EcsSettingsDto>(json, JsonOptions);
+            }
+
+            if (dto is null) return;
+            ApplyDto(dto);
+        }
+        catch
+        {
+            // Ignore deserialisation errors.
+        }
+    }
+
+    private void TryMigrateFromLegacy()
+    {
+        if (!File.Exists(_legacyFilePath))
             return;
 
         try
         {
-            var json = File.ReadAllText(_filePath);
-            var dto  = JsonSerializer.Deserialize<BdcSettingsDto>(json, JsonOptions);
-            if (dto is null)
-                return;
-
-            // Apply only non-null values so defaults are preserved when a field is absent.
-            if (dto.NamespacePrefix    is not null) _settings.NamespacePrefix    = dto.NamespacePrefix;
-            if (dto.EntityIdPattern    is not null) _settings.EntityIdPattern    = dto.EntityIdPattern;
-            if (dto.PartIdPattern      is not null) _settings.PartIdPattern      = dto.PartIdPattern;
-            if (dto.MasterTopicPattern is not null) _settings.MasterTopicPattern = dto.MasterTopicPattern;
+            var json = File.ReadAllText(_legacyFilePath);
+            var dto  = JsonSerializer.Deserialize<EcsSettingsDto>(json, JsonOptions);
+            if (dto is not null)
+            {
+                ApplyDto(dto);
+                // Delete legacy file after successful migration.
+                File.Delete(_legacyFilePath);
+            }
         }
         catch
         {
-            // Ignore load errors – the plugin continues with default settings.
+            // Ignore migration errors – the plugin continues with default settings.
         }
+    }
+
+    private void ApplyDto(EcsSettingsDto dto)
+    {
+        if (dto.NamespacePrefix    is not null) _settings.NamespacePrefix    = dto.NamespacePrefix;
+        if (dto.EntityIdPattern    is not null) _settings.EntityIdPattern    = dto.EntityIdPattern;
+        if (dto.PartIdPattern      is not null) _settings.PartIdPattern      = dto.PartIdPattern;
+        if (dto.MasterTopicPattern is not null) _settings.MasterTopicPattern = dto.MasterTopicPattern;
     }
 
     // ── DTO ───────────────────────────────────────────────────────────────────
 
-    private sealed class BdcSettingsDto
+    private sealed class EcsSettingsDto
     {
         public string? NamespacePrefix    { get; set; }
         public string? EntityIdPattern    { get; set; }

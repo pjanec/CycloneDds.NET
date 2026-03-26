@@ -29,6 +29,7 @@
             <button type="button" class="app-menu__trigger" @onclick='() => ToggleMenu("file")'>File</button>
             <div class="app-menu__dropdown">
                 <button type="button" class="app-menu__dropdown-item" @onclick="OpenTopicSourcesPanel">Topic Sources…</button>
+                <button type="button" class="app-menu__dropdown-item" @onclick="OpenPluginManagerPanel">Plugin Manager…</button>
                 <div class="app-menu__dropdown-separator"></div>
                 <button type="button" class="app-menu__dropdown-item" @onclick="ResetLayout">Reset Layout</button>
                 <button type="button" class="app-menu__dropdown-item" @onclick="ExportWorkspace">Export Layout</button>
@@ -165,6 +166,7 @@
     private static readonly string SendSamplePanelTypeName = typeof(SendSamplePanel).FullName!;
     private static readonly string ReplayPanelTypeName = typeof(ReplayPanel).FullName!;
     private static readonly string TopicSourcesPanelTypeName = typeof(TopicSourcesPanel).FullName!;
+    private static readonly string PluginManagerPanelTypeName = typeof(PluginManagerPanel).FullName!;
     private const string WorkspaceExportFileName = "ddsmon.workspace";
     private const string AllSamplesTopicTypeKey = "SamplesPanel.TopicTypeName";
     private string _theme = "dark";
@@ -306,6 +308,26 @@
         topicSourcesPanel.Height = 520;
         topicSourcesPanel.X = 200;
         topicSourcesPanel.Y = 80;
+    }
+
+    private void OpenPluginManagerPanel()
+    {
+        CloseMenus();
+        foreach (var panel in WindowManager.ActivePanels)
+        {
+            if (string.Equals(panel.ComponentTypeName, PluginManagerPanelTypeName, StringComparison.Ordinal))
+            {
+                WindowManager.ShowPanel(panel.PanelId);
+                return;
+            }
+        }
+
+        var pluginManagerPanel = WindowManager.SpawnPanel(PluginManagerPanelTypeName);
+        pluginManagerPanel.Title = "Plugin Manager";
+        pluginManagerPanel.Width = 760;
+        pluginManagerPanel.Height = 420;
+        pluginManagerPanel.X = 200;
+        pluginManagerPanel.Y = 80;
     }
 
     private void ToggleSelfSending()

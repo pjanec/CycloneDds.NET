@@ -10,6 +10,11 @@ namespace DdsMonitor.Engine.AssemblyScanner;
 /// <summary>
 /// Manages the persistent list of user-configured external DLL assemblies and
 /// scans them for DDS topic types on startup and whenever a new path is added.
+///
+/// Persistence is handled externally via <see cref="AssemblySourcePersistenceService"/>,
+/// which hooks into the workspace save/load events so all settings are stored in the
+/// single <c>workspace.json</c> file.  On first run a one-time migration from the
+/// legacy <c>assembly-sources.json</c> sidecar file is performed automatically.
 /// </summary>
 public sealed class AssemblySourceService : IAssemblySourceService
 {
@@ -19,9 +24,10 @@ public sealed class AssemblySourceService : IAssemblySourceService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private const string ConfigFileName = "assembly-sources.json";
+    private const string LegacyConfigFileName = "assembly-sources.json";
+    private const string WorkspaceFileName = "workspace.json";
+    private const string WorkspaceKey = "AssemblySources";
 
-    private readonly string _configFilePath;
     private readonly ITopicRegistry _topicRegistry;
     private readonly TopicDiscoveryService _discoveryService;
     private readonly object _sync = new();
@@ -43,8 +49,8 @@ public sealed class AssemblySourceService : IAssemblySourceService
     /// <summary>
     /// Constructs the service.  When <paramref name="appSettings"/> contains a non-empty
     /// <see cref="AppSettings.TopicSources"/> list, the service operates in CLI-override mode:
-    /// those paths are scanned instead of <c>assembly-sources.json</c>, and any changes made
-    /// during the session are never written back to disk.
+    /// those paths are scanned instead of persisted paths, and any changes made
+    /// during the session are never written back.
     /// </summary>
     public AssemblySourceService(ITopicRegistry topicRegistry, TopicDiscoveryService discoveryService, AppSettings? appSettings)
     {
@@ -54,30 +60,32 @@ public sealed class AssemblySourceService : IAssemblySourceService
         if (appSettings?.TopicSources is { Length: > 0 } overridePaths)
         {
             _cliPaths = overridePaths;
-            _configFilePath = string.Empty; // not used in CLI mode
+            LoadFromPaths(_cliPaths);
         }
         else
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var dir = Path.Combine(appData, "DdsMonitor");
-            Directory.CreateDirectory(dir);
-            _configFilePath = Path.Combine(dir, ConfigFileName);
+            // Determine workspace file path using the same logic as WorkspaceState.
+            var workspaceFilePath = ComputeWorkspaceFilePath(appSettings);
+            var initialPaths = ReadPathsFromWorkspace(workspaceFilePath)
+                               ?? ReadPathsFromLegacy(workspaceFilePath)
+                               ?? Array.Empty<string>();
+            LoadFromPaths(initialPaths);
         }
-
-        LoadAndScanAll();
     }
 
     /// <summary>
-    /// Internal constructor that accepts an explicit config file path for testing.
+    /// Internal constructor that accepts an explicit legacy config file path for testing.
     /// CLI override is not active when using this constructor.
     /// </summary>
     internal AssemblySourceService(ITopicRegistry topicRegistry, TopicDiscoveryService discoveryService, string configFilePath)
     {
         _topicRegistry = topicRegistry ?? throw new ArgumentNullException(nameof(topicRegistry));
         _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
-        _configFilePath = configFilePath ?? throw new ArgumentNullException(nameof(configFilePath));
+        if (configFilePath == null) throw new ArgumentNullException(nameof(configFilePath));
 
-        LoadAndScanAll();
+        // For the test constructor: read from the provided file as a plain JSON path list.
+        var paths = ReadPathsFromPlainFile(configFilePath) ?? Array.Empty<string>();
+        LoadFromPaths(paths);
     }
 
     /// <inheritdoc />
@@ -118,7 +126,6 @@ public sealed class AssemblySourceService : IAssemblySourceService
             _entryTopics.Add(topics);
         }
 
-        Persist();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -136,7 +143,6 @@ public sealed class AssemblySourceService : IAssemblySourceService
             _entryTopics.RemoveAt(index);
         }
 
-        Persist();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -154,7 +160,6 @@ public sealed class AssemblySourceService : IAssemblySourceService
             Swap(_entryTopics, index, index - 1);
         }
 
-        Persist();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -172,7 +177,6 @@ public sealed class AssemblySourceService : IAssemblySourceService
             Swap(_entryTopics, index, index + 1);
         }
 
-        Persist();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -190,35 +194,36 @@ public sealed class AssemblySourceService : IAssemblySourceService
         }
     }
 
+    /// <summary>
+    /// Replaces the current entry list with the supplied paths and re-scans.
+    /// Called by <see cref="AssemblySourcePersistenceService"/> when a workspace is loaded.
+    /// </summary>
+    internal void Reload(IEnumerable<string> paths)
+    {
+        lock (_sync)
+        {
+            _entries.Clear();
+            _entryTopics.Clear();
+        }
+        LoadFromPaths(paths);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Returns the current list of paths for serialisation into the workspace file.
+    /// </summary>
+    internal IReadOnlyList<string> GetPaths()
+    {
+        lock (_sync)
+        {
+            return _entries.Select(e => e.Path).ToArray();
+        }
+    }
+
     // ── Private helpers ─────────────────────────────────────────────────────
 
-    private void LoadAndScanAll()
+    private void LoadFromPaths(IEnumerable<string> paths)
     {
-        List<string> paths;
-
-        if (_cliPaths != null)
-        {
-            // CLI-override mode: use the paths supplied on the command line.
-            paths = new List<string>(_cliPaths);
-        }
-        else
-        {
-            try
-            {
-                if (!File.Exists(_configFilePath))
-                {
-                    return;
-                }
-
-                var json = File.ReadAllText(_configFilePath);
-                paths = JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
-            }
-            catch
-            {
-                return;
-            }
-        }
-
         lock (_sync)
         {
             foreach (var path in paths)
@@ -236,11 +241,63 @@ public sealed class AssemblySourceService : IAssemblySourceService
         }
     }
 
+    private static string[] ReadPathsFromWorkspace(string workspaceFilePath)
+    {
+        try
+        {
+            if (!File.Exists(workspaceFilePath)) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(workspaceFilePath));
+            if (!doc.RootElement.TryGetProperty("PluginSettings", out var ps)) return null;
+            if (!ps.TryGetProperty(WorkspaceKey, out var srcEl)) return null;
+            var list = srcEl.Deserialize<List<string>>(JsonOptions);
+            return list is { Count: > 0 } ? list.ToArray() : null;
+        }
+        catch { return null; }
+    }
+
+    private string[] ReadPathsFromLegacy(string workspaceFilePath)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(workspaceFilePath) ?? string.Empty;
+            var legacyPath = Path.Combine(dir, LegacyConfigFileName);
+            return ReadPathsFromPlainFile(legacyPath);
+        }
+        catch { return null; }
+    }
+
+    private static string[] ReadPathsFromPlainFile(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath)) return null;
+            var json = File.ReadAllText(filePath);
+            var list = JsonSerializer.Deserialize<List<string>>(json, JsonOptions);
+            return list is { Count: > 0 } ? list.ToArray() : null;
+        }
+        catch { return null; }
+    }
+
+    private static string ComputeWorkspaceFilePath(AppSettings? appSettings)
+    {
+        if (!string.IsNullOrWhiteSpace(appSettings?.WorkspaceFile))
+            return appSettings.WorkspaceFile;
+
+        string workspaceDir;
+        if (!string.IsNullOrWhiteSpace(appSettings?.ConfigFolder))
+            workspaceDir = appSettings.ConfigFolder;
+        else
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            workspaceDir = Path.Combine(appData, "DdsMonitor");
+        }
+
+        Directory.CreateDirectory(workspaceDir);
+        return Path.Combine(workspaceDir, WorkspaceFileName);
+    }
+
     /// <summary>
-    /// Scans a single entry via the discovery service, populates its <see cref="AssemblySourceEntry.TopicCount"/>
-    /// and <see cref="AssemblySourceEntry.LoadError"/>, and returns the list of topic types found in the assembly.
-    /// For topics that were already registered (e.g. via SelfSendService), the existing registry entry is
-    /// returned so the detail panel always shows what topics the DLL contains.
+    /// Scans a single entry via the discovery service.
     /// Must be called while holding <see cref="_sync"/>.
     /// </summary>
     private List<TopicMetadata> ScanEntry(AssemblySourceEntry entry)
@@ -283,36 +340,14 @@ public sealed class AssemblySourceService : IAssemblySourceService
         }
     }
 
-    private void Persist()
-    {
-        // In CLI-override mode the stored file must not be touched so that the
-        // per-user configuration is preserved for the next interactive session.
-        if (_cliPaths != null)
-            return;
-
-        try
-        {
-            List<string> paths;
-            lock (_sync)
-            {
-                paths = new List<string>(_entries.Count);
-                foreach (var e in _entries)
-                {
-                    paths.Add(e.Path);
-                }
-            }
-
-            var json = JsonSerializer.Serialize(paths, JsonOptions);
-            File.WriteAllText(_configFilePath, json);
-        }
-        catch
-        {
-            // Ignore persistence failures.
-        }
-    }
-
     private static void Swap<T>(List<T> list, int a, int b)
     {
         (list[a], list[b]) = (list[b], list[a]);
     }
 }
+
+
+/// <summary>
+/// Manages the persistent list of user-configured external DLL assemblies and
+/// scans them for DDS topic types on startup and whenever a new path is added.
+/// </summary>

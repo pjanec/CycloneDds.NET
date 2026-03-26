@@ -23,9 +23,9 @@ public interface IMonitorPlugin
 
     /// <summary>
     /// Called after the host has started.
-    /// Plugins can register UI panels via <see cref="IMonitorContext.PanelRegistry"/>
-    /// and menu items via <see cref="IMonitorContext.MenuRegistry"/>.
+    /// Plugins can register UI panels and menu items via
+    /// <see cref="IMonitorContext.GetFeature{TFeature}"/>.
     /// </summary>
-    /// <param name="context">Access point to monitor registries.</param>
+    /// <param name="context">Access point to host capabilities.</param>
     void Initialize(IMonitorContext context);
 }

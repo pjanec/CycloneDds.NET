@@ -39,3 +39,26 @@ public sealed record ReplayFilterChangedEvent(Func<SampleData, bool>? Predicate)
 /// </summary>
 public sealed record ParticipantsChangedEvent(IReadOnlyList<ParticipantConfig> CurrentParticipants);
 
+/// <summary>
+/// Emitted just before the workspace is serialised to JSON.
+/// Subscribers may write their plugin-specific data into <see cref="PluginSettings"/>
+/// under a unique key; the dictionary is then persisted as <c>"PluginSettings"</c> in
+/// the workspace file.
+/// </summary>
+public sealed record WorkspaceSavingEvent(Dictionary<string, object> PluginSettings);
+
+/// <summary>
+/// Emitted after the workspace JSON has been deserialised and the panel state restored.
+/// Subscribers read their plugin-specific data from <see cref="PluginSettings"/> using
+/// the same key they used when saving.  The dictionary is empty when the loaded workspace
+/// did not contain a <c>"PluginSettings"</c> section.
+/// </summary>
+public sealed record WorkspaceLoadedEvent(IReadOnlyDictionary<string, object> PluginSettings);
+
+/// <summary>
+/// Published by any service that has modified persistent state and needs the workspace
+/// file to be re-saved.  <c>WorkspacePersistenceService</c> subscribes to this event
+/// and calls <c>RequestSave()</c> which triggers the debounced save logic.
+/// </summary>
+public sealed record WorkspaceSaveRequestedEvent;
+

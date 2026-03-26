@@ -2,8 +2,8 @@
 
 #### 1. Dynamic Configuration via Plugin UI
 The original design notes that the `EntityStore` filters events by a configurable namespace prefix (e.g., `company.ECS.*`). To support runtime configuration of this prefix, as well as the new regex patterns, the ECS plugin will expose a custom settings panel.
-*   **Settings Panel Registration:** The plugin will implement a new Blazor component (e.g., `EcsSettingsPanel.razor`) and register it during the `Initialize` phase using the `IMonitorContext.PanelRegistry` (the `PluginPanelRegistry` introduced in Batch 28). 
-*   **Menu Integration:** The plugin will also add a menu item using `IMonitorContext.MenuRegistry` (e.g., "Plugins/ECS/Settings") to spawn this panel.
+*   **Settings Panel Registration:** The plugin will implement a new Blazor component (e.g., `EcsSettingsPanel.razor`) and register it during the `Initialize` phase using `context.GetFeature<PluginPanelRegistry>()?.RegisterPanelType(...)` (see [PLA1-DESIGN.md §4](../plugin-api/PLA1-DESIGN.md#4-phase-1--capability-querying-context-future-proof-foundation)). 
+*   **Menu Integration:** The plugin will also add a menu item using `context.GetFeature<IMenuRegistry>()?.AddMenuItem(...)` (e.g., path `"Plugins/ECS"`, label `"Settings"`) to spawn this panel.
 *   **State Persistence:** The settings (namespace prefix, EntityId regex, PartId regex) should be persisted using the `WorkspacePersistenceService` so they are restored between browser sessions.
 
 #### 2. Key Field Regex Resolution

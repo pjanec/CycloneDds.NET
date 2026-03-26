@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,7 +19,14 @@ var builder = WebApplication.CreateBuilder(args);
 var headlessModeStr = builder.Configuration.GetSection("DdsSettings")["HeadlessMode"] ?? "None";
 var isHeadless = !string.Equals(headlessModeStr, "None", StringComparison.OrdinalIgnoreCase);
 
-builder.Services.AddDdsMonitorServices(builder.Configuration);
+// Bootstrap logger factory: used by PluginConfigService during startup (before the host
+// DI container is built) so that corrupt enabled-plugins.json emits a Warning to the
+// console rather than silently falling through.  The factory is disposed after
+// AddDdsMonitorServices returns because PluginConfigService only reads the file during
+// its constructor; no logging is needed after that startup phase.
+using var startupLoggers = LoggerFactory.Create(b =>
+    b.SetMinimumLevel(LogLevel.Warning).AddConsole());
+builder.Services.AddDdsMonitorServices(builder.Configuration, startupLoggers);
 // DevelSettings is registered inside AddDdsMonitorServices
 
 if (!isHeadless)
@@ -27,11 +35,9 @@ if (!isHeadless)
     builder.Services.AddRazorComponents()
         .AddInteractiveServerComponents();
 
-    builder.Services.AddSingleton<ITypeDrawerRegistry, TypeDrawerRegistry>();
-    builder.Services.AddSingleton<IValueFormatterRegistry, ValueFormatterRegistry>();
     builder.Services.AddSingleton<TooltipService>();
     builder.Services.AddSingleton<ContextMenuService>();
-    builder.Services.AddScoped<DdsMonitor.Engine.TopicColorService>();
+    // TopicColorService is registered as singleton in AddDdsMonitorServices (DEBT-018).
     builder.Services.AddSingleton<CloneRequestService>();
     builder.Services.AddScoped<WorkspacePersistenceService>();
 
@@ -122,8 +128,12 @@ if (!isHeadless)
         {
             // Launch Chrome/Edge in app mode with an isolated profile so the app opens
             // in its own window rather than a tab in an existing browser instance.
-            var userDataDir = Path.Combine(Path.GetTempPath(), "ddsmon-spa-profile");
-            var browserArgs = $"--app=\"{url}\" --user-data-dir=\"{userDataDir}\"";
+            // Use a per-user location (%LOCALAPPDATA%\DdsMonitor\spa-profile) so that
+            // each user gets their own browser profile instead of sharing the system temp folder.
+            var spaProfileDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "DdsMonitor", "spa-profile");
+            var browserArgs = $"--app=\"{url}\" --user-data-dir=\"{spaProfileDir}\"";
             bool browserOpened = false;
 
             try

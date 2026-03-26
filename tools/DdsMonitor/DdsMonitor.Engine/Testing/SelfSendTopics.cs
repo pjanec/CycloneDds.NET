@@ -71,6 +71,7 @@ public partial struct Pose
 }
 
 [DdsStruct]
+[DdsTypeFormat("[{X}, {Y}, {Z}]")]
 public partial struct Vector3
 {
     public float X;

@@ -1,0 +1,41 @@
+@implements IDisposable
+@inject DemoBackgroundProcessor Processor
+
+<div class="demo-dashboard">
+    <h3 class="demo-dashboard__title">Feature Demo Dashboard</h3>
+
+    <dl class="demo-dashboard__stats">
+        <dt>Samples observed</dt>
+        <dd>@Processor.ProcessedCount</dd>
+
+        <dt>Plugin</dt>
+        <dd>Feature Demo v1.0.0</dd>
+
+        <dt>Status</dt>
+        <dd class="demo-dashboard__status">Running</dd>
+    </dl>
+
+    <p class="demo-dashboard__hint">
+        This panel is registered by <code>FeatureDemoPlugin</code> to demonstrate
+        the <code>PluginPanelRegistry</code> extension point.  The counter above
+        reflects <code>DemoBackgroundProcessor.ProcessedCount</code>, which is updated
+        every second from <code>ISampleStore.TotalCount</code>.
+    </p>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Processor.OnUpdated += HandleProcessorUpdate;
+    }
+
+    private void HandleProcessorUpdate()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Processor.OnUpdated -= HandleProcessorUpdate;
+    }
+}

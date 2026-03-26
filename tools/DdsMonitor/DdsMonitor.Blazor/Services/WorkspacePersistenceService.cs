@@ -19,6 +19,7 @@ public sealed class WorkspacePersistenceService : IDisposable
     private readonly ITopicRegistry _topicRegistry;
     private readonly AppSettings _appSettings;
     private readonly DebouncedAction _debouncer;
+    private readonly IDisposable? _saveRequestedSub;
 
     // Exclusion names loaded from the workspace file at startup.  Names that cannot be
     // resolved to a loaded topic type are preserved in every subsequent save so that
@@ -30,7 +31,8 @@ public sealed class WorkspacePersistenceService : IDisposable
         IWorkspaceState workspaceState,
         IDdsBridge ddsBridge,
         ITopicRegistry topicRegistry,
-        AppSettings appSettings)
+        AppSettings appSettings,
+        IEventBroker? eventBroker = null)
     {
         _windowManager = windowManager ?? throw new ArgumentNullException(nameof(windowManager));
         _workspaceState = workspaceState ?? throw new ArgumentNullException(nameof(workspaceState));
@@ -38,6 +40,11 @@ public sealed class WorkspacePersistenceService : IDisposable
         _topicRegistry = topicRegistry ?? throw new ArgumentNullException(nameof(topicRegistry));
         _appSettings = appSettings ?? throw new ArgumentNullException(nameof(appSettings));
         _debouncer = new DebouncedAction(SaveDelay, SaveNow);
+
+        // Subscribe so that singleton services (TopicColorService, AssemblySourceService,
+        // PluginConfigService) can request a debounced workspace save without taking a
+        // direct dependency on this scoped service.
+        _saveRequestedSub = eventBroker?.Subscribe<WorkspaceSaveRequestedEvent>(_ => RequestSave());
     }
 
     public void RequestSave()
@@ -115,6 +122,7 @@ public sealed class WorkspacePersistenceService : IDisposable
         // state changed just before the browser closes is not silently lost.
         _debouncer.Flush();
         _debouncer.Dispose();
+        _saveRequestedSub?.Dispose();
     }
 
     // ─────────────────────────────────────────────────────────────────────────

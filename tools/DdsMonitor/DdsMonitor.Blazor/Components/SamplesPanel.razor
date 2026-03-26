@@ -23,6 +23,8 @@
 @inject ContextMenuService ContextMenuService
 @inject DdsMonitor.Engine.Export.IExportService ExportService
 @inject TopicColorService TopicColorService
+@inject IContextMenuRegistry ContextMenuRegistry
+@inject DdsMonitor.Engine.Export.IExportFormatRegistry ExportFormatRegistry
 
 <div class="samples-panel" @onmousemove="HandleColumnResize" @onmouseup="EndColumnResize" @onmouseleave="EndColumnResize">
     <div class="samples-panel__toolbar">
@@ -44,9 +46,28 @@
         <button type="button" title="Open filter builder" class="samples-panel__filter-btn" @onclick="OpenFilterBuilder">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
         </button>
-        <button type="button" title="Export visible samples to file" class="samples-panel__export-btn" @onclick="ExportFilteredSamplesAsync">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        </button>
+        @* Export split-button: JSON (default) + registered custom formats *@
+        <div class="samples-panel__export-group @(_exportMenuOpen ? "is-open" : string.Empty)">
+            <button type="button" title="Export visible samples as JSON" class="samples-panel__export-btn" @onclick="ExportFilteredSamplesAsync">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            </button>
+            @{
+                var customFormats = ExportFormatRegistry.GetFormats();
+            }
+            @if (customFormats.Count > 0)
+            {
+                <button type="button" class="samples-panel__export-caret" title="More export formats"
+                        @onclick:stopPropagation="true" @onclick="ToggleExportMenu">▾</button>
+                <div class="samples-panel__export-dropdown">
+                    @foreach (var fmt in customFormats)
+                    {
+                        var capturedFmt = fmt;
+                        <button type="button" class="samples-panel__export-dropdown-item"
+                                @onclick="() => ExportCustomFormatAsync(capturedFmt)">@capturedFmt.Label</button>
+                    }
+                </div>
+            }
+        </div>
         <button type="button" title="Save grid settings to file" class="samples-panel__settings-btn" @onclick="SaveGridSettingsAsync">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </button>
@@ -256,6 +277,7 @@
     private readonly Dictionary<FieldMetadata, Type> _fieldTopicTypes = new();
     private int _columnPickerRevision;
     private bool _showExportDialog;
+    private bool _exportMenuOpen;
 
     [CascadingParameter]
     public PanelState? PanelState { get; set; }
@@ -780,7 +802,47 @@
 
     private void ExportFilteredSamplesAsync()
     {
+        _exportMenuOpen = false;
         _showExportDialog = true;
+    }
+
+    private void ToggleExportMenu()
+    {
+        _exportMenuOpen = !_exportMenuOpen;
+    }
+
+    private async Task ExportCustomFormatAsync(DdsMonitor.Engine.Export.ExportFormatEntry fmt)
+    {
+        _exportMenuOpen = false;
+
+        IReadOnlyList<SampleData> snapshot = FixedSamples != null
+            ? _viewCache.ToList()
+            : _sampleView!.GetFilteredSnapshot();
+
+        // Prompt for file path via the same JS prompt used elsewhere.
+        string? path;
+        try
+        {
+            path = await JSRuntime.InvokeAsync<string?>("prompt", $"Export as {fmt.Label} — enter file path:");
+        }
+        catch
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        try
+        {
+            await fmt.ExportFunc(snapshot, path, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Export failed: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -925,7 +987,7 @@
 
     private void OpenRowContextMenu(IndexedSample row, MouseEventArgs args)
     {
-        var items = new List<ContextMenuItem>
+        var defaults = new List<ContextMenuItem>
         {
             new("Show Detail (New Window)", null, () =>
             {
@@ -949,6 +1011,7 @@
             })
         };
 
+        var items = ContextMenuComposer.Compose(defaults, ContextMenuRegistry, row.Sample);
         ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
     }
 
@@ -1286,7 +1349,12 @@
 
         // Live mode: the background SampleView already rebuilt the sorted slice;
         // we just update counts and tell the grid to re-virtualize.
-        var newCount = _sampleView!.CurrentFilteredCount;
+        // Guard against being called after Dispose() nulled _sampleView (InvokeAsync
+        // can queue this continuation before the unsubscription completes).
+        if (_sampleView == null)
+            return Task.CompletedTask;
+
+        var newCount = _sampleView.CurrentFilteredCount;
         _totalCount = newCount;
         _currentCount = newCount;
 
@@ -1528,7 +1596,9 @@
                 }
                 return JsonSyntaxHighlighter.ToHtml(json);
             });
-            TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12));
+            TooltipService.Show(new TooltipState(html, args.ClientX + 12, args.ClientY + 12,
+                ContextType: sample.TopicMetadata.TopicType,
+                ContextValue: sample.Payload));
         }
         catch
         {

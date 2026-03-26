@@ -27,7 +27,21 @@ public sealed class WindowManager : IWindowManager
     private readonly object _sync = new();
     private readonly List<PanelState> _activePanels = new();
     private readonly Dictionary<string, Type> _panelTypes = new(StringComparer.Ordinal);
+    private readonly IEventBroker? _eventBroker;
     private List<string> _excludedTopics = new();
+
+    /// <summary>
+    /// Initialises <see cref="WindowManager"/>.
+    /// </summary>
+    /// <param name="eventBroker">
+    /// Optional event broker used to publish <see cref="WorkspaceSavingEvent"/> and
+    /// <see cref="WorkspaceLoadedEvent"/> during save/load operations.  When
+    /// <see langword="null"/> the events are not raised (backwards-compatible default).
+    /// </param>
+    public WindowManager(IEventBroker? eventBroker = null)
+    {
+        _eventBroker = eventBroker;
+    }
 
     /// <inheritdoc />
     public event Action<PanelState>? PanelClosed;
@@ -265,10 +279,16 @@ public sealed class WindowManager : IWindowManager
         }
 
         var filtered = FilterPersistableState(snapshot);
+
+        // Allow plugins to contribute settings before serialisation.
+        var pluginBag = new Dictionary<string, object>(StringComparer.Ordinal);
+        _eventBroker?.Publish(new WorkspaceSavingEvent(pluginBag));
+
         var doc = new WorkspaceDocument
         {
             Panels = filtered,
-            ExcludedTopics = excludedSnapshot.Count > 0 ? excludedSnapshot : null
+            ExcludedTopics = excludedSnapshot.Count > 0 ? excludedSnapshot : null,
+            PluginSettings = pluginBag.Count > 0 ? pluginBag : null
         };
         return JsonSerializer.Serialize(doc, WorkspaceSerializerOptions);
     }
@@ -300,6 +320,7 @@ public sealed class WindowManager : IWindowManager
 
         List<PanelState> panels;
         List<string> excludedTopics = new();
+        Dictionary<string, object>? pluginSettingsRaw = null;
 
         // Support both the legacy format (plain JSON array of PanelState) and the new
         // WorkspaceDocument format (object with "Panels" and optional "ExcludedTopics").
@@ -316,6 +337,7 @@ public sealed class WindowManager : IWindowManager
                                ?? new WorkspaceDocument();
             panels = workspaceDoc.Panels ?? new List<PanelState>();
             excludedTopics = workspaceDoc.ExcludedTopics ?? new List<string>();
+            pluginSettingsRaw = workspaceDoc.PluginSettings;
         }
 
         foreach (var panel in panels)
@@ -331,6 +353,12 @@ public sealed class WindowManager : IWindowManager
         }
 
         PanelsChanged?.Invoke();
+
+        // Notify plugins that a workspace has been loaded.
+        IReadOnlyDictionary<string, object> pluginSettings = pluginSettingsRaw is { Count: > 0 }
+            ? pluginSettingsRaw
+            : new Dictionary<string, object>(StringComparer.Ordinal);
+        _eventBroker?.Publish(new WorkspaceLoadedEvent(pluginSettings));
     }
 
     private static List<PanelState> FilterPersistableState(IEnumerable<PanelState> panels)
