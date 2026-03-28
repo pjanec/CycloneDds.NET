@@ -286,7 +286,10 @@ namespace CycloneDDS.CodeGen
                 foreach (var member in typeSymbol.GetMembers().OfType<IFieldSymbol>())
                 {
                     if (member.IsConst && member.HasConstantValue)
+                    {
                         typeInfo.EnumMembers.Add(member.Name);
+                        typeInfo.EnumMemberValues.Add(Convert.ToInt64(member.ConstantValue));
+                    }
                 }
             }
             else

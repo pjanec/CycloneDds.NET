@@ -20,6 +20,10 @@ namespace CycloneDDS.CodeGen
         public bool IsUnion { get; set; }
         public List<string> EnumMembers { get; set; } = new List<string>();
 
+        /// <summary>Numeric constant values for each enum member (same order as <see cref="EnumMembers"/>).
+        /// Used by <c>IdlEmitter</c> to emit <c>@value</c> annotations when values are non-sequential.</summary>
+        public List<long> EnumMemberValues { get; set; } = new List<long>();
+
         /// <summary>Bit width of the enum's underlying type. 8 for byte/sbyte, 16 for short/ushort, 32 for default (int/uint).</summary>
         public int EnumBitBound { get; set; } = 32;
 

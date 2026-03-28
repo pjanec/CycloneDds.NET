@@ -341,7 +341,12 @@ namespace CycloneDDS.CodeGen
              for (int i = 0; i < type.EnumMembers.Count; i++)
              {
                  string comma = (i < type.EnumMembers.Count - 1) ? "," : "";
-                 sb.AppendLine($"{memberIndent}{type.EnumMembers[i]}{comma}");
+                 // Emit @value annotation when the C# integer value differs from the sequential IDL ordinal.
+                 // Only emit for non-negative values: IDL enum ordinals are unsigned and @value(-N) is invalid.
+                 long memberValue = i < type.EnumMemberValues.Count ? type.EnumMemberValues[i] : i;
+                 bool hasExplicitValue = memberValue >= 0 && memberValue != i;
+                 string valueAnnotation = hasExplicitValue ? $"@value({memberValue}) " : "";
+                 sb.AppendLine($"{memberIndent}{valueAnnotation}{type.EnumMembers[i]}{comma}");
              }
              
              sb.AppendLine($"{indent}}};");
