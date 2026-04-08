@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>CS8600;CS8601;CS8603;CS8604</NoWarn>
     <PackageId>CycloneDDS.NET</PackageId>
     <Description>Cyclone DDS Runtime bindings for .NET (Win64)</Description>
     <IsPackable>true</IsPackable>
