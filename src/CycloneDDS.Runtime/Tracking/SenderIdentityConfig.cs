@@ -29,6 +29,13 @@ namespace CycloneDDS.Runtime.Tracking
         public string? ComputerName { get; init; }
 
         /// <summary>
+        /// Optional override for the IP address.
+        /// When null (default), the IP is resolved once from the CycloneDDS XML config
+        /// (CYCLONEDDS_URI → CycloneDDS/Domain/General/Interfaces/NetworkInterface[@address]).
+        /// </summary>
+        public string? ComputerIP { get; init; }
+
+        /// <summary>
         /// If true (default), identity is kept alive until Participant disposal.
         /// If false, identity is disposed when last Writer is disposed.
         /// RECOMMENDATION: Keep true to avoid race conditions.

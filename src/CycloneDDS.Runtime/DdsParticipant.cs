@@ -481,7 +481,8 @@ namespace CycloneDDS.Runtime
                 AppInstanceId = _identityConfig.AppInstanceId,
                 ProcessId = process.Id,
                 ProcessName = _identityConfig.ProcessName ?? process.ProcessName,
-                ComputerName = _identityConfig.ComputerName ?? Environment.MachineName
+                ComputerName = _identityConfig.ComputerName ?? Environment.MachineName,
+                ComputerIP = _identityConfig.ComputerIP ?? CycloneDdsXmlConfig.NetworkInterfaceAddress ?? string.Empty
             };
 
             // QoS: Reliable + TransientLocal

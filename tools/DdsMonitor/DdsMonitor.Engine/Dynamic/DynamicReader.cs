@@ -237,7 +237,7 @@ public sealed class DynamicReader<T> : IDynamicReader
                   ProcessId = (uint)runtimeSender.Value.ProcessId,
                   ProcessName = runtimeSender.Value.ProcessName,
                   MachineName = runtimeSender.Value.ComputerName,
-                  IpAddress = null,
+                  IpAddress = string.IsNullOrEmpty(runtimeSender.Value.ComputerIP) ? null : runtimeSender.Value.ComputerIP,
                   AppDomainId = runtimeSender.Value.AppDomainId,
                   AppInstanceId = runtimeSender.Value.AppInstanceId
               }
