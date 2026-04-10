@@ -45,7 +45,13 @@ internal sealed class SenderExportRecord
 {
     public uint ProcessId { get; set; }
 
+    public string? ProcessName { get; set; }
+
     public string? MachineName { get; set; }
 
     public string? IpAddress { get; set; }
+
+    public int AppDomainId { get; set; }
+
+    public int AppInstanceId { get; set; }
 }

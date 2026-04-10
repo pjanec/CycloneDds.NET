@@ -41,7 +41,13 @@ public record SenderIdentity
 {
     public uint ProcessId { get; init; }
 
+    public string? ProcessName { get; init; }
+
     public string? MachineName { get; init; }
 
     public string? IpAddress { get; init; }
+
+    public int AppDomainId { get; init; }
+
+    public int AppInstanceId { get; init; }
 }

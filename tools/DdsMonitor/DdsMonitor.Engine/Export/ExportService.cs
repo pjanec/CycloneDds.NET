@@ -145,6 +145,11 @@ public sealed class ExportService : IExportService
             writer.WriteStartObject("Sender");
             writer.WriteNumber("ProcessId", sample.Sender.ProcessId);
 
+            if (sample.Sender.ProcessName != null)
+            {
+                writer.WriteString("ProcessName", sample.Sender.ProcessName);
+            }
+
             if (sample.Sender.MachineName != null)
             {
                 writer.WriteString("MachineName", sample.Sender.MachineName);
@@ -154,6 +159,9 @@ public sealed class ExportService : IExportService
             {
                 writer.WriteString("IpAddress", sample.Sender.IpAddress);
             }
+
+            writer.WriteNumber("AppDomainId", sample.Sender.AppDomainId);
+            writer.WriteNumber("AppInstanceId", sample.Sender.AppInstanceId);
 
             writer.WriteEndObject();
         }

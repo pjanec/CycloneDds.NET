@@ -137,6 +137,7 @@
     private bool _isLoading;
     private List<FileEntry> _entries = new();
     private List<string> _drives = new();
+    private bool _wasOpen;
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -144,20 +145,24 @@
     {
         if (!IsOpen)
         {
+            _wasOpen = false;
             return;
         }
 
-        // Populate on first open (or when caller supplies a new InitialPath).
-        var dir = ResolveInitialDir(InitialPath);
-        if (!string.Equals(dir, _currentDir, StringComparison.OrdinalIgnoreCase))
+        if (_wasOpen)
         {
-            _currentDir = dir;
-            _fileNameInput = ResolveInitialFilename(InitialPath);
-            _selectedFile = null;
-            _navError = null;
-            LoadDrives();
-            LoadDirectory(_currentDir);
+            // Dialog is already open — parent re-renders must not reset navigation.
+            return;
         }
+
+        // Transition false → true: initialise from InitialPath.
+        _wasOpen = true;
+        _currentDir = ResolveInitialDir(InitialPath);
+        _fileNameInput = ResolveInitialFilename(InitialPath);
+        _selectedFile = null;
+        _navError = null;
+        LoadDrives();
+        LoadDirectory(_currentDir);
     }
 
     // ── Navigation ───────────────────────────────────────────────────────────

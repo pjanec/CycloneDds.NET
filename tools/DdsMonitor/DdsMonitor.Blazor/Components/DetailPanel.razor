@@ -391,8 +391,17 @@ else
                 else
                 {
                     <span>ProcessId: @sender.ProcessId</span><br />
+                    @if (!string.IsNullOrEmpty(sender.ProcessName))
+                    {
+                        <span>ProcessName: @sender.ProcessName</span><br />
+                    }
                     <span>Machine: @sender.MachineName</span><br />
-                    <span>IP: @sender.IpAddress</span>
+                    @if (!string.IsNullOrEmpty(sender.IpAddress))
+                    {
+                        <span>IP: @sender.IpAddress</span><br />
+                    }
+                    <span>AppDomainId: @sender.AppDomainId</span><br />
+                    <span>AppInstanceId: @sender.AppInstanceId</span>
                 }
             </div>
         }

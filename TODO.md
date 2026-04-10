@@ -1,3 +1,43 @@
+[BUG] The IDL codegen has a bug with non-sequential enums — value gap at 3  causes the enum entries after to use `@value()`
+annotations which confuses the idlc union case generator.
+The IDL generator is using the field's position in the struct (0, 1, 2, 3, 4) instead of the actual discriminant
+ values (0, 1, 2, 4, 5). So when it encounters symbol A at index 3, it's grabbing the wrong discriminant value,
+ and when it gets to symbol C at index 4, it's using the numeric value 5 as a fallback. The gap from removing
+ symbol B is causing the indices and values to misalign.
+
+
+[BUG] DdsMon In sample Detail the Sender tab does not show NodeId components ApplicationId and DomainId.
+Also the ip address is empty.
+
+Only the following is shown:
+
+    ProcessId: 187572
+    Machine: PETRJAN-226-LP
+    IP:
+
+The SenderIdentity messages sent are like follows:
+
+    {
+      "ParticipantGuid": {
+        "High": -3859426189079408639,
+        "Low": -4539346945406751504
+      },
+      "AppDomainId": 0,
+      "AppInstanceId": 400,
+      "ComputerName": "PETRJAN-226-LP",
+      "ProcessName": "Hrot.ClusterRunner",
+      "ProcessId": 187572
+    }
+
+
+[BUG] DdsMon when i click the Save icon on the All Samples window the 'Save File' dialog opens.
+It defaults to my user folder. No matter what folder i click it chanes the folder for a split
+of the second but then it returns to my user folder, making it the only folder where i can save
+the output file.
+Same happes if i click the drive letter button ("D:\") It shows the content of drive D for half
+a second but then return to my user folder C:\Users\[my.name]...
+
+
 [TODO] Upgrade to cyclone dds 11.0.
 
 

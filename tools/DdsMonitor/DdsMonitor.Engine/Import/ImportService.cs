@@ -145,8 +145,11 @@ public sealed class ImportService : IImportService
             ? new SenderIdentity
             {
                 ProcessId = record.Sender.ProcessId,
+                ProcessName = record.Sender.ProcessName,
                 MachineName = record.Sender.MachineName,
-                IpAddress = record.Sender.IpAddress
+                IpAddress = record.Sender.IpAddress,
+                AppDomainId = record.Sender.AppDomainId,
+                AppInstanceId = record.Sender.AppInstanceId
             }
             : null;
 
