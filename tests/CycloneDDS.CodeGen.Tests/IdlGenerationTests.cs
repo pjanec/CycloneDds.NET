@@ -480,5 +480,114 @@ namespace Math {
                 if (Directory.Exists(outputDir)) Directory.Delete(outputDir, true);
             }
         }
+
+        [Fact]
+        public void EmitIdl_UnionWithNonSequentialEnumDiscriminator_UsesCorrectMemberNames()
+        {
+            // Enum with a gap: values 0, 1, 2, 4, 5 (value 3 was removed).
+            // The bug used iVal as a list index, so DdsCase(4) would grab index-4 => symbol "E" (value 5).
+            // The fix looks up the matching value in EnumMemberValues instead.
+            var enumType = new TypeInfo
+            {
+                Name = "EKind",
+                Namespace = "Ns",
+                IsEnum = true,
+                EnumMembers      = new List<string> { "A", "B", "C", "D", "E" },
+                EnumMemberValues = new List<long>   {  0,   1,   2,   4,   5  },
+            };
+
+            var unionType = new TypeInfo { Name = "KindUnion", Namespace = "Ns" };
+            unionType.Attributes.Add(new AttributeInfo { Name = "DdsUnion" });
+
+            var disc = new FieldInfo { Name = "_d", TypeName = "Ns.EKind", Type = enumType };
+            disc.Attributes.Add(new AttributeInfo { Name = "DdsDiscriminator" });
+            unionType.Fields.Add(disc);
+
+            // DdsCase(EKind.D) — numeric value 4, list index 3
+            var caseD = new FieldInfo { Name = "DPayload", TypeName = "int" };
+            var attrD = new AttributeInfo { Name = "DdsCase" };
+            attrD.Arguments.Add(4);
+            caseD.Attributes.Add(attrD);
+            unionType.Fields.Add(caseD);
+
+            // DdsCase(EKind.E) — numeric value 5, list index 4
+            var caseE = new FieldInfo { Name = "EPayload", TypeName = "int" };
+            var attrE = new AttributeInfo { Name = "DdsCase" };
+            attrE.Arguments.Add(5);
+            caseE.Attributes.Add(attrE);
+            unionType.Fields.Add(caseE);
+
+            var registry = new GlobalTypeRegistry();
+            registry.RegisterLocal(enumType,  "src.cs", "KindFile", "Ns");
+            registry.RegisterLocal(unionType, "src.cs", "KindFile", "Ns");
+
+            var outputDir = Path.Combine(Path.GetTempPath(), "CG_NonSeq_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(outputDir);
+            try
+            {
+                new IdlEmitter().EmitIdlFiles(registry, outputDir);
+                var content = File.ReadAllText(Path.Combine(outputDir, "KindFile.idl"));
+
+                // Correct member names must be used, not integer literals or wrong names
+                Assert.Contains("case D:", content);
+                Assert.Contains("case E:", content);
+
+                // Neither raw integer literals nor the wrong symbol names must appear as case labels
+                Assert.DoesNotContain("case 4:", content);
+                Assert.DoesNotContain("case 5:", content);
+                Assert.DoesNotContain("case C:", content); // index 3 under the old (broken) code would resolve to C for value 3
+            }
+            finally
+            {
+                if (Directory.Exists(outputDir)) Directory.Delete(outputDir, true);
+            }
+        }
+
+        [Fact]
+        public void EmitIdl_UnionWithNonSequentialEnum_FirstGapCaseResolvesCorrectly()
+        {
+            // Minimal reproduction: enum { X=0, Z=2 } — value 1 is absent.
+            // DdsCase(Z) == value 2 must map to symbol "Z", not to a potential index-2 symbol.
+            var enumType = new TypeInfo
+            {
+                Name = "ESparse",
+                Namespace = "Ns",
+                IsEnum = true,
+                EnumMembers      = new List<string> { "X", "Z" },
+                EnumMemberValues = new List<long>   {  0,   2  },
+            };
+
+            var unionType = new TypeInfo { Name = "SparseUnion", Namespace = "Ns" };
+            unionType.Attributes.Add(new AttributeInfo { Name = "DdsUnion" });
+
+            var disc = new FieldInfo { Name = "_d", TypeName = "Ns.ESparse", Type = enumType };
+            disc.Attributes.Add(new AttributeInfo { Name = "DdsDiscriminator" });
+            unionType.Fields.Add(disc);
+
+            var caseZ = new FieldInfo { Name = "ZVal", TypeName = "float" };
+            var attrZ = new AttributeInfo { Name = "DdsCase" };
+            attrZ.Arguments.Add(2); // numeric value of Z
+            caseZ.Attributes.Add(attrZ);
+            unionType.Fields.Add(caseZ);
+
+            var registry = new GlobalTypeRegistry();
+            registry.RegisterLocal(enumType,  "src.cs", "SparseFile", "Ns");
+            registry.RegisterLocal(unionType, "src.cs", "SparseFile", "Ns");
+
+            var outputDir = Path.Combine(Path.GetTempPath(), "CG_Sparse_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(outputDir);
+            try
+            {
+                new IdlEmitter().EmitIdlFiles(registry, outputDir);
+                var content = File.ReadAllText(Path.Combine(outputDir, "SparseFile.idl"));
+
+                Assert.Contains("case Z:", content);
+                Assert.DoesNotContain("case 2:", content);
+            }
+            finally
+            {
+                if (Directory.Exists(outputDir)) Directory.Delete(outputDir, true);
+            }
+        }
     }
 }

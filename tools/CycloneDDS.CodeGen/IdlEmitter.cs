@@ -407,9 +407,15 @@ namespace CycloneDDS.CodeGen
                         {
                             try
                             {
-                                int iVal = Convert.ToInt32(val);
-                                if (iVal >= 0 && iVal < enumDef.TypeInfo!.EnumMembers.Count)
-                                    label = enumDef.TypeInfo.EnumMembers[iVal];
+                                long iVal = Convert.ToInt64(val);
+                                // Find the enum member whose actual numeric value matches iVal,
+                                // rather than assuming value == index (which breaks for non-sequential enums).
+                                int memberIndex = enumDef.TypeInfo!.EnumMemberValues.Count > 0
+                                    ? enumDef.TypeInfo.EnumMemberValues.IndexOf(iVal)
+                                    : (iVal >= 0 && iVal < enumDef.TypeInfo.EnumMembers.Count ? (int)iVal : -1);
+
+                                if (memberIndex >= 0)
+                                    label = enumDef.TypeInfo.EnumMembers[memberIndex];
                             }
                             catch (InvalidCastException) { }
                             catch (OverflowException) { }

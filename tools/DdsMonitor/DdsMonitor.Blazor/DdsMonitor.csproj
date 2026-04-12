@@ -6,6 +6,13 @@
     <Nullable>enable</Nullable>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+
+    <!-- Global dotnet tool packaging -->
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ddsmonitor</ToolCommandName>
+    <PackageId>CycloneDDS.NET.DdsMonitor</PackageId>
+    <Description>Global dotnet tool for CycloneDDS network monitoring</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -43,6 +50,19 @@
     <MakeDir Directories="$(OutputPluginsDir)" />
     <Copy SourceFiles="$(FeatureDemoPluginDll)" DestinationFolder="$(OutputPluginsDir)" SkipUnchangedFiles="true" Condition="Exists('$(FeatureDemoPluginDll)')" />
     <Message Text="Staged Feature Demo plugin to output: $(OutputPluginsDir)" Importance="high" />
+  </Target>
+
+  <PropertyGroup>
+    <!-- Hook into the tool packing process to include the plugins folder -->
+    <TargetsForTfmSpecificToolContent>$(TargetsForTfmSpecificToolContent);IncludePluginsInToolPackage</TargetsForTfmSpecificToolContent>
+  </PropertyGroup>
+
+  <Target Name="IncludePluginsInToolPackage" DependsOnTargets="CopyEcsPluginToOutput;CopyFeatureDemoPluginToOutput">
+    <ItemGroup>
+      <!-- Pack the contents of the plugins folder into the tool's payload directory -->
+      <TfmSpecificToolContent Include="$(OutputPath)plugins\**\*.dll"
+                              PackagePath="tools\$(TargetFramework)\any\plugins\%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
   </Target>
 
 </Project>
