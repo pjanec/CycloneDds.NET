@@ -13,7 +13,11 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
 
 // ── Read DdsSettings early so we can branch registration based on HeadlessMode ──────
 var headlessModeStr = builder.Configuration.GetSection("DdsSettings")["HeadlessMode"] ?? "None";
