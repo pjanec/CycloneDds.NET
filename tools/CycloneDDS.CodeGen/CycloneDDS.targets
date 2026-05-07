@@ -37,6 +37,7 @@
 
   <Target Name="CycloneDDSCodeGen" 
           BeforeTargets="CoreCompile" 
+          Condition="'$(CycloneDdsDisableCodeGen)' != 'true'"
           DependsOnTargets="BuildCycloneDDSCodeGen;CopyReferencedIdlFiles"
           Inputs="@(CycloneDdsSourceFiles);@(ReferencePath);$(CodeGenAssembly)" 
           Outputs="$(CycloneDdsStampFile)">
@@ -53,7 +54,7 @@
     <Touch Files="$(CycloneDdsStampFile)" AlwaysCreate="true" />
   </Target>
 
-  <Target Name="IncludeCycloneDDSGeneratedFiles" BeforeTargets="CoreCompile" DependsOnTargets="CycloneDDSCodeGen">
+  <Target Name="IncludeCycloneDDSGeneratedFiles" BeforeTargets="CoreCompile" Condition="'$(CycloneDdsDisableCodeGen)' != 'true'" DependsOnTargets="CycloneDDSCodeGen">
     <ItemGroup>
       <Compile Include="$(CycloneDdsGeneratedDir)\**\*.cs" Exclude="@(Compile)" />
     </ItemGroup>
