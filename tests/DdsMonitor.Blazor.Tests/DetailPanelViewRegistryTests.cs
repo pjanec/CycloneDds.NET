@@ -38,7 +38,7 @@ public sealed class DetailPanelViewRegistryTests : TestContext
         var registry = new SampleViewRegistry();
 
         registry.Register(typeof(FooTopicType),
-            sd => builder => builder.AddContent(0, "custom-output"));
+            sd => (object?)(RenderFragment)(builder => builder.AddContent(0, "custom-output")));
 
         var viewer = registry.GetViewer(typeof(FooTopicType));
 
@@ -49,7 +49,7 @@ public sealed class DetailPanelViewRegistryTests : TestContext
     public void GetViewer_ReturnsNull_WhenTypeNotRegistered()
     {
         var registry = new SampleViewRegistry();
-        registry.Register(typeof(FooTopicType), sd => builder => builder.AddContent(0, "x"));
+        registry.Register(typeof(FooTopicType), sd => (object?)(RenderFragment)(builder => builder.AddContent(0, "x")));
 
         var viewer = registry.GetViewer(typeof(BarTopicType));
 
@@ -64,12 +64,13 @@ public sealed class DetailPanelViewRegistryTests : TestContext
         var invoked = false;
 
         registry.Register(typeof(FooTopicType),
-            sd => builder => { invoked = true; builder.AddContent(0, "custom"); });
+            sd => (object?)(RenderFragment)(builder => { invoked = true; builder.AddContent(0, "custom"); }));
 
         var viewer = registry.GetViewer(typeof(FooTopicType));
         Assert.NotNull(viewer);
 
-        var fragment = viewer!(sample);
+        var result = viewer!(sample);
+        var fragment = Assert.IsType<RenderFragment>(result);
         var renderedBuilder = new RenderTreeBuilder();
         fragment(renderedBuilder);
 
@@ -85,7 +86,7 @@ public sealed class DetailPanelViewRegistryTests : TestContext
         var sample = MakeSample(typeof(FooTopicType));
 
         registry.Register(typeof(FooTopicType),
-            sd => builder => builder.AddContent(0, "custom-viewer-output"));
+            sd => (object?)(RenderFragment)(builder => builder.AddContent(0, "custom-viewer-output")));
 
         var cut = RenderComponent<StubDetailTreeView>(p => p
             .Add(c => c.Sample, sample)
@@ -116,7 +117,7 @@ public sealed class DetailPanelViewRegistryTests : TestContext
 
         // Register viewer for BarTopicType, not FooTopicType.
         registry.Register(typeof(BarTopicType),
-            sd => builder => builder.AddContent(0, "wrong-viewer"));
+            sd => (object?)(RenderFragment)(builder => builder.AddContent(0, "wrong-viewer")));
 
         var cut = RenderComponent<StubDetailTreeView>(p => p
             .Add(c => c.Sample, sample)

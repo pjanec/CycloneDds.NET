@@ -22,7 +22,9 @@ internal static class MacroShim
     /// <summary>
     /// The macro registry populated by <see cref="FilterCompiler"/> at creation/compile time.
     /// At predicate evaluation time the registry is consulted to look up the named macro.
+    /// Thread-static to avoid cross-test interference when tests run in parallel.
     /// </summary>
+    [ThreadStatic]
     internal static IFilterMacroRegistry? Registry;
 
     // Overloads for 0–5 arguments; add more if required by consumers.

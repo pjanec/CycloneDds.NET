@@ -1,7 +1,5 @@
 using System;
 using DdsMonitor.Engine.Ui;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Rendering;
 
 namespace DdsMonitor.Engine.Tests;
 
@@ -113,7 +111,7 @@ public sealed class Batch23Tests
     public void TypeDrawerRegistry_Register_OverridesDefaultDrawer()
     {
         var registry = new TypeDrawerRegistry();
-        var customDrawer = (RenderFragment<DrawerContext>)(ctx => builder => { /* custom */ });
+        Func<DrawerContext, object?> customDrawer = _ => "custom";
 
         registry.Register(typeof(int), customDrawer);
 
@@ -138,7 +136,7 @@ public sealed class Batch23Tests
         var registry = new TypeDrawerRegistry();
 
         Assert.Throws<ArgumentNullException>(
-            () => registry.Register(null!, ctx => builder => { }));
+            () => registry.Register(null!, _ => (object?)null));
     }
 
     [Fact]
@@ -210,11 +208,14 @@ public sealed class Batch23Tests
     }
 
     [Fact]
-    public void DrawerContext_Receiver_IsNullByDefault()
+    public void DrawerContext_ConstructsWithoutReceiver_And_HasNoReceiverProperty()
     {
+        // DrawerContext no longer has a Receiver property (purified in TASK-A001).
+        // Constructing without a receiver parameter must succeed.
         var ctx = new DrawerContext("F", typeof(int), () => 0, _ => { });
 
-        Assert.Null(ctx.Receiver);
+        Assert.Equal("F", ctx.Label);
+        Assert.Equal(typeof(int), ctx.FieldType);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

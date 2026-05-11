@@ -201,13 +201,15 @@ public sealed class FixedStringAndCloneTests
     }
 
     [Fact]
-    public void TypeDrawerRegistry_FixedString32Drawer_RendersInputElement()
+    public void TypeDrawerRegistry_FixedString32Drawer_FactoryIsRegistered_ReturnsUiAgnosticStub()
     {
+        // After TASK-A001: Engine registers a UI-agnostic stub for FixedString32.
+        // The stub factory is non-null (drawer is known), but it returns null
+        // because the Engine has no Blazor dependency.  Blazor adapter handles rendering.
         var registry = new TypeDrawerRegistry();
         var drawer = registry.GetDrawer(typeof(FixedString32));
         Assert.NotNull(drawer);
 
-        // Render fragment via DrawerContext and verify it does not throw.
         var currentValue = new FixedString32("initial");
         var ctx = new DrawerContext(
             "OkMessage",
@@ -215,9 +217,9 @@ public sealed class FixedStringAndCloneTests
             () => currentValue,
             v => { if (v is FixedString32 fs) currentValue = fs; });
 
-        // The fragment should be non-null and creation should not throw.
-        var fragment = drawer!(ctx);
-        Assert.NotNull(fragment);
+        // Stub returns null – caller (BlazorTypeDrawerAdapter) is responsible for real rendering.
+        var result = drawer!(ctx);
+        Assert.Null(result);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

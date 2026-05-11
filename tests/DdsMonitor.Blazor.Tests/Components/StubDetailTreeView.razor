@@ -8,10 +8,14 @@
 
 @if (Sample != null && Registry != null)
 {
-    var viewer = Registry.GetViewer(Sample.TopicMetadata.TopicType);
-    if (viewer != null)
+    var viewerFunc = Registry.GetViewer(Sample.TopicMetadata.TopicType);
+    if (viewerFunc != null)
     {
-        @viewer(Sample)
+        var viewerResult = viewerFunc(Sample);
+        if (viewerResult is RenderFragment rf)
+        {
+            @rf
+        }
     }
     else
     {

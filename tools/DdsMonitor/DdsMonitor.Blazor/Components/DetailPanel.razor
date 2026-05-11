@@ -10,6 +10,7 @@
 @using CycloneDDS.Schema.Formatting
 @using Microsoft.AspNetCore.Components.Rendering
 @using Microsoft.JSInterop
+@using DdsMonitor.Services
 @implements IDisposable
 
 @inject IEventBroker EventBroker
@@ -21,6 +22,7 @@
 @inject IValueFormatterRegistry ValueFormatterRegistry
 @inject ISampleStore SampleStore
 @inject ISampleViewRegistry SampleViewRegistry
+@inject BlazorSampleViewAdapter SampleViewAdapter
 
 @if (_currentSample == null)
 {
@@ -226,7 +228,7 @@ else
     private RenderFragment RenderTreeView() => @<text>
         @if (_currentSample != null)
         {
-            var customViewer = SampleViewRegistry?.GetViewer(_currentSample.TopicMetadata.TopicType);
+            var customViewer = SampleViewAdapter.GetBlazorViewer(_currentSample.TopicMetadata.TopicType);
             if (customViewer != null)
             {
                 @customViewer(_currentSample)

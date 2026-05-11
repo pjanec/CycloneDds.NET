@@ -67,37 +67,41 @@ public sealed class FeatureDemoPlugin : IMonitorPlugin
         // ── ISampleViewRegistry: replace tree view for DemoPayload with custom panel ─
         context.GetFeature<ISampleViewRegistry>()?.Register(
             typeof(DemoPayload),
-            sd => builder =>
+            sd =>
             {
-                builder.OpenElement(0, "div");
-                builder.AddAttribute(1, "class", "demo-payload-view");
-                builder.OpenElement(2, "h4");
-                builder.AddContent(3, "Demo Payload Viewer");
-                builder.CloseElement();
-                if (sd.Payload is DemoPayload dp)
+                RenderFragment rf = builder =>
                 {
-                    builder.OpenElement(4, "dl");
-                    builder.OpenElement(5, "dt");
-                    builder.AddContent(6, "ID");
+                    builder.OpenElement(0, "div");
+                    builder.AddAttribute(1, "class", "demo-payload-view");
+                    builder.OpenElement(2, "h4");
+                    builder.AddContent(3, "Demo Payload Viewer");
                     builder.CloseElement();
-                    builder.OpenElement(7, "dd");
-                    builder.AddContent(8, dp.Id.ToString());
-                    builder.CloseElement();
-                    builder.OpenElement(9, "dt");
-                    builder.AddContent(10, "Label");
-                    builder.CloseElement();
-                    builder.OpenElement(11, "dd");
-                    builder.AddContent(12, dp.Label);
-                    builder.CloseElement();
-                    builder.OpenElement(13, "dt");
-                    builder.AddContent(14, "Location");
-                    builder.CloseElement();
-                    builder.OpenElement(15, "dd");
-                    builder.AddContent(16, dp.Location.ToString());
-                    builder.CloseElement();
-                    builder.CloseElement(); // dl
-                }
-                builder.CloseElement(); // div
+                    if (sd.Payload is DemoPayload dp)
+                    {
+                        builder.OpenElement(4, "dl");
+                        builder.OpenElement(5, "dt");
+                        builder.AddContent(6, "ID");
+                        builder.CloseElement();
+                        builder.OpenElement(7, "dd");
+                        builder.AddContent(8, dp.Id.ToString());
+                        builder.CloseElement();
+                        builder.OpenElement(9, "dt");
+                        builder.AddContent(10, "Label");
+                        builder.CloseElement();
+                        builder.OpenElement(11, "dd");
+                        builder.AddContent(12, dp.Label);
+                        builder.CloseElement();
+                        builder.OpenElement(13, "dt");
+                        builder.AddContent(14, "Location");
+                        builder.CloseElement();
+                        builder.OpenElement(15, "dd");
+                        builder.AddContent(16, dp.Location.ToString());
+                        builder.CloseElement();
+                        builder.CloseElement(); // dl
+                    }
+                    builder.CloseElement(); // div
+                };
+                return (object)rf;
             });
 
         // ── IValueFormatterRegistry: register geo-coordinate formatter ────────────

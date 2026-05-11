@@ -14,7 +14,8 @@
 
 | ID | Priority | Source Batch | Description | Target Batch | Status |
 |----|----------|-------------|-------------|--------------|--------|
-| — | — | — | No items yet | — | — |
+| DT-001 | P2 | BATCH-01 | `TypeDrawerRegistry` primitive stubs return `null` silently. Callers outside the Blazor/Avalonia adapter stacks may get null without a clear error. Should document convention in the interface or add a sentinel/guard that throws if no adapter has registered real factories. | BATCH-03 | Open |
+| DT-002 | P2 | BATCH-01 | `IWindowManager.RegisterPanelType` parameter named `blazorComponentType` — Blazor-specific name leaks into the general Engine interface. Should rename to `viewModelType` or `componentType`. | BATCH-03 | Open |
 
 ---
 

@@ -1,5 +1,6 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
-using Microsoft.AspNetCore.Components;
 
 namespace DdsMonitor.Engine.Plugins;
 
@@ -15,11 +16,11 @@ namespace DdsMonitor.Engine.Plugins;
 /// </summary>
 public sealed class SampleViewRegistry : ISampleViewRegistry
 {
-    private readonly Dictionary<Type, RenderFragment<SampleData>> _viewers = new();
+    private readonly Dictionary<Type, Func<SampleData, object?>> _viewers = new();
     private readonly object _sync = new();
 
     /// <inheritdoc />
-    public void Register(Type type, RenderFragment<SampleData> viewer)
+    public void Register(Type type, Func<SampleData, object?> viewer)
     {
         ArgumentNullException.ThrowIfNull(type);
         ArgumentNullException.ThrowIfNull(viewer);
@@ -31,14 +32,14 @@ public sealed class SampleViewRegistry : ISampleViewRegistry
     }
 
     /// <inheritdoc />
-    public RenderFragment<SampleData>? GetViewer(Type type)
+    public Func<SampleData, object?>? GetViewer(Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
 
-        Dictionary<Type, RenderFragment<SampleData>> snapshot;
+        Dictionary<Type, Func<SampleData, object?>> snapshot;
         lock (_sync)
         {
-            snapshot = new Dictionary<Type, RenderFragment<SampleData>>(_viewers);
+            snapshot = new Dictionary<Type, Func<SampleData, object?>>(_viewers);
         }
 
         // Walk hierarchy: exact type first, then base types (most-derived first), then interfaces.

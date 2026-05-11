@@ -25,6 +25,7 @@ public sealed class PluginLoader
     private static readonly HashSet<string> SharedAssemblyNames = new(StringComparer.Ordinal)
     {
         "DdsMonitor.Engine",
+        "DdsMonitor.Avalonia.Core",
         "CycloneDDS.Schema",
         "CycloneDDS.Runtime",
         "CycloneDDS.Core",

@@ -3,8 +3,10 @@
 @using System.Linq
 @using DdsMonitor.Engine.Ui
 @using DdsMonitor.Engine
+@using DdsMonitor.Services
 
 @inject ITypeDrawerRegistry DrawerRegistry
+@inject BlazorTypeDrawerAdapter DrawerAdapter
 
 @if (ActiveFields.Count == 0 || Payload == null)
 {
@@ -37,7 +39,7 @@ else
             }
 
             var capturedField = field;
-            var drawer = DrawerRegistry.GetDrawer(field.ValueType);
+            var drawer = DrawerAdapter.GetBlazorDrawer(field.ValueType);
 
             var currentValue = capturedField.Getter(Payload!);
 
@@ -75,7 +77,6 @@ else
                                 OnPayloadMutated?.Invoke(Payload!);
                                 StateHasChanged();
                             },
-                            this,
                             onValidationError: err =>
                             {
                                 if (err == null)
@@ -94,7 +95,7 @@ else
                     }
                     else if (capturedField.IsFixedSizeArray && capturedField.ElementType != null)
                     {
-                        var elemDrawer = DrawerRegistry.GetDrawer(capturedField.ElementType);
+                        var elemDrawer = DrawerAdapter.GetBlazorDrawer(capturedField.ElementType);
                         <div class="dynamic-form__array-fixed">
                             @for (int idx = 0; idx < capturedField.FixedArrayLength; idx++)
                             {
@@ -110,8 +111,7 @@ else
                                             $"[{capturedIdx}]",
                                             capturedField.ElementType,
                                             () => elemVal,
-                                            v => SetArrayElement(capturedField, capturedIdx, v),
-                                            this);
+                                            v => SetArrayElement(capturedField, capturedIdx, v));
                                         @elemDrawer(elemCtx)
                                     }
                                     else
@@ -139,7 +139,7 @@ else
                     }
                     else if (capturedField.IsArrayField && capturedField.ElementType != null)
                     {
-                        var elemDrawer = DrawerRegistry.GetDrawer(capturedField.ElementType);
+                        var elemDrawer = DrawerAdapter.GetBlazorDrawer(capturedField.ElementType);
                         var rawValue = capturedField.Getter(Payload!);
                         var currentArr = ToObjectArray(rawValue);
 
@@ -156,8 +156,7 @@ else
                                             $"[{capturedIdx}]",
                                             capturedField.ElementType,
                                             () => elemVal,
-                                            v => SetArrayElement(capturedField, capturedIdx, v),
-                                            this);
+                                            v => SetArrayElement(capturedField, capturedIdx, v));
                                         @elemDrawer(elemCtx)
                                         <button type="button" class="dynamic-form__array-remove" title="Remove element" @onclick="() => RemoveArrayElement(capturedField, capturedIdx)">×</button>
                                     }

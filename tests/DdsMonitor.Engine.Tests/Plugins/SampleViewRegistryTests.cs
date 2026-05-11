@@ -1,7 +1,7 @@
+using System;
 using System.Threading.Tasks;
+using DdsMonitor.Engine;
 using DdsMonitor.Engine.Plugins;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Rendering;
 
 namespace DdsMonitor.Engine.Tests.Plugins;
 
@@ -19,8 +19,8 @@ public sealed class SampleViewRegistryTests
     private interface IMyInterface { }
     private sealed class InterfacePayload : IMyInterface { }
 
-    private static RenderFragment<SampleData> MakeViewer(string tag) =>
-        _ => builder => builder.AddContent(0, tag);
+    private static Func<SampleData, object?> MakeViewer(string tag) =>
+        _ => (object?)tag;
 
     // ── Null / not-registered ─────────────────────────────────────────────────
 

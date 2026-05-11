@@ -9,7 +9,7 @@
 
 **Goal:** Remove all `Microsoft.AspNetCore.Components` references from `DdsMonitor.Engine` so it compiles as a Blazor-free library.
 
-- [ ] **TASK-A001** Remove Blazor Types from Engine Registries — [details](./TASK-DETAIL.md#task-a001--remove-blazor-types-from-engine-registries)
+- [x] **TASK-A001** Remove Blazor Types from Engine Registries — [details](./TASK-DETAIL.md#task-a001--remove-blazor-types-from-engine-registries)
 
 ---
 
@@ -17,9 +17,9 @@
 
 **Goal:** A running Avalonia desktop process with Generic Host, dual-boot decision, empty `ShellWindow` with menu/toolbar, and plugin loading infrastructure.
 
-- [ ] **TASK-B001** Create `DdsMonitor.Avalonia.Core` Project — [details](./TASK-DETAIL.md#task-b001--create-ddsmonitoravaloniacore-project)
-- [ ] **TASK-B002** Create `DdsMonitor.Avalonia` Shell Project — [details](./TASK-DETAIL.md#task-b002--create-ddsmonitoravalonia-shell-project)
-- [ ] **TASK-B003** Integrate PluginLoader + InitializePlugins into Shell — [details](./TASK-DETAIL.md#task-b003--integrate-pluginloader--initializeplugins-into-shell)
+- [x] **TASK-B001** Create `DdsMonitor.Avalonia.Core` Project — [details](./TASK-DETAIL.md#task-b001--create-ddsmonitoravaloniacore-project)
+- [x] **TASK-B002** Create `DdsMonitor.Avalonia` Shell Project — [details](./TASK-DETAIL.md#task-b002--create-ddsmonitoravalonia-shell-project) ⚠️ P1 fix in BATCH-02
+- [x] **TASK-B003** Integrate PluginLoader + InitializePlugins into Shell — [details](./TASK-DETAIL.md#task-b003--integrate-pluginloader--initializeplugins-into-shell)
 
 ---
 

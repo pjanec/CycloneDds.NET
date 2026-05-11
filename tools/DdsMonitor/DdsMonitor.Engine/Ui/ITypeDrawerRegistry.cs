@@ -1,11 +1,12 @@
 using System;
-using Microsoft.AspNetCore.Components;
 
 namespace DdsMonitor.Engine.Ui;
 
 /// <summary>
-/// Provides a registry mapping CLR types to Blazor <see cref="RenderFragment{TValue}"/> builders
-/// that render an appropriate user-input control for editing a value of that type.
+/// Provides a registry mapping CLR types to UI-agnostic drawer factories
+/// that produce an appropriate user-input control for editing a value of that type.
+/// The concrete control type (Blazor <c>RenderFragment</c>, Avalonia <c>Control</c>, etc.)
+/// is determined by the host UI layer that registers the factory.
 /// </summary>
 public interface ITypeDrawerRegistry
 {
@@ -15,16 +16,16 @@ public interface ITypeDrawerRegistry
     /// </summary>
     /// <param name="type">The CLR type to handle.</param>
     /// <param name="drawer">
-    /// A <see cref="RenderFragment{DrawerContext}"/> that produces an interactive input
-    /// element bound to the values provided in <see cref="DrawerContext"/>.
+    /// A factory that accepts a <see cref="DrawerContext"/> and returns the UI control object
+    /// (e.g. a Blazor <c>RenderFragment</c> or an Avalonia <c>Control</c>).
     /// </param>
-    void Register(Type type, RenderFragment<DrawerContext> drawer);
+    void Register(Type type, Func<DrawerContext, object?> drawer);
 
     /// <summary>
     /// Returns the drawer factory registered for the given <paramref name="type"/>,
     /// or <c>null</c> if no drawer has been registered.
     /// </summary>
-    RenderFragment<DrawerContext>? GetDrawer(Type type);
+    Func<DrawerContext, object?>? GetDrawer(Type type);
 
     /// <summary>
     /// Returns <c>true</c> when a drawer is registered for <paramref name="type"/>.

@@ -45,6 +45,11 @@ if (!isHeadless)
     builder.Services.AddSingleton<CloneRequestService>();
     builder.Services.AddScoped<WorkspacePersistenceService>();
 
+    // Blazor-specific adapters that bridge the purified Engine registries
+    // back to RenderFragment-based factories for Blazor components.
+    builder.Services.AddSingleton<BlazorTypeDrawerAdapter>();
+    builder.Services.AddSingleton<BlazorSampleViewAdapter>();
+
     // ── ME1-T10: Browser lifecycle services ──────────────────────────────────────────
     var lifecycleOptions = builder.Configuration
         .GetSection("BrowserLifecycle")
