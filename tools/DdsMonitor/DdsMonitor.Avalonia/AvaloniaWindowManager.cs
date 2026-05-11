@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using DdsMonitor.Avalonia.Core;
 using DdsMonitor.Engine;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
 
 namespace DdsMonitor.Avalonia;
 
@@ -90,12 +91,27 @@ public sealed class AvaloniaWindowManager : IWindowManager
         };
 
         // Restore geometry from component state if available
-        if (panelState.ComponentState.TryGetValue("__window", out var geo) && geo is Dictionary<string, object> geoDict)
+        if (panelState.ComponentState.TryGetValue("__window", out var geo))
         {
-            if (geoDict.TryGetValue("X", out var x)) panelState.X = Convert.ToDouble(x);
-            if (geoDict.TryGetValue("Y", out var y)) panelState.Y = Convert.ToDouble(y);
-            if (geoDict.TryGetValue("Width", out var w)) panelState.Width = Convert.ToDouble(w);
-            if (geoDict.TryGetValue("Height", out var h)) panelState.Height = Convert.ToDouble(h);
+            Dictionary<string, object>? geoDict = null;
+            if (geo is Dictionary<string, object> nativeDict)
+            {
+                geoDict = nativeDict;
+            }
+            else if (geo is JsonElement je && je.ValueKind == JsonValueKind.Object)
+            {
+                // Deserialized from JSON — values come in as JsonElement; convert to native dict.
+                geoDict = je.Deserialize<Dictionary<string, object>>() ?? new();
+                panelState.ComponentState["__window"] = geoDict;
+            }
+
+            if (geoDict is not null)
+            {
+                if (geoDict.TryGetValue("X", out var x)) panelState.X = ToDouble(x);
+                if (geoDict.TryGetValue("Y", out var y)) panelState.Y = ToDouble(y);
+                if (geoDict.TryGetValue("Width", out var w)) panelState.Width = ToDouble(w);
+                if (geoDict.TryGetValue("Height", out var h)) panelState.Height = ToDouble(h);
+            }
         }
 
         // Create window on UI thread
@@ -352,4 +368,11 @@ public sealed class AvaloniaWindowManager : IWindowManager
             SpawnPanel(panel.ComponentTypeName, panel.ComponentState);
         }
     }
+
+    /// <summary>
+    /// Converts a geometry value (either a native <see cref="double"/> or a JSON-deserialized
+    /// <see cref="JsonElement"/> number) to a <see cref="double"/>.
+    /// </summary>
+    private static double ToDouble(object value) =>
+        value is JsonElement je ? je.GetDouble() : Convert.ToDouble(value);
 }

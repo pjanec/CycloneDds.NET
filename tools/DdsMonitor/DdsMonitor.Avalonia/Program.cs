@@ -21,6 +21,9 @@ builder.Services.AddSingleton<IAvaloniaTypeDrawerRegistry, AvaloniaTypeDrawerReg
 // Override the scoped IWindowManager registered by the engine with an Avalonia singleton
 builder.Services.AddSingleton<IWindowManager, AvaloniaWindowManager>();
 
+// Persistence: debounce workspace saves triggered by WorkspaceSaveRequestedEvent
+builder.Services.AddHostedService<AvaloniaWorkspacePersistenceService>();
+
 var host = builder.Build();
 
 var settings = host.Services.GetRequiredService<DdsSettings>();

@@ -13,6 +13,7 @@ namespace DdsMonitor.Avalonia.StandardPlugin;
 public sealed class SamplesViewerViewModel : IStatefulViewModel, IDisposable
 {
     private readonly IFilterCompiler _filterCompiler;
+    private readonly IEventBroker? _eventBroker;
     private readonly ISampleStore? _store;
     private ISampleView? _view;
     private TopicMetadata? _meta;
@@ -63,12 +64,14 @@ public sealed class SamplesViewerViewModel : IStatefulViewModel, IDisposable
         IFilterCompiler filterCompiler,
         ISampleStore? store = null,
         ISampleView? view = null,
-        TopicMetadata? meta = null)
+        TopicMetadata? meta = null,
+        IEventBroker? eventBroker = null)
     {
         _filterCompiler = filterCompiler ?? throw new ArgumentNullException(nameof(filterCompiler));
         _store = store;
         _view = view;
         _meta = meta;
+        _eventBroker = eventBroker;
     }
 
     /// <inheritdoc />
@@ -76,8 +79,15 @@ public sealed class SamplesViewerViewModel : IStatefulViewModel, IDisposable
     {
         _state = componentState;
 
-        if (componentState.TryGetValue("FilterText", out var ft) && ft is string ftStr)
-            _filterText = ftStr;
+        // Restore FilterText (handle both native string and JsonElement from JSON deserialization)
+        if (componentState.TryGetValue("FilterText", out var ft))
+        {
+            if (ft is string ftStr)
+                _filterText = ftStr;
+            else if (ft is System.Text.Json.JsonElement je &&
+                     je.ValueKind == System.Text.Json.JsonValueKind.String)
+                _filterText = je.GetString() ?? "";
+        }
 
         if (_meta != null)
             componentState["TopicName"] = _meta.TopicName;
@@ -91,6 +101,10 @@ public sealed class SamplesViewerViewModel : IStatefulViewModel, IDisposable
         {
             StartView(_meta);
         }
+
+        // Apply restored filter after view is wired up
+        if (!string.IsNullOrEmpty(_filterText))
+            ApplyFilter(_filterText);
     }
 
     private void StartView(TopicMetadata meta)
@@ -138,7 +152,11 @@ public sealed class SamplesViewerViewModel : IStatefulViewModel, IDisposable
         {
             _view.SetFilter(result.Predicate);
             _filterError = null;
-            if (_state != null) _state["FilterText"] = expression;
+            if (_state != null)
+            {
+                _state["FilterText"] = expression;
+                _eventBroker?.Publish(new WorkspaceSaveRequestedEvent());
+            }
         }
         else
         {

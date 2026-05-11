@@ -7,7 +7,7 @@ namespace DdsMonitor.Avalonia.StandardPlugin;
 /// Registers standard Avalonia drawer controls for primitive CLR types into
 /// an <see cref="IAvaloniaTypeDrawerRegistry"/>.
 /// </summary>
-public static class StandardDrawerRegistrar
+internal static class StandardDrawerRegistrar
 {
     public static void Register(IAvaloniaTypeDrawerRegistry registry)
     {

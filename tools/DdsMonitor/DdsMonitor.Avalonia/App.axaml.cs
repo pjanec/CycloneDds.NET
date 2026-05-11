@@ -31,6 +31,11 @@ public sealed partial class App : Application
             var ddsBridge = _services.GetRequiredService<IDdsBridge>();
 
             desktop.MainWindow = new ShellWindow(menuRegistry, toolbarRegistry, ddsBridge);
+
+            // Restore workspace panels now that the UI thread is running and plugins registered.
+            var windowManager = _services.GetRequiredService<IWindowManager>();
+            var workspaceState = _services.GetRequiredService<IWorkspaceState>();
+            windowManager.LoadWorkspace(workspaceState.WorkspaceFilePath);
         }
 
         base.OnFrameworkInitializationCompleted();

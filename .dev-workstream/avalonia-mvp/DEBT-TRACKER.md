@@ -28,6 +28,8 @@
 | DT-004 | P2 | BATCH-03 | `SamplesViewerView.axaml` has no `DataTemplate` for sample rows — renders `.ToString()`. | BATCH-04 | ✅ Already resolved in BATCH-03 |
 | DT-005 | P2 | BATCH-03 | `DetailInspectorView.axaml` field tree is flat — `Depth` not reflected in view (no indentation). | BATCH-04 | ✅ Resolved — `IndentMargin` computed property + AXAML binding |
 | DT-006 | P3 | BATCH-04 | `NetworkConfigView` DomainId uses `TextBox` string binding — non-numeric input silently fails. | BATCH-05 | Open |
-| DT-007 | P2 | BATCH-04 | `NetworkConfigViewModel.Apply()` accumulates DDS participants on repeated clicks (no clear/diff before re-adding). | BATCH-05 | Open |
-| DT-008 | P3 | BATCH-04 | `SendSampleViewModel` does not implement `IStatefulViewModel` — payload authoring state lost on panel close (deferred by spec). | Deferred | Open |
-| DT-009 | P3 | BATCH-04 | `StandardDrawerRegistrar` is `public` instead of `internal`. Add `InternalsVisibleTo` to revert. | BATCH-05 | Open |
+| DT-007 | P2 | BATCH-04 | `NetworkConfigViewModel.Apply()` accumulates DDS participants on repeated clicks (no clear/diff before re-adding). | BATCH-05 | ✅ Resolved — no-op guard using Zip comparison |
+| DT-009 | P3 | BATCH-04 | `StandardDrawerRegistrar` is `public` instead of `internal`. Add `InternalsVisibleTo` to revert. | BATCH-05 | ✅ Resolved — InternalsVisibleTo added, class made internal |
+| DT-010 | P3 | BATCH-05 | `AvaloniaWindowManager.SaveWorkspaceToJson` uses bare `List<PanelState>`, not `WorkspaceDocument`. Blazor/Avalonia workspace files format-incompatible. | Deferred | Open |
+| DT-011 | P3 | BATCH-05 | `SamplesViewerViewModel.FilterText = ""` does not publish `WorkspaceSaveRequestedEvent`. Clearing filter does not mark workspace dirty. Intentional but undocumented. | Deferred | Open |
+| DT-012 | P3 | BATCH-05 | `LoadWorkspace` in `App.axaml.cs` has no explicit headless-mode guard at call site. Low risk — current boot path prevents this. | Deferred | Open |

@@ -745,6 +745,37 @@ public sealed class SamplesViewerViewModelTests
 
         Assert.Equal(0, vm.FilteredCount);
     }
+
+    [Fact]
+    public void SamplesViewerViewModel_Initialize_RestoresFilterText()
+    {
+        var view = new StubSampleView();
+        var compiler = new StubFilterCompiler { NextResultIsValid = true };
+        var vm = new SamplesViewerViewModel(compiler, view: view);
+        var state = new Dictionary<string, object> { ["FilterText"] = "seq>5" };
+
+        vm.Initialize(state);
+
+        Assert.Equal("seq>5", vm.FilterText);
+        Assert.NotNull(view.LastFilter);
+    }
+
+    [Fact]
+    public void SamplesViewerViewModel_FilterTextChange_PublishesSaveEvent()
+    {
+        var view = new StubSampleView();
+        var compiler = new StubFilterCompiler { NextResultIsValid = true };
+        bool eventFired = false;
+        var broker = new EventBroker();
+        using var _ = broker.Subscribe<WorkspaceSaveRequestedEvent>(_ => eventFired = true);
+
+        var vm = new SamplesViewerViewModel(compiler, view: view, eventBroker: broker);
+        vm.Initialize(new Dictionary<string, object>());
+
+        vm.FilterText = "Id == 1";
+
+        Assert.True(eventFired, "WorkspaceSaveRequestedEvent should be published after valid FilterText change");
+    }
 }
 
 // ── DetailInspectorPlugin tests ───────────────────────────────────────────────
@@ -1206,6 +1237,19 @@ public sealed class NetworkConfigViewModelTests
         vm.Apply();
 
         Assert.NotNull(vm.ApplyError);
+    }
+
+    [Fact]
+    public void NetworkConfigViewModel_Apply_NoChanges_SkipsBridgeCalls()
+    {
+        var bridge = new StubDdsBridge();
+        bridge.SimulatedParticipantConfigs.Add(new ParticipantConfig { DomainId = 0, PartitionName = "test" });
+        var vm = new NetworkConfigViewModel(bridge, new StubEventBroker());
+        // vm.Participants was populated from bridge in ctor — should match bridge state exactly
+
+        vm.Apply();
+
+        Assert.Equal(0, bridge.AddParticipantCallCount);
     }
 }
 

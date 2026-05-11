@@ -57,6 +57,17 @@ public sealed class NetworkConfigViewModel
     {
         try
         {
+            // No-op guard: if the current list already matches the bridge state, skip all calls.
+            var bridgeConfigs = _ddsBridge.ParticipantConfigs;
+            if (bridgeConfigs.Count == Participants.Count &&
+                bridgeConfigs.Zip(Participants).All(pair =>
+                    pair.First.DomainId == (uint)pair.Second.DomainId &&
+                    pair.First.PartitionName == pair.Second.PartitionName))
+            {
+                ApplyError = null;
+                return;
+            }
+
             ApplyError = null;
             foreach (var p in Participants)
                 _ddsBridge.AddParticipant((uint)p.DomainId, p.PartitionName);

@@ -62,7 +62,7 @@
 
 **Goal:** Prove per-panel `IStatefulViewModel` persistence round-trip and `workspace.json` compatibility.
 
-- [ ] **TASK-G001** IStatefulViewModel Persistence Round-Trip — [details](./TASK-DETAIL.md#task-g001--istatefulviewmodel-persistence-round-trip)
+- [x] **TASK-G001** IStatefulViewModel Persistence Round-Trip — [details](./TASK-DETAIL.md#task-g001--istatefulviewmodel-persistence-round-trip)
 
 ---
 
