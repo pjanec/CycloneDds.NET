@@ -21,6 +21,7 @@ public sealed class AvaloniaWindowManager : IWindowManager
     private readonly object _lock = new();
     private readonly List<PanelState> _activePanels = new();
     private readonly Dictionary<string, Window> _openWindows = new();
+    private readonly Dictionary<string, object> _viewModels = new(StringComparer.Ordinal);
     private readonly List<string> _excludedTopics = new();
 
     public AvaloniaWindowManager(
@@ -107,6 +108,7 @@ public sealed class AvaloniaWindowManager : IWindowManager
     {
         // Resolve the ViewModel type and build the view
         Control content;
+        object? vmToTrack = null;
         try
         {
             var vmType = Type.GetType(panelState.ComponentTypeName)
@@ -120,7 +122,9 @@ public sealed class AvaloniaWindowManager : IWindowManager
 
             if (vmType is not null)
             {
-                var vm = ActivatorUtilities.CreateInstance(_services, vmType);
+                // Prefer a registered DI factory; fall back to reflection-based creation.
+                var vm = _services.GetService(vmType)
+                    ?? ActivatorUtilities.CreateInstance(_services, vmType);
 
                 if (vm is IStatefulViewModel stateful)
                 {
@@ -128,6 +132,7 @@ public sealed class AvaloniaWindowManager : IWindowManager
                 }
 
                 content = _viewRegistry.BuildView(vm);
+                vmToTrack = vm;
             }
             else
             {
@@ -158,6 +163,8 @@ public sealed class AvaloniaWindowManager : IWindowManager
         {
             _openWindows[panelState.PanelId] = window;
             _activePanels.Add(panelState);
+            if (vmToTrack is not null)
+                _viewModels[panelState.PanelId] = vmToTrack;
         }
 
         PanelsChanged?.Invoke();
@@ -167,11 +174,14 @@ public sealed class AvaloniaWindowManager : IWindowManager
     private void OnWindowClosed(PanelState panelState)
     {
         Window? win;
+        object? vm;
         lock (_lock)
         {
             _openWindows.TryGetValue(panelState.PanelId, out win);
             _openWindows.Remove(panelState.PanelId);
             _activePanels.RemoveAll(p => p.PanelId == panelState.PanelId);
+            _viewModels.TryGetValue(panelState.PanelId, out vm);
+            _viewModels.Remove(panelState.PanelId);
         }
 
         if (win is not null)
@@ -185,6 +195,9 @@ public sealed class AvaloniaWindowManager : IWindowManager
                 ["Height"] = win.Height,
             };
         }
+
+        if (vm is IDisposable disposable)
+            disposable.Dispose();
 
         PanelClosed?.Invoke(panelState);
         PanelsChanged?.Invoke();

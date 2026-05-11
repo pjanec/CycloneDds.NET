@@ -1,0 +1,24 @@
+{
+  "TopicTypeName": "DdsMonitor.Engine.SelfTestSimple, DdsMonitor.Engine, Version=0.2.0.0, Culture=neutral, PublicKeyToken=null",
+  "Root": {
+    "NodeType": 0,
+    "GroupOperator": 0,
+    "ComparisonOperator": 0,
+    "IsNegated": false,
+    "FieldPath": null,
+    "ValueText": null,
+    "ValueTypeName": null,
+    "Children": [
+      {
+        "NodeType": 1,
+        "GroupOperator": 0,
+        "ComparisonOperator": 0,
+        "IsNegated": false,
+        "FieldPath": "Payload.Id",
+        "ValueText": "",
+        "ValueTypeName": "System.Int32, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e",
+        "Children": []
+      }
+    ]
+  }
+}

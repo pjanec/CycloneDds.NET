@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DdsMonitor.Avalonia.StandardPlugin.SchemaSourcesView">
+
+  <Grid RowDefinitions="*,Auto,Auto">
+
+    <ListBox Grid.Row="0"
+             ItemsSource="{Binding Entries}"
+             Name="EntriesList">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding Path}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <TextBlock Grid.Row="1"
+               Text="CLI override active — Add/Remove disabled"
+               IsVisible="{Binding IsCliOverride}"
+               Foreground="Orange"
+               Margin="4" />
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="4" Spacing="4">
+      <Button Name="AddButton"
+              Content="Add…"
+              IsEnabled="{Binding !IsCliOverride}"
+              Click="OnAddClicked" />
+      <Button Name="RemoveButton"
+              Content="Remove"
+              IsEnabled="{Binding !IsCliOverride}"
+              Click="OnRemoveClicked" />
+    </StackPanel>
+
+  </Grid>
+
+</UserControl>

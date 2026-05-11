@@ -18,7 +18,7 @@
 **Goal:** A running Avalonia desktop process with Generic Host, dual-boot decision, empty `ShellWindow` with menu/toolbar, and plugin loading infrastructure.
 
 - [x] **TASK-B001** Create `DdsMonitor.Avalonia.Core` Project — [details](./TASK-DETAIL.md#task-b001--create-ddsmonitoravaloniacore-project)
-- [x] **TASK-B002** Create `DdsMonitor.Avalonia` Shell Project — [details](./TASK-DETAIL.md#task-b002--create-ddsmonitoravalonia-shell-project) ⚠️ P1 fix in BATCH-02
+- [x] **TASK-B002** Create `DdsMonitor.Avalonia` Shell Project — [details](./TASK-DETAIL.md#task-b002--create-ddsmonitoravalonia-shell-project) ✅ P1 disposal fix in BATCH-02
 - [x] **TASK-B003** Integrate PluginLoader + InitializePlugins into Shell — [details](./TASK-DETAIL.md#task-b003--integrate-pluginloader--initializeplugins-into-shell)
 
 ---
@@ -27,8 +27,8 @@
 
 **Goal:** Prove dynamic schema DLL hot-load and live topic list rendering from a plugin.
 
-- [ ] **TASK-C001** WorkspaceManagerPlugin: Schema Sources Panel — [details](./TASK-DETAIL.md#task-c001--workspacemanagerplugin-schema-sources-panel)
-- [ ] **TASK-C002** TopicExplorerPlugin — [details](./TASK-DETAIL.md#task-c002--topicexplorerplugin)
+- [x] **TASK-C001** WorkspaceManagerPlugin: Schema Sources Panel — [details](./TASK-DETAIL.md#task-c001--workspacemanagerplugin-schema-sources-panel)
+- [x] **TASK-C002** TopicExplorerPlugin — [details](./TASK-DETAIL.md#task-c002--topicexplorerplugin)
 
 ---
 
@@ -36,7 +36,7 @@
 
 **Goal:** Prove headless execution, CLI argument binding per-plugin, and cross-plugin context menu injection.
 
-- [ ] **TASK-D001** DummyDataGeneratorPlugin — [details](./TASK-DETAIL.md#task-d001--dummydatageneratorplugin)
+- [x] **TASK-D001** DummyDataGeneratorPlugin — [details](./TASK-DETAIL.md#task-d001--dummydatageneratorplugin)
 
 ---
 

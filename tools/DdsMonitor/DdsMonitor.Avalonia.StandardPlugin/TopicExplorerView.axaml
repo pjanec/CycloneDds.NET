@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DdsMonitor.Avalonia.StandardPlugin.TopicExplorerView">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <CheckBox Grid.Row="0"
+              Content="Show Hidden Topics"
+              IsChecked="{Binding ShowHidden}"
+              Margin="4" />
+
+    <ListBox Grid.Row="1"
+             Name="TopicList"
+             ItemsSource="{Binding Topics}">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding ShortName}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+  </Grid>
+
+</UserControl>

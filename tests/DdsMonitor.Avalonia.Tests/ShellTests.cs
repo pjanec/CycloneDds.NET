@@ -15,6 +15,27 @@ namespace DdsMonitor.Avalonia.Tests;
 /// <summary>Simple ViewModel registered for panel-spawn tests.</summary>
 public sealed class TestPanelViewModel { }
 
+/// <summary>Disposable ViewModel for testing AvaloniaWindowManager disposal behaviour.</summary>
+public sealed class DisposableTestPanelViewModel : IDisposable
+{
+    public bool WasDisposed { get; private set; }
+    public int DisposeCount { get; private set; }
+
+    public void Dispose()
+    {
+        WasDisposed = true;
+        DisposeCount++;
+    }
+}
+
+/// <summary>Disposable ViewModel whose Dispose action is set by the test.</summary>
+public sealed class TrackingDisposableVm : IDisposable
+{
+    private readonly Action _onDispose;
+    public TrackingDisposableVm(Action onDispose) => _onDispose = onDispose;
+    public void Dispose() => _onDispose();
+}
+
 /// <summary>
 /// Stub IDdsBridge that tracks IsPaused and ResetAll calls without
 /// starting any DDS infrastructure.
@@ -325,6 +346,123 @@ public sealed class AvaloniaWindowManagerTests
 
         Assert.True(manager.RegisteredPanelTypes.ContainsKey("TestPanel"));
         Assert.Equal(typeof(TestPanelViewModel), manager.RegisteredPanelTypes["TestPanel"]);
+    }
+
+    // ── Disposal tests (CORRECTIVE-0) ─────────────────────────────────────────
+
+    private static AvaloniaWindowManager CreateManagerWithDisposableVm()
+    {
+        var viewRegistry = new AvaloniaViewRegistry();
+        viewRegistry.Register<DisposableTestPanelViewModel>(_ => new TextBlock { Text = "Disposable Panel" });
+
+        var services = new ServiceCollection()
+            .AddTransient<DisposableTestPanelViewModel>()
+            .BuildServiceProvider();
+
+        var eventBroker = new StubEventBroker();
+        return new AvaloniaWindowManager(viewRegistry, services, eventBroker);
+    }
+
+    [AvaloniaFact]
+    public void AvaloniaWindowManager_DisposableViewModel_DisposeCalledOnWindowClose()
+    {
+        // Use a shared disposal tracker accessible from the DI-created VM
+        bool wasDisposed = false;
+
+        var viewRegistry = new AvaloniaViewRegistry();
+        viewRegistry.Register<TrackingDisposableVm>(_ => new TextBlock { Text = "Track" });
+
+        // Register a factory that captures the created VM
+        TrackingDisposableVm? createdVm = null;
+        var services = new ServiceCollection()
+            .AddTransient<TrackingDisposableVm>(_ =>
+            {
+                createdVm = new TrackingDisposableVm(() => wasDisposed = true);
+                return createdVm;
+            })
+            .BuildServiceProvider();
+
+        var manager = new AvaloniaWindowManager(viewRegistry, services, new StubEventBroker());
+        var typeName = typeof(TrackingDisposableVm).FullName!;
+
+        manager.SpawnPanel(typeName, null);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.NotNull(createdVm);
+        Assert.False(wasDisposed, "Dispose should not be called while panel is open");
+
+        manager.ClosePanel(typeName);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(wasDisposed, "Dispose must be called when the panel window closes");
+    }
+
+    [AvaloniaFact]
+    public void AvaloniaWindowManager_DisposableViewModel_NotDisposedWhileOpen()
+    {
+        bool wasDisposed = false;
+        TrackingDisposableVm? createdVm = null;
+
+        var viewRegistry = new AvaloniaViewRegistry();
+        viewRegistry.Register<TrackingDisposableVm>(_ => new TextBlock { Text = "Track" });
+
+        var services = new ServiceCollection()
+            .AddTransient<TrackingDisposableVm>(_ =>
+            {
+                createdVm = new TrackingDisposableVm(() => wasDisposed = true);
+                return createdVm;
+            })
+            .BuildServiceProvider();
+
+        var manager = new AvaloniaWindowManager(viewRegistry, services, new StubEventBroker());
+        var typeName = typeof(TrackingDisposableVm).FullName!;
+
+        manager.SpawnPanel(typeName, null);
+        Dispatcher.UIThread.RunJobs();
+
+        // Panel is still open — Dispose must NOT have been called
+        Assert.NotNull(createdVm);
+        Assert.False(wasDisposed, "Dispose must not be called while the panel is still open");
+        Assert.Single(manager.ActivePanels);
+    }
+
+    [AvaloniaFact]
+    public void AvaloniaWindowManager_DoubleClose_NoException_NoDoubleDispose()
+    {
+        int disposeCount = 0;
+        TrackingDisposableVm? createdVm = null;
+
+        var viewRegistry = new AvaloniaViewRegistry();
+        viewRegistry.Register<TrackingDisposableVm>(_ => new TextBlock { Text = "Track" });
+
+        var services = new ServiceCollection()
+            .AddTransient<TrackingDisposableVm>(_ =>
+            {
+                createdVm = new TrackingDisposableVm(() => disposeCount++);
+                return createdVm;
+            })
+            .BuildServiceProvider();
+
+        var manager = new AvaloniaWindowManager(viewRegistry, services, new StubEventBroker());
+        var typeName = typeof(TrackingDisposableVm).FullName!;
+
+        manager.SpawnPanel(typeName, null);
+        Dispatcher.UIThread.RunJobs();
+
+        manager.ClosePanel(typeName);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(1, disposeCount);
+
+        // Second ClosePanel on already-closed panel — must not throw, must not double-dispose
+        var ex = Record.Exception(() =>
+        {
+            manager.ClosePanel(typeName);
+            Dispatcher.UIThread.RunJobs();
+        });
+
+        Assert.Null(ex);
+        Assert.Equal(1, disposeCount);
     }
 }
 
