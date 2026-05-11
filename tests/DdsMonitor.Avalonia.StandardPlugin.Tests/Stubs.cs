@@ -84,6 +84,27 @@ internal sealed class StubAvaloniaViewRegistry : IAvaloniaViewRegistry
     public Control BuildView(object viewModel) => throw new NotSupportedException();
 }
 
+internal sealed class StubAvaloniaTypeDrawerRegistry : IAvaloniaTypeDrawerRegistry
+{
+    private readonly Dictionary<Type, Func<AvaloniaDrawerContext, object>> _factories = new();
+
+    public void Register(Type type, Func<AvaloniaDrawerContext, object> factory)
+        => _factories[type] = factory;
+
+    public Control Build(AvaloniaDrawerContext ctx)
+    {
+        if (_factories.TryGetValue(ctx.TargetType, out var factory))
+        {
+            var result = factory(ctx);
+            if (result is Control control) return control;
+            throw new InvalidCastException($"Factory for {ctx.TargetType.Name} did not return a Control");
+        }
+        throw new KeyNotFoundException($"No drawer registered for type '{ctx.TargetType.Name}'");
+    }
+
+    public bool HasDrawer(Type type) => _factories.ContainsKey(type);
+}
+
 internal sealed class StubMonitorContext : IMonitorContext
 {
     private readonly Dictionary<Type, object> _features = new();
@@ -251,11 +272,15 @@ internal sealed class StubDdsBridge : IDdsBridge
     public bool IsPaused { get; set; }
     public CycloneDDS.Runtime.DdsParticipant Participant => throw new NotSupportedException();
     public IReadOnlyList<CycloneDDS.Runtime.DdsParticipant> Participants => Array.Empty<CycloneDDS.Runtime.DdsParticipant>();
-    public IReadOnlyList<ParticipantConfig> ParticipantConfigs => Array.Empty<ParticipantConfig>();
+    public List<ParticipantConfig> SimulatedParticipantConfigs { get; } = new();
+    public IReadOnlyList<ParticipantConfig> ParticipantConfigs => SimulatedParticipantConfigs;
     public string? CurrentPartition => null;
     public IReadOnlySet<Type> ExplicitlyUnsubscribedTopicTypes => new HashSet<Type>();
     public IReadOnlyDictionary<Type, IDynamicReader> ActiveReaders => new Dictionary<Type, IDynamicReader>();
     public event Action? ReadersChanged { add { } remove { } }
+
+    public int AddParticipantCallCount { get; private set; }
+    public bool AddParticipantShouldThrow { get; set; }
 
     public IDynamicReader Subscribe(TopicMetadata meta) => throw new NotSupportedException();
     public bool TrySubscribe(TopicMetadata meta, out IDynamicReader? reader, out string? error)
@@ -264,7 +289,13 @@ internal sealed class StubDdsBridge : IDdsBridge
     public IDynamicWriter GetWriter(TopicMetadata meta) => Writer;
     public void ChangePartition(string? newPartition) { }
     public void InitializeExplicitlyUnsubscribed(IEnumerable<Type> types) { }
-    public void AddParticipant(uint domainId, string partitionName) { }
+    public void AddParticipant(uint domainId, string partitionName)
+    {
+        if (AddParticipantShouldThrow)
+            throw new InvalidOperationException("Stub DDS participant error");
+        AddParticipantCallCount++;
+        SimulatedParticipantConfigs.Add(new ParticipantConfig { DomainId = domainId, PartitionName = partitionName });
+    }
     public void RemoveParticipant(int participantIndex) { }
     public void SetFilter(Func<SampleData, bool>? predicate) { }
     public void Dispose() { }

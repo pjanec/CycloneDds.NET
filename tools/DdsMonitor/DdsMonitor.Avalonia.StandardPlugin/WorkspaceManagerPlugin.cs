@@ -27,11 +27,15 @@ public sealed class WorkspaceManagerPlugin : IMonitorPlugin
         {
             menuRegistry.AddMenuItem("Tools", "Schema Sources\u2026", () =>
                 windowManager.SpawnPanel(nameof(SchemaSourcesViewModel), null));
+
+            menuRegistry.AddMenuItem("Tools", "Network Configuration\u2026", () =>
+                windowManager.SpawnPanel("NetworkConfig", null));
         }
 
         if (viewRegistry is not null)
         {
             viewRegistry.Register<SchemaSourcesViewModel>(vm => new SchemaSourcesView { DataContext = vm });
+            viewRegistry.Register<NetworkConfigViewModel>(vm => new NetworkConfigView { DataContext = vm });
         }
     }
 }

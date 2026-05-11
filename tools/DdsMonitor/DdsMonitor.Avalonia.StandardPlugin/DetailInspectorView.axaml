@@ -41,7 +41,7 @@
              IsVisible="{Binding CurrentSample, Converter={x:Static ObjectConverters.IsNotNull}}">
       <ListBox.ItemTemplate>
         <DataTemplate>
-          <StackPanel Orientation="Horizontal" Spacing="4">
+          <StackPanel Orientation="Horizontal" Spacing="4" Margin="{Binding IndentMargin}">
             <TextBlock Text="{Binding Name}" FontWeight="Bold" MinWidth="120" />
             <TextBlock Text="{Binding ValueText}" FontFamily="Monospace" />
           </StackPanel>

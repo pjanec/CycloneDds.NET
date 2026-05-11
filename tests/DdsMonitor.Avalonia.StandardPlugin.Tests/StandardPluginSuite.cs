@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using DdsMonitor.Avalonia.Core;
@@ -920,5 +921,332 @@ public sealed class DebtResolutionTests
         win.RegisterPanelType("MyPanel", viewModelType: typeof(int));
 
         Assert.Contains("MyPanel", win.RegisteredPanelTypes.Keys);
+    }
+}
+
+// ── SendSamplePlugin tests ────────────────────────────────────────────────────
+
+public sealed class SendSamplePluginTests
+{
+    private static (StubMonitorContext ctx, StubMenuRegistry menu, StubWindowManager win,
+        StubContextMenuRegistry contextMenu, StubAvaloniaTypeDrawerRegistry drawerRegistry)
+        BuildContext()
+    {
+        var menu = new StubMenuRegistry();
+        var win = new StubWindowManager();
+        var contextMenu = new StubContextMenuRegistry();
+        var drawerRegistry = new StubAvaloniaTypeDrawerRegistry();
+        var ctx = new StubMonitorContext();
+        ctx.Register<IMenuRegistry>(menu);
+        ctx.Register<IWindowManager>(win);
+        ctx.Register<IContextMenuRegistry>(contextMenu);
+        ctx.Register<IAvaloniaTypeDrawerRegistry>(drawerRegistry);
+        return (ctx, menu, win, contextMenu, drawerRegistry);
+    }
+
+    [Fact]
+    public void SendSamplePlugin_Initialize_RegistersContextMenuForSampleData()
+    {
+        var (ctx, _, _, contextMenu, _) = BuildContext();
+        new SendSamplePlugin().Initialize(ctx);
+
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var sample = new SampleData { TopicMetadata = meta, Payload = new HeartbeatSample() };
+        var items = contextMenu.GetItems(sample).ToList();
+
+        Assert.Contains(items, i => i.Label.Contains("Clone to Send", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SendSamplePlugin_Initialize_RegistersStandardDrawers()
+    {
+        var (ctx, _, _, _, drawerRegistry) = BuildContext();
+        new SendSamplePlugin().Initialize(ctx);
+
+        Assert.True(drawerRegistry.HasDrawer(typeof(int)),
+            "IAvaloniaTypeDrawerRegistry should have an int drawer after plugin init");
+    }
+
+    [Fact]
+    public void SendSamplePlugin_Initialize_RegistersToolsMenuSendSample()
+    {
+        var (ctx, menu, _, _, _) = BuildContext();
+        new SendSamplePlugin().Initialize(ctx);
+
+        Assert.Contains(menu.Items, i =>
+            i.Label.Contains("Send Sample", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SendSamplePlugin_Initialize_ToolsMenuSpawnsSendSampleBlankPanel()
+    {
+        var (ctx, menu, win, _, _) = BuildContext();
+        new SendSamplePlugin().Initialize(ctx);
+
+        var item = menu.Items.First(i => i.Label.Contains("Send Sample", StringComparison.OrdinalIgnoreCase));
+        menu.InvokeItem(item.Label);
+
+        Assert.Contains(win.SpawnCalls, c => c.TypeName == "SendSample_Blank");
+    }
+
+    [AvaloniaFact]
+    public void SendSampleViewModel_Build_CreatesControlsForAllNonSyntheticFields()
+    {
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var registry = new AvaloniaTypeDrawerRegistry();
+        StandardDrawerRegistrar.Register(registry);
+        var bridge = new StubDdsBridge();
+
+        // HeartbeatSample has 3 fields: Id (int), Timestamp (long), Sequence (int)
+        // AllFields also includes synthetic wrapper fields — we skip those.
+        int expected = meta.AllFields.Count(f => !f.IsSynthetic);
+        var vm = new SendSampleViewModel(meta, registry, bridge);
+
+        Assert.Equal(expected, vm.BuiltControls.Count);
+    }
+
+    [Fact]
+    public void SendSampleViewModel_Send_CallsWriter()
+    {
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var registry = new StubAvaloniaTypeDrawerRegistry(); // empty — no Avalonia controls created
+        var bridge = new StubDdsBridge();
+
+        var vm = new SendSampleViewModel(meta, registry, bridge);
+        vm.Send();
+
+        Assert.True(bridge.Writer.WriteCount > 0, "Write should have been called after Send()");
+    }
+
+    [Fact]
+    public void SendSampleViewModel_Send_ExceptionSetsError()
+    {
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var registry = new StubAvaloniaTypeDrawerRegistry(); // empty — no Avalonia controls created
+        var bridge = new ThrowingDdsBridge();
+
+        var vm = new SendSampleViewModel(meta, registry, bridge);
+        vm.Send();
+
+        Assert.NotNull(vm.SendError);
+        Assert.Contains("DDS Publish Failed", vm.SendError);
+    }
+
+    [Fact]
+    public void SendSampleViewModel_Send_ExceptionDoesNotThrow()
+    {
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var registry = new StubAvaloniaTypeDrawerRegistry(); // empty — no Avalonia controls created
+        var bridge = new ThrowingDdsBridge();
+
+        var vm = new SendSampleViewModel(meta, registry, bridge);
+
+        var ex = Record.Exception(() => vm.Send());
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void SendSampleViewModel_Send_ClearsPreviousError()
+    {
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var registry = new StubAvaloniaTypeDrawerRegistry(); // empty — no Avalonia controls created
+
+        var throwingBridge = new ThrowingDdsBridge();
+        var vm = new SendSampleViewModel(meta, registry, throwingBridge);
+        vm.Send(); // First send throws → sets SendError
+        Assert.NotNull(vm.SendError);
+
+        // Second VM with non-throwing bridge starts with null error
+        var goodBridge = new StubDdsBridge();
+        var vm2 = new SendSampleViewModel(meta, registry, goodBridge);
+        vm2.Send(); // SendError cleared at start of Send()
+        Assert.Null(vm2.SendError);
+    }
+
+    [Fact]
+    public void SendSampleViewModel_InitialPayload_UsedDirectly()
+    {
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var registry = new StubAvaloniaTypeDrawerRegistry(); // empty — no Avalonia controls created
+        var bridge = new StubDdsBridge();
+
+        var payload = new HeartbeatSample { Id = 42, Timestamp = 999L, Sequence = 7 };
+        var boxedPayload = (object)payload;
+
+        var vm = new SendSampleViewModel(meta, registry, bridge, initialPayload: boxedPayload);
+        vm.Send();
+
+        Assert.True(bridge.Writer.WriteCount > 0,
+            "Send should invoke writer when initialPayload is provided");
+        Assert.Null(vm.SendError);
+    }
+}
+
+/// <summary>DdsBridge stub whose GetWriter throws to simulate DDS publish failure.</summary>
+internal sealed class ThrowingDdsBridge : IDdsBridge
+{
+    private sealed class ThrowingWriter : IDynamicWriter
+    {
+        public Type TopicType => typeof(HeartbeatSample);
+        public void Write(object payload) => throw new InvalidOperationException("DDS write error");
+        public void DisposeInstance(object payload) { }
+        public void Dispose() { }
+    }
+
+    public bool IsPaused { get; set; }
+    public CycloneDDS.Runtime.DdsParticipant Participant => throw new NotSupportedException();
+    public IReadOnlyList<CycloneDDS.Runtime.DdsParticipant> Participants => Array.Empty<CycloneDDS.Runtime.DdsParticipant>();
+    public IReadOnlyList<ParticipantConfig> ParticipantConfigs => Array.Empty<ParticipantConfig>();
+    public string? CurrentPartition => null;
+    public IReadOnlySet<Type> ExplicitlyUnsubscribedTopicTypes => new HashSet<Type>();
+    public IReadOnlyDictionary<Type, IDynamicReader> ActiveReaders => new Dictionary<Type, IDynamicReader>();
+    public event Action? ReadersChanged { add { } remove { } }
+    public IDynamicReader Subscribe(TopicMetadata meta) => throw new NotSupportedException();
+    public bool TrySubscribe(TopicMetadata meta, out IDynamicReader? reader, out string? error)
+    { reader = null; error = "stub"; return false; }
+    public void Unsubscribe(TopicMetadata meta) { }
+    public IDynamicWriter GetWriter(TopicMetadata meta) => new ThrowingWriter();
+    public void ChangePartition(string? newPartition) { }
+    public void InitializeExplicitlyUnsubscribed(IEnumerable<Type> types) { }
+    public void AddParticipant(uint domainId, string partitionName) { }
+    public void RemoveParticipant(int participantIndex) { }
+    public void SetFilter(Func<SampleData, bool>? predicate) { }
+    public void Dispose() { }
+    public void ResetAll() { }
+}
+
+// ── NetworkConfigViewModel tests ──────────────────────────────────────────────
+
+public sealed class NetworkConfigViewModelTests
+{
+    private static NetworkConfigViewModel CreateVm(
+        StubDdsBridge? bridge = null,
+        StubEventBroker? broker = null)
+    {
+        bridge ??= new StubDdsBridge();
+        broker ??= new StubEventBroker();
+        return new NetworkConfigViewModel(bridge, broker);
+    }
+
+    [Fact]
+    public void WorkspaceManagerPlugin_Initialize_RegistersNetworkConfigMenuItem()
+    {
+        var menu = new StubMenuRegistry();
+        var win = new StubWindowManager();
+        var view = new StubAvaloniaViewRegistry();
+        var ctx = new StubMonitorContext();
+        ctx.Register<IMenuRegistry>(menu);
+        ctx.Register<IWindowManager>(win);
+        ctx.Register<IAvaloniaViewRegistry>(view);
+
+        new WorkspaceManagerPlugin().Initialize(ctx);
+
+        Assert.Contains(menu.Items, i =>
+            i.Label.Contains("Network Config", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void NetworkConfigViewModel_Constructor_LoadsExistingParticipants()
+    {
+        var bridge = new StubDdsBridge();
+        bridge.SimulatedParticipantConfigs.Add(new ParticipantConfig { DomainId = 0, PartitionName = "A" });
+        bridge.SimulatedParticipantConfigs.Add(new ParticipantConfig { DomainId = 1, PartitionName = "B" });
+
+        var vm = CreateVm(bridge: bridge);
+
+        Assert.Equal(2, vm.Participants.Count);
+    }
+
+    [Fact]
+    public void NetworkConfigViewModel_AddRow_IncreasesCount()
+    {
+        var vm = CreateVm();
+        int initial = vm.Participants.Count;
+
+        vm.AddRow();
+
+        Assert.Equal(initial + 1, vm.Participants.Count);
+    }
+
+    [Fact]
+    public void NetworkConfigViewModel_RemoveRow_DecreasesCount()
+    {
+        var vm = CreateVm();
+        vm.AddRow();
+        int afterAdd = vm.Participants.Count;
+
+        vm.RemoveRow(0);
+
+        Assert.Equal(afterAdd - 1, vm.Participants.Count);
+    }
+
+    [Fact]
+    public void NetworkConfigViewModel_Apply_CallsAddParticipant()
+    {
+        var bridge = new StubDdsBridge();
+        var vm = CreateVm(bridge: bridge);
+        vm.AddRow();
+
+        vm.Apply();
+
+        Assert.True(bridge.AddParticipantCallCount > 0,
+            "AddParticipant should have been called after Apply()");
+    }
+
+    [Fact]
+    public void NetworkConfigViewModel_Apply_ExceptionSetsApplyError()
+    {
+        var bridge = new StubDdsBridge();
+        var vm = CreateVm(bridge: bridge);
+        vm.AddRow();
+
+        Assert.Null(vm.ApplyError);
+
+        bridge.AddParticipantShouldThrow = true;
+        vm.Apply();
+
+        Assert.NotNull(vm.ApplyError);
+    }
+}
+
+// ── StandardDrawerRegistrar tests ────────────────────────────────────────────
+
+public sealed class DrawerRegistrarTests
+{
+    [AvaloniaFact]
+    public void StandardDrawerRegistrar_Register_IntDrawer_ReturnsNumericUpDown()
+    {
+        var registry = new AvaloniaTypeDrawerRegistry();
+        StandardDrawerRegistrar.Register(registry);
+
+        var ctx = new AvaloniaDrawerContext("Id", typeof(int), 0, _ => { });
+        var control = registry.Build(ctx);
+
+        Assert.IsType<NumericUpDown>(control);
+    }
+
+    [AvaloniaFact]
+    public void StandardDrawerRegistrar_Register_BoolDrawer_ReturnsToggleSwitch()
+    {
+        var registry = new AvaloniaTypeDrawerRegistry();
+        StandardDrawerRegistrar.Register(registry);
+
+        var ctx = new AvaloniaDrawerContext("Flag", typeof(bool), false, _ => { });
+        var control = registry.Build(ctx);
+
+        Assert.True(control is ToggleSwitch or CheckBox,
+            $"Expected ToggleSwitch or CheckBox but got {control.GetType().Name}");
+    }
+
+    [AvaloniaFact]
+    public void StandardDrawerRegistrar_Register_StringDrawer_ReturnsTextBox()
+    {
+        var registry = new AvaloniaTypeDrawerRegistry();
+        StandardDrawerRegistrar.Register(registry);
+
+        var ctx = new AvaloniaDrawerContext("Name", typeof(string), "", _ => { });
+        var control = registry.Build(ctx);
+
+        Assert.IsType<TextBox>(control);
     }
 }

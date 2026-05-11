@@ -53,8 +53,8 @@
 
 **Goal:** Prove two-way expression-tree binding for payload authoring and dynamic DDS participant management.
 
-- [ ] **TASK-F001** SendSamplePlugin — [details](./TASK-DETAIL.md#task-f001--sendsampleplugin)
-- [ ] **TASK-F002** WorkspaceManagerPlugin: Network Configurator Panel — [details](./TASK-DETAIL.md#task-f002--workspacemanagerplugin-network-configurator-panel)
+- [x] **TASK-F001** SendSamplePlugin — [details](./TASK-DETAIL.md#task-f001--sendsampleplugin)
+- [x] **TASK-F002** WorkspaceManagerPlugin: Network Configurator Panel — [details](./TASK-DETAIL.md#task-f002--workspacemanagerplugin-network-configurator-panel)
 
 ---
 

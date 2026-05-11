@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DdsMonitor.Avalonia.StandardPlugin.NetworkConfigView">
+  <DockPanel>
+    <!-- Apply error bar -->
+    <TextBlock DockPanel.Dock="Bottom"
+               Text="{Binding ApplyError}"
+               Foreground="Red"
+               Margin="4,2,4,4"
+               IsVisible="{Binding ApplyError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+    <!-- Action buttons -->
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="4" Margin="4">
+      <Button Content="Add Row" Click="OnAddRowClicked" />
+      <Button Content="Remove Selected" Click="OnRemoveSelectedClicked" />
+      <Button Content="Apply" Click="OnApplyClicked" HorizontalAlignment="Right" />
+    </StackPanel>
+
+    <!-- Participant list -->
+    <ListBox x:Name="ParticipantList" ItemsSource="{Binding Participants}">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="2">
+            <TextBlock Text="Domain:" VerticalAlignment="Center" />
+            <TextBox Text="{Binding DomainId}" Width="80" />
+            <TextBlock Text="Partition:" VerticalAlignment="Center" />
+            <TextBox Text="{Binding PartitionName}" Width="200" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

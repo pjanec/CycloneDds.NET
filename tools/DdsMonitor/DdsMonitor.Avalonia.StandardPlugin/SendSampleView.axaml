@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DdsMonitor.Avalonia.StandardPlugin.SendSampleView">
+  <DockPanel>
+    <!-- Error bar -->
+    <TextBlock DockPanel.Dock="Bottom"
+               Text="{Binding SendError}"
+               Foreground="Red"
+               Margin="4,2,4,4"
+               IsVisible="{Binding SendError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+    <!-- Send button -->
+    <Button DockPanel.Dock="Bottom"
+            Content="Send"
+            HorizontalAlignment="Right"
+            Margin="4,4,4,4"
+            IsEnabled="{Binding SendEnabled}"
+            Click="OnSendClicked" />
+
+    <!-- Field editors -->
+    <ScrollViewer>
+      <ItemsControl ItemsSource="{Binding BuiltControls}" />
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>
