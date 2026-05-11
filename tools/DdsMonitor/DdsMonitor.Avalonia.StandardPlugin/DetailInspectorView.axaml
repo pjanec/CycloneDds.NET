@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DdsMonitor.Avalonia.StandardPlugin.DetailInspectorView">
+  <DockPanel>
+    <!-- Header bar: link toggle + source panel id -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="4" Margin="4">
+      <ToggleButton IsChecked="{Binding IsLinked}" ToolTip.Tip="Link/Unlink to source panel">
+        <TextBlock Text="Link" />
+      </ToggleButton>
+      <TextBlock Text="Linked to:" VerticalAlignment="Center" IsVisible="{Binding IsLinked}" />
+      <TextBlock Text="{Binding SourcePanelId}" VerticalAlignment="Center" IsVisible="{Binding IsLinked}" />
+    </StackPanel>
+
+    <!-- Sample info section -->
+    <StackPanel DockPanel.Dock="Top" Margin="4,0,4,4" Spacing="2"
+                IsVisible="{Binding CurrentSample, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="Write timestamp:" FontWeight="Bold" />
+        <TextBlock Text="{Binding WriteTimestamp}" FontFamily="Monospace" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="Reception timestamp:" FontWeight="Bold" />
+        <TextBlock Text="{Binding ReceptionTimestamp}" FontFamily="Monospace" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="Generation rank:" FontWeight="Bold" />
+        <TextBlock Text="{Binding GenerationRank}" FontFamily="Monospace" />
+      </StackPanel>
+    </StackPanel>
+
+    <!-- No-sample placeholder -->
+    <TextBlock DockPanel.Dock="Top"
+               Text="Select a sample in the linked viewer"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               Margin="0,32,0,0"
+               IsVisible="{Binding CurrentSample, Converter={x:Static ObjectConverters.IsNull}}" />
+
+    <!-- Field tree (flat list for V1) -->
+    <ListBox ItemsSource="{Binding FieldTree}"
+             IsVisible="{Binding CurrentSample, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="{Binding Name}" FontWeight="Bold" MinWidth="120" />
+            <TextBlock Text="{Binding ValueText}" FontFamily="Monospace" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

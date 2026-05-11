@@ -44,8 +44,8 @@
 
 **Goal:** Prove 5 kHz DDS data consumption via `SampleView`, zero-allocation virtualized grid, and expression-tree-based detail inspection.
 
-- [ ] **TASK-E001** SamplesViewerPlugin: Grid & Filtering — [details](./TASK-DETAIL.md#task-e001--samplesviewerplugin-grid--filtering)
-- [ ] **TASK-E002** DetailInspectorPlugin: Linked Inspector Panel — [details](./TASK-DETAIL.md#task-e002--detailinspectorplugin-linked-inspector-panel)
+- [x] **TASK-E001** SamplesViewerPlugin: Grid & Filtering — [details](./TASK-DETAIL.md#task-e001--samplesviewerplugin-grid--filtering)
+- [x] **TASK-E002** DetailInspectorPlugin: Linked Inspector Panel — [details](./TASK-DETAIL.md#task-e002--detailinspectorplugin-linked-inspector-panel)
 
 ---
 

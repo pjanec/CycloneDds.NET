@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using Avalonia.Controls;
+using CycloneDDS.Runtime;
+using CycloneDDS.Schema;
 using DdsMonitor.Avalonia.Core;
 using DdsMonitor.Engine;
 using DdsMonitor.Engine.AssemblyScanner;
@@ -67,8 +69,9 @@ internal sealed class StubWindowManager : IWindowManager
     public void ShowPanel(string panelId) { }
     public void ClearPanels() { }
     public void SetExcludedTopics(IEnumerable<string> topicTypeNames) { }
-    public void RegisterPanelType(string typeName, Type blazorComponentType) { }
-    public IReadOnlyDictionary<string, Type> RegisteredPanelTypes => new Dictionary<string, Type>();
+    public void RegisterPanelType(string typeName, Type viewModelType) { _registeredPanelTypes[typeName] = viewModelType; }
+    private readonly Dictionary<string, Type> _registeredPanelTypes = new();
+    public IReadOnlyDictionary<string, Type> RegisteredPanelTypes => _registeredPanelTypes;
     public void SaveWorkspace(string filePath) { }
     public string SaveWorkspaceToJson() => "[]";
     public void LoadWorkspace(string filePath) { }
@@ -267,4 +270,62 @@ internal sealed class StubDdsBridge : IDdsBridge
     public void Dispose() { }
 
     public void ResetAll() { }
+}
+
+// ── DT-003: Hidden sample type for IsHidden filter coverage ────────────────────
+
+[DdsTopic]
+internal struct _HiddenSample
+{
+    [DdsKey] public int Id;
+    public int Value;
+}
+
+// ── StubSampleView ────────────────────────────────────────────────────────────
+
+internal sealed class StubSampleView : ISampleView
+{
+    public int CurrentFilteredCount { get; set; } = 0;
+    public bool Disposed { get; private set; }
+    public bool SetFilterCalled { get; private set; }
+    public Func<SampleData, bool>? LastFilter { get; private set; }
+    public event Action? OnViewRebuilt;
+
+    public void TriggerViewRebuilt() => OnViewRebuilt?.Invoke();
+
+    public void SetFilter(Func<SampleData, bool>? predicate)
+    {
+        SetFilterCalled = true;
+        LastFilter = predicate;
+    }
+
+    public void SetSortSpec(FieldMetadata? field, SortDirection direction) { }
+
+    public ReadOnlyMemory<SampleData> GetVirtualView(int startIndex, int count)
+        => ReadOnlyMemory<SampleData>.Empty;
+
+    public SampleData[] GetFilteredSnapshot() => Array.Empty<SampleData>();
+
+    public void Dispose() => Disposed = true;
+}
+
+// ── StubFilterCompiler ────────────────────────────────────────────────────────
+
+internal sealed class StubFilterCompiler : IFilterCompiler
+{
+    public bool NextResultIsValid { get; set; } = true;
+    public string? NextErrorMessage { get; set; }
+    public FilterResult? LastResult { get; private set; }
+
+    public FilterResult Compile(string expression, TopicMetadata? topicMeta)
+    {
+        var result = NextResultIsValid
+            ? new FilterResult(true, _ => true, null)
+            : new FilterResult(false, null, NextErrorMessage ?? "Compile error");
+        LastResult = result;
+        return result;
+    }
+
+    public FilterResult Compile(string expression, TopicMetadata? topicMeta, IReadOnlyList<object?>? paramValues)
+        => Compile(expression, topicMeta);
 }

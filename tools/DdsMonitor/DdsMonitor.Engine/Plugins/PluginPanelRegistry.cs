@@ -17,15 +17,15 @@ public sealed class PluginPanelRegistry
     /// Registering a name that already exists replaces the existing entry.
     /// </summary>
     /// <param name="name">Short display name shown in the Plugin Panels menu.</param>
-    /// <param name="blazorComponentType">The Blazor component type to spawn when selected.</param>
-    public void RegisterPanelType(string name, Type blazorComponentType)
+    /// <param name="viewModelType">The ViewModel type to spawn when selected.</param>
+    public void RegisterPanelType(string name, Type viewModelType)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentNullException.ThrowIfNull(blazorComponentType);
+        ArgumentNullException.ThrowIfNull(viewModelType);
 
         lock (_sync)
         {
-            _types[name] = blazorComponentType;
+            _types[name] = viewModelType;
         }
 
         Changed?.Invoke();

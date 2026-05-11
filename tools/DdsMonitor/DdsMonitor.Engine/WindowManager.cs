@@ -224,21 +224,21 @@ public sealed class WindowManager : IWindowManager
     }
 
     /// <inheritdoc />
-    public void RegisterPanelType(string typeName, Type blazorComponentType)
+    public void RegisterPanelType(string typeName, Type viewModelType)
     {
         if (string.IsNullOrWhiteSpace(typeName))
         {
             throw new ArgumentException("Type name is required.", nameof(typeName));
         }
 
-        if (blazorComponentType == null)
+        if (viewModelType == null)
         {
-            throw new ArgumentNullException(nameof(blazorComponentType));
+            throw new ArgumentNullException(nameof(viewModelType));
         }
 
         lock (_sync)
         {
-            _panelTypes[typeName] = blazorComponentType;
+            _panelTypes[typeName] = viewModelType;
         }
     }
 

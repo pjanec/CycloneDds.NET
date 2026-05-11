@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DdsMonitor.Avalonia.StandardPlugin.SamplesViewerView">
+  <DockPanel>
+    <!-- Filter bar -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="4" Margin="4">
+      <TextBlock Text="Filter:" VerticalAlignment="Center" />
+      <TextBox Text="{Binding FilterText}" Width="300" />
+      <TextBlock Text="{Binding FilteredCount, StringFormat='({0} samples)'}" VerticalAlignment="Center" />
+    </StackPanel>
+
+    <!-- Inline filter error -->
+    <TextBlock DockPanel.Dock="Top"
+               Text="{Binding FilterError}"
+               Foreground="Red"
+               Margin="4,0,4,2"
+               IsVisible="{Binding FilterError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+    <!-- Sample list (V1: virtualized ListBox showing top 200 samples) -->
+    <ListBox ItemsSource="{Binding SampleRows}">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Timestamp}" FontFamily="Monospace" />
+            <TextBlock Text="{Binding TopicName}" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

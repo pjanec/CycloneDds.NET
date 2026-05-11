@@ -64,7 +64,7 @@ public interface IWindowManager
     /// <summary>
     /// Registers a component type for lookup by name.
     /// </summary>
-    void RegisterPanelType(string typeName, Type blazorComponentType);
+    void RegisterPanelType(string typeName, Type viewModelType);
 
     /// <summary>
     /// Returns a read-only snapshot of all panel types registered on this instance via

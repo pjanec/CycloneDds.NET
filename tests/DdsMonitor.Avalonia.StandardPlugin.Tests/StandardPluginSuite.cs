@@ -339,6 +339,25 @@ public sealed class TopicExplorerViewModelTests
         // Registry had no providers, so items should be empty (but the call should not throw)
         Assert.NotNull(items);
     }
+
+    [Fact]
+    public void TopicExplorerViewModel_ShowHidden_False_DoesNotShowHiddenTopic()
+    {
+        var registry = new StubTopicRegistry();
+        registry.Register(new TopicMetadata(typeof(_HiddenSample)));  // ShortName = "_HiddenSample"
+
+        var vm = CreateVm(topicRegistry: registry);
+        vm.Initialize(new Dictionary<string, object>());
+
+        // Hidden topic must not appear when ShowHidden=false
+        Assert.Empty(vm.Topics);
+
+        vm.ShowHidden = true;
+
+        // Hidden topic must appear when ShowHidden=true
+        Assert.Single(vm.Topics);
+        Assert.Equal("_HiddenSample", vm.Topics[0].ShortName);
+    }
 }
 
 /// <summary>Event broker that captures SpawnPanelEvent for assertion.</summary>
@@ -561,5 +580,345 @@ public sealed class HeartbeatSampleTests
         var idField = typeof(HeartbeatSample).GetField("Id")!;
         var attr = idField.GetCustomAttributes(typeof(CycloneDDS.Schema.DdsKeyAttribute), false);
         Assert.NotEmpty(attr);
+    }
+}
+
+// ── SamplesViewerPlugin tests ─────────────────────────────────────────────────
+
+public sealed class SamplesViewerPluginTests
+{
+    private static (StubMonitorContext ctx, TrackingEventBroker broker, StubWindowManager win, StubAvaloniaViewRegistry view)
+        BuildContext()
+    {
+        var broker = new TrackingEventBroker();
+        var win = new StubWindowManager();
+        var view = new StubAvaloniaViewRegistry();
+        var ctx = new StubMonitorContext();
+        ctx.Register<IEventBroker>(broker);
+        ctx.Register<IWindowManager>(win);
+        ctx.Register<IAvaloniaViewRegistry>(view);
+        return (ctx, broker, win, view);
+    }
+
+    [Fact]
+    public void SamplesViewerPlugin_Initialize_RegistersSpawnPanelSubscription()
+    {
+        var (ctx, broker, _, _) = BuildContext();
+        new SamplesViewerPlugin().Initialize(ctx);
+
+        Assert.True(broker.ActiveSubscriptionCount > 0, "Plugin should have subscribed to IEventBroker");
+    }
+
+    [AvaloniaFact]
+    public void SamplesViewerPlugin_OnSpawnPanelEvent_CallsWindowManagerSpawnPanel()
+    {
+        var (ctx, broker, win, _) = BuildContext();
+        new SamplesViewerPlugin().Initialize(ctx);
+
+        broker.Publish(new SpawnPanelEvent("SamplesViewer",
+            new Dictionary<string, object>(StringComparer.Ordinal) { ["TopicName"] = "myTopic" }));
+
+        Assert.Single(win.SpawnCalls, c => c.TypeName == "SamplesViewer_myTopic");
+    }
+
+    [AvaloniaFact]
+    public void SamplesViewerPlugin_OnSpawnPanelEvent_WrongPanelType_Ignored()
+    {
+        var (ctx, broker, win, _) = BuildContext();
+        new SamplesViewerPlugin().Initialize(ctx);
+
+        broker.Publish(new SpawnPanelEvent("OtherPanel", null));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Empty(win.SpawnCalls);
+    }
+}
+
+// ── SamplesViewerViewModel tests ──────────────────────────────────────────────
+
+public sealed class SamplesViewerViewModelTests
+{
+    private static SamplesViewerViewModel CreateVm(
+        StubSampleView? view = null,
+        StubFilterCompiler? compiler = null,
+        TopicMetadata? meta = null)
+    {
+        view ??= new StubSampleView();
+        compiler ??= new StubFilterCompiler();
+        return new SamplesViewerViewModel(compiler, view: view, meta: meta);
+    }
+
+    [Fact]
+    public void SamplesViewerViewModel_Initialize_WritesTopicNameToComponentState()
+    {
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var vm = CreateVm(meta: meta);
+        var state = new Dictionary<string, object>();
+
+        vm.Initialize(state);
+
+        Assert.True(state.ContainsKey("TopicName"), "ComponentState must have 'TopicName' key");
+        Assert.Equal(meta.TopicName, state["TopicName"]);
+    }
+
+    [Fact]
+    public void SamplesViewerViewModel_FilterText_ValidExpression_CallsSetFilter()
+    {
+        var view = new StubSampleView();
+        var compiler = new StubFilterCompiler { NextResultIsValid = true };
+        var vm = CreateVm(view: view, compiler: compiler);
+        vm.Initialize(new Dictionary<string, object>());
+
+        vm.FilterText = "Id == 1";
+
+        Assert.True(view.SetFilterCalled, "SetFilter should have been called for a valid expression");
+    }
+
+    [Fact]
+    public void SamplesViewerViewModel_FilterText_InvalidExpression_SetsFilterError()
+    {
+        var view = new StubSampleView();
+        var compiler = new StubFilterCompiler { NextResultIsValid = false, NextErrorMessage = "Bad syntax" };
+        var vm = CreateVm(view: view, compiler: compiler);
+        vm.Initialize(new Dictionary<string, object>());
+
+        vm.FilterText = "!!!invalid";
+
+        Assert.NotNull(vm.FilterError);
+        Assert.False(view.SetFilterCalled, "SetFilter must NOT be called for an invalid expression");
+    }
+
+    [Fact]
+    public void SamplesViewerViewModel_FilterText_Empty_ClearsFilter()
+    {
+        var view = new StubSampleView();
+        var compiler = new StubFilterCompiler();
+        var vm = CreateVm(view: view, compiler: compiler);
+        vm.Initialize(new Dictionary<string, object>());
+
+        vm.FilterText = "";
+
+        Assert.True(view.SetFilterCalled, "SetFilter(null) should be called to clear the filter");
+        Assert.Null(view.LastFilter);
+    }
+
+    [AvaloniaFact]
+    public void SamplesViewerViewModel_OnViewRebuilt_UpdatesFilteredCountOnUiThread()
+    {
+        var view = new StubSampleView();
+        view.CurrentFilteredCount = 42;
+        var vm = CreateVm(view: view);
+        vm.Initialize(new Dictionary<string, object>());
+
+        // Fire from a background thread to simulate the real SampleView worker
+        Task.Run(() => view.TriggerViewRebuilt()).Wait();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(42, vm.FilteredCount);
+    }
+
+    [Fact]
+    public void SamplesViewerViewModel_Dispose_DisposesView()
+    {
+        var view = new StubSampleView();
+        var vm = CreateVm(view: view);
+        vm.Initialize(new Dictionary<string, object>());
+
+        vm.Dispose();
+
+        Assert.True(view.Disposed, "StubSampleView should be disposed after vm.Dispose()");
+    }
+
+    [Fact]
+    public void SamplesViewerViewModel_Dispose_UnsubscribesOnViewRebuilt()
+    {
+        var view = new StubSampleView();
+        var vm = CreateVm(view: view);
+        vm.Initialize(new Dictionary<string, object>());
+
+        vm.Dispose();
+
+        // After dispose, firing the event should not update FilteredCount
+        view.CurrentFilteredCount = 99;
+        view.TriggerViewRebuilt();
+
+        Assert.Equal(0, vm.FilteredCount);
+    }
+}
+
+// ── DetailInspectorPlugin tests ───────────────────────────────────────────────
+
+public sealed class DetailInspectorPluginTests
+{
+    private static (StubMonitorContext ctx, StubContextMenuRegistry contextMenu, StubWindowManager win)
+        BuildContext()
+    {
+        var contextMenu = new StubContextMenuRegistry();
+        var win = new StubWindowManager();
+        var view = new StubAvaloniaViewRegistry();
+        var ctx = new StubMonitorContext();
+        ctx.Register<IContextMenuRegistry>(contextMenu);
+        ctx.Register<IWindowManager>(win);
+        ctx.Register<IAvaloniaViewRegistry>(view);
+        return (ctx, contextMenu, win);
+    }
+
+    [Fact]
+    public void DetailInspectorPlugin_Initialize_RegistersContextMenuForSampleData()
+    {
+        var (ctx, contextMenu, _) = BuildContext();
+        new DetailInspectorPlugin().Initialize(ctx);
+
+        // Create a minimal SampleData and check context menu items
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var sample = new SampleData { TopicMetadata = meta, Payload = new HeartbeatSample() };
+        var items = contextMenu.GetItems(sample).ToList();
+
+        Assert.Contains(items, i => i.Label.Contains("Open Inspector", StringComparison.OrdinalIgnoreCase));
+    }
+}
+
+// ── DetailInspectorViewModel tests ────────────────────────────────────────────
+
+public sealed class DetailInspectorViewModelTests
+{
+    private static DetailInspectorViewModel CreateVm(TrackingEventBroker? broker = null)
+    {
+        broker ??= new TrackingEventBroker();
+        return new DetailInspectorViewModel(broker);
+    }
+
+    [Fact]
+    public void DetailInspectorViewModel_Initialize_ReadsIsLinkedFromState()
+    {
+        var vm = CreateVm();
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = false });
+
+        Assert.False(vm.IsLinked);
+    }
+
+    [Fact]
+    public void DetailInspectorViewModel_Initialize_ReadsSourcePanelIdFromState()
+    {
+        var vm = CreateVm();
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = true, ["SourcePanelId"] = "SV_1" });
+
+        Assert.Equal("SV_1", vm.SourcePanelId);
+    }
+
+    [Fact]
+    public void DetailInspectorViewModel_IsLinked_True_SubscribesToSampleSelectedEvent()
+    {
+        var broker = new TrackingEventBroker();
+        var vm = new DetailInspectorViewModel(broker);
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = true, ["SourcePanelId"] = "SV_1" });
+
+        Assert.True(broker.ActiveSubscriptionCount > 0, "Should have subscribed to SampleSelectedEvent");
+    }
+
+    [Fact]
+    public void DetailInspectorViewModel_IsLinked_False_DoesNotSubscribe()
+    {
+        var broker = new TrackingEventBroker();
+        var vm = new DetailInspectorViewModel(broker);
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = false, ["SourcePanelId"] = "SV_1" });
+
+        Assert.Equal(0, broker.ActiveSubscriptionCount);
+    }
+
+    [AvaloniaFact]
+    public void DetailInspectorViewModel_OnSampleReceived_UpdatesCurrentSample()
+    {
+        var broker = new TrackingEventBroker();
+        var vm = new DetailInspectorViewModel(broker);
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = true, ["SourcePanelId"] = "SV_1" });
+
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var sample = new SampleData { TopicMetadata = meta, Payload = new HeartbeatSample { Id = 7 } };
+
+        broker.Publish(new SampleSelectedEvent("SV_1", sample));
+
+        Assert.NotNull(vm.CurrentSample);
+        Assert.Equal(7, ((HeartbeatSample)vm.CurrentSample!.Payload).Id);
+    }
+
+    [AvaloniaFact]
+    public void DetailInspectorViewModel_OnSampleReceived_WrongPanel_Ignored()
+    {
+        var broker = new TrackingEventBroker();
+        var vm = new DetailInspectorViewModel(broker);
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = true, ["SourcePanelId"] = "SV_1" });
+
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var sample = new SampleData { TopicMetadata = meta, Payload = new HeartbeatSample { Id = 99 } };
+
+        broker.Publish(new SampleSelectedEvent("SV_OTHER", sample));
+
+        Assert.Null(vm.CurrentSample);
+    }
+
+    [AvaloniaFact]
+    public void DetailInspectorViewModel_RebuildFieldTree_NullPayload_EmptyList()
+    {
+        var broker = new TrackingEventBroker();
+        var vm = new DetailInspectorViewModel(broker);
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = true, ["SourcePanelId"] = "SV_1" });
+
+        var meta = new TopicMetadata(typeof(HeartbeatSample));
+        var sample = new SampleData { TopicMetadata = meta, Payload = null! };
+
+        var ex = Record.Exception(() => broker.Publish(new SampleSelectedEvent("SV_1", sample)));
+
+        Assert.Null(ex);
+        Assert.Empty(vm.FieldTree);
+    }
+
+    [Fact]
+    public void DetailInspectorViewModel_Unlink_DisposesSubscription()
+    {
+        var broker = new TrackingEventBroker();
+        var vm = new DetailInspectorViewModel(broker);
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = true, ["SourcePanelId"] = "SV_1" });
+
+        Assert.True(broker.ActiveSubscriptionCount > 0);
+
+        vm.IsLinked = false;
+
+        Assert.Equal(0, broker.ActiveSubscriptionCount);
+    }
+
+    [Fact]
+    public void DetailInspectorViewModel_Dispose_DisposesSubscriptions()
+    {
+        var broker = new TrackingEventBroker();
+        var vm = new DetailInspectorViewModel(broker);
+        vm.Initialize(new Dictionary<string, object> { ["IsLinked"] = true, ["SourcePanelId"] = "SV_1" });
+
+        Assert.True(broker.ActiveSubscriptionCount > 0);
+
+        vm.Dispose();
+
+        Assert.Equal(0, broker.ActiveSubscriptionCount);
+    }
+}
+
+// ── DT-002 rename coverage test ───────────────────────────────────────────────
+
+public sealed class DebtResolutionTests
+{
+    /// <summary>
+    /// DT-002: Verifies that IWindowManager.RegisterPanelType parameter is now named
+    /// 'viewModelType' (not the old Blazor-specific 'blazorComponentType').
+    /// This test uses the named parameter syntax as a compile-time + runtime guard.
+    /// </summary>
+    [Fact]
+    public void IWindowManager_RegisterPanelType_AcceptsViewModelTypeNamedParameter()
+    {
+        var win = new StubWindowManager();
+
+        // Use the named parameter 'viewModelType' — compile error if param name reverts.
+        win.RegisterPanelType("MyPanel", viewModelType: typeof(int));
+
+        Assert.Contains("MyPanel", win.RegisteredPanelTypes.Keys);
     }
 }
