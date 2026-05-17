@@ -14,7 +14,7 @@ using CycloneDDS.Schema;
 
 namespace CycloneDDS.Runtime
 {
-    public sealed class DdsReader<T> : IDisposable 
+    public sealed class DdsReader<T> : IDdsReader, IInternalDdsEntity, IDisposable 
         where T : new()
     {
         private SenderRegistry? _registry;
@@ -59,6 +59,13 @@ namespace CycloneDDS.Runtime
             }
         }
 
+        // IDdsReader
+        public Type DataType => typeof(T);
+
+        // IInternalDdsEntity (explicit — not visible to public consumers)
+        DdsApi.DdsEntity IInternalDdsEntity.NativeEntity =>
+            _readerHandle?.NativeHandle ?? throw new ObjectDisposedException(nameof(DdsReader<T>));
+
         private delegate int GetNativeSizeDelegate(in T sample);
         private delegate void MarshalToNativeDelegate(in T sample, IntPtr target, ref NativeArena arena);
 
@@ -81,23 +88,12 @@ namespace CycloneDDS.Runtime
             catch (Exception ex) { Console.WriteLine($"[DdsReader] Initialization failed: {ex}"); throw; }
         }
 
-        public DdsReader(DdsParticipant participant, IntPtr qos = default)
-            : this(participant, GetTopicNameFromAttribute(), qos)
-        {
-        }
-
-        private static string GetTopicNameFromAttribute()
-        {
-            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
-            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
-            return attr.TopicName;
-        }
-
-        public DdsReader(DdsParticipant participant, string topicName, IntPtr qos = default)
+        public DdsReader(DdsParticipant participant, string? topicName = null, IntPtr qos = default, string? partition = null)
         {
             _dataAvailableHandler = OnDataAvailable;
             _subscriptionMatchedHandler = OnSubscriptionMatched;
-            
+
+            topicName ??= GetTopicNameFromAttribute();
             _participant = participant;
 
             IntPtr actualQos = qos;
@@ -130,6 +126,12 @@ namespace CycloneDDS.Runtime
 
             try
             {
+                string? activePartition = partition ?? participant.DefaultPartition;
+                if (!string.IsNullOrEmpty(activePartition))
+                {
+                    DdsApi.dds_qset_partition(actualQos, 1, new[] { activePartition });
+                }
+
                 _topicHandle = participant.GetOrRegisterTopic<T>(topicName, actualQos);
 
                 DdsApi.DdsEntity reader = DdsApi.dds_create_reader(
@@ -153,6 +155,13 @@ namespace CycloneDDS.Runtime
         }
 
         public void SetFilter(Predicate<T>? filter) => _filter = filter;
+
+        private static string GetTopicNameFromAttribute()
+        {
+            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
+            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
+            return attr.TopicName;
+        }
 
         public DdsLoan<T> Take(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, true);
         public DdsLoan<T> Read(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, false);

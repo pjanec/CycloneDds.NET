@@ -7,6 +7,7 @@
     <AssemblyName>CycloneDDS.IdlImporter</AssemblyName>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <NoWarn>CS0168</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

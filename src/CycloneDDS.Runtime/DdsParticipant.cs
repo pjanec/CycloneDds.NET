@@ -10,6 +10,7 @@ namespace CycloneDDS.Runtime
     {
         private DdsEntityHandle? _handle;
         private readonly uint _domainId;
+        private readonly string? _defaultPartition;
         private bool _disposed;
         
         private readonly Dictionary<string, DdsApi.DdsEntity> _topicCache = new();
@@ -23,9 +24,10 @@ namespace CycloneDDS.Runtime
         private readonly object _trackingLock = new();
         internal SenderRegistry? _senderRegistry;
 
-        public DdsParticipant(uint domainId = 0)
+        public DdsParticipant(uint domainId = 0, string? defaultPartition = null)
         {
             _domainId = domainId;
+            _defaultPartition = defaultPartition;
             var entity = DdsApi.dds_create_participant(domainId, IntPtr.Zero, IntPtr.Zero);
 
             if (!entity.IsValid)
@@ -45,6 +47,8 @@ namespace CycloneDDS.Runtime
         }
 
         public uint DomainId => _domainId;
+
+        public string? DefaultPartition => _defaultPartition;
         
         public bool IsDisposed => _disposed;
 
@@ -401,6 +405,22 @@ namespace CycloneDDS.Runtime
 
 
         /// <summary>
+        /// Enables receiver-only sender tracking for this participant.
+        /// Creates the internal <see cref="SenderRegistry"/> without publishing any
+        /// identity so that DDS readers can resolve remote sender identities from the
+        /// <c>__FcdcSenderIdentity</c> topic without advertising the current process.
+        /// Safe to call before or after creating readers.
+        /// </summary>
+        public void EnableSenderMonitoring()
+        {
+            lock (_trackingLock)
+            {
+                if (_senderRegistry != null) return; // already enabled
+                _senderRegistry = new SenderRegistry(this);
+            }
+        }
+
+        /// <summary>
         /// Enable sender tracking for this participant.
         /// MUST be called before creating any DdsWriter or DdsReader.
         /// </summary>
@@ -461,7 +481,8 @@ namespace CycloneDDS.Runtime
                 AppInstanceId = _identityConfig.AppInstanceId,
                 ProcessId = process.Id,
                 ProcessName = _identityConfig.ProcessName ?? process.ProcessName,
-                ComputerName = _identityConfig.ComputerName ?? Environment.MachineName
+                ComputerName = _identityConfig.ComputerName ?? Environment.MachineName,
+                ComputerIP = _identityConfig.ComputerIP ?? CycloneDdsXmlConfig.NetworkInterfaceAddress ?? string.Empty
             };
 
             // QoS: Reliable + TransientLocal

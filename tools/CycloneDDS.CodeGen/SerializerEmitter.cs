@@ -21,8 +21,10 @@ namespace CycloneDDS.CodeGen
             if (generateUsings)
             {
                 sb.AppendLine("using System;");
+                sb.AppendLine("using System.Collections.Generic;");
                 sb.AppendLine("using CycloneDDS.Core;");
                 sb.AppendLine("using CycloneDDS.Runtime;");
+                sb.AppendLine("using CycloneDDS.Schema.Formatting;");
                 sb.AppendLine("using System.Runtime.InteropServices;"); // Just in case
                 sb.AppendLine("using System.Runtime.CompilerServices;");
                 sb.AppendLine("using System.Text;");
@@ -51,6 +53,11 @@ namespace CycloneDDS.CodeGen
                 EmitKeyNativeSizer(sb, type);
                 EmitKeyMarshaller(sb, type);
             }
+
+            if (!string.IsNullOrEmpty(type.FormatTemplate))
+            {
+                EmitCustomFormatter(sb, type);
+            }
             
             // Close class
             sb.AppendLine("    }");
@@ -65,10 +72,141 @@ namespace CycloneDDS.CodeGen
             
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Returns only the body members of the partial class (no namespace or class wrapper).
+        /// Used by CodeGenerator to compose a single combined partial class definition.
+        /// </summary>
+        public string EmitSerializerClassBody(TypeInfo type, GlobalTypeRegistry registry)
+        {
+            _registry = registry;
+            var sb = new StringBuilder();
+            EmitNativeSizer(sb, type);
+            EmitMarshaller(sb, type);
+            EmitUnmarshalFromNative(sb, type);
+            EmitNativeToManaged(sb, type);
+            if (type.Fields.Any(f => f.HasAttribute("DdsKey")))
+            {
+                EmitKeyNativeSizer(sb, type);
+                EmitKeyMarshaller(sb, type);
+            }
+            if (!string.IsNullOrEmpty(type.FormatTemplate))
+            {
+                EmitCustomFormatter(sb, type);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Returns the ghost struct definitions for a type without a namespace wrapper.
+        /// Used by CodeGenerator to compose a single combined output file.
+        /// </summary>
+        public string EmitGhostStructContent(TypeInfo type)
+        {
+            var sb = new StringBuilder();
+            EmitGhostStruct(sb, type);
+            return sb.ToString();
+        }
         
         private bool IsAppendable(TypeInfo type)
         {
              return type.Extensibility == DdsExtensibilityKind.Appendable || type.Extensibility == DdsExtensibilityKind.Mutable;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // Tier 2 custom formatter: [DdsTypeFormat] → ToString() + GetFormatTokens()
+        // ─────────────────────────────────────────────────────────────────────────
+
+        // Regex matching a single template placeholder: {FieldName} or {FieldName:Fmt} or {FieldName:Fmt:TokenType}
+        private static readonly System.Text.RegularExpressions.Regex _templateTokenRegex =
+            new System.Text.RegularExpressions.Regex(
+                @"\{(\w+)(?::([^:}]*))?(?::([^}]*))?\}",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>
+        /// Parses the <see cref="TypeInfo.FormatTemplate"/> and emits:
+        /// <list type="bullet">
+        ///   <item><c>public override string ToString() =&gt; $"…";</c></item>
+        ///   <item><c>public IEnumerable&lt;FormattedToken&gt; GetFormatTokens()</c></item>
+        /// </list>
+        /// </summary>
+        private void EmitCustomFormatter(StringBuilder sb, TypeInfo type)
+        {
+            var template = type.FormatTemplate!;
+
+            // ── ToString() ──────────────────────────────────────────────────────
+            // Convert {Field:Fmt:TokenType} → C# interpolation {Field:Fmt}
+            // (or just {Field} when FormatString is absent/empty)
+            var interpolation = _templateTokenRegex.Replace(template, m =>
+            {
+                var fieldName  = m.Groups[1].Value;
+                var formatStr  = m.Groups[2].Success ? m.Groups[2].Value : string.Empty;
+                return string.IsNullOrEmpty(formatStr) ? $"{{{fieldName}}}" : $"{{{fieldName}:{formatStr}}}";
+            });
+
+            sb.AppendLine();
+            sb.AppendLine($"        public override string ToString() => string.Create(System.Globalization.CultureInfo.InvariantCulture, $\"{EscapeInterpolatedString(interpolation)}\");");
+
+            // ── GetFormatTokens() ───────────────────────────────────────────────
+            sb.AppendLine();
+            sb.AppendLine("        public System.Collections.Generic.IEnumerable<CycloneDDS.Schema.Formatting.FormattedToken> GetFormatTokens()");
+            sb.AppendLine("        {");
+
+            int lastIndex = 0;
+            foreach (System.Text.RegularExpressions.Match m in _templateTokenRegex.Matches(template))
+            {
+                // Emit literal text segment before this placeholder (if any)
+                if (m.Index > lastIndex)
+                {
+                    var literal = template.Substring(lastIndex, m.Index - lastIndex);
+                    sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken(\"{EscapeString(literal)}\", CycloneDDS.Schema.Formatting.TokenType.Punctuation);");
+                }
+
+                var fieldName  = m.Groups[1].Value;
+                var formatStr  = m.Groups[2].Success ? m.Groups[2].Value.Trim() : string.Empty;
+                var tokenTypeName = m.Groups[3].Success ? m.Groups[3].Value.Trim() : string.Empty;
+
+                // Resolve TokenType — default to Default when not specified
+                var tokenType = string.IsNullOrEmpty(tokenTypeName) ? "Default" : tokenTypeName;
+
+                // Emit field token — always use InvariantCulture so that float/double
+                // values render with "." as the decimal separator regardless of OS locale.
+                var toStringCall = string.IsNullOrEmpty(formatStr)
+                    ? $"System.String.Format(System.Globalization.CultureInfo.InvariantCulture, \"{{0}}\", this.{fieldName})"
+                    : $"System.String.Format(System.Globalization.CultureInfo.InvariantCulture, \"{{0:{EscapeString(formatStr)}}}\", this.{fieldName})";
+
+                sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken({toStringCall}, CycloneDDS.Schema.Formatting.TokenType.{tokenType});");
+
+                lastIndex = m.Index + m.Length;
+            }
+
+            // Emit any trailing literal text
+            if (lastIndex < template.Length)
+            {
+                var trailing = template.Substring(lastIndex);
+                sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken(\"{EscapeString(trailing)}\", CycloneDDS.Schema.Formatting.TokenType.Punctuation);");
+            }
+
+            sb.AppendLine("        }");
+        }
+
+        /// <summary>Escapes a string literal for inclusion inside a C# verbatim string expression.</summary>
+        private static string EscapeString(string value)
+            => value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+        /// <summary>
+        /// Escapes a string intended for use inside a C# interpolated string literal ($"…").
+        /// Braces that are already part of valid interpolation holes ({field} / {field:fmt}) are
+        /// left as-is; any literal <c>{</c> or <c>}</c> characters that are not interpolation
+        /// holes are doubled to <c>{{</c> / <c>}}</c> so they are treated as escaped braces.
+        /// </summary>
+        private static string EscapeInterpolatedString(string value)
+        {
+            // The value already contains syntactically correct C# interpolation holes
+            // produced by the regex replacement.  We only need to escape the surrounding
+            // double-quote characters (which EscapeString does) — the braces inside holes
+            // are intentionally left unreplaced.
+            return EscapeString(value);
         }
 
         private string GetDiscriminatorCastType(string typeName)
@@ -158,6 +296,7 @@ namespace CycloneDDS.CodeGen
              {
                  string castType = GetDiscriminatorCastType(discriminator.TypeName);
                  string castExpr = castType == "bool" ? "" : $"({castType})";
+                 // Native _d field is always int; cast enum discriminator to int.
                  if (discriminator.Type != null && discriminator.Type.IsEnum) castExpr = "(int)";
                  sb.AppendLine($"            target._d = {castExpr}source.{discriminator.Name};");
              }
@@ -212,6 +351,30 @@ namespace CycloneDDS.CodeGen
         {
              string sourceAccess = $"{sourcePrefix}.{field.Name}";
              string targetAccess = $"{targetPrefix}.{field.Name}";
+
+             // Fixed-size buffers: inline memcpy, zero allocation.
+             if (field.IsFixedSizeBuffer)
+             {
+                 if (field.IsInlineArray)
+                 {
+                     // ME1-T02: [InlineArray] source – use Unsafe.AsPointer (no 'fixed' on InlineArray)
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                {field.TypeName}* __srcPtr = ({field.TypeName}*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref System.Runtime.CompilerServices.Unsafe.AsRef(in {sourceAccess}));");
+                     sb.AppendLine($"                fixed ({field.TypeName}* __dst = {targetAccess})");
+                     sb.AppendLine($"                    System.Buffer.MemoryCopy(__srcPtr, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                     sb.AppendLine($"            }}");
+                 }
+                 else
+                 {
+                     // Regular unsafe fixed buffer: use fixed() pinning on both sides.
+                     sb.AppendLine($"            fixed ({field.TypeName}* __src = {sourceAccess})");
+                     sb.AppendLine($"            fixed ({field.TypeName}* __dst = {targetAccess})");
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                System.Buffer.MemoryCopy(__src, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                     sb.AppendLine($"            }}");
+                 }
+                 return;
+             }
 
              if (IsOptional(field))
              {
@@ -318,6 +481,7 @@ namespace CycloneDDS.CodeGen
              }
              else if (fieldType != null && fieldType.IsEnum)
              {
+                 // Native field is always int (idlc ignores @bit_bound for in-memory ABI layout).
                  sb.AppendLine($"            {targetAccess} = (int){sourceAccess};");
              }
              else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
@@ -503,7 +667,13 @@ namespace CycloneDDS.CodeGen
         {
             sb.AppendLine($"        public static unsafe void MarshalFromNative(IntPtr nativeData, out {type.Name} managedData)");
             sb.AppendLine("        {");
-            sb.AppendLine($"            managedData = default;");
+            sb.AppendLine("            if (nativeData == IntPtr.Zero)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                managedData = default;");
+            sb.AppendLine("                return;");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine($"            managedData = new {type.Name}();");
             sb.AppendLine($"            MarshalFromNative(ref managedData, in System.Runtime.CompilerServices.Unsafe.AsRef<{type.Name}_Native>((void*)nativeData));");
             sb.AppendLine("        }");
             sb.AppendLine();
@@ -600,6 +770,32 @@ namespace CycloneDDS.CodeGen
                  fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
              }
 
+             // Fixed-size buffers: inline memcpy, zero allocation.
+             if (field.IsFixedSizeBuffer)
+             {
+                 if (field.IsInlineArray)
+                 {
+                     // ME1-T02: [InlineArray] target – use Unsafe.AsPointer (no 'fixed' on InlineArray)
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                fixed ({field.TypeName}* __src = {sourceAccess})");
+                     sb.AppendLine($"                {{");
+                     sb.AppendLine($"                    {field.TypeName}* __dstPtr = ({field.TypeName}*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref {targetAccess});");
+                     sb.AppendLine($"                    System.Buffer.MemoryCopy(__src, __dstPtr, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                     sb.AppendLine($"                }}");
+                     sb.AppendLine($"            }}");
+                 }
+                 else
+                 {
+                     // Regular unsafe fixed buffer: use fixed() pinning on both sides.
+                     sb.AppendLine($"            fixed ({field.TypeName}* __src = {sourceAccess})");
+                     sb.AppendLine($"            fixed ({field.TypeName}* __dst = {targetAccess})");
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                System.Buffer.MemoryCopy(__src, __dst, {field.FixedSize} * sizeof({field.TypeName}), {field.FixedSize} * sizeof({field.TypeName}));");
+                     sb.AppendLine($"            }}");
+                 }
+                 return;
+             }
+
              if (IsOptional(field))
              {
                  string baseType = GetBaseType(field.TypeName);
@@ -681,6 +877,7 @@ namespace CycloneDDS.CodeGen
              }
              else if (fieldType != null && fieldType.IsEnum)
              {
+                 // Native field is always int; direct cast to enum type is safe.
                  sb.AppendLine($"            {targetAccess} = ({field.TypeName}){sourceAccess};");
              }
              else if (field.TypeName.StartsWith("List<") || field.TypeName.StartsWith("System.Collections.Generic.List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("BoundedSeq"))
@@ -881,6 +1078,10 @@ namespace CycloneDDS.CodeGen
 
         private bool IsDynamic(FieldInfo field)
         {
+            // Fixed-size buffers have a compile-time constant size and are embedded
+            // inline in the native struct; they are never dynamic.
+            if (field.IsFixedSizeBuffer) return false;
+
             if (field.TypeName == "string" || field.TypeName == "System.String") return true;
             if (field.TypeName.StartsWith("List<") || field.TypeName.EndsWith("[]") || field.TypeName.StartsWith("System.Collections.Generic.List<")) return true;
             
@@ -918,27 +1119,28 @@ namespace CycloneDDS.CodeGen
              }
              else if (typeName.StartsWith("List<") || typeName.EndsWith("[]") || typeName.StartsWith("System.Collections.Generic.List<"))
              {
-                 sb.AppendLine($"            if (source.{field.Name} != null && source.{field.Name}.Count > 0)");
+                 string countProp = typeName.EndsWith("[]") ? "Length" : "Count";
+                 sb.AppendLine($"            if (source.{field.Name} != null && source.{field.Name}.{countProp} > 0)");
                  sb.AppendLine($"            {{");
                  sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
                  
-                 string elementType = ExtractGenericType(typeName);
+                 string elementType = typeName.EndsWith("[]") ? typeName.Substring(0, typeName.Length - 2) : ExtractGenericType(typeName);
                  if (IsPrimitive(elementType))
                  {
                       string nativeType = elementType;
                       if (nativeType == "bool") nativeType = "byte";
                       if (nativeType == "string" || nativeType == "System.String") nativeType = "IntPtr"; 
                       
-                      sb.AppendLine($"                currentOffset += source.{field.Name}.Count * Unsafe.SizeOf<{nativeType}>();");
+                      sb.AppendLine($"                currentOffset += source.{field.Name}.{countProp} * Unsafe.SizeOf<{nativeType}>();");
                  }
                  else
                  {
                       string nativeElem = GetNativeTypeForSequenceElement(field);
                       
-                      sb.AppendLine($"                currentOffset += source.{field.Name}.Count * Unsafe.SizeOf<{nativeElem}>();");
+                      sb.AppendLine($"                currentOffset += source.{field.Name}.{countProp} * Unsafe.SizeOf<{nativeElem}>();");
                       sb.AppendLine($"                foreach(var item in source.{field.Name})");
                       sb.AppendLine("                {");
-                      string managedType = ExtractGenericType(typeName); 
+                      string managedType = typeName.EndsWith("[]") ? typeName.Substring(0, typeName.Length - 2) : ExtractGenericType(typeName); 
                       
                       if (managedType == "string" || managedType == "System.String")
                       {
@@ -995,7 +1197,7 @@ namespace CycloneDDS.CodeGen
         
         private string GetNativeTypeForSequenceElement(FieldInfo field)
         {
-             string elementType = ExtractGenericType(field.TypeName);
+             string elementType = field.TypeName.EndsWith("[]") ? field.TypeName.Substring(0, field.TypeName.Length - 2) : ExtractGenericType(field.TypeName);
              if (IsPrimitive(elementType))
              {
                  if (elementType == "bool" || elementType == "Boolean" || elementType == "System.Boolean") return "byte";
@@ -1054,8 +1256,8 @@ namespace CycloneDDS.CodeGen
              
              if (fieldType != null)
              {
-                 if (fieldType.IsEnum) return 4; 
-                 if (fieldType.IsStruct || fieldType.IsUnion)
+                 if (fieldType.IsEnum) return 4; // idlc always allocates 4 bytes for enum fields regardless of @bit_bound.
+                 if (fieldType.IsStruct || fieldType.IsUnion || fieldType.IsTopic)
                  {
                      int max = 1;
                      foreach(var f in fieldType.Fields)
@@ -1122,17 +1324,25 @@ namespace CycloneDDS.CodeGen
                 {
                     if (field.HasAttribute("DdsDiscriminator")) continue;
 
-                    int? maxLen = GetMaxLength(field);
-                    if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                    if (field.IsFixedSizeBuffer)
                     {
                         sb.AppendLine($"        [FieldOffset(0)]");
-                        sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                        sb.AppendLine($"        public fixed {field.TypeName} {field.Name}[{field.FixedSize}];");
                     }
                     else
                     {
-                        string nativeType = GetNativeType(field);
-                        sb.AppendLine($"        [FieldOffset(0)]");
-                        sb.AppendLine($"        public {nativeType} {field.Name};");
+                        int? maxLen = GetMaxLength(field);
+                        if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                        {
+                            sb.AppendLine($"        [FieldOffset(0)]");
+                            sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                        }
+                        else
+                        {
+                            string nativeType = GetNativeType(field);
+                            sb.AppendLine($"        [FieldOffset(0)]");
+                            sb.AppendLine($"        public {nativeType} {field.Name};");
+                        }
                     }
                 }
                 sb.AppendLine("    }");
@@ -1144,20 +1354,35 @@ namespace CycloneDDS.CodeGen
                 sb.AppendLine("    {");
                 foreach (var field in type.Fields)
                 {
-                    int? maxLen = GetMaxLength(field);
-                    if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                    if (field.IsFixedSizeBuffer)
                     {
-                        sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                        sb.AppendLine($"        public fixed {field.TypeName} {field.Name}[{field.FixedSize}];");
                     }
                     else
                     {
-                        string nativeType = GetNativeType(field);
-                        sb.AppendLine($"        public {nativeType} {field.Name};");
+                        int? maxLen = GetMaxLength(field);
+                        if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
+                        {
+                            sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                        }
+                        else
+                        {
+                            string nativeType = GetNativeType(field);
+                            sb.AppendLine($"        public {nativeType} {field.Name};");
+                        }
                     }
                 }
                 sb.AppendLine("    }");
             }
         }
+
+        /// <summary>Returns the C# cast expression matching an enum's bit bound (e.g. "(byte)", "(ushort)", "(int)").</summary>
+        private static string GetEnumCastExpression(int bitBound) => bitBound switch
+        {
+            8  => "(byte)",
+            16 => "(ushort)",
+            _  => "(int)"
+        };
 
         private string GetNativeType(FieldInfo field)
         {
@@ -1180,6 +1405,8 @@ namespace CycloneDDS.CodeGen
 
             if (fieldType != null)
             {
+                // idlc always generates int32 for enum fields in native structs, regardless of @bit_bound.
+                // The @bit_bound annotation only affects the CDR wire format, not the in-memory ABI layout.
                 if (fieldType.IsEnum) return "int";
                 return $"{fieldType.FullName}_Native";
             }

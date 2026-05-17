@@ -57,6 +57,7 @@ If you want to build the project from source or contribute:
 ### 🧬 Schema & Interoperability
 - **Code-First DSL:** Define your data types entirely in C# using attributes (`[DdsTopic]`, `[DdsKey]`, `[DdsStruct]`, `[DdsQos]`). No need to write IDL files manually.
 - **Automatic IDL Generation:** The build tools automatically generate standard OMG IDL files from your C# classes, ensuring perfect interoperability with other DDS implementations (C++, Python, Java) and tools. See [IDL Generation](IDL-GENERATION.md).
+- **Modern Language Integration:** Full support for C# 12 `[InlineArray]` (safe fixed-size arrays without `unsafe`), typed enums (`enum E : byte` emits `@bit_bound(8)`), and default topic naming based on namespaces.
 - **Auto-Magic Type Discovery:** Runtime automatically registers type descriptors based on your schema.
 - **IDL Import:** Convert existing IDL files into C# DSL automatically using the `IdlImporter` tool.
 - **100% Native Compliance:** Uses Cyclone DDS native serializer for wire compatibility.
@@ -70,6 +71,10 @@ If you want to build the project from source or contribute:
 - **Sender Tracking:** Identify the source application (Computer, PID, custom app id) of every message.
 - **Modern C#:** Events, Properties, and generic constraints instead of listeners and pointers.
 
+### 📡 Partitioning & Monitoring
+- **Partition Support:** Isolate traffic using DDS partitions. Set a partition on a participant once and every reader/writer inherits it automatically, or override per-reader/writer with a named argument.
+- **Zero-Allocation WaitSet:** Monitor 100+ readers on a single OS thread. `DdsWaitSet.Wait(Span<IDdsReader>, timeout, ct)` never allocates in the hot path and supports `CancellationToken` for instant, safe interruption.
+
 ---
 
 ## 1. Defining Data (The Schema)
@@ -82,7 +87,10 @@ Use this for high-frequency data (1kHz+).
 ```csharp
 using CycloneDDS.Schema;
 
-[DdsTopic("SensorData")]
+namespace Factory.Monitoring;
+
+// Topic name defaults to namespace + class name ("Factory_Monitoring_SensorData") if omitted
+[DdsTopic]
 public partial struct SensorData
 {
     [DdsKey, DdsId(0)]
@@ -94,6 +102,39 @@ public partial struct SensorData
     // Fixed-size buffer (maps to char[32]). No heap allocation.
     [DdsId(2)]
     public FixedString32 LocationId; 
+
+    // Safe, zero-allocation fixed array using C# 12 [InlineArray] (no 'unsafe' needed!)
+    [DdsId(3)]
+    public FloatBuffer8 Measurements;
+
+    // Byte-backed enum yields IDL @bit_bound(8) automatically for optimal native network usage
+    [DdsId(4)]
+    public SensorStatus Status;
+}
+
+[System.Runtime.CompilerServices.InlineArray(8)]
+public struct FloatBuffer8 { private float _element0; }
+
+public enum SensorStatus : byte
+{
+    Offline,
+    Online,
+    Error
+}
+```
+
+### Unmanaged Schema (Unsafe Fixed Buffers)
+For scenarios requiring direct memory manipulation or porting legacy C/C++ structs, you can use `unsafe fixed` arrays. The runtime maps these directly to native memory with zero allocation.
+
+```csharp
+[DdsTopic("CustomTopicNameForVideoFrame")]
+public unsafe partial struct VideoFrame
+{
+    [DdsKey]
+    public int FrameId;
+
+    // Classic C# unsafe fixed-size buffer
+    public fixed byte Pixels[1920 * 1080 * 3];
 }
 ```
 
@@ -146,25 +187,34 @@ public partial struct MachineState
 
 ### Publishing
 ```csharp
+using Factory.Monitoring;
 using var participant = new DdsParticipant();
 
-// Auto-discovers topic type and registers it
-using var writer = new DdsWriter<SensorData>(participant, "SensorData");
+// Auto-discovers topic type and its default name ("Factory_Monitoring_SensorData")
+using var writer = new DdsWriter<SensorData>(participant);
 
 // Zero-allocation write path
-writer.Write(new SensorData 
+var data = new SensorData 
 { 
     SensorId = 1, 
     Value = 25.5,
-    LocationId = new FixedString32("Factory_A")
-});
+    LocationId = new FixedString32("Factory_A"),
+    Status = SensorStatus.Online
+};
+
+// With C# 12, InlineArrays can be accessed directly by index
+data.Measurements[0] = 1.0f; 
+
+writer.Write(data);
 ```
 
 ### Subscribing (Polling)
 Reading uses a **Scope** pattern to ensure safety and zero-copy semantics. You "loan" the data, read it, and return it by disposing the scope.
 
 ```csharp
-using var reader = new DdsReader<SensorData>(participant, "SensorData");
+using Factory.Monitoring;
+
+using var reader = new DdsReader<SensorData>(participant);
 
 // POLL FOR DATA
 // Returns a "Loan" which manages native memory
@@ -173,24 +223,30 @@ using var loan = reader.Take(maxSamples: 10);
 // Iterate received data
 foreach (var sample in loan)
 {
-    // Check for valid data (skip metadata-only samples like Dispose events)
+    // `sample.IsValid` indicates whether a full payload is present.
+    // IMPORTANT: even when `ValidData == 0` (lifecycle/metadata-only samples),
+    // the middleware provides the native memory with the topic key fields populated.
+    // Therefore `sample.Data` is safe to call for every sample and will return
+    // a managed object where key fields are set and non-key fields are defaulted.
+
+    // Always obtain the managed copy (safe for metadata-only samples too)
+    var data = sample.Data;
+
     if (sample.IsValid)
     {
         // OPTION A: Simple (Managed)
-        // Lazy property triggers deep copy to managed object
-        // SensorData data = sample.Data;
-        
-        // OPTION B: Fast (Zero-Copy)
-        // Get a view over native memory. Zero allocations.
-        var view = sample.AsView();
-        
-        Console.WriteLine($"Received: {view.SensorId} = {view.Value}");
+        // `data` is a full managed copy populated from native memory
+        Console.WriteLine($"Received: {data.SensorId} = {data.Value}");
     }
     else
     {
-        // Handle lifecycle events (e.g., instance disposed)
-        Console.WriteLine($"Instance state: {sample.Info.InstanceState}");
+        // Lifecycle event (e.g., instance disposed). Key fields are available in `data`.
+        Console.WriteLine($"Instance {data.SensorId} state: {sample.Info.InstanceState}");
     }
+
+    // OPTION B: Fast (Zero-Copy) — you can still use AsView() when you only need
+    // transient, zero-allocation access to the native buffer (stack-only).
+    // var view = sample.AsView();
 }
 
 ```
@@ -347,7 +403,126 @@ writer.DisposeInstance(key);
 writer.UnregisterInstance(key);
 ```
 
-## 9. Legacy IDL Import
+## 9. Partitions
+
+DDS partitions let you divide a domain into named logical channels. Readers and writers only communicate within the same partition, making it easy to run multiple isolated subsystems on the same DDS domain (e.g. separate a monitoring plane from a control plane, or multiplex tenants).
+
+### Set a partition on the participant (inherited by all readers/writers)
+
+```csharp
+// All readers and writers created from this participant will use "monitoring" automatically.
+using var participant = new DdsParticipant(domainId: 0, defaultPartition: "monitoring");
+
+// Topic name comes from [DdsTopic("SensorData")] — no need to repeat it.
+using var reader = new DdsReader<SensorData>(participant);
+using var writer = new DdsWriter<SensorData>(participant);
+```
+
+### Override the partition per reader / writer
+
+```csharp
+using var participant = new DdsParticipant(0, defaultPartition: "*"); // wildcard default
+
+// This writer specifically targets the "control" partition.
+using var controlWriter = new DdsWriter<SensorData>(
+    participant, "SensorData", partition: "control");
+
+// This reader stays on the default "*" partition — sees everything.
+using var broadcastReader = new DdsReader<SensorData>(participant);
+```
+
+### Resolution order
+
+```
+per-reader / per-writer partition  →  participant.DefaultPartition  →  (no partition)
+```
+
+---
+
+## 10. WaitSet — Efficient Multi-Reader Monitoring
+
+`DdsWaitSet` provides a native-backed mechanism for sleeping on many readers simultaneously on **a single OS thread**. This is ideal for monitoring applications that track 100+ topics and do not want the overhead of spawning a background `Task` per reader.
+
+### Basic usage
+
+```csharp
+using var participant = new DdsParticipant(0, defaultPartition: "*");
+
+// Create readers for every topic you want to monitor
+using var tempReader    = new DdsReader<TemperatureEvent>(participant);
+using var pressReader   = new DdsReader<PressureEvent>(participant);
+using var statusReader  = new DdsReader<MachineStatus>(participant);
+
+// Create WaitSet and attach all readers
+using var waitset = new DdsWaitSet(participant);
+waitset.Attach(tempReader);
+waitset.Attach(pressReader);
+waitset.Attach(statusReader);
+
+// Pre-allocate result buffer once — no allocation inside the loop
+IDdsReader[] triggered = new IDdsReader[16];
+
+var cts = new CancellationTokenSource();
+
+while (!cts.IsCancellationRequested)
+{
+    // Blocks until at least one reader has data, or the timeout expires, or ct is cancelled.
+    // Zero allocation in this hot path.
+    int count = waitset.Wait(triggered.AsSpan(), timeout: TimeSpan.FromSeconds(1), cts.Token);
+
+    for (int i = 0; i < count; i++)
+    {
+        switch (triggered[i])
+        {
+            case DdsReader<TemperatureEvent> r:
+                using (var loan = r.Take()) { /* handle temp */ }
+                break;
+
+            case DdsReader<PressureEvent> r:
+                using (var loan = r.Take()) { /* handle pressure */ }
+                break;
+
+            case DdsReader<MachineStatus> r:
+                using (var loan = r.Take()) { /* handle status */ }
+                break;
+        }
+    }
+}
+```
+
+### Attach / Detach at runtime
+
+Readers can be added or removed while the WaitSet is not waiting, making the monitored set dynamic:
+
+```csharp
+// Start watching a new topic at runtime
+var newReader = new DdsReader<AlarmEvent>(participant);
+waitset.Attach(newReader);
+
+// Stop watching (and dispose the reader when no longer needed)
+waitset.Detach(newReader);
+newReader.Dispose();
+```
+
+### CancellationToken
+
+Pass a `CancellationToken` to `Wait` to interrupt the blocking native call safely from any thread:
+
+```csharp
+cts.Cancel(); // triggers the native guard condition, unblocks Wait() instantly
+```
+
+### Performance characteristics
+
+| Operation | Allocation | Notes |
+| :--- | :--- | :--- |
+| `Wait(...)` hot path | **0 Bytes** | `ArrayPool` rent inside; result written into caller's `Span` |
+| `Attach` / `Detach` | Small (one-time) | `GCHandle` + dictionary entry per reader |
+| Cancellation callback | **0 Bytes** | Triggers native guard condition via P/Invoke |
+
+---
+
+## 11. Legacy IDL Import
 
 If you have existing DDS systems defined in IDL, you can generate the corresponding C# DSL automatically.
 
@@ -396,6 +571,7 @@ The `CycloneDDS.NET` package bundles these internal components:
 | **Filtering** | **0 Bytes** | Manual loop filtering with Views |
 | **Sender Lookup** | **0 Bytes** | O(1) Dictionary Lookup |
 | **Async Wait** | ~80 Bytes | One Task per `await` cycle |
+| **WaitSet.Wait** | **0 Bytes** | Span output + ArrayPool rent; no heap in hot path |
 
 *Built for speed. Designed for developers.*
 

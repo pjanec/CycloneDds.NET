@@ -1,0 +1,450 @@
+@using System.Collections.Generic
+@using System.Linq
+@using DdsMonitor.Engine.Ui
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@implements IDisposable
+
+@inject ITopicRegistry TopicRegistry
+@inject IDdsBridge DdsBridge
+@inject ITypeDrawerRegistry DrawerRegistry
+@inject CloneRequestService CloneRequests
+@inject IEventBroker EventBroker
+@inject IJSRuntime JSRuntime
+@inject TopicColorService TopicColorService
+
+<div class="send-sample-panel">
+    <div class="send-sample-panel__combo-wrap">
+        <input type="text"
+               class="send-sample-panel__combo-input @(_comboOpen ? "is-open" : string.Empty)"
+               value="@(_comboOpen ? _filterText : (_selectedMeta?.ShortName ?? string.Empty))"
+               placeholder="— select a topic —"
+               @ref="_comboInputRef"
+               @onfocus="OnComboFocus"
+               @onclick="OnComboClick"
+               @oninput="OnFilterInput"
+               @onblur="OnComboBlur"
+               @onkeydown="OnFilterKeyDown" />
+
+        @if (_comboOpen)
+        {
+            <div class="send-sample-panel__combo-dropdown">
+                <div class="send-sample-panel__combo-options" @ref="_dropdownRef">
+                    @for (var i = 0; i < _filteredTopicsList.Count; i++)
+                    {
+                        var capturedMeta = _filteredTopicsList[i];
+                        var isHighlighted = i == _highlightIndex;
+                        var isSelected = capturedMeta == _selectedMeta;
+                        <button type="button"
+                                class="send-sample-panel__combo-option @(isHighlighted ? "is-highlighted" : string.Empty) @(isSelected ? "is-selected" : string.Empty)"
+                                @onmousedown:preventDefault
+                                @onclick="() => SelectFromCombo(capturedMeta)">
+                            <span class="send-sample-panel__combo-option-name topic-name-colored"
+                                  style="@TopicColorService.GetColorStyle(capturedMeta.ShortName)">@capturedMeta.ShortName</span>
+                            @if (!string.IsNullOrEmpty(capturedMeta.Namespace))
+                            {
+                                <span class="send-sample-panel__combo-option-ns">@capturedMeta.Namespace</span>
+                            }
+                        </button>
+                    }
+                    @if (_filteredTopicsList.Count == 0)
+                    {
+                        <div class="send-sample-panel__combo-empty">No topics match "@_filterText"</div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (_selectedMeta != null && _payload != null)
+    {
+        <div class="send-sample-panel__form-area">
+            <DynamicForm @ref="_form" Meta="@_selectedMeta" Payload="@_payload" />
+        </div>
+
+        <div class="send-sample-panel__footer">
+            @if (!string.IsNullOrWhiteSpace(_sendError))
+            {
+                <span class="send-sample-panel__error">@_sendError</span>
+            }
+            @if (_sendSuccess)
+            {
+                <span class="send-sample-panel__success">Sample sent.</span>
+            }
+            <button type="button" class="send-sample-panel__send-btn" @onclick="SendSample"
+                    disabled="@(_form?.HasValidationErrors == true)"
+                    title="@(_form?.HasValidationErrors == true ? "Fix validation errors before sending" : "Send sample")">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+                Send
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="send-sample-panel__empty">
+            <span>Select a topic to begin editing a sample payload.</span>
+        </div>
+    }
+</div>
+
+@code {
+    private const string SendSampleTopicTypeKey = "SendSamplePanel.TopicTypeName";
+
+    private DynamicForm? _form;
+    private TopicMetadata? _selectedMeta;
+    private object? _payload;
+    private string? _sendError;
+    private bool _sendSuccess;
+    private IDynamicWriter? _cachedWriter;
+    private IDisposable? _cloneSubscription;
+
+    // ── Combo state ───────────────────────────────────────────────────────────
+    private bool _comboOpen;
+    private string _filterText = string.Empty;
+    private int _highlightIndex = -1;
+    private List<TopicMetadata> _filteredTopicsList = new();
+    private ElementReference _comboInputRef;
+    private ElementReference _dropdownRef;
+
+    /// <summary>
+    /// Rebuilds <see cref="_filteredTopicsList"/> from the current <see cref="_filterText"/>
+    /// and clamps <see cref="_highlightIndex"/> to the new list bounds.
+    /// </summary>
+    private void ApplyFilter()
+    {
+        var all = TopicRegistry.AllTopics
+            .OrderBy(m => m.ShortName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.Namespace ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(_filterText))
+        {
+            _filteredTopicsList = all.ToList();
+        }
+        else
+        {
+            var lower = _filterText.Trim().ToLowerInvariant();
+            _filteredTopicsList = all.Where(m =>
+                (m.ShortName ?? string.Empty).Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                (m.Namespace ?? string.Empty).Contains(lower, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        if (_filteredTopicsList.Count == 0)
+        {
+            _highlightIndex = -1;
+        }
+        else
+        {
+            _highlightIndex = Math.Clamp(_highlightIndex, 0, _filteredTopicsList.Count - 1);
+        }
+    }
+
+    /// <summary>
+    /// Opens the combo: pre-fills the filter with the selected topic name so the dropdown
+    /// instantly narrows to matching topics, then selects all the text so the first keypress
+    /// replaces the entire filter rather than appending.
+    /// Called from both <see cref="OnComboFocus"/> (keyboard Tab into the input) and
+    /// <see cref="OnComboClick"/> (mouse click when already focused).
+    /// </summary>
+    private async Task OpenCombo()
+    {
+        if (_comboOpen)
+        {
+            // Already open – nothing more to do (e.g. onclick fired after onfocus).
+            return;
+        }
+
+        _filterText = _selectedMeta?.ShortName ?? string.Empty;
+        _comboOpen = true;
+
+        // Rebuild list so highlight can target the currently-selected item.
+        _highlightIndex = _selectedMeta != null
+            ? Math.Max(0, _filteredTopicsList.IndexOf(_selectedMeta))
+            : 0;
+        ApplyFilter();
+
+        // Highlight the selected item if it appears in the filtered list.
+        if (_selectedMeta != null)
+        {
+            var idx = _filteredTopicsList.IndexOf(_selectedMeta);
+            _highlightIndex = idx >= 0 ? idx : 0;
+        }
+        else
+        {
+            _highlightIndex = _filteredTopicsList.Count > 0 ? 0 : -1;
+        }
+
+        // Select all text so any character the user types immediately replaces the filter.
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("ddsMonitor.selectInput", _comboInputRef);
+        }
+        catch
+        {
+            // Ignore JS failures (e.g. pre-render).
+        }
+    }
+
+    private async Task OnComboFocus(FocusEventArgs _) => await OpenCombo();
+    private async Task OnComboClick() => await OpenCombo();
+
+    private void OnFilterInput(ChangeEventArgs e)
+    {
+        _filterText = e.Value?.ToString() ?? string.Empty;
+        // Reset highlight to the first matching item after each keystroke.
+        _highlightIndex = 0;
+        ApplyFilter();
+    }
+
+    /// <summary>
+    /// Closes the combo when focus leaves the input.
+    /// @onmousedown:preventDefault on option buttons prevents blur before click,
+    /// so selection always completes before the combo closes.
+    /// </summary>
+    private void OnComboBlur(FocusEventArgs _)
+    {
+        _comboOpen = false;
+        _filterText = string.Empty;
+    }
+
+    private async Task OnFilterKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "ArrowDown")
+        {
+            MoveHighlight(1);
+            await ScrollHighlightedIntoView();
+            return;
+        }
+
+        if (e.Key == "ArrowUp")
+        {
+            MoveHighlight(-1);
+            await ScrollHighlightedIntoView();
+            return;
+        }
+
+        if (e.Key == "Enter")
+        {
+            if (_highlightIndex >= 0 && _highlightIndex < _filteredTopicsList.Count)
+            {
+                SelectFromCombo(_filteredTopicsList[_highlightIndex]);
+            }
+            return;
+        }
+
+        if (e.Key is "Escape" or "Tab")
+        {
+            _comboOpen = false;
+            _filterText = string.Empty;
+        }
+    }
+
+    private void MoveHighlight(int delta)
+    {
+        if (_filteredTopicsList.Count == 0)
+        {
+            _highlightIndex = -1;
+            return;
+        }
+
+        _highlightIndex = Math.Clamp(_highlightIndex + delta, 0, _filteredTopicsList.Count - 1);
+    }
+
+    private async Task ScrollHighlightedIntoView()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("ddsMonitor.scrollHighlightedComboOption", _dropdownRef);
+        }
+        catch
+        {
+            // Ignore JS failures.
+        }
+    }
+
+    private void SelectFromCombo(TopicMetadata meta)
+    {
+        SelectTopic(meta);
+        PersistState();
+        _comboOpen = false;
+        _filterText = string.Empty;
+    }
+
+    /// <summary>
+    /// Optional initial topic to pre-select when the panel opens.
+    /// Passed from the Topic Explorer "Send Sample" action button.
+    /// </summary>
+    [Parameter]
+    public TopicMetadata? InitialTopic { get; set; }
+
+    [CascadingParameter]
+    private PanelState? PanelState { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // Subscribe via EventBroker so clone requests reach this panel reliably
+        // regardless of how many SendSamplePanel instances exist.  Each live
+        // instance receives the event and applies the data; the panel that was
+        // brought to front by OpenSendSamplePanel is the one the user sees.
+        _cloneSubscription = EventBroker.Subscribe<CloneAndSendRequestEvent>(OnCloneAndSendDirect);
+
+        // Check for a pending clone request posted before this panel initialized
+        // (the new-panel case: the event was published before we subscribed).
+        var pending = CloneRequests.TakeRequest();
+        if (pending.HasValue)
+        {
+            ApplyCloneRequest(pending.Value.Meta, pending.Value.Payload);
+            return;
+        }
+
+        // If an initial topic was injected via parameter, apply it.
+        if (InitialTopic != null)
+        {
+            SelectTopic(InitialTopic);
+            return;
+        }
+
+        // Try to restore from persisted panel state (workspace load).
+        TryRestoreFromState();
+    }
+
+    private void OnCloneAndSendDirect(CloneAndSendRequestEvent evt)
+    {
+        // Invoked directly via EventBroker on the circuit thread that published
+        // the event (DetailPanel button click).  Apply state here and schedule
+        // a separate render batch so the form appears after OpenSendSamplePanel
+        // brings this panel to front.
+        ApplyCloneRequest(evt.TopicMeta, evt.Payload);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void ApplyCloneRequest(TopicMetadata meta, object payload)
+    {
+        _cachedWriter?.Dispose();
+        _cachedWriter = null;
+        _selectedMeta = meta;
+        _payload = payload;
+        _sendError = null;
+        _sendSuccess = false;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (InitialTopic != null && _selectedMeta?.TopicType != InitialTopic.TopicType)
+        {
+            SelectTopic(InitialTopic);
+        }
+    }
+
+    private void SelectTopic(TopicMetadata meta)
+    {
+        // Dispose previous writer before switching topics.
+        _cachedWriter?.Dispose();
+        _cachedWriter = null;
+
+        _selectedMeta = meta;
+        _payload = CreateDefaultPayload(meta.TopicType);
+        _sendError = null;
+        _sendSuccess = false;
+    }
+
+    private static object? CreateDefaultPayload(Type topicType)
+    {
+        try
+        {
+            return Activator.CreateInstance(topicType);
+        }
+        catch (Exception ex)
+        {
+            _ = ex;
+            return null;
+        }
+    }
+
+    private void SendSample()
+    {
+        _sendError = null;
+        _sendSuccess = false;
+
+        if (_selectedMeta == null || _payload == null)
+        {
+            _sendError = "No topic or payload to send.";
+            return;
+        }
+
+        try
+        {
+            // Lazily create and cache the writer for this topic so that it stays
+            // alive between sends.  Disposing a DDS writer causes an
+            // UNREGISTER_INSTANCE lifecycle event that the reader would see as a
+            // sample with ValidData == 0, which can crash MarshalFromNative.
+            _cachedWriter ??= DdsBridge.GetWriter(_selectedMeta);
+            _cachedWriter.Write(_payload);
+            _sendSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            var actualEx = ex;
+            while (actualEx is System.Reflection.TargetInvocationException tie && tie.InnerException != null)
+            {
+                actualEx = tie.InnerException;
+            }
+            _sendError = $"Send failed: {actualEx.Message}";
+        }
+    }
+
+    private void TryRestoreFromState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        if (!PanelState.ComponentState.TryGetValue(SendSampleTopicTypeKey, out var typeObj))
+        {
+            return;
+        }
+
+        var typeName = typeObj is System.Text.Json.JsonElement el
+            ? el.GetString()
+            : typeObj?.ToString();
+
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            return;
+        }
+
+        var type = Type.GetType(typeName);
+        if (type == null)
+        {
+            return;
+        }
+
+        var meta = TopicRegistry.GetByType(type);
+        if (meta != null)
+        {
+            SelectTopic(meta);
+        }
+    }
+
+    private void PersistState()
+    {
+        if (PanelState == null || _selectedMeta == null)
+        {
+            return;
+        }
+
+        PanelState.ComponentState[SendSampleTopicTypeKey] = _selectedMeta.TopicType.AssemblyQualifiedName!;
+    }
+
+    public void Dispose()
+    {
+        _cloneSubscription?.Dispose();
+        _cachedWriter?.Dispose();
+        _cachedWriter = null;
+    }
+}

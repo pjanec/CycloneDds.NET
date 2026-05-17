@@ -20,6 +20,22 @@ namespace CycloneDDS.CodeGen
         public bool IsUnion { get; set; }
         public List<string> EnumMembers { get; set; } = new List<string>();
 
+        /// <summary>Numeric constant values for each enum member (same order as <see cref="EnumMembers"/>).
+        /// Used by <c>IdlEmitter</c> to emit <c>@value</c> annotations when values are non-sequential.</summary>
+        public List<long> EnumMemberValues { get; set; } = new List<long>();
+
+        /// <summary>Bit width of the enum's underlying type. 8 for byte/sbyte, 16 for short/ushort, 32 for default (int/uint).</summary>
+        public int EnumBitBound { get; set; } = 32;
+
+        /// <summary>Resolved DDS topic name. Populated by SchemaDiscovery when IsTopic is true.</summary>
+        public string? TopicName { get; set; }
+
+        /// <summary>
+        /// Optional format template from <c>[DdsTypeFormat("…")]</c>.
+        /// When non-null, SerializerEmitter generates ToString() and GetFormatTokens() overrides.
+        /// </summary>
+        public string? FormatTemplate { get; set; }
+
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
         public AttributeInfo? GetAttribute(string name) => Attributes.FirstOrDefault(a => a.Name == name || a.Name == name + "Attribute");
 
@@ -37,6 +53,15 @@ namespace CycloneDDS.CodeGen
         public TypeInfo? Type { get; set; } // Resolved nested type, null if primitive/external
         public TypeInfo? GenericType { get; set; } // Resolved generic argument type (e.g. T in List<T>)
         public List<AttributeInfo> Attributes { get; set; } = new List<AttributeInfo>();
+
+        /// <summary>True when the field is a C# fixed-size buffer (e.g. <c>public fixed byte Buf[64];</c>).</summary>
+        public bool IsFixedSizeBuffer { get; set; }
+        /// <summary>Number of elements in the fixed-size buffer (0 when <see cref="IsFixedSizeBuffer"/> is false).</summary>
+        public int FixedSize { get; set; }
+        /// <summary>True when the field type is decorated with <c>[System.Runtime.CompilerServices.InlineArray(N)]</c>.
+        /// When true, <see cref="IsFixedSizeBuffer"/> is also true and the element type / count are stored
+        /// in <see cref="TypeName"/> and <see cref="FixedSize"/> respectively.</summary>
+        public bool IsInlineArray { get; set; }
 
         public bool HasAttribute(string name) => Attributes.Any(a => a.Name == name || a.Name == name + "Attribute");
         public AttributeInfo? GetAttribute(string name) => Attributes.FirstOrDefault(a => a.Name == name || a.Name == name + "Attribute");

@@ -289,6 +289,7 @@ namespace CycloneDDS.CodeGen
 
             if (type.IsTopic)
             {
+                // ME1-C03 / D06: always emit plain @topic — idlc ignores and warns about name= parameter
                 sb.AppendLine($"{indent}@topic");
             }
 
@@ -329,12 +330,23 @@ namespace CycloneDDS.CodeGen
              string indent = GetIndent(indentLevel);
              string memberIndent = GetIndent(indentLevel + 1);
 
+             // ME1-T01: emit @bit_bound annotation for narrow enums (8-bit or 16-bit backing)
+             if (type.EnumBitBound == 8)
+                 sb.AppendLine($"{indent}@bit_bound(8)");
+             else if (type.EnumBitBound == 16)
+                 sb.AppendLine($"{indent}@bit_bound(16)");
+
              sb.AppendLine($"{indent}enum {type.Name} {{");
              
              for (int i = 0; i < type.EnumMembers.Count; i++)
              {
                  string comma = (i < type.EnumMembers.Count - 1) ? "," : "";
-                 sb.AppendLine($"{memberIndent}{type.EnumMembers[i]}{comma}");
+                 // Emit @value annotation when the C# integer value differs from the sequential IDL ordinal.
+                 // Only emit for non-negative values: IDL enum ordinals are unsigned and @value(-N) is invalid.
+                 long memberValue = i < type.EnumMemberValues.Count ? type.EnumMemberValues[i] : i;
+                 bool hasExplicitValue = memberValue >= 0 && memberValue != i;
+                 string valueAnnotation = hasExplicitValue ? $"@value({memberValue}) " : "";
+                 sb.AppendLine($"{memberIndent}{valueAnnotation}{type.EnumMembers[i]}{comma}");
              }
              
              sb.AppendLine($"{indent}}};");
@@ -391,10 +403,22 @@ namespace CycloneDDS.CodeGen
                      foreach(var val in caseAttr.CaseValues)
                      {
                         string label = val!.ToString()!;
-                        if (enumDef != null && val is int iVal)
+                        if (enumDef != null && val != null)
                         {
-                            if (iVal >= 0 && iVal < enumDef.TypeInfo!.EnumMembers.Count)
-                                label = enumDef.TypeInfo.EnumMembers[iVal];
+                            try
+                            {
+                                long iVal = Convert.ToInt64(val);
+                                // Find the enum member whose actual numeric value matches iVal,
+                                // rather than assuming value == index (which breaks for non-sequential enums).
+                                int memberIndex = enumDef.TypeInfo!.EnumMemberValues.Count > 0
+                                    ? enumDef.TypeInfo.EnumMemberValues.IndexOf(iVal)
+                                    : (iVal >= 0 && iVal < enumDef.TypeInfo.EnumMembers.Count ? (int)iVal : -1);
+
+                                if (memberIndex >= 0)
+                                    label = enumDef.TypeInfo.EnumMembers[memberIndex];
+                            }
+                            catch (InvalidCastException) { }
+                            catch (OverflowException) { }
                         }
                         
                         if (switchType == "boolean")
@@ -423,6 +447,15 @@ namespace CycloneDDS.CodeGen
         
         private (string Type, string Suffix) MapType(FieldInfo field)
         {
+            // C# fixed-size buffers: `public fixed byte Buf[64];`
+            // Treat as a fixed-length IDL array of the element type.
+            if (field.IsFixedSizeBuffer)
+            {
+                var innerField = new FieldInfo { TypeName = field.TypeName };
+                var (innerIdl, innerSuffix) = MapType(innerField);
+                return (innerIdl, innerSuffix + $"[{field.FixedSize}]");
+            }
+
             var typeName = field.TypeName;
             
             // Handle Nullable

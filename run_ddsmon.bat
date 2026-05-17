@@ -1,0 +1,1 @@
+start dotnet run --project %~dp0\tools\DdsMonitor\DdsMonitor.Blazor\DdsMonitor.csproj

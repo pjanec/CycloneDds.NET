@@ -1,0 +1,166 @@
+@using System.Collections.Generic
+@using System.Linq
+
+@inject IDdsBridge DdsBridge
+@inject IEventBroker EventBroker
+
+@* Backdrop: stopPropagation only – no close on click so text-selection drags don't dismiss the dialog *@
+<div class="file-dialog__backdrop">
+    <div class="file-dialog__window participant-editor-dialog" @onclick:stopPropagation="true">
+        <div class="file-dialog__header">
+            <span class="file-dialog__title">Participant Editor</span>
+            <button type="button" class="file-dialog__close" @onclick="Cancel" title="Close">✕</button>
+        </div>
+
+        <div class="file-dialog__body participant-editor">
+            <p class="participant-editor__subtitle">
+                Each row defines a Domain ID and Partition Name pair that the monitor listens on.
+                Leave <em>Partition</em> empty for the default (unnamed) partition or enter a wildcard like <code>*</code>.
+            </p>
+
+            <div class="participant-editor__list">
+                @if (_workingCopy.Count == 0)
+                {
+                    <div class="participant-editor__empty">No participants configured. Add one below.</div>
+                }
+                else
+                {
+                    @for (int i = 0; i < _workingCopy.Count; i++)
+                    {
+                        var capturedIdx = i;
+                        var entry = _workingCopy[capturedIdx];
+                        <div class="participant-editor__row">
+                            <div class="participant-editor__field participant-editor__field--domain">
+                                <span class="participant-editor__field-label">Domain ID</span>
+                                <input type="number"
+                                       min="0"
+                                       class="participant-editor__input"
+                                       value="@entry.DomainId"
+                                       @onchange="e => UpdateDomainId(capturedIdx, e)" />
+                            </div>
+                            <div class="participant-editor__field participant-editor__field--partition">
+                                <span class="participant-editor__field-label">Partition (empty = default)</span>
+                                <input type="text"
+                                       class="participant-editor__input"
+                                       placeholder="default / * / prefix*"
+                                       value="@entry.PartitionName"
+                                       @onchange="e => UpdatePartition(capturedIdx, e)" />
+                            </div>
+                            <button type="button"
+                                    class="participant-editor__remove-btn"
+                                    disabled="@(_workingCopy.Count <= 1)"
+                                    @onclick="() => RemoveRow(capturedIdx)"
+                                    title="@(_workingCopy.Count <= 1 ? "At least one participant is required" : "Remove this participant")">
+                                ✕
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="participant-editor__add-row">
+                <button type="button" class="participant-editor__add-btn" @onclick="AddRow">
+                    + Add Participant
+                </button>
+            </div>
+        </div>
+
+        <div class="file-dialog__footer">
+            <button type="button" class="file-dialog__btn file-dialog__btn--secondary" @onclick="Cancel">Cancel</button>
+            <button type="button" class="file-dialog__btn file-dialog__btn--primary" @onclick="Confirm">Apply</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Raised when the dialog is closed (either Apply or Cancel).</summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private List<ParticipantConfig> _workingCopy = new();
+
+    protected override void OnInitialized()
+    {
+        // Clone the current participant config list so edits are non-destructive until Apply.
+        _workingCopy = DdsBridge.ParticipantConfigs
+            .Select(c => new ParticipantConfig { DomainId = c.DomainId, PartitionName = c.PartitionName })
+            .ToList();
+    }
+
+    private void AddRow()
+    {
+        _workingCopy.Add(new ParticipantConfig { DomainId = 0, PartitionName = string.Empty });
+    }
+
+    private void RemoveRow(int index)
+    {
+        // Always keep at least one participant — removing all would break the DDS bridge.
+        if (_workingCopy.Count <= 1)
+            return;
+        if (index >= 0 && index < _workingCopy.Count)
+            _workingCopy.RemoveAt(index);
+    }
+
+    private void UpdateDomainId(int index, ChangeEventArgs e)
+    {
+        if (index < _workingCopy.Count && uint.TryParse(e.Value?.ToString(), out var id))
+        {
+            _workingCopy[index] = new ParticipantConfig
+            {
+                DomainId = id,
+                PartitionName = _workingCopy[index].PartitionName
+            };
+        }
+    }
+
+    private void UpdatePartition(int index, ChangeEventArgs e)
+    {
+        if (index < _workingCopy.Count)
+        {
+            _workingCopy[index] = new ParticipantConfig
+            {
+                DomainId = _workingCopy[index].DomainId,
+                // Preserve empty string as a valid partition name (not null)
+                PartitionName = e.Value?.ToString() ?? string.Empty
+            };
+        }
+    }
+
+    private async Task Confirm()
+    {
+        // Snapshot current state for diffing.
+        var current = DdsBridge.ParticipantConfigs.ToList();
+
+        // Remove participants that are no longer in the working copy.
+        // Work backwards by index so the indices stay stable during removal.
+        for (int i = current.Count - 1; i >= 0; i--)
+        {
+            if (!_workingCopy.Any(w => w.DomainId == current[i].DomainId
+                                      && w.PartitionName == current[i].PartitionName))
+            {
+                DdsBridge.RemoveParticipant(i);
+            }
+        }
+
+        // Add participants that are in the working copy but not yet in the bridge.
+        foreach (var w in _workingCopy)
+        {
+            if (!DdsBridge.ParticipantConfigs.Any(c => c.DomainId == w.DomainId
+                                                      && c.PartitionName == w.PartitionName))
+            {
+                DdsBridge.AddParticipant(w.DomainId, w.PartitionName);
+            }
+        }
+
+        // Publish the change event.
+        EventBroker.Publish(new ParticipantsChangedEvent(DdsBridge.ParticipantConfigs));
+
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        await OnClose.InvokeAsync();
+    }
+}
+

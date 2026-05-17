@@ -7,19 +7,22 @@ namespace CycloneDDS.CodeGen.Emitters
 {
     public class ViewEmitter
     {
-        public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry? registry)
+        public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry? registry, bool generateUsings = true)
         {
             var sb = new StringBuilder();
             
-            sb.AppendLine("using System;");
-            sb.AppendLine("using System.Runtime.InteropServices;");
-            sb.AppendLine("using CycloneDDS.Core;");
-            sb.AppendLine("using CycloneDDS.Runtime;");
-            sb.AppendLine();
-            sb.AppendLine("#pragma warning disable CS8600");
-            sb.AppendLine("#pragma warning disable CS8601");
-            sb.AppendLine("#pragma warning disable CS8603");
-            sb.AppendLine();
+            if (generateUsings)
+            {
+                sb.AppendLine("using System;");
+                sb.AppendLine("using System.Runtime.InteropServices;");
+                sb.AppendLine("using CycloneDDS.Core;");
+                sb.AppendLine("using CycloneDDS.Runtime;");
+                sb.AppendLine();
+                sb.AppendLine("#pragma warning disable CS8600");
+                sb.AppendLine("#pragma warning disable CS8601");
+                sb.AppendLine("#pragma warning disable CS8603");
+                sb.AppendLine();
+            }
             
             if (!string.IsNullOrEmpty(type.Namespace))
             {
@@ -58,6 +61,39 @@ namespace CycloneDDS.CodeGen.Emitters
             {
                 sb.AppendLine("}"); // End namespace
             }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Returns the ref struct definition without a namespace wrapper, using a single-level indent.
+        /// Used by CodeGenerator to compose a single combined output file per type.
+        /// </summary>
+        public string EmitViewStructInsideNamespace(TypeInfo type, GlobalTypeRegistry? registry)
+        {
+            var sb = new StringBuilder();
+            var indent = "    ";
+
+            sb.AppendLine($"{indent}public ref struct {type.Name}View");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    private unsafe readonly {type.Name}_Native* _ptr;");
+            sb.AppendLine();
+
+            sb.AppendLine($"{indent}    public unsafe {type.Name}View({type.Name}_Native* ptr)");
+            sb.AppendLine($"{indent}    {{");
+            sb.AppendLine($"{indent}        _ptr = ptr;");
+            sb.AppendLine($"{indent}    }}");
+            sb.AppendLine();
+
+            foreach (var field in type.Fields)
+            {
+                ProcessField(sb, field, indent + "    ", registry, type.IsUnion);
+            }
+
+            sb.AppendLine();
+
+            GenerateToManagedMethod(sb, type, registry, indent + "    ");
+            sb.AppendLine($"{indent}}}"); // End struct
 
             return sb.ToString();
         }
@@ -106,8 +142,20 @@ namespace CycloneDDS.CodeGen.Emitters
 
             var resolvedTypeName = registry != null ? ResolveType(field.TypeName, registry) : field.TypeName;
 
+            // Fixed String wrappers
+            if (IsFixedString(resolvedTypeName))
+            {
+                var fixedView = GetFixedStringViewType(resolvedTypeName);
+                var fixedType = GetFixedStringType(resolvedTypeName);
+                sb.AppendLine($"{indent}public unsafe {fixedView} {field.Name} => new {fixedView}(({fixedType}*)&_ptr->{nativeFieldName});");
+            }
+            // C# fixed-size buffer (e.g. `public fixed byte Buf[64];`)
+            else if (field.IsFixedSizeBuffer)
+            {
+                EmitFixedSizeBufferProperty(sb, field, indent, nativeFieldName);
+            }
             // Primitive
-            if (IsPrimitive(field.TypeName, registry))
+            else if (IsPrimitive(field.TypeName, registry))
             {
                sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {field.Name} => _ptr->{nativeFieldName};");
             }
@@ -435,6 +483,61 @@ namespace CycloneDDS.CodeGen.Emitters
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
                 }
+                else if (IsFixedString(caseType))
+                {
+                    // FixedString32/64/etc. view wrapper — native type is the wrapper itself, not a "_Native" variant.
+                    // FixedStringXxxView is a ref struct so cannot be Nullable<T>; throw on mismatch.
+                    var fixedView = GetFixedStringViewType(caseType);
+                    var fixedType = GetFixedStringType(caseType);
+                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {fixedView}. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}public unsafe {fixedView} {propName}As{caseName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if ({conditionExpr})");
+                    sb.AppendLine($"{indent}             return new {fixedView}(({fixedType}*)&_ptr->{fieldName}._u.{caseField});");
+                    sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
+                else if (member.IsFixedSizeBuffer)
+                {
+                    // C# fixed-size buffer (e.g. `public fixed float EightFloats[8]`) inside the native union struct.
+                    // ReadOnlySpan<T> is a ref struct so cannot be Nullable<T>; throw on mismatch.
+                    int bufLen = member.FixedSize;
+                    string bufLenStr = bufLen > 0 ? bufLen.ToString() : "0";
+                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as ReadOnlySpan. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{caseType}> {propName}As{caseName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if ({conditionExpr})");
+                    sb.AppendLine($"{indent}             return new ReadOnlySpan<{caseType}>(_ptr->{fieldName}._u.{caseField}, {bufLenStr});");
+                    sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
+                else if (IsFixedArray(member))
+                {
+                    // Fixed-length array field (e.g. `float[8]` attributed as inline array).
+                    // ReadOnlySpan<T> is a ref struct so cannot be Nullable<T>; throw on mismatch.
+                    string elemType = GetElementType(caseType);
+                    int? arrLen = GetArrayLength(member);
+                    string arrLenStr = arrLen.HasValue ? arrLen.Value.ToString() : "0";
+                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as ReadOnlySpan. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{elemType}> {propName}As{caseName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if ({conditionExpr})");
+                    sb.AppendLine($"{indent}        {{");
+                    sb.AppendLine($"{indent}             {elemType}* ptr = _ptr->{fieldName}._u.{caseField};");
+                    sb.AppendLine($"{indent}             return new ReadOnlySpan<{elemType}>(ptr, {arrLenStr});");
+                    sb.AppendLine($"{indent}        }}");
+                    sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
                 else if (IsPrimitive(caseType, registry) || IsEnum(member, registry))
                 {
                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {caseType} if discriminator matches.</summary>");
@@ -508,6 +611,20 @@ namespace CycloneDDS.CodeGen.Emitters
              sb.AppendLine($"{indent}    {{");
              sb.AppendLine($"{indent}        {elementType}* ptr = _ptr->{nativeFieldName};");
              sb.AppendLine($"{indent}        return new ReadOnlySpan<{elementType}>(ptr, {arrayLen});");
+             sb.AppendLine($"{indent}    }}");
+             sb.AppendLine($"{indent}}}");
+        }
+
+        private void EmitFixedSizeBufferProperty(StringBuilder sb, FieldInfo field, string indent, string nativeFieldName)
+        {
+             // For a C# fixed buffer `public fixed T Buf[N]` in the native struct,
+             // `_ptr->Buf` returns a T* to the first element – wrap as ReadOnlySpan<T>.
+             sb.AppendLine($"{indent}/// <summary>Gets {field.Name} as ReadOnlySpan (zero-copy).</summary>");
+             sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{field.TypeName}> {field.Name}");
+             sb.AppendLine($"{indent}{{");
+             sb.AppendLine($"{indent}    get");
+             sb.AppendLine($"{indent}    {{");
+             sb.AppendLine($"{indent}        return new ReadOnlySpan<{field.TypeName}>(_ptr->{nativeFieldName}, {field.FixedSize});");
              sb.AppendLine($"{indent}    }}");
              sb.AppendLine($"{indent}}}");
         }
@@ -609,7 +726,27 @@ namespace CycloneDDS.CodeGen.Emitters
                 return;
             }
 
-            if (IsPrimitive(field.TypeName, registry) || IsBool(field.TypeName, registry) || IsEnum(field, registry) || IsString(field.TypeName, registry))
+            if (field.IsFixedSizeBuffer)
+            {
+                // Copy from ReadOnlySpan (view) into the local managed fixed buffer.
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    var __srcSpan = this.{propName};");
+                if (field.IsInlineArray)
+                {
+                    // ME1-T02: [InlineArray] target cannot be implicitly converted to T*.
+                    // Use Unsafe.AsPointer to obtain the element pointer.
+                    sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = ({field.TypeName}*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref target.{targetProp});");
+                }
+                else
+                {
+                    // Normal unsafe fixed buffer: target.Name converts to T* implicitly in unsafe context.
+                    sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = target.{targetProp};");
+                }
+                sb.AppendLine($"{indent}    for (int __i = 0; __i < {field.FixedSize}; __i++)");
+                sb.AppendLine($"{indent}        __dstPtr[__i] = __srcSpan[__i];");
+                sb.AppendLine($"{indent}}}");
+            }
+            else if (IsPrimitive(field.TypeName, registry) || IsBool(field.TypeName, registry) || IsEnum(field, registry) || IsString(field.TypeName, registry))
             {
                  sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
             }
@@ -620,6 +757,44 @@ namespace CycloneDDS.CodeGen.Emitters
             else if (IsSequence(field))
             {
                  var elementType = GetSequenceElementType(field);
+
+                 // T[] – the managed field is T[], not List<T>.
+                 if (field.TypeName.EndsWith("[]"))
+                 {
+                     if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
+                     {
+                         // Primitive/bool: view property returns ReadOnlySpan<T>, ToArray() returns T[].
+                         sb.AppendLine($"{indent}target.{targetProp} = this.{propName}.ToArray();");
+                     }
+                     else if (IsString(elementType, registry))
+                     {
+                         sb.AppendLine($"{indent}target.{targetProp} = new string[this.{propName}Count];");
+                         sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                         sb.AppendLine($"{indent}{{");
+                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i);");
+                         sb.AppendLine($"{indent}}}");
+                     }
+                     else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime")
+                     {
+                         sb.AppendLine($"{indent}target.{targetProp} = new {elementType}[this.{propName}Count];");
+                         sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                         sb.AppendLine($"{indent}{{");
+                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i);");
+                         sb.AppendLine($"{indent}}}");
+                     }
+                     else
+                     {
+                         // Struct sequence: view uses {Name}Count + Get{Name}(i).ToManaged()
+                         sb.AppendLine($"{indent}target.{targetProp} = new {elementType}[this.{propName}Count];");
+                         sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
+                         sb.AppendLine($"{indent}{{");
+                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i).ToManaged();");
+                         sb.AppendLine($"{indent}}}");
+                     }
+                 }
+                 else
+                 {
+                 // List<T> path
                  var targetCollectionType = "System.Collections.Generic.List";
 
                  if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
@@ -651,7 +826,8 @@ namespace CycloneDDS.CodeGen.Emitters
                      sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i).ToManaged());");
                      sb.AppendLine($"{indent}}}");
                  }
-            }
+                 } // end non-array-typed sequence branch
+            } // end IsSequence
             else if (field.TypeName == "System.Guid" || field.TypeName == "Guid" || 
                      field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
             {
@@ -835,6 +1011,33 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}/// <summary>Gets view for optional {field.Name}. Accessing this when Has{propName} is false may lead to undefined behavior.</summary>");
                 sb.AppendLine($"{indent}public unsafe {viewName} {propName} => new {viewName}(({nativeType}*)_ptr->{nativeFieldName});");
             }
+        }
+
+        private bool IsFixedString(string typeName)
+        {
+            var resolved = typeName.Replace("global::", string.Empty);
+            return resolved.EndsWith("FixedString32") ||
+                   resolved.EndsWith("FixedString64") ||
+                   resolved.EndsWith("FixedString128") ||
+                   resolved.EndsWith("FixedString256");
+        }
+
+        private string GetFixedStringViewType(string typeName)
+        {
+            var resolved = typeName.Replace("global::", string.Empty);
+            return resolved.EndsWith("FixedString32") ? "CycloneDDS.Schema.FixedString32View" :
+                   resolved.EndsWith("FixedString64") ? "CycloneDDS.Schema.FixedString64View" :
+                   resolved.EndsWith("FixedString128") ? "CycloneDDS.Schema.FixedString128View" :
+                   "CycloneDDS.Schema.FixedString256View";
+        }
+
+        private string GetFixedStringType(string typeName)
+        {
+            var resolved = typeName.Replace("global::", string.Empty);
+            return resolved.EndsWith("FixedString32") ? "CycloneDDS.Schema.FixedString32" :
+                   resolved.EndsWith("FixedString64") ? "CycloneDDS.Schema.FixedString64" :
+                   resolved.EndsWith("FixedString128") ? "CycloneDDS.Schema.FixedString128" :
+                   "CycloneDDS.Schema.FixedString256";
         }
     }
 }

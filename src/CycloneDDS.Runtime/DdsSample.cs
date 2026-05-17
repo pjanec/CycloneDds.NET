@@ -21,10 +21,9 @@ namespace CycloneDDS.Runtime
         {
             get
             {
-                if (!IsValid)
-                {
-                    throw new InvalidOperationException("Cannot access Data on an invalid sample (ValidData is false).");
-                }
+                // Always unmarshal the native memory into a managed object.
+                // DDS provides key fields even for metadata-only samples (ValidData == 0),
+                // so callers must be able to read key values for lifecycle events.
                 return DdsTypeSupport.FromNative<T>(NativePtr);
             }
         }

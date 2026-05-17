@@ -1,0 +1,114 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+
+    <!-- Global dotnet tool packaging -->
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ddsmonitor</ToolCommandName>
+    <PackageId>CycloneDDS.NET.DdsMonitor</PackageId>
+    <Description>Global dotnet tool for CycloneDDS network monitoring</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
+    <ProjectReference Include="..\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
+    <!-- Build-only: ensures plugin projects build (and stage to project-level plugins\) before the host runs -->
+    <ProjectReference Include="..\DdsMonitor.Plugins.ECS\DdsMonitor.Plugins.ECS.csproj" ReferenceOutputAssembly="false" Private="false" SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\DdsMonitor.Plugins.FeatureDemo\DdsMonitor.Plugins.FeatureDemo.csproj" ReferenceOutputAssembly="false" Private="false" SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+
+  <!--
+    Copy plugin DLLs into the host's OUTPUT plugins folder after each build.
+    Ensures discovery regardless of working directory (dotnet run from project dir vs output dir / VS F5).
+    Each plugin also runs StagePlugin to tools/DdsMonitor/DdsMonitor.Blazor/plugins/.
+  -->
+  <Target Name="CopyEcsPluginToOutput" AfterTargets="Build">
+    <PropertyGroup>
+      <EcsPluginDll>$(MSBuildThisFileDirectory)..\DdsMonitor.Plugins.ECS\bin\$(Configuration)\net8.0\DdsMonitor.Plugins.ECS.dll</EcsPluginDll>
+      <OutputPluginsDir>$(OutputPath)plugins\</OutputPluginsDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(OutputPluginsDir)" />
+    <Copy SourceFiles="$(EcsPluginDll)" DestinationFolder="$(OutputPluginsDir)" SkipUnchangedFiles="true" Condition="Exists('$(EcsPluginDll)')" />
+    <Message Text="Staged ECS plugin to output: $(OutputPluginsDir)" Importance="high" />
+  </Target>
+
+  <Target Name="CopyFeatureDemoPluginToOutput" AfterTargets="Build">
+    <PropertyGroup>
+      <FeatureDemoPluginDll>$(MSBuildThisFileDirectory)..\DdsMonitor.Plugins.FeatureDemo\bin\$(Configuration)\net8.0\DdsMonitor.Plugins.FeatureDemo.dll</FeatureDemoPluginDll>
+      <OutputPluginsDir>$(OutputPath)plugins\</OutputPluginsDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(OutputPluginsDir)" />
+    <Copy SourceFiles="$(FeatureDemoPluginDll)" DestinationFolder="$(OutputPluginsDir)" SkipUnchangedFiles="true" Condition="Exists('$(FeatureDemoPluginDll)')" />
+    <Message Text="Staged Feature Demo plugin to output: $(OutputPluginsDir)" Importance="high" />
+  </Target>
+
+  <PropertyGroup>
+    <!-- Hook into the tool packing process to include the plugins folder -->
+    <TargetsForTfmSpecificToolContent>$(TargetsForTfmSpecificToolContent);IncludePluginsInToolPackage</TargetsForTfmSpecificToolContent>
+  </PropertyGroup>
+
+  <Target Name="IncludePluginsInToolPackage" DependsOnTargets="CopyEcsPluginToOutput;CopyFeatureDemoPluginToOutput">
+    <ItemGroup>
+      <!-- Pack the contents of the plugins folder into the tool's payload directory -->
+      <TfmSpecificToolContent Include="$(OutputPath)plugins\**\*.dll"
+                              PackagePath="tools\$(TargetFramework)\any\plugins\%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="GetNativeVersionInfo" BeforeTargets="GenerateNuspec;Pack">
+    <PropertyGroup>
+      <NativeDir>$(MSBuildProjectDirectory)\..\..\..\cyclonedds</NativeDir>
+      <UpstreamRepoUrl>https://github.com/eclipse-cyclonedds/cyclonedds</UpstreamRepoUrl>
+    </PropertyGroup>
+    
+    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" WorkingDirectory="$(NativeDir)" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="NativeFullCommit" />
+    </Exec>
+    
+    <Exec Command="git merge-base origin/master HEAD" ConsoleToMSBuild="true" WorkingDirectory="$(NativeDir)" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="NativeBaseCommit" />
+    </Exec>
+
+    <Exec Command="git config --get remote.origin.url" ConsoleToMSBuild="true" WorkingDirectory="$(NativeDir)" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="NativeRepoUrl" />
+    </Exec>
+
+    <PropertyGroup>
+      <NativeVersionInfo>
+{
+  "Original": {
+    "Repository": "$(UpstreamRepoUrl)",
+    "Commit": "$(NativeBaseCommit)"
+  },
+  "Modified": {
+    "Repository": "$(NativeRepoUrl)",
+    "Commit": "$(NativeFullCommit)"
+  }
+}
+      </NativeVersionInfo>
+      <NativeVersionFile>$(IntermediateOutputPath)native_version.json</NativeVersionFile>
+    </PropertyGroup>
+
+    <WriteLinesToFile File="$(NativeVersionFile)" Lines="$(NativeVersionInfo)" Overwrite="true" />
+
+    <ItemGroup>
+      <None Include="$(NativeVersionFile)" Pack="true" PackagePath="/" Visible="false" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <Description>$(Description)%0a%0aNative Version Information:%0a- Based on Eclipse Cyclone DDS ($(UpstreamRepoUrl)) commit: $(NativeBaseCommit)%0a- Modified from $(NativeRepoUrl) commit: $(NativeFullCommit)</Description>
+      <PackageReleaseNotes>$(PackageReleaseNotes)%0aNative Version Information:%0a- Based on Eclipse Cyclone DDS ($(UpstreamRepoUrl)) commit: $(NativeBaseCommit)%0a- Modified from $(NativeRepoUrl) commit: $(NativeFullCommit)</PackageReleaseNotes>
+    </PropertyGroup>
+  </Target>
+
+</Project>

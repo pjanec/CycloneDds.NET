@@ -1,0 +1,28 @@
++ *
+#- **/docs
+#- **/Docs
+- **/Debug
+- **/Release
+- **/.*
+- **/obj
+- **/bin
+- **/tests
+- **/Tests
+- **/*.Tests*
+- **/*Benchmark*
+- **/*benchmark*
+- **/build
+- **/artifacts
+- **/Generated/*
+- **/*.png
+- **/*.dll
+- **/*.exe
+- **/*.md
+- **/*.fdp
+- scripts
+- TestResults
+- *.txt
+- *.log
+- cyclonedds/
+
+

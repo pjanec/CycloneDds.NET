@@ -1,0 +1,83 @@
+@using System.Collections.Generic
+@using System.Linq
+@using DdsMonitor.Engine.Plugins
+
+@inject PluginLoader PluginLoader
+@inject PluginConfigService PluginConfigService
+
+@* ──────────────────────────────────────────────────────────────────────────
+   PluginManagerPanel.razor   (PLA1-P5-T03)
+   Displays all discovered plugins with their enabled state.
+   Users can toggle the enabled checkbox; changes are saved immediately and
+   a "Restart Required" badge is shown until the application restarts.
+   ────────────────────────────────────────────────────────────────────────── *@
+
+<div class="plugin-manager">
+
+    <!-- ── Toolbar / header ─────────────────────────────────────────── -->
+    <div class="plugin-manager__toolbar">
+        <span class="plugin-manager__title">Installed Plugins</span>
+        @if (_restartRequired)
+        {
+            <span class="plugin-manager__restart-badge">Restart Required</span>
+        }
+    </div>
+
+    <!-- ── Plugin table ─────────────────────────────────────────────── -->
+    @if (_plugins.Count == 0)
+    {
+        <div class="plugin-manager__empty">No plugins found in the configured plugin directories.</div>
+    }
+    else
+    {
+        <table class="plugin-manager__table">
+            <thead>
+                <tr>
+                    <th>Enabled</th>
+                    <th>Name</th>
+                    <th>Version</th>
+                    <th>Path</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var plugin in _plugins)
+                {
+                    <tr class="plugin-manager__row">
+                        <td class="plugin-manager__cell-enabled">
+                            <input type="checkbox"
+                                   checked="@plugin.IsEnabled"
+                                   @onclick="() => OnToggle(plugin)" />
+                        </td>
+                        <td class="plugin-manager__cell-name">@plugin.Instance.Name</td>
+                        <td class="plugin-manager__cell-version">@plugin.Instance.Version</td>
+                        <td class="plugin-manager__cell-path" title="@plugin.AssemblyPath">@plugin.AssemblyPath</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+</div>
+
+@code {
+    private List<DiscoveredPlugin> _plugins = new();
+    private bool _restartRequired;
+
+    protected override void OnInitialized()
+    {
+        _plugins = PluginLoader.DiscoveredPlugins.ToList();
+    }
+
+    private void OnToggle(DiscoveredPlugin plugin)
+    {
+        plugin.IsEnabled = !plugin.IsEnabled;
+
+        var enabledNames = new HashSet<string>(
+            _plugins.Where(p => p.IsEnabled).Select(p => p.Instance.Name),
+            StringComparer.Ordinal);
+
+        PluginConfigService.Save(enabledNames);
+
+        _restartRequired = true;
+    }
+}

@@ -1,0 +1,53 @@
+@using System.Collections.Generic
+@using System.Linq
+@using DdsMonitor.Engine
+@using DdsMonitor.Engine.Plugins
+
+@* Minimal testable stub mirroring PluginManagerPanel.razor business logic.
+   Used by PluginManagerPanelTests (PLA1-P5-T03). *@
+
+<div class="plugin-manager">
+    <div class="plugin-manager__toolbar">
+        @if (RestartRequired)
+        {
+            <span class="plugin-manager__restart-badge">Restart Required</span>
+        }
+    </div>
+    <table class="plugin-manager__table">
+        <thead>
+            <tr><th>Enabled</th><th>Name</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var plugin in Plugins ?? Enumerable.Empty<DiscoveredPlugin>())
+            {
+                var isEnabled = plugin.IsEnabled;
+                <tr class="plugin-manager__row">
+                    <td><input type="checkbox" class="@(isEnabled ? "is-enabled" : "is-disabled")" checked="@isEnabled" /></td>
+                    <td>@plugin.Instance.Name</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter] public List<DiscoveredPlugin>? Plugins { get; set; }
+    [Parameter] public PluginConfigService? ConfigService { get; set; }
+
+    public bool RestartRequired { get; private set; }
+
+    public void TogglePlugin(int index)
+    {
+        if (Plugins == null || index < 0 || index >= Plugins.Count) return;
+        var plugin = Plugins[index];
+        plugin.IsEnabled = !plugin.IsEnabled;
+
+        var enabledNames = new HashSet<string>(
+            Plugins.Where(p => p.IsEnabled).Select(p => p.Instance.Name),
+            StringComparer.Ordinal);
+
+        ConfigService?.Save(enabledNames);
+        RestartRequired = true;
+        StateHasChanged();
+    }
+}

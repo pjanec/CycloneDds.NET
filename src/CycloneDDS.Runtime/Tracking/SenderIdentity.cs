@@ -51,6 +51,12 @@ namespace CycloneDDS.Runtime.Tracking
         /// </summary>
         [DdsId(5)]
         public int ProcessId;
+
+        /// <summary>
+        /// IP address of the host, resolved once from the CycloneDDS XML config.
+        /// </summary>
+        [DdsManaged, DdsId(6)]
+        public string ComputerIP;
     }
 }
 

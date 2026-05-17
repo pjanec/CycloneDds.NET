@@ -1,0 +1,1404 @@
+@using System.Collections.Concurrent
+@using System.Collections.Generic
+@using System.Linq
+@using System.Reflection
+@using System.Runtime.InteropServices
+@using System.Text.Json
+@using CycloneDDS.Runtime
+@using CycloneDDS.Runtime.Interop
+@using CycloneDDS.Schema
+@using CycloneDDS.Schema.Formatting
+@using Microsoft.AspNetCore.Components.Rendering
+@using Microsoft.JSInterop
+@implements IDisposable
+
+@inject IEventBroker EventBroker
+@inject IWindowManager WindowManager
+@inject TooltipService TooltipService
+@inject ContextMenuService ContextMenuService
+@inject IJSRuntime JSRuntime
+@inject WorkspacePersistenceService WorkspacePersistence
+@inject IValueFormatterRegistry ValueFormatterRegistry
+@inject ISampleStore SampleStore
+@inject ISampleViewRegistry SampleViewRegistry
+
+@if (_currentSample == null)
+{
+    <div class="panel-placeholder-content">
+        <h2>Detail Panel</h2>
+        <p>No sample selected.</p>
+    </div>
+}
+else
+{
+    <div class="detail-panel">
+        <div class="detail-panel__header">
+            <button type="button"
+                    title="@(_linked ? "Linked \u2013 follows sample selection" : "Detached \u2013 pinned to this sample")"
+                    class="detail-panel__link @(_linked ? "is-on" : string.Empty)"
+                    @onclick="ToggleLinkMode">
+                @if (_linked)
+                {
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                }
+                else
+                {
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.72-1.71"/><line x1="8" y1="2" x2="8" y2="5"/><line x1="2" y1="8" x2="5" y2="8"/><line x1="16" y1="19" x2="16" y2="22"/><line x1="19" y1="16" x2="22" y2="16"/></svg>
+                }
+            </button>
+            <button type="button" title="Clone this sample payload to the Sender" class="detail-panel__clone" @onclick="CloneToSend">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <span class="detail-panel__header-gap"></span>
+            <div class="detail-panel__tabs">
+                @RenderTab(DetailTab.Tree, "Tree")
+                @RenderTab(DetailTab.Table, "Table")
+                @RenderTab(DetailTab.Json, "JSON")
+                @RenderTab(DetailTab.SampleInfo, "Sample Info")
+                @RenderTab(DetailTab.Sender, "Sender")
+            </div>
+            <span class="detail-state-badge @GetInstanceStateClass(_currentSample)"
+                  title="Instance State: @GetInstanceStateTooltip(_currentSample)"></span>
+        </div>
+
+        <div class="detail-panel__content">
+            @switch (_activeTab)
+            {
+                case DetailTab.Tree:
+                    @RenderTreeView()
+                    break;
+                case DetailTab.Table:
+                    @RenderTableView()
+                    break;
+                case DetailTab.Json:
+                    @RenderJsonView()
+                    break;
+                case DetailTab.SampleInfo:
+                    @RenderSampleInfo()
+                    break;
+                case DetailTab.Sender:
+                    @RenderSenderInfo()
+                    break;
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private const int DebounceDelayMs = 25;
+    private const int RightMouseButton = 2;
+    private const int MaxTreeDepth = 32;
+
+    private SampleData? _currentSample;
+    private SampleData? _pendingSample;
+    private SampleData? _lastParameterSample;
+    private bool _linked = true;
+    private DetailTab _activeTab = DetailTab.Tree;
+    private DebouncedAction? _debouncer;
+    private IDisposable? _subscription;
+
+    // Expand/collapse state – keyed by node path; persists across sample switches.
+    private readonly Dictionary<string, bool> _treeExpanded = new();
+    // null = per-node state; true = force-expand all; false = force-collapse all.
+    private bool? _treeExpandOverride;
+    private readonly HashSet<string> _tableExpandedFields = new();
+
+    // Active Tier 1 formatter per tree-node path (null = use Tier 2 / default rendering).
+    private readonly Dictionary<string, IValueFormatter?> _selectedFormatters = new();
+
+    [CascadingParameter]
+    public PanelState? PanelState { get; set; }
+
+    [Parameter]
+    public SampleData? Sample { get; set; }
+
+    [Parameter]
+    public string? SourcePanelId { get; set; }
+
+    [Parameter]
+    public bool? IsLinked { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Sample != null)
+        {
+            _currentSample = Sample;
+        }
+
+        _linked = IsLinked ?? Sample == null;
+        PersistPanelState();
+
+        if (!string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            _subscription = EventBroker.Subscribe<SampleSelectedEvent>(OnSampleSelected);
+        }
+
+        SampleStore.Cleared += OnSampleStoreCleared;
+
+        _debouncer = new DebouncedAction(TimeSpan.FromMilliseconds(DebounceDelayMs),
+            () => _ = InvokeAsync(ApplyPendingSample));
+
+        // On startup: if linked and no sample yet, pre-load the most recent sample from
+        // the store so the panel shows something immediately rather than "No sample selected."
+        if (_linked && _currentSample == null && !string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            var allSamples = SampleStore.AllSamples;
+            if (allSamples.Count > 0)
+            {
+                _currentSample = allSamples[allSamples.Count - 1];
+            }
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (IsLinked.HasValue)
+        {
+            _linked = IsLinked.Value;
+            PersistPanelState();
+        }
+
+        if (Sample != null && Sample != _lastParameterSample)
+        {
+            _lastParameterSample = Sample;
+            _currentSample = Sample;
+        }
+
+        // If SourcePanelId arrives (or changes) after initialization, ensure subscription
+        // is (re-)established so a restored-from-workspace linked panel starts tracking.
+        if (!string.IsNullOrWhiteSpace(SourcePanelId) && _subscription == null)
+        {
+            _subscription = EventBroker.Subscribe<SampleSelectedEvent>(OnSampleSelected);
+        }
+    }
+
+    private void OnSampleSelected(SampleSelectedEvent message)
+    {
+        if (!_linked)
+        {
+            return;
+        }
+
+        if (!string.Equals(message.SourcePanelId, SourcePanelId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _pendingSample = message.Sample;
+        _debouncer?.Trigger();
+    }
+
+    private Task ApplyPendingSample()
+    {
+        _currentSample = _pendingSample;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void ToggleLinkMode()
+    {
+        _linked = !_linked;
+        PersistPanelState();
+        // ME1-C07: ensure link-state change is immediately persisted to disk
+        WorkspacePersistence.RequestSave();
+    }
+
+    private void PersistPanelState()
+    {
+        if (PanelState == null)
+        {
+            return;
+        }
+
+        PanelState.ComponentState[nameof(IsLinked)] = _linked;
+        if (!string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            PanelState.ComponentState[nameof(SourcePanelId)] = SourcePanelId;
+        }
+    }
+
+    private RenderFragment RenderTab(DetailTab tab, string label) => @<text>
+        <button type="button"
+                class="@(_activeTab == tab ? "detail-panel__tab is-active" : "detail-panel__tab")"
+                @onclick="() => { _activeTab = tab; }">@label</button>
+    </text>;
+
+    private RenderFragment RenderTreeView() => @<text>
+        @if (_currentSample != null)
+        {
+            var customViewer = SampleViewRegistry?.GetViewer(_currentSample.TopicMetadata.TopicType);
+            if (customViewer != null)
+            {
+                @customViewer(_currentSample)
+            }
+            else
+            {
+                var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
+                <div class="detail-tree__overlay-btns">
+                    <button type="button" class="detail-tree__toolbar-btn" title="Expand all"
+                            @onclick="ExpandAllTree">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
+                    </button>
+                    <button type="button" class="detail-tree__toolbar-btn" title="Collapse all"
+                            @onclick="CollapseAllTree">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 6 12 11 7 6"/><polyline points="17 13 12 18 7 13"/></svg>
+                    </button>
+                </div>
+                <div class="detail-tree">
+                    @RenderNode(_currentSample.Payload, _currentSample.TopicMetadata.ShortName, string.Empty, traversal, 0)
+                </div>
+            }
+        }
+    </text>;
+
+    private RenderFragment RenderTableView() => @<text>
+        @if (_currentSample != null)
+        {
+            <table class="detail-table">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var payload = _currentSample.Payload; }
+                    @foreach (var field in _currentSample.TopicMetadata.AllFields.Where(meta => !meta.IsSynthetic && IsUnionArmVisible(meta, payload)))
+                    {
+                        var value = field.Getter(payload);
+                        var isExpandable = IsTableFieldExpandable(value);
+                        var fieldName = field.StructuredName;
+                        var isExpanded = isExpandable && _tableExpandedFields.Contains(fieldName);
+
+                        <tr>
+                            <td>
+                                @if (isExpandable)
+                                {
+                                    <button type="button" class="detail-table__toggle" @onclick="() => ToggleTableField(fieldName)">
+                                        @(isExpanded ? "\u25bc" : "\u25ba")
+                                    </button>
+                                }
+                                @field.StructuredName
+                            </td>
+                            <td>@RenderValue(value)</td>
+                        </tr>
+
+                        @if (isExpanded && value != null)
+                        {
+                            var arr = ToElementArray(value);
+                            if (arr != null)
+                            {
+                                for (int i = 0; i < arr.Length; i++)
+                                {
+                                    var elemVal = arr.GetValue(i);
+                                    var isUnionElem = elemVal != null && elemVal.GetType().GetCustomAttribute<DdsUnionAttribute>() != null;
+                                    var elemName = $"{fieldName}[{i}]";
+                                    var isElemExpanded = isUnionElem && _tableExpandedFields.Contains(elemName);
+
+                                    <tr class="detail-table__element-row">
+                                        <td class="detail-table__element-name">
+                                            @if (isUnionElem)
+                                            {
+                                                var capturedElemName = elemName;
+                                                <button type="button" class="detail-table__toggle" @onclick="() => ToggleTableField(capturedElemName)">
+                                                    @(isElemExpanded ? "\u25bc" : "\u25ba")
+                                                </button>
+                                            }
+                                            [@i]
+                                        </td>
+                                        <td>
+                                            @if (isUnionElem)
+                                            {
+                                                var uInfo = GetUnionInfo(elemVal!);
+                                                @RenderValue(uInfo.Discriminator)
+                                            }
+                                            else
+                                            {
+                                                @RenderValue(elemVal)
+                                            }
+                                        </td>
+                                    </tr>
+
+                                    @if (isUnionElem && isElemExpanded && elemVal != null)
+                                    {
+                                        var uInfo = GetUnionInfo(elemVal);
+                                        if (uInfo.ActiveArm != null)
+                                        {
+                                            <tr class="detail-table__element-row detail-table__element-row--nested">
+                                                <td class="detail-table__element-name detail-table__element-name--nested">
+                                                    @uInfo.ActiveArm.Name
+                                                </td>
+                                                <td>@RenderValue(uInfo.ArmValue)</td>
+                                            </tr>
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                </tbody>
+            </table>
+        }
+    </text>;
+
+    private RenderFragment RenderJsonView() => @<text>
+        @if (_currentSample == null)
+        {
+            <div class="detail-panel__empty">No sample selected.</div>
+        }
+        else
+        {
+            var payload = _currentSample.Payload;
+            var json = SerializePayload(payload);
+            @if (json == null)
+            {
+                <div class="detail-panel__empty">JSON serialization failed.</div>
+            }
+            else
+            {
+                var html = JsonSyntaxHighlighter.ToHtml(json);
+                <pre class="detail-json">@((MarkupString)html)</pre>
+            }
+        }
+    </text>;
+
+    private RenderFragment RenderSampleInfo() => @<text>
+        @if (_currentSample != null)
+        {
+            var info = _currentSample.SampleInfo;
+            <div class="detail-info">
+                Global Ordinal: @_currentSample.Ordinal<br />
+                Incoming Timestamp: @_currentSample.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fffffff")<br />
+                Domain ID: @_currentSample.DomainId<br />
+                Partition: @(string.IsNullOrEmpty(_currentSample.PartitionName) ? "<default>" : _currentSample.PartitionName)<br />
+                Instance: @info.InstanceState<br />
+                Sample: @info.SampleState<br />
+                View: @info.ViewState<br />
+                SourceTimestamp: @FormatSourceTimestamp(info.SourceTimestamp)
+            </div>
+        }
+    </text>;
+
+    private RenderFragment RenderSenderInfo() => @<text>
+        @if (_currentSample != null)
+        {
+            var sender = _currentSample.Sender;
+            <div class="detail-info">
+                @if (sender == null)
+                {
+                    <span>No sender metadata.</span>
+                }
+                else
+                {
+                    <span>ProcessId: @sender.ProcessId</span><br />
+                    @if (!string.IsNullOrEmpty(sender.ProcessName))
+                    {
+                        <span>ProcessName: @sender.ProcessName</span><br />
+                    }
+                    <span>Machine: @sender.MachineName</span><br />
+                    @if (!string.IsNullOrEmpty(sender.IpAddress))
+                    {
+                        <span>IP: @sender.IpAddress</span><br />
+                    }
+                    <span>AppDomainId: @sender.AppDomainId</span><br />
+                    <span>AppInstanceId: @sender.AppInstanceId</span>
+                }
+            </div>
+        }
+    </text>;
+
+    private static string FormatSourceTimestamp(long nanoseconds)
+    {
+        if (nanoseconds <= 0 || nanoseconds == long.MaxValue)
+        {
+            return "Unknown";
+        }
+
+        return DateTime.UnixEpoch.AddTicks(nanoseconds / 100).ToLocalTime()
+            .ToString("yyyy-MM-dd HH:mm:ss.fffffff");
+    }
+
+    private RenderFragment RenderNode(object? value, string label, string path, HashSet<object> traversal, int depth) => @<text>
+        @{
+            var type = value?.GetType();
+            var isReferenceType = type != null && !type.IsValueType;
+            var isCycle = isReferenceType && traversal.Contains(value!);
+            var isMaxDepth = depth >= MaxTreeDepth;
+            var isLeaf = type == null || IsLeafType(type) || isCycle || isMaxDepth;
+            var isRoot = string.IsNullOrEmpty(path) && _currentSample != null &&
+                         string.Equals(label, _currentSample.TopicMetadata.ShortName, StringComparison.Ordinal);
+            var nextPath = isRoot
+                ? string.Empty
+                : (string.IsNullOrEmpty(path) ? label : $"{path}.{label}");
+
+            var displayValue = value;
+            var displayType = type;
+
+            if (isCycle)
+            {
+                displayValue = "(cycle)";
+                displayType = typeof(string);
+            }
+            else if (isMaxDepth)
+            {
+                displayValue = "(max depth)";
+                displayType = typeof(string);
+            }
+            else if (!isLeaf && type != null && value != null &&
+                     type.GetCustomAttribute<DdsUnionAttribute>() != null)
+            {
+                var uInfo = GetUnionInfo(value);
+                displayValue = uInfo.Discriminator;
+                displayType = uInfo.Discriminator?.GetType() ?? typeof(string);
+            }
+
+            var isArrayLike = !isLeaf && type != null &&
+                              (type.IsArray ||
+                               IsFixedBufferValueType(type) ||
+                               IsInlineArrayValueType(type) ||
+                               (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)));
+
+            var isToggleable = !isLeaf && !isRoot;
+            var isExpanded = !isToggleable || IsTreeNodeExpanded(nextPath, isArrayLike);
+        }
+
+        <div class="detail-tree__node">
+            <div class="detail-tree__row">
+                @if (isToggleable)
+                {
+                    var togglePath = nextPath;
+                    var toggleIsArray = isArrayLike;
+                    <button type="button" class="detail-tree__toggle" @onclick="() => ToggleTreeNode(togglePath, toggleIsArray)">
+                        @(isExpanded ? "\u25bc" : "\u25ba")
+                    </button>
+                }
+
+                <span class="detail-tree__label @(!isLeaf && !isRoot ? "is-struct-label" : string.Empty)">@label</span>
+
+                @{
+                    var fmtMethodForNode = !isCycle && !isMaxDepth && displayType != null
+                        ? GetFormatTokensMethod(displayType)
+                        : null;
+                }
+
+                @if (fmtMethodForNode != null && displayValue != null)
+                {
+                    @RenderFormattedTokenValue(displayValue, fmtMethodForNode, nextPath)
+                }
+                else
+                {
+                    <span class="@GetValueClass(displayType)">
+                        @RenderValue(displayValue)
+                    </span>
+                }
+
+                @if (isLeaf)
+                {
+                    if (!string.IsNullOrWhiteSpace(SourcePanelId))
+                    {
+                        <button type="button" class="detail-tree__pin" @onclick="() => AddColumn(nextPath)">+</button>
+                    }
+                    if (value is string nodeText)
+                    {
+                        <button type="button" class="detail-tree__textview" @onclick="() => OpenTextView(nodeText)">Open</button>
+                    }
+                }
+            </div>
+
+            @{
+                var addedToTraversal = false;
+                if (!isLeaf && isReferenceType && value != null)
+                {
+                    addedToTraversal = traversal.Add(value);
+                }
+            }
+
+            @if (!isLeaf && value != null && isExpanded)
+            {
+                var nonNullType = type!;
+                <div class="detail-tree__children">
+                    @if (nonNullType.IsArray)
+                    {
+                        var arr = (Array)value;
+                        for (int i = 0; i < arr.Length; i++)
+                        {
+                            var idx = i;
+                            @RenderNode(arr.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1)
+                        }
+                    }
+                    else if (IsFixedBufferValueType(nonNullType))
+                    {
+                        var elements = ReadFixedBufferElements(value, nonNullType);
+                        for (int i = 0; i < elements.Length; i++)
+                        {
+                            var idx = i;
+                            @RenderNode(elements.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1)
+                        }
+                    }
+                    else if (IsInlineArrayValueType(nonNullType))
+                    {
+                        var elements = ReadInlineArrayElements(value, nonNullType);
+                        for (int i = 0; i < elements.Length; i++)
+                        {
+                            var idx = i;
+                            @RenderNode(elements.GetValue(idx), $"[{idx}]", nextPath, traversal, depth + 1)
+                        }
+                    }
+                    else if (nonNullType.IsGenericType && nonNullType.GetGenericTypeDefinition() == typeof(List<>))
+                    {
+                        var list = (System.Collections.IList)value;
+                        for (int i = 0; i < list.Count; i++)
+                        {
+                            var idx = i;
+                            @RenderNode(list[idx], $"[{idx}]", nextPath, traversal, depth + 1)
+                        }
+                    }
+                    else
+                    {
+                        if (nonNullType.GetCustomAttribute<DdsUnionAttribute>() != null)
+                        {
+                            var unionMeta = _unionMetaCache.GetOrAdd(nonNullType, BuildUnionMeta);
+                            var discValue = unionMeta.DiscriminatorMember != null ? GetMemberValue(unionMeta.DiscriminatorMember, value) : null;
+                            var uInfo = GetUnionInfo(value);
+
+                            if (unionMeta.DiscriminatorMember != null)
+                            {
+                                @RenderNode(discValue, unionMeta.DiscriminatorMember.Name, nextPath, traversal, depth + 1)
+                            }
+                            if (uInfo.ActiveArm != null)
+                            {
+                                @RenderNode(uInfo.ArmValue, uInfo.ActiveArm.Name, nextPath, traversal, depth + 1)
+                            }
+                        }
+                        else
+                        {
+                            foreach (var member in GetMembers(nonNullType))
+                            {
+                                var memberValue = GetMemberValue(member, value);
+                                @RenderNode(memberValue, member.Name, nextPath, traversal, depth + 1)
+                            }
+                        }
+                    }
+                </div>
+            }
+
+            @{
+                if (addedToTraversal)
+                {
+                    traversal.Remove(value!);
+                }
+            }
+        </div>
+    </text>;
+
+    private void AddColumn(string path)
+    {
+        if (string.IsNullOrWhiteSpace(SourcePanelId))
+        {
+            return;
+        }
+
+        EventBroker.Publish(new AddColumnRequestEvent(SourcePanelId, path));
+    }
+
+    private void OpenTextView(string text)
+    {
+        var panel = WindowManager.SpawnPanel(typeof(TextViewPanel).FullName!, new Dictionary<string, object>
+        {
+            [nameof(TextViewPanel.Title)] = "Text View",
+            [nameof(TextViewPanel.Content)] = text
+        });
+
+        panel.Title = "Text View";
+    }
+
+    private RenderFragment RenderValue(object? value) => @<text>
+        @if (value == null)
+        {
+            <span class="detail-tree__value is-null">null</span>
+        }
+        else if (value is string text)
+        {
+            <span class="detail-tree__value is-string"
+                  @onmouseenter="args => ShowJsonTooltip(text, args)"
+                  @onmouseleave="HideTooltip"
+                  @onmousedown="args => HandleValueMouseDown(text, true, args)"
+                  @oncontextmenu:preventDefault="true">@text</span>
+        }
+        else if (IsFixedStringType(value.GetType()))
+        {
+            var fsText = value.ToString() ?? string.Empty;
+            <span class="detail-tree__value is-string"
+                  @onmousedown="args => HandleValueMouseDown(fsText, false, args)"
+                  @oncontextmenu:preventDefault="true">@fsText</span>
+        }
+        else if (value is Array arr)
+        {
+            <span class="detail-tree__value detail-tree__value--array">[@arr.Length]</span>
+        }
+        else if (value.GetType().IsGenericType && value.GetType().GetGenericTypeDefinition() == typeof(List<>))
+        {
+            var list = (System.Collections.IList)value;
+            <span class="detail-tree__value detail-tree__value--array">[@list.Count]</span>
+        }
+        else if (IsFixedBufferValueType(value.GetType()))
+        {
+            int byteSize = Marshal.SizeOf(value.GetType());
+            var elemField = value.GetType().GetField("FixedElementField", BindingFlags.Public | BindingFlags.Instance);
+            int elemSize = elemField != null ? Marshal.SizeOf(elemField.FieldType) : 1;
+            <span class="detail-tree__value detail-tree__value--array">[@(byteSize / elemSize)]</span>
+        }
+        else if (GetFormatTokensMethod(value.GetType()) != null)
+        {
+            var fmtMethod = GetFormatTokensMethod(value.GetType())!;
+            var fmtTokens = ((IEnumerable<FormattedToken>)(fmtMethod.Invoke(value, null) ?? Array.Empty<FormattedToken>())).ToList();
+            var plainText = string.Concat(fmtTokens.Select(t => t.Text));
+            var capturedText = plainText;
+            <span class="detail-tree__value detail-tree__value--formatted"
+                  @onmousedown="args => HandleValueMouseDown(capturedText, false, args)"
+                  @oncontextmenu:preventDefault="true">
+                @foreach (var token in fmtTokens)
+                {
+                    <span class="@GetTokenClass(token.Type)">@token.Text</span>
+                }
+            </span>
+        }
+        else
+        {
+            var content = value is bool boolVal ? (boolVal ? "true" : "false") : value.ToString() ?? string.Empty;
+            <span class="@GetValueClass(value.GetType())"
+                  @onmousedown="args => HandleValueMouseDown(content, false, args)"
+                  @oncontextmenu:preventDefault="true">@content</span>
+        }
+    </text>;
+
+    private RenderFragment RenderFormattedTokenValue(object value, MethodInfo fmtMethod, string path) => @<text>
+        @{
+            IEnumerable<FormattedToken> tokens;
+            if (_selectedFormatters.TryGetValue(path, out var activeFmt) && activeFmt != null)
+            {
+                tokens = activeFmt.FormatTokens(value);
+            }
+            else
+            {
+                tokens = (IEnumerable<FormattedToken>)(fmtMethod.Invoke(value, null) ?? Array.Empty<FormattedToken>());
+            }
+
+            var tokenList = tokens.ToList();
+            var plainText = string.Concat(tokenList.Select(t => t.Text));
+            var capturedPath = path;
+            var capturedValue = value;
+            var capturedText = plainText;
+        }
+
+        <span class="detail-tree__value detail-tree__value--formatted"
+              @onmousedown="args => HandleFormattedValueMouseDown(capturedValue, capturedPath, capturedText, args)"
+              @oncontextmenu:preventDefault="true">
+            @foreach (var token in tokenList)
+            {
+                <span class="@GetTokenClass(token.Type)">@token.Text</span>
+            }
+        </span>
+    </text>;
+
+    private void HandleFormattedValueMouseDown(object value, string path, string plainText, MouseEventArgs args)
+    {
+        if (args.Button != RightMouseButton)
+        {
+            return;
+        }
+
+        OpenFormatterContextMenu(value, path, plainText, args);
+    }
+
+    private void OpenFormatterContextMenu(object value, string path, string plainText, MouseEventArgs args)
+    {
+        var items = new List<ContextMenuItem>
+        {
+            new("Copy to Clipboard", null, () => CopyToClipboardAsync(plainText))
+        };
+
+        var formatters = ValueFormatterRegistry.GetFormatters(value.GetType(), value);
+        if (formatters.Count > 0)
+        {
+            items.Add(new("── View As ──", null, null));
+
+            var capturedPath0 = path;
+            items.Add(new("Default", null, () =>
+            {
+                _selectedFormatters.Remove(capturedPath0);
+                _ = InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            }));
+
+            foreach (var fmt in formatters)
+            {
+                var capturedFmt = fmt;
+                var capturedPath1 = path;
+                items.Add(new(capturedFmt.DisplayName, null, () =>
+                {
+                    _selectedFormatters[capturedPath1] = capturedFmt;
+                    _ = InvokeAsync(StateHasChanged);
+                    return Task.CompletedTask;
+                }));
+            }
+        }
+
+        ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+    }
+
+    private void ShowJsonTooltip(string text, MouseEventArgs args)
+    {
+        if (!JsonTooltipParser.TryFormatJson(text, out var formatted))
+        {
+            return;
+        }
+
+        var html = JsonSyntaxHighlighter.ToHtml(formatted);
+        TooltipService.Show(new TooltipState(
+            html,
+            args.ClientX + 12,
+            args.ClientY + 12,
+            ContextType: _currentSample?.TopicMetadata?.TopicType,
+            ContextValue: _currentSample?.Payload));
+    }
+
+    private void HideTooltip()
+    {
+        TooltipService.Hide();
+    }
+
+    private void OpenValueContextMenu(string text, bool allowTextView, MouseEventArgs args)
+    {
+        var items = new List<ContextMenuItem>
+        {
+            new("Copy to Clipboard", null, () => CopyToClipboardAsync(text))
+        };
+
+        if (allowTextView)
+        {
+            items.Add(new("Show in Separate Window", null, () =>
+            {
+                OpenTextView(text);
+                return Task.CompletedTask;
+            }));
+        }
+
+        ContextMenuService.Show(new ContextMenuState(items, args.ClientX, args.ClientY));
+    }
+
+    private void HandleValueMouseDown(string text, bool allowTextView, MouseEventArgs args)
+    {
+        if (args.Button != RightMouseButton)
+        {
+            return;
+        }
+
+        OpenValueContextMenu(text, allowTextView, args);
+    }
+
+    private Task CopyToClipboardAsync(string text)
+    {
+        return JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text).AsTask();
+    }
+
+    private static string? SerializePayload(object payload)
+    {
+        try
+        {
+            return JsonSerializer.Serialize(payload, payload.GetType(), DdsJsonOptions.Display);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void CloneToSend()
+    {
+        if (_currentSample == null)
+        {
+            return;
+        }
+
+        var payload = _currentSample.Payload;
+        try
+        {
+            var json = JsonSerializer.Serialize(payload, payload.GetType(), DdsJsonOptions.Export);
+            var clone = JsonSerializer.Deserialize(json, payload.GetType(), DdsJsonOptions.Export);
+            if (clone != null)
+            {
+                EventBroker.Publish(new CloneAndSendRequestEvent(_currentSample.TopicMetadata, clone));
+            }
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static IEnumerable<MemberInfo> GetMembers(Type type)
+    {
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
+        foreach (var field in type.GetFields(flags))
+        {
+            if (!field.IsStatic)
+            {
+                yield return field;
+            }
+        }
+
+        foreach (var property in type.GetProperties(flags))
+        {
+            if (property.GetMethod != null && property.GetIndexParameters().Length == 0)
+            {
+                yield return property;
+            }
+        }
+    }
+
+    private static object? GetMemberValue(MemberInfo member, object target)
+    {
+        return member switch
+        {
+            FieldInfo field => field.GetValue(target),
+            PropertyInfo property => property.GetValue(target),
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Compares two values for union discriminator matching.
+    /// Handles cross-type cases (e.g. int discriminator vs enum case value) via Int64 conversion.
+    /// </summary>
+    private static bool UnionValuesEqualTree(object a, object? b)
+    {
+        if (b == null) return false;
+        if (a.Equals(b)) return true;
+        try { return Convert.ToInt64(a) == Convert.ToInt64(b); }
+        catch { return false; }
+    }
+
+    private static bool IsLeafType(Type type)
+    {
+        if (type.IsPrimitive || type.IsEnum)
+        {
+            return true;
+        }
+
+        if (type == typeof(string) || type == typeof(decimal) || type == typeof(DateTime) ||
+               type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid))
+        {
+            return true;
+        }
+
+        // Types with a duck-typed GetFormatTokens() method render inline as token sequences.
+        if (GetFormatTokensMethod(type) != null)
+        {
+            return true;
+        }
+
+        // FixedStringN types are string-like scalars – render their text, not their struct internals.
+        return IsFixedStringType(type);
+    }
+
+    private static bool IsFixedStringType(Type type)
+    {
+        return type == typeof(FixedString32)
+            || type == typeof(FixedString64)
+            || type == typeof(FixedString128)
+            || type == typeof(FixedString256);
+    }
+
+    private static string GetValueClass(Type? type)
+    {
+        if (type == null)
+        {
+            return "detail-tree__value is-null";
+        }
+
+        if (type == typeof(string) || IsFixedStringType(type))
+        {
+            return "detail-tree__value is-string";
+        }
+
+        if (type == typeof(bool))
+        {
+            return "detail-tree__value is-bool";
+        }
+
+        if (type.IsEnum)
+        {
+            return "detail-tree__value is-enum";
+        }
+
+        if (type.IsPrimitive || type == typeof(decimal))
+        {
+            return "detail-tree__value is-number";
+        }
+
+        return "detail-tree__value";
+    }
+
+    /// <summary>Maps a <see cref="TokenType"/> to the appropriate CSS class for syntax highlighting.</summary>
+    private static string GetTokenClass(TokenType tokenType) => tokenType switch
+    {
+        TokenType.Number      => "detail-tree__value is-number",
+        TokenType.String      => "detail-tree__value is-string",
+        TokenType.Boolean     => "detail-tree__value is-bool",
+        TokenType.Enum        => "detail-tree__value is-enum",
+        TokenType.Keyword     => "detail-tree__value is-keyword",
+        TokenType.Punctuation => "detail-tree__value is-punctuation",
+        TokenType.Null        => "detail-tree__value is-null",
+        _                     => "detail-tree__value",
+    };
+
+    /// <summary>
+    /// Per-type reflection cache for the duck-typed <c>GetFormatTokens()</c> method.
+    /// Returns <c>null</c> when the type does not implement the method.
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, MethodInfo?> _fmtTokensMethodCache = new();
+
+    private static MethodInfo? GetFormatTokensMethod(Type type)
+        => _fmtTokensMethodCache.GetOrAdd(type, t => t.GetMethod("GetFormatTokens"));
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Union rendering helpers (ME2-T06 + ME2-T22-B: cached reflection)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Structural metadata for a union type, cached to avoid repeated reflection.
+    /// </summary>
+    private sealed record UnionMeta(
+        MemberInfo? DiscriminatorMember,
+        IReadOnlyList<(MemberInfo Member, object CaseValue)> CaseArms,
+        MemberInfo? DefaultArm);
+
+    /// <summary>
+    /// Per-type cache used by <see cref="GetUnionInfo"/> to avoid scanning attributes
+    /// on every render cycle (ME2-T22-B).
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, UnionMeta> _unionMetaCache = new();
+
+    private static UnionMeta BuildUnionMeta(Type type)
+    {
+        MemberInfo? discMember = null;
+        MemberInfo? defaultArm = null;
+        var caseArms = new List<(MemberInfo, object)>();
+
+        foreach (var m in GetMembers(type))
+        {
+            if (m.GetCustomAttribute<DdsDiscriminatorAttribute>() != null)
+            {
+                discMember = m;
+                continue;
+            }
+
+            var caseAttr = m.GetCustomAttribute<DdsCaseAttribute>();
+            if (caseAttr != null)
+            {
+                caseArms.Add((m, caseAttr.Value));
+                continue;
+            }
+
+            if (m.GetCustomAttribute<DdsDefaultCaseAttribute>() != null)
+            {
+                defaultArm = m;
+            }
+        }
+
+        return new UnionMeta(discMember, caseArms, defaultArm);
+    }
+
+    private static (object? Discriminator, MemberInfo? ActiveArm, object? ArmValue) GetUnionInfo(object unionObj)
+    {
+        var type = unionObj.GetType();
+
+        // Use cached structural metadata – avoids repeated GetCustomAttribute calls (ME2-T22-B).
+        var meta = _unionMetaCache.GetOrAdd(type, BuildUnionMeta);
+
+        var discValue = meta.DiscriminatorMember != null
+            ? GetMemberValue(meta.DiscriminatorMember, unionObj)
+            : null;
+
+        foreach (var (member, caseValue) in meta.CaseArms)
+        {
+            if (UnionValuesEqualTree(caseValue, discValue))
+                return (discValue, member, GetMemberValue(member, unionObj));
+        }
+
+        if (meta.DefaultArm != null)
+            return (discValue, meta.DefaultArm, GetMemberValue(meta.DefaultArm, unionObj));
+
+        return (discValue, null, null);
+    }
+
+    private bool IsUnionArmVisible(FieldMetadata field, object payload)
+    {
+        // Non-arm fields (discriminator fields, plain fields) are always visible.
+        if (field.DependentDiscriminatorPath == null)
+        {
+            return true;
+        }
+
+        // Locate the discriminator field to read the current value.
+        var discField = _currentSample?.TopicMetadata.AllFields
+            .FirstOrDefault(f => f.StructuredName == field.DependentDiscriminatorPath);
+        if (discField == null)
+        {
+            return true;
+        }
+
+        var discValue = discField.Getter(payload);
+
+        if (field.IsDefaultUnionCase)
+        {
+            // Show default arm only when no explicit arm matches.
+            return !_currentSample!.TopicMetadata.AllFields.Any(f =>
+                f.DependentDiscriminatorPath == field.DependentDiscriminatorPath
+                && !f.IsDefaultUnionCase
+                && f.ActiveWhenDiscriminatorValue != null
+                && UnionValuesEqualTree(f.ActiveWhenDiscriminatorValue, discValue));
+        }
+
+        return field.ActiveWhenDiscriminatorValue != null
+               && UnionValuesEqualTree(field.ActiveWhenDiscriminatorValue, discValue);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Expand / collapse helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void ExpandAllTree()
+    {
+        _treeExpanded.Clear();
+        _treeExpandOverride = true;
+    }
+
+    private void CollapseAllTree()
+    {
+        _treeExpanded.Clear();
+        _treeExpandOverride = false;
+    }
+
+    private bool IsTreeNodeExpanded(string nodePath, bool isArrayLike)
+    {
+        if (_treeExpandOverride.HasValue)
+        {
+            return _treeExpandOverride.Value;
+        }
+
+        if (_treeExpanded.TryGetValue(nodePath, out var val))
+        {
+            return val;
+        }
+
+        // Default: arrays / fixed-buffers / lists start collapsed; structs start expanded.
+        return !isArrayLike;
+    }
+
+    private void ToggleTreeNode(string nodePath, bool isArrayLike)
+    {
+        // Manual toggle clears the global override so individual nodes are tracked again.
+        _treeExpandOverride = null;
+        _treeExpanded[nodePath] = !IsTreeNodeExpanded(nodePath, isArrayLike);
+    }
+
+    private static bool IsTableFieldExpandable(object? value)
+    {
+        if (value == null)
+        {
+            return false;
+        }
+
+        var type = value.GetType();
+        return type.IsArray ||
+               (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>));
+    }
+
+    private static Array? ToElementArray(object value)
+    {
+        if (value is Array arr)
+        {
+            return arr;
+        }
+
+        if (value is System.Collections.IList list)
+        {
+            var result = new object?[list.Count];
+            for (int i = 0; i < list.Count; i++)
+            {
+                result[i] = list[i];
+            }
+
+            return result;
+        }
+
+        return null;
+    }
+
+    private void ToggleTableField(string fieldName)
+    {
+        if (!_tableExpandedFields.Remove(fieldName))
+        {
+            _tableExpandedFields.Add(fieldName);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Array / fixed-buffer helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true when <paramref name="type"/> is a compiler-generated fixed-buffer
+    /// value type (i.e. the nested struct emitted for <c>public unsafe fixed T Name[N]</c>).
+    /// These have exactly one public instance field named <c>FixedElementField</c>.
+    /// </summary>
+    internal static bool IsFixedBufferValueType(Type type)
+    {
+        if (!type.IsValueType)
+        {
+            return false;
+        }
+
+        var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+        return fields.Length == 1 && fields[0].Name == "FixedElementField";
+    }
+
+    /// <summary>
+    /// Reads all elements of a fixed-buffer value <paramref name="bufInstance"/> into a
+    /// managed array by pinning the boxed struct and reading its raw bytes.
+    /// </summary>
+    internal static Array ReadFixedBufferElements(object bufInstance, Type bufType)
+    {
+        var elemField = bufType.GetField("FixedElementField", BindingFlags.Public | BindingFlags.Instance)!;
+        var elementType = elemField.FieldType;
+        int elemSize = Marshal.SizeOf(elementType);
+        int bufSize  = Marshal.SizeOf(bufType);
+        int count    = bufSize / elemSize;
+
+        var result = Array.CreateInstance(elementType, count);
+        var handle = GCHandle.Alloc(bufInstance, GCHandleType.Pinned);
+        try
+        {
+            var ptr = handle.AddrOfPinnedObject();
+            for (int i = 0; i < count; i++)
+            {
+                result.SetValue(
+                    DdsMonitor.Engine.TopicMetadata.ReadMarshalElement(ptr + (i * elemSize), elementType),
+                    i);
+            }
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ME1-C06: [InlineArray(N)] helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true when <paramref name="type"/> is a C# 12 <c>[InlineArray(N)]</c> struct.
+    /// These have the <see cref="System.Runtime.CompilerServices.InlineArrayAttribute"/> applied
+    /// and exactly one user-defined instance field (not named <c>FixedElementField</c>).
+    /// </summary>
+    internal static bool IsInlineArrayValueType(Type type)
+    {
+        if (!type.IsValueType)
+            return false;
+
+        var inlineAttr = type.GetCustomAttributes(
+            typeof(System.Runtime.CompilerServices.InlineArrayAttribute), inherit: false);
+        if (inlineAttr.Length == 0)
+            return false;
+
+        var fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        return fields.Length == 1 && fields[0].Name != "FixedElementField";
+    }
+
+    /// <summary>
+    /// Reads all elements of an <c>[InlineArray(N)]</c> struct <paramref name="inlineInstance"/>
+    /// into a managed array by pinning the boxed struct and reading raw memory.
+    /// </summary>
+    internal static Array ReadInlineArrayElements(object inlineInstance, Type inlineType)
+    {
+        var inlineAttr = (System.Runtime.CompilerServices.InlineArrayAttribute)
+            inlineType.GetCustomAttributes(
+                typeof(System.Runtime.CompilerServices.InlineArrayAttribute), inherit: false)[0];
+
+        var elemField = inlineType.GetFields(
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)[0];
+        var elementType = elemField.FieldType;
+        int count = inlineAttr.Length;
+        int elemSize = Marshal.SizeOf(elementType);
+
+        var result = Array.CreateInstance(elementType, count);
+        var handle = GCHandle.Alloc(inlineInstance, GCHandleType.Pinned);
+        try
+        {
+            var ptr = handle.AddrOfPinnedObject();
+            for (int i = 0; i < count; i++)
+            {
+                result.SetValue(
+                    DdsMonitor.Engine.TopicMetadata.ReadMarshalElement(ptr + (i * elemSize), elementType),
+                    i);
+            }
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        return result;
+    }
+
+    // Test helper for verifying recursion guards without rendering.
+    internal static TraversalSummary AnalyzeTraversal(object? value)    {
+        var traversal = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var summary = new TraversalSummary();
+        AnalyzeTraversal(value, traversal, 0, summary);
+        return summary;
+    }
+
+    private static void AnalyzeTraversal(object? value, HashSet<object> traversal, int depth, TraversalSummary summary)
+    {
+        summary.NodeCount++;
+
+        if (value == null)
+        {
+            return;
+        }
+
+        var type = value.GetType();
+        var isReferenceType = !type.IsValueType;
+        if (isReferenceType && traversal.Contains(value))
+        {
+            summary.HitCycle = true;
+            return;
+        }
+
+        if (depth >= MaxTreeDepth)
+        {
+            summary.HitMaxDepth = true;
+            return;
+        }
+
+        if (IsLeafType(type))
+        {
+            return;
+        }
+
+        var addedToTraversal = false;
+        if (isReferenceType)
+        {
+            addedToTraversal = traversal.Add(value);
+        }
+
+        if (type.IsArray)
+        {
+            var arr = (Array)value;
+            for (int i = 0; i < arr.Length; i++)
+            {
+                AnalyzeTraversal(arr.GetValue(i), traversal, depth + 1, summary);
+            }
+        }
+        else if (IsFixedBufferValueType(type))
+        {
+            var elements = ReadFixedBufferElements(value, type);
+            for (int i = 0; i < elements.Length; i++)
+            {
+                AnalyzeTraversal(elements.GetValue(i), traversal, depth + 1, summary);
+            }
+        }
+        else if (IsInlineArrayValueType(type))
+        {
+            // ME1-C06: [InlineArray(N)] struct - expand as indexed elements.
+            var elements = ReadInlineArrayElements(value, type);
+            for (int i = 0; i < elements.Length; i++)
+            {
+                AnalyzeTraversal(elements.GetValue(i), traversal, depth + 1, summary);
+            }
+        }
+        else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+        {
+            var list = (System.Collections.IList)value;
+            for (int i = 0; i < list.Count; i++)
+            {
+                AnalyzeTraversal(list[i], traversal, depth + 1, summary);
+            }
+        }
+        else
+        {
+            foreach (var member in GetMembers(type))
+            {
+                AnalyzeTraversal(GetMemberValue(member, value), traversal, depth + 1, summary);
+            }
+        }
+
+        if (addedToTraversal)
+        {
+            traversal.Remove(value);
+        }
+    }
+
+    public void Dispose()
+    {
+        SampleStore.Cleared -= OnSampleStoreCleared;
+        _subscription?.Dispose();
+        _debouncer?.Dispose();
+    }
+
+    /// <summary>
+    /// Called synchronously when the sample store is cleared so the displayed sample
+    /// reference is dropped immediately, allowing the GC to reclaim it.
+    /// </summary>
+    private void OnSampleStoreCleared()
+    {
+        _currentSample = null;
+        _pendingSample = null;
+        _lastParameterSample = null;
+    }
+
+    private static string GetInstanceStateClass(SampleData? sample)
+    {
+        if (sample == null) return string.Empty;
+        return sample.SampleInfo.InstanceState switch
+        {
+            DdsInstanceState.Alive            => "detail-state-badge--alive",
+            DdsInstanceState.NotAliveDisposed => "detail-state-badge--disposed",
+            _                                 => "detail-state-badge--no-writers"
+        };
+    }
+
+    private static string GetInstanceStateTooltip(SampleData? sample)
+    {
+        if (sample == null) return string.Empty;
+        return sample.SampleInfo.InstanceState switch
+        {
+            DdsInstanceState.Alive            => "Alive",
+            DdsInstanceState.NotAliveDisposed => "Disposed (Not Alive)",
+            _                                 => "No Writers"
+        };
+    }
+
+    private enum DetailTab
+    {
+        Tree,
+        Table,
+        Json,
+        SampleInfo,
+        Sender
+    }
+
+    internal sealed class TraversalSummary
+    {
+        public int NodeCount { get; set; }
+
+        public bool HitCycle { get; set; }
+
+        public bool HitMaxDepth { get; set; }
+    }
+}

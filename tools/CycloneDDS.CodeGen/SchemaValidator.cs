@@ -7,12 +7,15 @@ namespace CycloneDDS.CodeGen
     public class SchemaValidator
     {
         private readonly HashSet<string> _knownTypeNames;
+        private readonly Dictionary<string, HashSet<string>> _knownTypeSimpleNames;
    
         public SchemaValidator(IEnumerable<TypeInfo> discoveredTypes, IEnumerable<string>? externalTypes = null)
         {
             _knownTypeNames = new HashSet<string>(
                 discoveredTypes.Select(t => t.FullName)
             );
+            _knownTypeSimpleNames = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            AddSimpleNames(discoveredTypes.Select(t => t.FullName));
             
             if (externalTypes != null)
             {
@@ -20,7 +23,28 @@ namespace CycloneDDS.CodeGen
                 {
                     _knownTypeNames.Add(t);
                 }
+                AddSimpleNames(externalTypes);
             }
+        }
+
+        private void AddSimpleNames(IEnumerable<string> typeNames)
+        {
+            foreach (var name in typeNames)
+            {
+                var simple = GetSimpleName(name);
+                if (!_knownTypeSimpleNames.TryGetValue(simple, out var set))
+                {
+                    set = new HashSet<string>(StringComparer.Ordinal);
+                    _knownTypeSimpleNames[simple] = set;
+                }
+                set.Add(name);
+            }
+        }
+
+        private static string GetSimpleName(string typeName)
+        {
+            var lastDot = typeName.LastIndexOf('.');
+            return lastDot >= 0 ? typeName[(lastDot + 1)..] : typeName;
         }
 
         public ValidationResult Validate(TypeInfo type)
@@ -104,22 +128,6 @@ namespace CycloneDDS.CodeGen
             }
         }
    
-        private bool IsValidUserType(string typeName)
-        {
-            return _knownTypeNames.Contains(typeName);
-        }
-   
-        private string ExtractGenericArgument(string typeName)
-        {
-            int start = typeName.IndexOf('<') + 1;
-            int end = typeName.LastIndexOf('>');
-            if (start > 0 && end > start)
-            {
-                return typeName.Substring(start, end - start).Trim();
-            }
-            return typeName;
-        }
-        
         private void ValidateUnion(TypeInfo type, List<string> errors)
         {
             // Must have exactly one [DdsDiscriminator]
@@ -160,6 +168,33 @@ namespace CycloneDDS.CodeGen
             }
             
             return false;
+        }
+
+        private bool IsValidUserType(string typeName)
+        {
+            if (_knownTypeNames.Contains(typeName))
+            {
+                return true;
+            }
+
+            var simple = GetSimpleName(typeName);
+            if (_knownTypeSimpleNames.TryGetValue(simple, out var matches))
+            {
+                return matches.Count == 1;
+            }
+
+            return false;
+        }
+
+        private string ExtractGenericArgument(string typeName)
+        {
+            int start = typeName.IndexOf('<') + 1;
+            int end = typeName.LastIndexOf('>');
+            if (start > 0 && end > start)
+            {
+                return typeName.Substring(start, end - start).Trim();
+            }
+            return typeName;
         }
     }
 }

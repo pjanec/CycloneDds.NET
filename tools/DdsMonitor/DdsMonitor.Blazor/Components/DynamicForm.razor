@@ -1,0 +1,600 @@
+@using System.Collections.Generic
+@using System.Collections
+@using System.Linq
+@using DdsMonitor.Engine.Ui
+@using DdsMonitor.Engine
+
+@inject ITypeDrawerRegistry DrawerRegistry
+
+@if (ActiveFields.Count == 0 || Payload == null)
+{
+    <div class="dynamic-form dynamic-form--empty">
+        <span class="dynamic-form__placeholder">No fields available.</span>
+    </div>
+}
+else
+{
+    <div class="dynamic-form">
+        @{
+            string? currentGroup = null;
+        }
+        @foreach (var field in EditableFields)
+        {
+            var groupName = GetGroupName(field.StructuredName);
+            var isNested = groupName != null;
+
+            @if (groupName != currentGroup)
+            {
+                if (currentGroup != null)
+                {
+                    <div class="dynamic-form__group-end"></div>
+                }
+                currentGroup = groupName;
+                if (groupName != null)
+                {
+                    <div class="dynamic-form__group-header">@groupName</div>
+                }
+            }
+
+            var capturedField = field;
+            var drawer = DrawerRegistry.GetDrawer(field.ValueType);
+
+            var currentValue = capturedField.Getter(Payload!);
+
+            // Only show the null/include checkbox if the field is explicitly optional (ME2-T21).
+            var canBeNull = capturedField.IsOptional && !capturedField.IsFixedSizeArray;
+            var isNull = canBeNull && currentValue == null;
+
+            <div class="dynamic-form__row @(isNested ? "dynamic-form__row--nested" : string.Empty)">
+                <label class="dynamic-form__label" title="@capturedField.StructuredName">
+                    @capturedField.DisplayName
+                </label>
+
+                @if (canBeNull)
+                {
+                    <input type="checkbox"
+                           class="dynamic-form__checkbox"
+                           title="Include this optional/nullable field"
+                           checked="@(!isNull)"
+                           @onchange="e => ToggleNull(capturedField, e.Value)"
+                           style="margin-right: 8px; flex-shrink: 0;" />
+                }
+
+                <div class="dynamic-form__control" style="@(isNull ? "opacity: 0.4; pointer-events: none;" : string.Empty)">
+                    @if (drawer != null)
+                    {
+                        // Scalar field with a registered drawable.
+                        var fieldKey = capturedField.StructuredName;
+                        var ctx = new DrawerContext(
+                            capturedField.DisplayName,
+                            capturedField.ValueType,
+                            () => capturedField.Getter(Payload!),
+                            value =>
+                            {
+                                capturedField.Setter(Payload!, value);
+                                OnPayloadMutated?.Invoke(Payload!);
+                                StateHasChanged();
+                            },
+                            this,
+                            onValidationError: err =>
+                            {
+                                if (err == null)
+                                    _fieldErrors.Remove(fieldKey);
+                                else
+                                    _fieldErrors[fieldKey] = err;
+                                StateHasChanged();
+                            });
+                        @drawer(ctx)
+                        @if (_fieldErrors.TryGetValue(fieldKey, out var fieldErr) && fieldErr != null)
+                        {
+                            <span class="dynamic-form__error-icon" title="@fieldErr">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        }
+                    }
+                    else if (capturedField.IsFixedSizeArray && capturedField.ElementType != null)
+                    {
+                        var elemDrawer = DrawerRegistry.GetDrawer(capturedField.ElementType);
+                        <div class="dynamic-form__array-fixed">
+                            @for (int idx = 0; idx < capturedField.FixedArrayLength; idx++)
+                            {
+                                var capturedIdx = idx;
+                                var arr = capturedField.Getter(Payload!) as Array;
+                                var elemVal = arr != null && capturedIdx < arr.Length ? arr.GetValue(capturedIdx) : null;
+
+                                <div class="dynamic-form__array-elem">
+                                    <span class="dynamic-form__array-idx">[<b>@capturedIdx</b>]</span>
+                                    @if (elemDrawer != null)
+                                    {
+                                        var elemCtx = new DrawerContext(
+                                            $"[{capturedIdx}]",
+                                            capturedField.ElementType,
+                                            () => elemVal,
+                                            v => SetArrayElement(capturedField, capturedIdx, v),
+                                            this);
+                                        @elemDrawer(elemCtx)
+                                    }
+                                    else
+                                    {
+                                        var isElemExpanded = IsExpanded(capturedField, capturedIdx);
+                                        <div class="dynamic-form__complex-elem" style="flex:1; min-width:0;">
+                                            <div class="dynamic-form__complex-header">
+                                                <button type="button" class="dynamic-form__complex-toggle" @onclick="() => ToggleExpand(capturedField, capturedIdx)">
+                                                    @(isElemExpanded ? "\u25bc" : "\u25ba") @(elemVal?.GetType().Name ?? capturedField.ElementType.Name)
+                                                </button>
+                                            </div>
+                                            @if (isElemExpanded && elemVal != null)
+                                            {
+                                                <div class="dynamic-form__complex-body">
+                                                    <DynamicForm Fields="TopicMetadata.GetComplexFields(capturedField.ElementType)"
+                                                                 Payload="elemVal"
+                                                                 OnPayloadMutated="v => SetArrayElement(capturedField, capturedIdx, v)" />
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (capturedField.IsArrayField && capturedField.ElementType != null)
+                    {
+                        var elemDrawer = DrawerRegistry.GetDrawer(capturedField.ElementType);
+                        var rawValue = capturedField.Getter(Payload!);
+                        var currentArr = ToObjectArray(rawValue);
+
+                        <div class="dynamic-form__array-dynamic">
+                            @for (int idx = 0; idx < currentArr.Count; idx++)
+                            {
+                                var capturedIdx = idx;
+                                var elemVal = currentArr[capturedIdx];
+                                <div class="dynamic-form__array-elem">
+                                    <span class="dynamic-form__array-idx">[<b>@capturedIdx</b>]</span>
+                                    @if (elemDrawer != null)
+                                    {
+                                        var elemCtx = new DrawerContext(
+                                            $"[{capturedIdx}]",
+                                            capturedField.ElementType,
+                                            () => elemVal,
+                                            v => SetArrayElement(capturedField, capturedIdx, v),
+                                            this);
+                                        @elemDrawer(elemCtx)
+                                        <button type="button" class="dynamic-form__array-remove" title="Remove element" @onclick="() => RemoveArrayElement(capturedField, capturedIdx)">×</button>
+                                    }
+                                    else
+                                    {
+                                        var isElemExpanded = IsExpanded(capturedField, capturedIdx);
+                                        <div class="dynamic-form__complex-elem" style="flex:1; min-width:0;">
+                                            <div class="dynamic-form__complex-header">
+                                                <button type="button" class="dynamic-form__complex-toggle" @onclick="() => ToggleExpand(capturedField, capturedIdx)">
+                                                    @(isElemExpanded ? "\u25bc" : "\u25ba") @(elemVal?.GetType().Name ?? capturedField.ElementType.Name)
+                                                </button>
+                                                <button type="button" class="dynamic-form__array-remove" title="Remove element" @onclick="() => RemoveArrayElement(capturedField, capturedIdx)">×</button>
+                                            </div>
+                                            @if (isElemExpanded && elemVal != null)
+                                            {
+                                                <div class="dynamic-form__complex-body">
+                                                    <DynamicForm Fields="TopicMetadata.GetComplexFields(capturedField.ElementType)"
+                                                                 Payload="elemVal"
+                                                                 OnPayloadMutated="v => SetArrayElement(capturedField, capturedIdx, v)" />
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            <div class="dynamic-form__array-add-row">
+                                <button type="button"
+                                        class="dynamic-form__array-add"
+                                        title="Add element"
+                                        @onclick="() => AddArrayElement(capturedField)">
+                                    + Add
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else if (field.ValueType.IsArray)
+                    {
+                        // Fallback: array type without metadata – read-only count.
+                        <span class="dynamic-form__unsupported" title="Array editing not supported for this type">
+                            [@((capturedField.Getter(Payload!) as Array)?.Length ?? 0) items]
+                        </span>
+                    }
+                    else
+                    {
+                        // ME2-T23: Check whether the value is a complex struct that can be
+                        // expanded as a nested form (e.g. a union arm whose type is Vec3/Pose).
+                        var complexFields23 = TopicMetadata.GetComplexFields(capturedField.ValueType);
+                        if (complexFields23.Count > 0)
+                        {
+                            var isStructExpanded = IsExpanded(capturedField, -1);
+                            var structVal = capturedField.Getter(Payload!);
+                            <div class="dynamic-form__complex-elem" style="flex:1; min-width:0;">
+                                <div class="dynamic-form__complex-header">
+                                    <button type="button" class="dynamic-form__complex-toggle" @onclick="() => ToggleExpand(capturedField, -1)">
+                                        @(isStructExpanded ? "\u25bc" : "\u25ba") @(structVal?.GetType().Name ?? capturedField.ValueType.Name)
+                                    </button>
+                                </div>
+                                @if (isStructExpanded && structVal != null)
+                                {
+                                    <div class="dynamic-form__complex-body">
+                                        <DynamicForm Fields="complexFields23"
+                                                     Payload="structVal"
+                                                     OnPayloadMutated="v => SetStructArm(capturedField, v)" />
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="dynamic-form__unsupported">
+                                @(capturedField.Getter(Payload!)?.ToString() ?? "(null)")
+                            </span>
+                        }
+                    }
+                </div>
+            </div>
+        }
+
+        @if (currentGroup != null)
+        {
+            <div class="dynamic-form__group-end"></div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Topic metadata describing the fields to display.</summary>
+    [Parameter]
+    public TopicMetadata? Meta { get; set; }
+
+    /// <summary>
+    /// Explicit field list for nested forms (used when rendering complex elements in arrays).
+    /// When provided, takes precedence over <see cref="Meta"/>.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<FieldMetadata>? Fields { get; set; }
+
+    /// <summary>
+    /// The boxed payload instance whose fields are read and mutated by the form.
+    /// Must be a boxed instance of <see cref="TopicMetadata.TopicType"/>.
+    /// </summary>
+    [Parameter]
+    public object? Payload { get; set; }
+
+    /// <summary>
+    /// Invoked whenever a field mutation occurs.  Required when this form is nested
+    /// inside a parent array so value-type payload reattachment propagates upward.
+    /// </summary>
+    [Parameter]
+    public Action<object>? OnPayloadMutated { get; set; }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Validation state
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private readonly Dictionary<string, string> _fieldErrors = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _expandedElements = new();
+
+    // ME2-T22-A: Precomputed O(1) lookup caches for IsUnionArmVisible.
+    // Rebuilt whenever Meta or Fields changes.
+    private Dictionary<string, FieldMetadata> _fieldByStructuredName = new(StringComparer.Ordinal);
+    private Dictionary<string, List<object>> _explicitCaseValuesByDiscPath = new(StringComparer.Ordinal);
+
+    private TopicMetadata? _lastMeta;
+    private IReadOnlyList<FieldMetadata>? _lastFields;
+
+    /// <summary>
+    /// Returns <c>true</c> when at least one field currently has a validation error,
+    /// meaning the form payload should not be sent.
+    /// </summary>
+    public bool HasValidationErrors => _fieldErrors.Count > 0;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_lastMeta, Meta) || !ReferenceEquals(_lastFields, Fields))
+        {
+            _lastMeta = Meta;
+            _lastFields = Fields;
+            _fieldErrors.Clear();
+            _expandedElements.Clear();
+
+            // Rebuild O(1) discriminator lookup caches (ME2-T22-A).
+            // Use TryAdd to gracefully handle duplicate StructuredNames (e.g. a synthetic
+            // wrapper field and a topic field sharing the same name like "Timestamp").
+            var fieldDict = new Dictionary<string, FieldMetadata>(StringComparer.Ordinal);
+            foreach (var f in ActiveFields)
+                fieldDict.TryAdd(f.StructuredName, f);
+            _fieldByStructuredName = fieldDict;
+            _explicitCaseValuesByDiscPath = ActiveFields
+                .Where(f => !f.IsDefaultUnionCase
+                         && f.DependentDiscriminatorPath != null
+                         && f.ActiveWhenDiscriminatorValue != null)
+                .GroupBy(f => f.DependentDiscriminatorPath!)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(f => f.ActiveWhenDiscriminatorValue!).ToList(),
+                    StringComparer.Ordinal);
+        }
+    }
+
+    private IReadOnlyList<FieldMetadata> ActiveFields =>
+        Meta?.AllFields ?? Fields ?? Array.Empty<FieldMetadata>();
+
+    private IEnumerable<FieldMetadata> EditableFields =>
+        ActiveFields.Where(f => !f.IsSynthetic && IsUnionArmVisible(f));
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ME1-T08 + ME2-T22-A: Union arm visibility (O(1) cache-based lookups)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true when the field is a non-union field, the union discriminator itself,
+    /// or the union arm whose discriminator value matches the current payload discriminator.
+    /// Uses precomputed dictionaries for O(1) discriminator field lookup.
+    /// </summary>
+    private bool IsUnionArmVisible(FieldMetadata field)
+    {
+        // Discriminator field: always visible.
+        if (field.IsDiscriminatorField)
+            return true;
+
+        // Non-union arm: always visible.
+        if (field.DependentDiscriminatorPath == null)
+            return true;
+
+        if (Payload == null)
+            return true;
+
+        // O(1) discriminator field lookup (ME2-T22-A).
+        if (!_fieldByStructuredName.TryGetValue(field.DependentDiscriminatorPath, out var discField))
+            return true;
+
+        var currentDisc = discField.Getter(Payload);
+
+        // Default case: visible only when no explicit case arm matches.
+        if (field.IsDefaultUnionCase)
+        {
+            if (!_explicitCaseValuesByDiscPath.TryGetValue(field.DependentDiscriminatorPath, out var explicitVals))
+                return true;
+            return !explicitVals.Any(v => UnionValuesEqual(v, currentDisc));
+        }
+
+        // Explicit case: visible only when discriminator matches the case value.
+        return field.ActiveWhenDiscriminatorValue != null &&
+               UnionValuesEqual(field.ActiveWhenDiscriminatorValue, currentDisc);
+    }
+
+    /// <summary>
+    /// Compares two potentially heterogeneous values (e.g. int discriminator vs enum arm value)
+    /// by converting both to <c>Int64</c> when direct equality fails.
+    /// </summary>
+    private static bool UnionValuesEqual(object a, object? b)
+    {
+        if (b == null) return false;
+        if (a.Equals(b)) return true;
+        try { return Convert.ToInt64(a) == Convert.ToInt64(b); }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Returns the parent path prefix as the group name for nested fields,
+    /// or null for top-level fields.
+    /// e.g. "Position.X" → "Position"; "Id" → null.
+    /// </summary>
+    private static string? GetGroupName(string structuredName)
+    {
+        var dot = structuredName.LastIndexOf('.');
+        return dot < 0 ? null : structuredName[..dot];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Expand / collapse state for complex array elements (Task 4)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private bool IsExpanded(FieldMetadata field, int index)
+        => _expandedElements.Contains($"{field.StructuredName}[{index}]");
+
+    private void ToggleExpand(FieldMetadata field, int index)
+    {
+        var key = $"{field.StructuredName}[{index}]";
+        if (!_expandedElements.Remove(key))
+            _expandedElements.Add(key);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Array editing helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void SetArrayElement(FieldMetadata field, int index, object? value)
+    {
+        var raw = field.Getter(Payload!);
+
+        if (raw is IList list && !list.IsFixedSize)
+        {
+            if (index < list.Count)
+            {
+                list[index] = value;
+                field.Setter(Payload!, list);
+            }
+        }
+        else if (raw is Array arr)
+        {
+            if (index < arr.Length)
+            {
+                arr.SetValue(value, index);
+                field.Setter(Payload!, arr);
+            }
+        }
+
+        OnPayloadMutated?.Invoke(Payload!);
+        StateHasChanged();
+    }
+
+    private void AddArrayElement(FieldMetadata field)
+    {
+        if (field.ElementType == null) return;
+
+        var raw = field.Getter(Payload!);
+        object? defaultElem = null;
+
+        if (field.ElementType == typeof(string))
+        {
+            defaultElem = string.Empty;
+        }
+        else if (field.ElementType.IsArray)
+        {
+            defaultElem = Array.CreateInstance(field.ElementType.GetElementType()!, 0);
+        }
+        else
+        {
+            try { defaultElem = Activator.CreateInstance(field.ElementType); } catch { }
+        }
+
+        if (raw is IList list && !list.IsFixedSize)
+        {
+            list.Add(defaultElem);
+            field.Setter(Payload!, list);
+        }
+        else if (field.ValueType.IsGenericType
+            && typeof(IList).IsAssignableFrom(field.ValueType)
+            && !field.ValueType.IsArray)
+        {
+            // ME2-T24: Setter expects a generic List<T>/IList<T>; raw may be null or a
+            // legacy T[] snapshot.  Build a properly-typed List<T> so the cast succeeds.
+            var listType = typeof(List<>).MakeGenericType(field.ElementType);
+            var newList = (IList)Activator.CreateInstance(listType)!;
+            if (raw is IEnumerable existing)
+            {
+                foreach (var item in existing)
+                    newList.Add(item);
+            }
+            newList.Add(defaultElem);
+            field.Setter(Payload!, newList);
+        }
+        else
+        {
+            var src = raw as Array ?? Array.CreateInstance(field.ElementType, 0);
+            var newArr = Array.CreateInstance(field.ElementType, src.Length + 1);
+            Array.Copy(src, newArr, src.Length);
+            newArr.SetValue(defaultElem, src.Length);
+            field.Setter(Payload!, newArr);
+        }
+
+        OnPayloadMutated?.Invoke(Payload!);
+        StateHasChanged();
+    }
+
+    private void RemoveArrayElement(FieldMetadata field, int index)
+    {
+        if (field.ElementType == null) return;
+
+        var raw = field.Getter(Payload!);
+
+        if (raw is IList list && !list.IsFixedSize)
+        {
+            if (index < list.Count)
+            {
+                list.RemoveAt(index);
+                field.Setter(Payload!, list);
+            }
+        }
+        else if (raw is Array src)
+        {
+            if (src.Length == 0) return;
+
+            var newArr = Array.CreateInstance(field.ElementType, src.Length - 1);
+            Array.Copy(src, 0, newArr, 0, index);
+            Array.Copy(src, index + 1, newArr, index, src.Length - index - 1);
+            field.Setter(Payload!, newArr);
+        }
+
+        OnPayloadMutated?.Invoke(Payload!);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Propagates a mutation to a complex struct field that acts as a direct (non-array)
+    /// value on the payload — e.g. a union arm whose type is a struct.
+    /// Because structs are value types, the inner DynamicForm returns a boxed copy;
+    /// we write it back via the setter and bubble the change upward.
+    /// </summary>
+    private void SetStructArm(FieldMetadata field, object? value)
+    {
+        field.Setter(Payload!, value);
+        OnPayloadMutated?.Invoke(Payload!);
+        StateHasChanged();
+    }
+
+    private static IList<object?> ToObjectArray(object? raw)
+    {
+        if (raw is Array arr)
+        {
+            var result = new List<object?>(arr.Length);
+            for (int i = 0; i < arr.Length; i++) result.Add(arr.GetValue(i));
+            return result;
+        }
+
+        if (raw is IEnumerable<object?> seq)
+        {
+            return seq.ToList();
+        }
+
+        if (raw is System.Collections.IEnumerable enumerable)
+        {
+            var result = new List<object?>();
+            foreach (var item in enumerable) result.Add(item);
+            return result;
+        }
+
+        return Array.Empty<object?>();
+    }
+
+    private static string RenderArrayAsText(Array? arr, int maxLen)
+    {
+        if (arr == null) return "(null)";
+        var count = Math.Min(arr.Length, maxLen > 0 ? maxLen : arr.Length);
+        var parts = new string[count];
+        for (int i = 0; i < count; i++) parts[i] = arr.GetValue(i)?.ToString() ?? "0";
+        return string.Join(", ", parts);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Nullable & Optional fields handling (ME2-T21)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void ToggleNull(FieldMetadata field, object? isCheckedObj)
+    {
+        if (Payload == null) return;
+
+        bool isChecked = isCheckedObj is bool b && b;
+        if (!isChecked)
+        {
+            field.Setter(Payload, null);
+            _fieldErrors.Remove(field.StructuredName);
+        }
+        else
+        {
+            var targetType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+            object? defaultValue = null;
+
+            if (targetType == typeof(string))
+            {
+                defaultValue = string.Empty;
+            }
+            else if (targetType.IsArray)
+            {
+                defaultValue = Array.CreateInstance(targetType.GetElementType()!, 0);
+            }
+            else
+            {
+                try { defaultValue = Activator.CreateInstance(targetType); } catch { }
+            }
+
+            field.Setter(Payload, defaultValue);
+        }
+
+        OnPayloadMutated?.Invoke(Payload!);
+        StateHasChanged();
+    }
+}

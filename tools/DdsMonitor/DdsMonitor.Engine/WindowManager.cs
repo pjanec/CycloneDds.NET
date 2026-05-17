@@ -1,0 +1,604 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+
+namespace DdsMonitor.Engine;
+
+/// <summary>
+/// Default in-memory window manager.
+/// </summary>
+public sealed class WindowManager : IWindowManager
+{
+    private const int FirstPanelIndex = 1;
+    private const int ZIndexIncrement = 1;
+    private const int DefaultZIndex = 1;
+    private const double DefaultPanelX = 40;
+    private const double DefaultPanelY = 40;
+    private const double DefaultPanelWidth = 420;
+    private const double DefaultPanelHeight = 300;
+
+    private static readonly JsonSerializerOptions WorkspaceSerializerOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true
+    };
+
+    private readonly object _sync = new();
+    private readonly List<PanelState> _activePanels = new();
+    private readonly Dictionary<string, Type> _panelTypes = new(StringComparer.Ordinal);
+    private readonly IEventBroker? _eventBroker;
+    private List<string> _excludedTopics = new();
+
+    /// <summary>
+    /// Initialises <see cref="WindowManager"/>.
+    /// </summary>
+    /// <param name="eventBroker">
+    /// Optional event broker used to publish <see cref="WorkspaceSavingEvent"/> and
+    /// <see cref="WorkspaceLoadedEvent"/> during save/load operations.  When
+    /// <see langword="null"/> the events are not raised (backwards-compatible default).
+    /// </param>
+    public WindowManager(IEventBroker? eventBroker = null)
+    {
+        _eventBroker = eventBroker;
+    }
+
+    /// <inheritdoc />
+    public event Action<PanelState>? PanelClosed;
+
+    /// <inheritdoc />
+    public event Action? PanelsChanged;
+
+    /// <inheritdoc />
+    public IReadOnlyList<PanelState> ActivePanels
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _activePanels.ToArray();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> ExcludedTopics
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _excludedTopics.ToArray();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void SetExcludedTopics(IEnumerable<string> topicTypeNames)
+    {
+        if (topicTypeNames == null) throw new ArgumentNullException(nameof(topicTypeNames));
+        lock (_sync)
+        {
+            _excludedTopics = new List<string>(topicTypeNames);
+        }
+    }
+
+    /// <inheritdoc />
+    public PanelState SpawnPanel(string componentTypeName, Dictionary<string, object>? initialState = null)
+    {
+        if (string.IsNullOrWhiteSpace(componentTypeName))
+        {
+            throw new ArgumentException("Component type name is required.", nameof(componentTypeName));
+        }
+
+        PanelState panel;
+
+        lock (_sync)
+        {
+            var baseName = GetPanelBaseName(componentTypeName);
+            var panelId = CreatePanelId(baseName);
+            var resolvedTypeName = ResolveComponentTypeName(componentTypeName);
+
+            panel = new PanelState
+            {
+                PanelId = panelId,
+                Title = baseName,
+                ComponentTypeName = resolvedTypeName,
+                X = DefaultPanelX,
+                Y = DefaultPanelY,
+                Width = DefaultPanelWidth,
+                Height = DefaultPanelHeight,
+                ZIndex = GetNextZIndex(),
+                ComponentState = initialState == null
+                    ? new Dictionary<string, object>(StringComparer.Ordinal)
+                    : new Dictionary<string, object>(initialState, StringComparer.Ordinal)
+            };
+
+            _activePanels.Add(panel);
+        }
+
+        PanelsChanged?.Invoke();
+
+        return panel;
+    }
+
+    /// <inheritdoc />
+    public void ClosePanel(string panelId)
+    {
+        if (string.IsNullOrWhiteSpace(panelId))
+        {
+            throw new ArgumentException("Panel identifier is required.", nameof(panelId));
+        }
+
+        lock (_sync)
+        {
+            for (var i = 0; i < _activePanels.Count; i++)
+            {
+                if (string.Equals(_activePanels[i].PanelId, panelId, StringComparison.Ordinal))
+                {
+                    var closedPanel = _activePanels[i];
+                    closedPanel.IsHidden = true;
+                    closedPanel.IsMinimized = false;
+                    PanelClosed?.Invoke(closedPanel);
+                    _activePanels.RemoveAt(i);
+                    PanelsChanged?.Invoke();
+                    return;
+                }
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void BringToFront(string panelId)
+    {
+        if (string.IsNullOrWhiteSpace(panelId))
+        {
+            throw new ArgumentException("Panel identifier is required.", nameof(panelId));
+        }
+
+        lock (_sync)
+        {
+            PanelState? panel = null;
+
+            foreach (var entry in _activePanels)
+            {
+                if (string.Equals(entry.PanelId, panelId, StringComparison.Ordinal))
+                {
+                    panel = entry;
+                    break;
+                }
+            }
+
+            if (panel == null)
+            {
+                return;
+            }
+
+            panel.ZIndex = GetHighestZIndex() + ZIndexIncrement;
+        }
+    }
+
+    /// <inheritdoc />
+    public void ShowPanel(string panelId)
+    {
+        if (string.IsNullOrWhiteSpace(panelId))
+        {
+            throw new ArgumentException("Panel identifier is required.", nameof(panelId));
+        }
+
+        lock (_sync)
+        {
+            PanelState? panel = null;
+
+            foreach (var entry in _activePanels)
+            {
+                if (string.Equals(entry.PanelId, panelId, StringComparison.Ordinal))
+                {
+                    panel = entry;
+                    break;
+                }
+            }
+
+            if (panel == null)
+            {
+                return;
+            }
+
+            panel.IsMinimized = false;
+            panel.IsHidden = false;
+            panel.ZIndex = GetHighestZIndex() + ZIndexIncrement;
+        }
+
+        PanelsChanged?.Invoke();
+    }
+
+    /// <inheritdoc />
+    public void ClearPanels()
+    {
+        lock (_sync)
+        {
+            _activePanels.Clear();
+        }
+
+        PanelsChanged?.Invoke();
+    }
+
+    /// <inheritdoc />
+    public void RegisterPanelType(string typeName, Type blazorComponentType)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            throw new ArgumentException("Type name is required.", nameof(typeName));
+        }
+
+        if (blazorComponentType == null)
+        {
+            throw new ArgumentNullException(nameof(blazorComponentType));
+        }
+
+        lock (_sync)
+        {
+            _panelTypes[typeName] = blazorComponentType;
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<string, Type> RegisteredPanelTypes
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return new Dictionary<string, Type>(_panelTypes, StringComparer.Ordinal);
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void SaveWorkspace(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new ArgumentException("File path is required.", nameof(filePath));
+        }
+
+        var json = SaveWorkspaceToJson();
+        File.WriteAllText(filePath, json);
+    }
+
+    /// <inheritdoc />
+    public string SaveWorkspaceToJson()
+    {
+        PanelState[] snapshot;
+        List<string> excludedSnapshot;
+
+        lock (_sync)
+        {
+            snapshot = _activePanels.ToArray();
+            excludedSnapshot = new List<string>(_excludedTopics);
+        }
+
+        var filtered = FilterPersistableState(snapshot);
+
+        // Allow plugins to contribute settings before serialisation.
+        var pluginBag = new Dictionary<string, object>(StringComparer.Ordinal);
+        _eventBroker?.Publish(new WorkspaceSavingEvent(pluginBag));
+
+        var doc = new WorkspaceDocument
+        {
+            Panels = filtered,
+            ExcludedTopics = excludedSnapshot.Count > 0 ? excludedSnapshot : null,
+            PluginSettings = pluginBag.Count > 0 ? pluginBag : null
+        };
+        return JsonSerializer.Serialize(doc, WorkspaceSerializerOptions);
+    }
+
+    /// <inheritdoc />
+    public void LoadWorkspace(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new ArgumentException("File path is required.", nameof(filePath));
+        }
+
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException("Workspace file not found.", filePath);
+        }
+
+        var json = File.ReadAllText(filePath);
+        LoadWorkspaceFromJson(json);
+    }
+
+    /// <inheritdoc />
+    public void LoadWorkspaceFromJson(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new ArgumentException("Workspace JSON is required.", nameof(json));
+        }
+
+        List<PanelState> panels;
+        List<string> excludedTopics = new();
+        Dictionary<string, object>? pluginSettingsRaw = null;
+
+        // Support both the legacy format (plain JSON array of PanelState) and the new
+        // WorkspaceDocument format (object with "Panels" and optional "ExcludedTopics").
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            // Legacy: raw panel array.
+            panels = JsonSerializer.Deserialize<List<PanelState>>(json, WorkspaceSerializerOptions)
+                     ?? new List<PanelState>();
+        }
+        else
+        {
+            var workspaceDoc = JsonSerializer.Deserialize<WorkspaceDocument>(json, WorkspaceSerializerOptions)
+                               ?? new WorkspaceDocument();
+            panels = workspaceDoc.Panels ?? new List<PanelState>();
+            excludedTopics = workspaceDoc.ExcludedTopics ?? new List<string>();
+            pluginSettingsRaw = workspaceDoc.PluginSettings;
+        }
+
+        foreach (var panel in panels)
+        {
+            panel.ComponentState ??= new Dictionary<string, object>(StringComparer.Ordinal);
+        }
+
+        lock (_sync)
+        {
+            _activePanels.Clear();
+            _activePanels.AddRange(panels);
+            _excludedTopics = excludedTopics;
+        }
+
+        PanelsChanged?.Invoke();
+
+        // Notify plugins that a workspace has been loaded.
+        IReadOnlyDictionary<string, object> pluginSettings = pluginSettingsRaw is { Count: > 0 }
+            ? pluginSettingsRaw
+            : new Dictionary<string, object>(StringComparer.Ordinal);
+        _eventBroker?.Publish(new WorkspaceLoadedEvent(pluginSettings));
+    }
+
+    private static List<PanelState> FilterPersistableState(IEnumerable<PanelState> panels)
+    {
+        var result = new List<PanelState>();
+
+        // Guard: at most one Send-Sample panel should survive (the first non-hidden one,
+        // or the first overall when all are hidden).  Multiple instances can accumulate in
+        // long-running sessions; keeping only one prevents the duplicate-subscriber issue
+        // that caused clone requests to be consumed by a hidden/stale instance.
+        bool sendSampleIncluded = false;
+
+        foreach (var panel in panels)
+        {
+            if (panel == null)
+            {
+                continue;
+            }
+
+            // Only one SendSamplePanel survives the save – prefer the first visible (non-hidden) one.
+            if (panel.ComponentTypeName.Contains("SendSamplePanel", StringComparison.Ordinal))
+            {
+                if (sendSampleIncluded)
+                {
+                    continue;
+                }
+
+                sendSampleIncluded = true;
+            }
+
+            var clone = new PanelState
+            {
+                PanelId = panel.PanelId,
+                Title = panel.Title,
+                ComponentTypeName = panel.ComponentTypeName,
+                X = panel.X,
+                Y = panel.Y,
+                Width = panel.Width,
+                Height = panel.Height,
+                ZIndex = panel.ZIndex,
+                IsMinimized = panel.IsMinimized,
+                IsHidden = panel.IsHidden
+            };
+
+            var filteredState = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (var entry in panel.ComponentState)
+            {
+                if (TrySanitizeValue(entry.Value, out var sanitized))
+                {
+                    filteredState[entry.Key] = sanitized!;
+                }
+            }
+
+            clone.ComponentState = filteredState;
+            result.Add(clone);
+        }
+
+        return result;
+    }
+
+    private static bool TrySanitizeValue(object? value, out object? sanitized)
+    {
+        if (value == null)
+        {
+            sanitized = null;
+            return true;
+        }
+
+        switch (value)
+        {
+            case string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                sanitized = value;
+                return true;
+            case DateTime or DateTimeOffset:
+                sanitized = value;
+                return true;
+        }
+
+        if (value is string[] stringArray)
+        {
+            sanitized = stringArray;
+            return true;
+        }
+
+        if (value is double[] doubleArray)
+        {
+            sanitized = doubleArray;
+            return true;
+        }
+
+        if (value is int[] intArray)
+        {
+            sanitized = intArray;
+            return true;
+        }
+
+        if (value is Dictionary<string, double> doubleMap)
+        {
+            sanitized = new Dictionary<string, double>(doubleMap, StringComparer.Ordinal);
+            return true;
+        }
+
+        if (value is Dictionary<string, string> stringMap)
+        {
+            sanitized = new Dictionary<string, string>(stringMap, StringComparer.Ordinal);
+            return true;
+        }
+
+        if (value is Dictionary<string, object> objectMap)
+        {
+            var result = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (var entry in objectMap)
+            {
+                if (TrySanitizeValue(entry.Value, out var inner))
+                {
+                    result[entry.Key] = inner!;
+                }
+            }
+
+            sanitized = result;
+            return result.Count > 0;
+        }
+
+        if (value is IEnumerable<object> list)
+        {
+            var result = new List<object>();
+            foreach (var item in list)
+            {
+                if (TrySanitizeValue(item, out var inner))
+                {
+                    result.Add(inner!);
+                }
+            }
+
+            sanitized = result;
+            return result.Count > 0;
+        }
+
+        sanitized = null;
+        return false;
+    }
+
+    private int GetNextZIndex()
+    {
+        var currentMax = GetHighestZIndex();
+        return currentMax < DefaultZIndex ? DefaultZIndex : currentMax + ZIndexIncrement;
+    }
+
+    private int GetHighestZIndex()
+    {
+        var max = DefaultZIndex;
+
+        foreach (var panel in _activePanels)
+        {
+            if (panel.ZIndex > max)
+            {
+                max = panel.ZIndex;
+            }
+        }
+
+        return max;
+    }
+
+    private string ResolveComponentTypeName(string componentTypeName)
+    {
+        if (_panelTypes.TryGetValue(componentTypeName, out var registered))
+        {
+            return registered.FullName ?? componentTypeName;
+        }
+
+        var resolved = Type.GetType(componentTypeName);
+        if (resolved != null)
+        {
+            return resolved.FullName ?? componentTypeName;
+        }
+
+        // Backward-compat: strip assembly qualification from old AQN workspace entries
+        // (e.g. "My.Type, MyAssembly, Version=0.1.0.0, ...") so they resolve to FullName.
+        var commaIndex = componentTypeName.IndexOf(',');
+        if (commaIndex > 0)
+        {
+            return componentTypeName[..commaIndex].Trim();
+        }
+
+        return componentTypeName;
+    }
+
+    private string GetPanelBaseName(string componentTypeName)
+    {
+        if (_panelTypes.TryGetValue(componentTypeName, out var registered))
+        {
+            return registered.Name;
+        }
+
+        var resolved = Type.GetType(componentTypeName);
+        if (resolved != null)
+        {
+            return resolved.Name;
+        }
+
+        // Backward-compat: strip assembly qualification from old AQN workspace entries
+        // (e.g. "My.Namespace.MyPanel, MyAssembly, Version=0.1.0.0, ...") so the base
+        // name used as the PanelId prefix remains concise and version-stable.
+        var commaIndex = componentTypeName.IndexOf(',');
+        if (commaIndex > 0)
+        {
+            var fullName = componentTypeName[..commaIndex].Trim();
+            // Extract just the simple class name (after the last dot).
+            var dotIndex = fullName.LastIndexOf('.');
+            return dotIndex >= 0 ? fullName[(dotIndex + 1)..] : fullName;
+        }
+
+        // If it is already a FullName (no comma), extract simple class name.
+        var lastDot = componentTypeName.LastIndexOf('.');
+        return lastDot >= 0 ? componentTypeName[(lastDot + 1)..] : componentTypeName;
+    }
+
+    private string CreatePanelId(string baseName)
+    {
+        var index = FirstPanelIndex;
+        while (PanelIdExists(baseName, index))
+        {
+            index += ZIndexIncrement;
+        }
+
+        return $"{baseName}.{index}";
+    }
+
+    private bool PanelIdExists(string baseName, int index)
+    {
+        var candidate = $"{baseName}.{index}";
+
+        foreach (var panel in _activePanels)
+        {
+            if (string.Equals(panel.PanelId, candidate, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
