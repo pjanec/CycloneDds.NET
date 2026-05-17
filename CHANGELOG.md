@@ -6,9 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## unreleased
+nothing new yet
+
+## 0.2.2
 - Partitions
 - WaitSets
 - Removed Newtonsoft.Json reference
+- Incremental code generation. File delta tracking to limit unnecessary disk writes and Roslyn intellisense thrashing.
+- Union fix (critical structural alignment bug causing misaligned DDS union payloads.)
+- Added explicit translation fallback logic for type identity boundaries across foreign assembly contexts.
+- Added support for:
+   - sparse/non-contiguous enums via `@value` annotations,
+   - enum wire sizing bounds (`@bit_bound`),
+   - C# `[InlineArray]` memory patterns,
+   - and explicit generation toggles (`CycloneDdsDisableCodeGen`).
+- DdsMonitor tool (blazor based UI trafic monitor)
+   - Multi-Participant Configuration
+   - Dynamic Topic Discovery from .net assemblies
+   - Topic explorer
+   - Sample list & sample detail windows linked together
+   - Data Grid Customization
+   - Filtering and Sorting
+   - Recording & replay
+   - Sample authoring & sending
+   - Sender tracking
+   - Headless mode (CLI tool)
+   - Traffic stats
+
+
+### 4. CycloneDDS Code Generator Enhancements
+
+* **Schema Extensions:** 
 
 ## 0.1.25
 

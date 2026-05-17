@@ -2,6 +2,49 @@
 
 DDS Monitor is a real-time DDS network monitoring tool built on Blazor Server. It subscribes to DDS topics, displays samples in high-performance virtualized grids, tracks keyed instance lifecycles, and supports filtering, sorting, message replay, export, and domain-specific plugin extensibility.
 
+
+The DdsMonitor tool exposes a comprehensive feature set for interacting with DDS networks, underpinned by a highly modular, extensible Blazor-based architecture. Here is a breakdown of its core capabilities from a user perspective:
+
+**Network Configuration & Topic Discovery**
+*   **Multi-Participant Configuration:** Users can configure multiple DDS participants concurrently by specifying Domain ID and Partition Name pairs through the Participant Editor.
+*   **Dynamic Topic Discovery:** The tool dynamically loads external DLL assemblies containing generated schema types (`TopicSourcesPanel`).
+*   **Topic Explorer:** A master list provides an overview of all discovered topics, showing live metrics like sample counts, instances, and sparklines for frequency. Users can dynamically subscribe or unsubscribe from topics, or use "Subscribe All".
+
+**Sample Visualization & Grid Layouts**
+*   **Targeted and Global Views:** Users can open a `SamplesPanel` for a specific topic or a global "All Samples" view. 
+*   **Data Grid Customization:** The grid uses virtualization for high performance. Users can pick custom columns, resize them, and toggle track mode to automatically scroll to the latest sample. Layouts can be exported and imported as `.samplepanelsettings` files.
+*   **Filtering and Sorting:** The grid supports sorting by clicking headers and robust filtering. The tool includes a visual Filter Builder generating expressions (e.g., `Payload.Field == 42`) powered by Dynamic LINQ. 
+*   **Transport Controls:** Global transport controls allow the user to Play (resume receiving), Pause (stop accepting new samples), and Reset (clear all stores and ordinal counters) the DDS bridge.
+
+**Deep Inspection**
+*   **Detail Panel:** When a sample is selected, the `DetailPanel` inspects the payload in multiple formats. Users can view data as a hierarchical collapsible tree, a flattened table, or raw JSON.
+*   **Metadata & Sender Tracking:** Aside from the payload, the detail view surfaces DDS `SampleInfo` (timestamp, instance state) and extracted sender metadata (Process ID, Process Name, Machine IP) via receiver-only sender monitoring.
+*   **Link/Detach Modes:** The detail panel can be "linked" to follow the active selection in a source grid, or detached/pinned to inspect a specific sample while continuing to browse.
+
+**Data Injection & Playback**
+*   **Sample Authoring:** The `SendSamplePanel` uses schema reflection to build a `DynamicForm` matching the topic's structure (handling nested types, unions, arrays, etc.). Users can manually author payloads and inject them into the network.
+*   **Clone to Send:** Existing samples can be cloned directly into the send panel for rapid modification and re-transmission.
+*   **Record and Replay:** Replay capabilities let users load exported JSON streams. Users can pause, step, jump to specific frames/times, and control playback speed. Samples can be replayed purely into the local UI store for inspection, or routed back into the live DDS network.
+
+**Windowing & Workspace Management**
+*   **Floating Window Manager:** The UI functions like a desktop environment with movable, resizable, and minimizable panels. Multiple instances of the same panel (e.g., two `SamplesPanels` for the same or different topics) are supported via unique panel IDs.
+*   **Workspace Persistence:** The complete layout, active filters, selected columns, and subscription states are automatically debounced and saved to a `workspace.json` file. Users can also manually export/import workspace layouts.
+
+**Plugin System & Extensibility**
+*   The architecture is heavily decoupled, providing isolated `AssemblyLoadContext` environments for plugins. Key extension points include:
+    *   **Custom Panels & Menus:** Plugins can register their own Blazor panels (`PluginPanelRegistry`) and inject items into the global top menu or row-level context menus.
+    *   **Custom Sample Views:** The `ISampleViewRegistry` allows plugins to completely replace the default tree view for specific CLR types (e.g., the Feature Demo plugin rendering a custom "Demo Payload Viewer").
+    *   **Value Formatters:** `IValueFormatterRegistry` allows plugins to provide Tier 1 syntax-highlighted inline representations of custom types (e.g., rendering `GeoCoord` objects seamlessly in grid cells).
+    *   **Filter Macros & Export:** Plugins can inject custom macros into the Dynamic LINQ filter engine and register custom export formats.
+
+**CLI & Headless Operations**
+*   **Headless Mode:** The engine can run purely from the CLI without the Blazor UI (`HeadlessMode.Record` or `HeadlessMode.Replay`), piping live data straight to disk or streaming a file to the network.
+*   **CLI Overrides:** Users can pass arguments (e.g., `--AppSettings:IncludeTopics`, `--NoBrowser true`) to override workspace configuration, enabling CI/CD integrations or constrained debugging sessions.
+
+**Diagnostics & Statistics**
+*   **Performance Counters:** A live statistics overlay tracks total samples, total bytes received, and bandwidth rates (MB/s). It also measures samples-per-second on the ingestion hot-path to diagnose bottlenecks.
+*   **Devel Mode:** Allows developers to toggle high-frequency "self-sending" of mock data to stress-test the ingestion pipeline up to 10 kHz.
+
 ---
 
 ## Table of Contents

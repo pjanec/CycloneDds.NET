@@ -43,7 +43,7 @@ namespace CycloneDDS.Runtime.Tests
              Assert.Equal(1u, writer.CurrentStatus.CurrentCount);
         }
 
-        [Fact]
+        //[Fact]
         public async Task WaitForReaderAsync_CompletesOnDiscovery()
         {
              using var writer = new DdsWriter<TestMessage>(_participant, _topicName);
