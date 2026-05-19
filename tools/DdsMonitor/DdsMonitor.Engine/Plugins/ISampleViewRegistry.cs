@@ -6,8 +6,7 @@ namespace DdsMonitor.Engine.Plugins;
 /// Registry that maps CLR payload types to UI-agnostic viewer factories shown in the Detail Panel.
 /// Plugins call <see cref="Register"/> during initialization to replace the default tree view
 /// with a domain-specific component for a particular payload type.
-/// The concrete control type (Blazor <c>RenderFragment</c>, Avalonia <c>Control</c>, etc.)
-/// is determined by the host UI layer.
+/// The concrete control type is determined by the host UI layer.
 /// </summary>
 public interface ISampleViewRegistry
 {

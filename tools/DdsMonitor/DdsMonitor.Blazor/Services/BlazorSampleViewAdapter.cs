@@ -26,6 +26,12 @@ public sealed class BlazorSampleViewAdapter
     {
         var factory = _registry.GetViewer(type);
         if (factory == null) return null;
-        return sample => (RenderFragment)factory(sample)!;
+        return sample =>
+        {
+            var viewer = factory(sample);
+            return viewer as RenderFragment
+                ?? throw new InvalidOperationException(
+                    $"Sample viewer for '{type.FullName}' did not return a Blazor RenderFragment.");
+        };
     }
 }

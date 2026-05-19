@@ -115,15 +115,19 @@ public sealed class PluginLoader
             return 0;
         }
 
+        #if !DEBUG
         try
+        #endif
         {
             return LoadPluginFromFileCore(dllPath, services);
         }
+        #if !DEBUG
         catch (Exception ex)
         {
             _logger?.LogError(ex, "PluginLoader: failed to load '{Path}'. Skipping.", dllPath);
             return 0;
         }
+        #endif
     }
 
     /// <summary>
@@ -139,14 +143,18 @@ public sealed class PluginLoader
 
         foreach (var plugin in _plugins)
         {
-            try
-            {
+            # if !DEBUG
+			try
+            #endif
+			{
                 plugin.Initialize(context);
             }
+            #if !DEBUG
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "PluginLoader: plugin '{Name}' threw during Initialize().", plugin.Name);
             }
+            #endif
         }
     }
 
@@ -182,6 +190,7 @@ public sealed class PluginLoader
             // Plugins are disabled by default on first run; the user enables them via
             // the Plugin Manager UI, after which the list is persisted to the workspace.
             var isEnabled = _configService == null
+                || !_configService.HadConfigFileAtInitialization
                 || _configService.EnabledPlugins.Contains(plugin.Name);
 
             _discovered.Add(new DiscoveredPlugin(plugin, absolutePath, isEnabled));

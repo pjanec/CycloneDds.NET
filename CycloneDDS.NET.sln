@@ -75,6 +75,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DdsMonitor.Avalonia.Core", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DdsMonitor.Avalonia.StandardPlugin.Tests", "tests\DdsMonitor.Avalonia.StandardPlugin.Tests\DdsMonitor.Avalonia.StandardPlugin.Tests.csproj", "{0B5CC937-5C4E-49C6-B9AB-EBC86EEFDD23}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DdsMonitor.Avalonia", "tools\DdsMonitor\DdsMonitor.Avalonia\DdsMonitor.Avalonia.csproj", "{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -445,6 +447,18 @@ Global
 		{0B5CC937-5C4E-49C6-B9AB-EBC86EEFDD23}.Release|x64.Build.0 = Release|Any CPU
 		{0B5CC937-5C4E-49C6-B9AB-EBC86EEFDD23}.Release|x86.ActiveCfg = Release|Any CPU
 		{0B5CC937-5C4E-49C6-B9AB-EBC86EEFDD23}.Release|x86.Build.0 = Release|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Debug|x64.Build.0 = Debug|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Debug|x86.Build.0 = Debug|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Release|x64.ActiveCfg = Release|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Release|x64.Build.0 = Release|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Release|x86.ActiveCfg = Release|Any CPU
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -482,6 +496,7 @@ Global
 		{A9CE787A-2DCF-400C-B63F-53FD37A58633} = {D155029A-9F95-7E23-5ED3-9C9C0B71BEE5}
 		{C5BC574F-BDEB-46BA-BE01-0A5CF117E838} = {D155029A-9F95-7E23-5ED3-9C9C0B71BEE5}
 		{0B5CC937-5C4E-49C6-B9AB-EBC86EEFDD23} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{E4778A4A-BF4A-CBD3-4758-D863FD45BD85} = {D155029A-9F95-7E23-5ED3-9C9C0B71BEE5}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {983A9A3B-8C06-4CDF-A9CF-DC84E7792F58}

@@ -35,7 +35,13 @@ public sealed class BlazorTypeDrawerAdapter
     {
         var factory = _registry.GetDrawer(type);
         if (factory == null) return null;
-        return ctx => (RenderFragment)factory(ctx)!;
+        return ctx =>
+        {
+            var drawer = factory(ctx);
+            return drawer as RenderFragment
+                ?? throw new InvalidOperationException(
+                    $"Type drawer for '{type.FullName}' did not return a Blazor RenderFragment.");
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────────

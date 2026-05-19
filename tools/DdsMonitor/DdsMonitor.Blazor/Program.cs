@@ -105,6 +105,11 @@ if (!isHeadless)
     // Start the host (Kestrel begins listening).
     await app.StartAsync();
 
+    // Construct Blazor adapters before plugin initialization. The drawer adapter
+    // installs default Blazor factories first, then plugins may override them.
+    _ = app.Services.GetRequiredService<BlazorTypeDrawerAdapter>();
+    _ = app.Services.GetRequiredService<BlazorSampleViewAdapter>();
+
     // ── Phase 5: Initialise plugins after the host has started ───────────────────────
     var pluginLoader = app.Services.GetService<PluginLoader>();
     if (pluginLoader != null)

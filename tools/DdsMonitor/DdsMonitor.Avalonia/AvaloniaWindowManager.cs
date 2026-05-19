@@ -326,6 +326,8 @@ public sealed class AvaloniaWindowManager : IWindowManager
     public string SaveWorkspaceToJson()
     {
         List<PanelState> panels;
+        List<string> excludedSnapshot;
+
         lock (_lock)
         {
             // Capture current window geometry before serializing
@@ -345,9 +347,66 @@ public sealed class AvaloniaWindowManager : IWindowManager
                 }
             }
             panels = _activePanels.ToList();
+        
+            // Ensure you have an _excludedTopics field backing IWindowManager.ExcludedTopics
+            excludedSnapshot = _excludedTopics.ToList(); 
         }
 
-        return System.Text.Json.JsonSerializer.Serialize(panels);
+        // Broadcast saving event so plugins can inject their custom state
+        var pluginBag = new Dictionary<string, object>(StringComparer.Ordinal);
+        _eventBroker.Publish(new WorkspaceSavingEvent(pluginBag));
+
+        // Construct the exact schema expected by the Blazor application and Engine services
+        var doc = new
+        {
+            Panels = panels,
+            ExcludedTopics = excludedSnapshot.Count > 0 ? excludedSnapshot : null,
+            PluginSettings = pluginBag.Count > 0 ? pluginBag : null
+        };
+
+        return JsonSerializer.Serialize(doc, new JsonSerializerOptions 
+        { 
+            WriteIndented = true,
+            PropertyNamingPolicy = null // Enforce exact casing
+        });
+    }
+
+    public void LoadWorkspaceFromJson(string json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        // 1. Restore Excluded Topics
+        if (root.TryGetProperty("ExcludedTopics", out var excludedElement))
+        {
+            var excluded = excludedElement.Deserialize<List<string>>() ?? new List<string>();
+            SetExcludedTopics(excluded);
+        }
+
+        // 2. Restore Panels
+        if (root.TryGetProperty("Panels", out var panelsElement))
+        {
+            var panels = panelsElement.Deserialize<List<PanelState>>() ?? new List<PanelState>();
+            foreach (var panel in panels)
+            {
+                SpawnPanel(panel.ComponentTypeName, panel.ComponentState);
+            }
+        }
+
+        // 3. Restore Plugin Settings & broadcast
+        var pluginSettings = new Dictionary<string, object>(StringComparer.Ordinal);
+        if (root.TryGetProperty("PluginSettings", out var settingsElement))
+        {
+            var deserialized = settingsElement.Deserialize<Dictionary<string, object>>();
+            if (deserialized != null)
+            {
+                pluginSettings = new Dictionary<string, object>(deserialized, StringComparer.Ordinal);
+            }
+        }
+
+        _eventBroker.Publish(new WorkspaceLoadedEvent(pluginSettings));
     }
 
     public void LoadWorkspace(string filePath)
@@ -357,17 +416,6 @@ public sealed class AvaloniaWindowManager : IWindowManager
         LoadWorkspaceFromJson(json);
     }
 
-    public void LoadWorkspaceFromJson(string json)
-    {
-        ArgumentNullException.ThrowIfNull(json);
-        var panels = System.Text.Json.JsonSerializer.Deserialize<List<PanelState>>(json);
-        if (panels is null) return;
-
-        foreach (var panel in panels)
-        {
-            SpawnPanel(panel.ComponentTypeName, panel.ComponentState);
-        }
-    }
 
     /// <summary>
     /// Converts a geometry value (either a native <see cref="double"/> or a JSON-deserialized

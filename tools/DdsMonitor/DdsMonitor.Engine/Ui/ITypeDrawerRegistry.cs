@@ -5,8 +5,7 @@ namespace DdsMonitor.Engine.Ui;
 /// <summary>
 /// Provides a registry mapping CLR types to UI-agnostic drawer factories
 /// that produce an appropriate user-input control for editing a value of that type.
-/// The concrete control type (Blazor <c>RenderFragment</c>, Avalonia <c>Control</c>, etc.)
-/// is determined by the host UI layer that registers the factory.
+/// The concrete control type is determined by the host UI layer that registers the factory.
 /// </summary>
 public interface ITypeDrawerRegistry
 {
@@ -17,7 +16,7 @@ public interface ITypeDrawerRegistry
     /// <param name="type">The CLR type to handle.</param>
     /// <param name="drawer">
     /// A factory that accepts a <see cref="DrawerContext"/> and returns the UI control object
-    /// (e.g. a Blazor <c>RenderFragment</c> or an Avalonia <c>Control</c>).
+    /// The returned object is interpreted by the host UI layer.
     /// </param>
     void Register(Type type, Func<DrawerContext, object?> drawer);
 

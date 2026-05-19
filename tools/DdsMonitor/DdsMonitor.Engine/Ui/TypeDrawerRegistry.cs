@@ -8,7 +8,7 @@ namespace DdsMonitor.Engine.Ui;
 /// Default implementation of <see cref="ITypeDrawerRegistry"/> that pre-registers
 /// sentinel stubs for common primitive CLR types so that <see cref="HasDrawer"/> and
 /// <see cref="GetDrawer"/> return correct results before a UI adapter overrides them
-/// with framework-specific factories (Blazor <c>RenderFragment</c>, Avalonia <c>Control</c>, etc.).
+/// with framework-specific factories.
 /// </summary>
 public sealed class TypeDrawerRegistry : ITypeDrawerRegistry
 {

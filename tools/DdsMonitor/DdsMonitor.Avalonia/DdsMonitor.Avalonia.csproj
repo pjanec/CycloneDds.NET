@@ -1,7 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <!--OutputType>WinExe</OutputType-->
+    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -28,4 +29,12 @@
     <ProjectReference Include="..\DdsMonitor.Avalonia.Core\DdsMonitor.Avalonia.Core.csproj" />
   </ItemGroup>
 
+
+    <ItemGroup>
+      <!-- Build-only: ensures plugin projects build before the host runs, without linking the assembly -->
+      <ProjectReference Include="..\DdsMonitor.Avalonia.StandardPlugin\DdsMonitor.Avalonia.StandardPlugin.csproj" 
+                        ReferenceOutputAssembly="false" 
+                        Private="false" 
+                        SkipGetTargetFrameworkProperties="true" />
+    </ItemGroup>
 </Project>
