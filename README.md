@@ -194,11 +194,60 @@ public partial struct MachineState
 }
 ```
 
-`AutodisposeUnregisteredInstances` (writers only, default `true`) controls the writer data
-lifecycle — see [Lifecycle](#8-lifecycle-dispose--unregister).
+Further `[DdsQos]` properties, all defaulting to the DDS defaults:
 
-The attribute applies only when no explicit QoS handle is passed to the `DdsWriter`/`DdsReader`
-constructor; with an explicit handle, set the policies yourself via `DdsApi.dds_qset_*`.
+| Property | Meaning |
+|---|---|
+| `AutodisposeUnregisteredInstances` (default `true`) | Writers only: unregistering also disposes — see [Lifecycle](#8-lifecycle-dispose--unregister) |
+| `Ownership` (default `Shared`) | `Exclusive`: only the strongest alive writer owns an instance — see [Ownership & Liveliness](#ownership--liveliness-failover) |
+| `LivelinessKind`, `LivelinessLeaseDurationMs` (default automatic, infinite) | How fast a silent or crashed writer is declared gone |
+| `DeadlineMs` (default infinite) | Maximum time between updates of each instance |
+
+The attribute is per type, so readers and writers agree on it. Per-entity settings — and
+overrides of the attribute — go in `DdsWriterOptions` / `DdsReaderOptions`:
+
+```csharp
+var writer = new DdsWriter<MachineState>(participant, topicName: null,
+    new DdsWriterOptions { OwnershipStrength = 100, LivelinessLeaseDuration = TimeSpan.FromSeconds(1) });
+var reader = new DdsReader<MachineState>(participant, topicName: null,
+    new DdsReaderOptions { Deadline = TimeSpan.FromMilliseconds(500) });
+```
+
+The attribute and the options apply only when no explicit QoS handle is passed to the
+`DdsWriter`/`DdsReader` constructor; with an explicit handle, set the policies yourself via
+`DdsApi.dds_qset_*`.
+
+### Ownership & Liveliness (Failover)
+
+With exclusive ownership, readers only see the strongest alive writer of each instance. When it
+unregisters, loses liveliness (misses its lease) or goes away, the next strongest takes over.
+
+```csharp
+[DdsTopic]
+[DdsQos(Ownership = DdsOwnershipKind.Exclusive,
+        LivelinessKind = DdsLivelinessKind.ManualByTopic, LivelinessLeaseDurationMs = 500,
+        AutodisposeUnregisteredInstances = false)]
+public partial struct Descriptor { [DdsKey] public int Id; public int Owner; }
+
+var primary = new DdsWriter<Descriptor>(participant, null, new DdsWriterOptions { OwnershipStrength = 100 });
+var backup  = new DdsWriter<Descriptor>(participant, null, new DdsWriterOptions { OwnershipStrength = 50 });
+
+primary.AssertLiveliness();   // with manual liveliness: call within the lease when there is nothing to write
+
+reader.LivelinessChanged += (s, st) => { /* st.NotAliveCountChange > 0: a writer is gone */ };
+reader.RequestedDeadlineMissed += (s, st) => { /* an instance was not updated in time */ };
+```
+
+Cyclone treats a writer that loses liveliness like one that unregisters its instances: with the
+default `AutodisposeUnregisteredInstances = true` readers then see `NOT_ALIVE_DISPOSED`, with
+`false` they see `NOT_ALIVE_NO_WRITERS` (once no writer is left). The cumulative counters are
+available as `reader.LivelinessChangedStatus`, `reader.RequestedDeadlineMissedStatus`,
+`writer.LivelinessLostStatus` and `writer.OfferedDeadlineMissedStatus`; writers also raise
+`LivelinessLost` and `OfferedDeadlineMissed`.
+
+There is no autopurge (reader data lifecycle) option: Cyclone accepts that policy but does not
+act on it. A reader's instance is freed once all its samples have been taken and no writer is
+left.
 ---
 
 ## 2. Basic Usage

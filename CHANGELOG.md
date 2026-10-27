@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Returns `true` once every matched reliable reader has acknowledged everything
   written so far (disposes and unregisters included), `false` on timeout; any other
   failure throws `DdsException`. `DdsApi.dds_wait_for_acks` is imported too.
+- **Ownership, liveliness and deadline QoS.** `[DdsQos]` gains `Ownership`
+  (`DdsOwnershipKind`), `LivelinessKind` (`DdsLivelinessKind`), `LivelinessLeaseDurationMs`
+  and `DeadlineMs`; all default to the DDS defaults, so existing types are unchanged.
+- **`DdsWriterOptions` / `DdsReaderOptions`** — per-entity QoS passed through new constructor
+  overloads `DdsWriter(participant, topicName, DdsWriterOptions, partition)` /
+  `DdsReader(participant, topicName, DdsReaderOptions, partition)`: `OwnershipStrength`, and
+  overrides of the attribute's `AutodisposeUnregisteredInstances`, liveliness and deadline.
+  The existing constructors are unchanged.
+- **Liveliness and deadline status:** `DdsWriter.AssertLiveliness()`; events
+  `DdsReader.LivelinessChanged` / `RequestedDeadlineMissed` and `DdsWriter.LivelinessLost` /
+  `OfferedDeadlineMissed`, plus the matching `...Status` properties. The `DdsApi` imports
+  behind them (`dds_qset_ownership`, `dds_qset_ownership_strength`, `dds_qset_liveliness`,
+  `dds_qset_deadline`, `dds_assert_liveliness`, the listener setters and status getters) are public.
 - **`CycloneDDS.Schema.DdsTopicName`** — the one rule for a type's DDS topic name
   (`Of<T>()`, `Of(Type)`, and the string core `Of(string ns, IEnumerable<string> typePath)`),
   now shared by the runtime, the code generator and DdsMonitor.

@@ -378,6 +378,30 @@ namespace CycloneDDS.Runtime.Interop
         [DllImport(DLL_NAME)]
         public static extern int dds_wait_for_acks(int writer, long timeout);
 
+        // Ownership / Liveliness / Deadline QoS
+        [DllImport(DLL_NAME)]
+        public static extern void dds_qset_ownership(IntPtr qos, int kind);
+
+        [DllImport(DLL_NAME)]
+        public static extern void dds_qset_ownership_strength(IntPtr qos, int value);
+
+        [DllImport(DLL_NAME)]
+        public static extern void dds_qset_liveliness(IntPtr qos, int kind, long lease_duration);
+
+        [DllImport(DLL_NAME)]
+        public static extern void dds_qset_deadline(IntPtr qos, long deadline);
+
+        public const int DDS_OWNERSHIP_SHARED = 0;
+        public const int DDS_OWNERSHIP_EXCLUSIVE = 1;
+
+        public const int DDS_LIVELINESS_AUTOMATIC = 0;
+        public const int DDS_LIVELINESS_MANUAL_BY_PARTICIPANT = 1;
+        public const int DDS_LIVELINESS_MANUAL_BY_TOPIC = 2;
+
+        // Asserts liveliness of a writer (or of a participant, for MANUAL_BY_PARTICIPANT).
+        [DllImport(DLL_NAME)]
+        public static extern int dds_assert_liveliness(int entity);
+
         // Partition QoS
         [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern void dds_qset_partition(
@@ -436,6 +460,76 @@ namespace CycloneDDS.Runtime.Interop
 
         [DllImport(DLL_NAME)]
         public extern static int dds_get_subscription_matched_status(int reader, out DdsSubscriptionMatchedStatus status);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct DdsLivelinessChangedStatus
+        {
+            public uint AliveCount;
+            public uint NotAliveCount;
+            public int AliveCountChange;
+            public int NotAliveCountChange;
+            public long LastPublicationHandle;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct DdsLivelinessLostStatus
+        {
+            public uint TotalCount;
+            public int TotalCountChange;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct DdsRequestedDeadlineMissedStatus
+        {
+            public uint TotalCount;
+            public int TotalCountChange;
+            public long LastInstanceHandle;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct DdsOfferedDeadlineMissedStatus
+        {
+            public uint TotalCount;
+            public int TotalCountChange;
+            public long LastInstanceHandle;
+        }
+
+        // Status passed BY VALUE, as for the matched-status callbacks above.
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void DdsOnLivelinessChanged(int reader, DdsLivelinessChangedStatus status, IntPtr arg);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void DdsOnLivelinessLost(int writer, DdsLivelinessLostStatus status, IntPtr arg);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void DdsOnRequestedDeadlineMissed(int reader, DdsRequestedDeadlineMissedStatus status, IntPtr arg);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void DdsOnOfferedDeadlineMissed(int writer, DdsOfferedDeadlineMissedStatus status, IntPtr arg);
+
+        [DllImport(DLL_NAME)]
+        public extern static void dds_lset_liveliness_changed(IntPtr listener, DdsOnLivelinessChanged callback);
+
+        [DllImport(DLL_NAME)]
+        public extern static void dds_lset_liveliness_lost(IntPtr listener, DdsOnLivelinessLost callback);
+
+        [DllImport(DLL_NAME)]
+        public extern static void dds_lset_requested_deadline_missed(IntPtr listener, DdsOnRequestedDeadlineMissed callback);
+
+        [DllImport(DLL_NAME)]
+        public extern static void dds_lset_offered_deadline_missed(IntPtr listener, DdsOnOfferedDeadlineMissed callback);
+
+        [DllImport(DLL_NAME)]
+        public extern static int dds_get_liveliness_changed_status(int reader, out DdsLivelinessChangedStatus status);
+
+        [DllImport(DLL_NAME)]
+        public extern static int dds_get_liveliness_lost_status(int writer, out DdsLivelinessLostStatus status);
+
+        [DllImport(DLL_NAME)]
+        public extern static int dds_get_requested_deadline_missed_status(int reader, out DdsRequestedDeadlineMissedStatus status);
+
+        [DllImport(DLL_NAME)]
+        public extern static int dds_get_offered_deadline_missed_status(int writer, out DdsOfferedDeadlineMissedStatus status);
         
         [DllImport(DLL_NAME)]
         public extern static int dds_get_status_changes(int entity, out uint status);
