@@ -156,12 +156,7 @@ namespace CycloneDDS.Runtime
 
         public void SetFilter(Predicate<T>? filter) => _filter = filter;
 
-        private static string GetTopicNameFromAttribute()
-        {
-            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
-            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
-            return attr.TopicName;
-        }
+        private static string GetTopicNameFromAttribute() => DdsTopicName.Of<T>();
 
         public DdsLoan<T> Take(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, true);
         public DdsLoan<T> Read(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, false);

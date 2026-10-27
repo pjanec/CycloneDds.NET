@@ -108,6 +108,10 @@ namespace CycloneDDS.Runtime
                          DdsApi.dds_qset_resource_limits(actualQos, -1, -1, -1);
                     }
                     DdsApi.dds_qset_history(actualQos, (int)qosAttr.HistoryKind, depth);
+                    if (!qosAttr.AutodisposeUnregisteredInstances)
+                    {
+                        DdsApi.dds_qset_writer_data_lifecycle(actualQos, false);
+                    }
                 }
                 else
                 {
@@ -153,12 +157,7 @@ namespace CycloneDDS.Runtime
             }
         }
 
-        private static string GetTopicNameFromAttribute()
-        {
-            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
-            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
-            return attr.TopicName;
-        }
+        private static string GetTopicNameFromAttribute() => DdsTopicName.Of<T>();
 
         public void Write(in T sample)
         {
@@ -259,6 +258,27 @@ namespace CycloneDDS.Runtime
         }
 
         
+        /// <summary>
+        /// Blocks until every matched reliable reader has acknowledged everything this writer
+        /// has written so far (writes, disposes and unregisters), or until <paramref name="timeout"/> elapses.
+        /// </summary>
+        /// <param name="timeout">Maximum time to wait; <see cref="Timeout.InfiniteTimeSpan"/> (or any negative value) waits forever.</param>
+        /// <returns><c>true</c> when all data was acknowledged; <c>false</c> on timeout.</returns>
+        /// <exception cref="DdsException">The native call failed for any reason other than a timeout.</exception>
+        public bool WaitForAcks(TimeSpan timeout)
+        {
+            if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+
+            long timeoutNs = (timeout == Timeout.InfiniteTimeSpan || timeout.Ticks < 0 || timeout.Ticks > long.MaxValue / 100)
+                ? DdsApi.DDS_INFINITY
+                : timeout.Ticks * 100;
+
+            int ret = DdsApi.dds_wait_for_acks(_writerHandle.NativeHandle.Handle, timeoutNs);
+            if (ret == (int)DdsApi.DdsReturnCode.Timeout) return false;
+            if (ret < 0) throw new DdsException((DdsApi.DdsReturnCode)ret, $"dds_wait_for_acks failed: {ret}");
+            return true;
+        }
+
         public event EventHandler<DdsApi.DdsPublicationMatchedStatus>? PublicationMatched
         {
             add 

@@ -6,7 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## unreleased
-nothing yet
+
+### Added
+- **`[DdsQos(AutodisposeUnregisteredInstances = ...)]`** — the writer data lifecycle
+  QoS. The default `true` keeps today's behaviour (unregistering an instance also
+  disposes it, readers see `NotAliveDisposed`). With `false`, `UnregisterInstance`
+  only releases this writer's ownership — readers see `NotAliveNoWriters` once no
+  writer is left — so a keyed instance can be handed over to another writer.
+  `DdsApi.dds_qset_writer_data_lifecycle` is imported for writers created with an
+  explicit QoS handle.
+- **`DdsWriter<T>.WaitForAcks(TimeSpan timeout)`** — wraps `dds_wait_for_acks`.
+  Returns `true` once every matched reliable reader has acknowledged everything
+  written so far (disposes and unregisters included), `false` on timeout; any other
+  failure throws `DdsException`. `DdsApi.dds_wait_for_acks` is imported too.
+- **`CycloneDDS.Schema.DdsTopicName`** — the one rule for a type's DDS topic name
+  (`Of<T>()`, `Of(Type)`, and the string core `Of(string ns, IEnumerable<string> typePath)`),
+  now shared by the runtime, the code generator and DdsMonitor.
+
+### Fixed
+- **Sender identity could stay unresolved for a delivered sample.** When the identity
+  sample had arrived but the thread-pool-driven monitor had not processed it yet (e.g.
+  under thread-pool starvation), `DdsLoan.GetSender` returned `null`. A miss now
+  drains the identity reader synchronously (under a lock) before giving up.
+- **Noisy participant dispose.** Disposing a participant with sender tracking could
+  print `[SenderRegistry] Monitor task failed: ...` (`ObjectDisposedException` or
+  `dds_take failed: BadParameter`). The registry now stops and awaits its monitor
+  before disposing the identity reader.
+- **A `[DdsTopic]` without a name now works at runtime.** `DdsWriter`/`DdsReader`
+  opened such a topic with a `null` name; they now use the documented derived name
+  (namespace + containing types + type name, joined with `_`; a whitespace name counts
+  as none). Explicit names are unchanged.
+- **The derived topic name is spelled the same everywhere.** For a nested type the
+  code generator dropped the outer type (`Ns_Inner`) and DdsMonitor kept the CLR
+  `+` (`Ns_Outer+Inner`); both now give `Ns_Outer_Inner`. Top-level types are unchanged.
 
 ## 0.3.2
 

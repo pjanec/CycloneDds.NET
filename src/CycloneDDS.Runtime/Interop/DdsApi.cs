@@ -369,6 +369,15 @@ namespace CycloneDDS.Runtime.Interop
         public const int DDS_RELIABILITY_BEST_EFFORT = 0;
         public const int DDS_RELIABILITY_RELIABLE = 1;
 
+        // Writer Data Lifecycle QoS: when autodispose is true (the DDS default), unregistering
+        // an instance also disposes it.
+        [DllImport(DLL_NAME)]
+        public static extern void dds_qset_writer_data_lifecycle(IntPtr qos, [MarshalAs(UnmanagedType.I1)] bool autodispose);
+
+        // Blocks until all matched reliable readers acknowledged everything written so far.
+        [DllImport(DLL_NAME)]
+        public static extern int dds_wait_for_acks(int writer, long timeout);
+
         // Partition QoS
         [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern void dds_qset_partition(

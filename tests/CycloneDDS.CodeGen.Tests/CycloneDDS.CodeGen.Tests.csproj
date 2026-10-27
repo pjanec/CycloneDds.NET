@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\tools\CycloneDDS.CodeGen\CycloneDDS.CodeGen.csproj" />
     <ProjectReference Include="..\..\src\CycloneDDS.Runtime\CycloneDDS.Runtime.csproj" />
+    <ProjectReference Include="..\..\tools\DdsMonitor\DdsMonitor.Engine\DdsMonitor.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>
