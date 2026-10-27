@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## unreleased
 
+Versioned **0.4** (`CycloneDDS.NET`) and **1.2** (`CycloneDDS.NET.DdsMonitor`): new native
+Cyclone DDS major version, new Linux library names and platform baseline.
+
 ### Added
 - **DDS Security** (authentication, access control, encryption). The native build enables
   Cyclone DDS's security plugins and the package ships them; they are loaded only when the
@@ -22,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   script and the runner image); `build/pack.ps1 -SkipNativeBuild` reuses staged natives.
 
 ### Changed
+- **Package metadata names the native Cyclone DDS version.** The description, release
+  notes and `native_version.json` now state the Cyclone DDS version (from its CMake
+  project), the exact upstream commit and that it is unmodified, instead of the
+  fork-relative "based on / modified from" commits.
 - **Native Cyclone DDS upgraded to 11.x** (upstream `master` as of 2026-10-22, i.e. 11.0.1
   plus later fixes), from the January 2026 pre-11.0 snapshot. Brings upstream's hardening
   against malformed network input (CDR deserialization and discovery bounds checks, stricter
