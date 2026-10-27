@@ -30,6 +30,9 @@ This single package includes:
 | Windows x64 | `ddsc.dll` | [Visual C++ Redistributable for Visual Studio 2022](https://aka.ms/vs/17/release/vc_redist.x64.exe) installed on the target machine. |
 | Linux x64 | `libddsc.so` | A glibc-based distribution (e.g. Ubuntu/Debian). No extra runtime install needed. |
 
+Only applications that turn on [DDS Security](#12-dds-security-optional) additionally need
+OpenSSL 3 at runtime; the package does not ship it.
+
 ### Working with Source Code
 
 If you want to build the project from source or contribute:
@@ -54,8 +57,8 @@ If you want to build the project from source or contribute:
 3.  **Requirements:**
     -   **.NET SDK:** the solution targets `net8.0`, but building requires the **.NET 10 SDK** (the code uses C# 13 language features). Produced binaries still run on .NET 8+.
     -   **CMake 3.16+** on your `PATH`.
-    -   **Windows:** Visual Studio 2022 with the *C++ Desktop Development* workload (for native compilation).
-    -   **Linux:** a C toolchain and `patchelf` — e.g. `sudo apt-get install -y cmake build-essential patchelf`.
+    -   **Windows:** Visual Studio 2022 with the *C++ Desktop Development* workload (for native compilation), plus OpenSSL 3.x with its development files to build the DDS Security plugins (e.g. the full "Win64 OpenSSL v3" installer from [slproweb.com](https://slproweb.com/products/Win32OpenSSL.html)). `build\native-win.ps1` looks in `C:\Program Files\OpenSSL`, `C:\Program Files\OpenSSL-Win64` and `C:\OpenSSL-Win64`; set `OPENSSL_ROOT_DIR` to override.
+    -   **Linux:** a C toolchain, `patchelf` and the OpenSSL headers — e.g. `sudo apt-get install -y cmake build-essential patchelf libssl-dev`.
 
 ## Key Features
 
@@ -546,6 +549,44 @@ This generates C# `[DdsTopic]` structs that are binary-compatible with your exis
 See [IDL Import Guide](docs/IDL-IMPORT.md) for advanced usage including multi-module support.
 
 ---
+
+## 12. DDS Security (Optional)
+
+The package includes Cyclone DDS's [DDS Security](https://cyclonedds.io/docs/cyclonedds/latest/security/index.html)
+plugins (authentication, access control, encryption). They are loaded **only** when the domain
+configuration contains a `<Security>` section; applications that don't configure security load
+nothing extra and need no OpenSSL.
+
+**Enabling it.** Point `CYCLONEDDS_URI` at a configuration with a `<Security>` section — identity
+certificate and CA, private key, permissions CA, and signed governance and permissions documents.
+See the [Cyclone DDS security configuration example](https://cyclonedds.io/docs/cyclonedds/latest/security/example_configuration.html).
+Every peer of a secured domain needs a valid identity and permissions; unauthenticated
+participants are not admitted.
+
+**OpenSSL 3 is required at runtime and is not shipped** — you choose and update it:
+
+- **Linux:** the distribution's `libcrypto.so.3` (OpenSSL 3, e.g. the `libssl3` package; standard on
+  Ubuntu 22.04+, Debian 12+, RHEL 9+).
+- **Windows:** `libcrypto-3-x64.dll` / `libssl-3-x64.dll` must be loadable by the application, in any of
+  these ways:
+  - install OpenSSL 3 (e.g. the "Win64 OpenSSL v3 Light" installer from [slproweb.com](https://slproweb.com/products/Win32OpenSSL.html)) with its `bin` folder on `PATH`
+    or its DLLs in the Windows system directory;
+  - let the build copy your OpenSSL DLLs next to the application:
+    ```xml
+    <PropertyGroup>
+      <CycloneDdsOpenSslDir>C:\Program Files\OpenSSL\bin</CycloneDdsOpenSslDir>
+    </PropertyGroup>
+    ```
+  - or load them yourself before the first secured participant is created —
+    `NativeLibrary.Load(@"...\libcrypto-3-x64.dll")` (and `libssl-3-x64.dll`); Windows then reuses
+    the loaded copies for the plugins.
+
+If OpenSSL or a plugin cannot be loaded, creating a participant on a secured domain throws a
+`DdsException` (Cyclone logs "Could not load ... library"); unsecured domains are unaffected.
+
+On Windows the plugins are copied next to your application by the package's build targets, because
+Windows looks for them there. Set `<CycloneDdsStageSecurityPlugins>false</CycloneDdsStageSecurityPlugins>`
+to opt out.
 
 ## Examples
 

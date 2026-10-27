@@ -63,6 +63,17 @@
          The in-repo shim sets it for the bindings' own projects. -->
     <CycloneDdsCodeGenActive>false</CycloneDdsCodeGenActive>
     <CycloneDdsCodeGenActive Condition="'$(CycloneDdsCodeGenEnabled)' == 'true' AND '$(CycloneDdsDisableCodeGen)' != 'true'">true</CycloneDdsCodeGenActive>
+
+    <!-- Where the win-x64 native files live. Default = packaged location
+         (buildTransitive/ -> ../runtimes/win-x64/native/). The in-repo shim points this
+         at the staged native artifacts instead. See target 6. -->
+    <CycloneDdsWinNativeDir Condition="'$(CycloneDdsWinNativeDir)' == ''">$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\</CycloneDdsWinNativeDir>
+
+    <!-- Optional (Windows): a folder holding YOUR OpenSSL 3 runtime DLLs
+         (libcrypto-3-x64.dll, libssl-3-x64.dll), e.g. "C:\Program Files\OpenSSL\bin".
+         When set, they are copied next to the application so the DDS Security plugins
+         can load. The package never ships OpenSSL itself. See target 6. -->
+    <_CycloneDdsOpenSslDir Condition="'$(CycloneDdsOpenSslDir)' != ''">$([MSBuild]::EnsureTrailingSlash('$(CycloneDdsOpenSslDir)'))</_CycloneDdsOpenSslDir>
   </PropertyGroup>
 
   <!-- Conditioned so the **\*.cs glob is not even evaluated for projects that don't run codegen. -->
@@ -229,7 +240,44 @@
     <Copy SourceFiles="@(GeneratedIdlFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
 
-  <!-- 6. Clean target — removes the generated dir AND the stamp inside it. -->
+  <!-- 6. Windows: stage the DDS Security plugins next to the application.
+          ddsc loads them with LoadLibrary("dds_security_auth.dll") - a bare name, which
+          Windows resolves from the APPLICATION directory, not from the
+          runtimes\win-x64\native\ folder NuGet uses for DllImport. Without this copy a
+          participant whose configuration contains <Security> fails with "Could not load
+          authentication library". Applications that never configure security never
+          load them.
+
+          The plugins import OpenSSL 3, which this package deliberately does not ship:
+          provide it on PATH / in the system directories, or set CycloneDdsOpenSslDir to
+          have its DLLs copied here as well.
+
+          Linux needs no counterpart: dlopen() resolves the plugins through libddsc.so's
+          RUNPATH ($ORIGIN) and libcrypto comes from the distribution.
+
+          Routed through @(Content) so Publish honours it too, not just Build. -->
+  <Target Name="IncludeCycloneDdsSecurityPlugins"
+          BeforeTargets="GetCopyToOutputDirectoryItems;AssignTargetPaths"
+          Condition="'$(CycloneDdsStageSecurityPlugins)' != 'false' AND
+                     ($(RuntimeIdentifier.StartsWith('win')) OR
+                      ('$(RuntimeIdentifier)' == '' AND '$(OS)' == 'Windows_NT'))">
+    <ItemGroup>
+      <CycloneDdsSecurityFiles Include="$(CycloneDdsWinNativeDir)dds_security_*.dll" />
+      <CycloneDdsSecurityFiles Include="$(_CycloneDdsOpenSslDir)libcrypto-*.dll;$(_CycloneDdsOpenSslDir)libssl-*.dll"
+                               Condition="'$(_CycloneDdsOpenSslDir)' != ''" />
+
+      <!-- Flat Link: these must land directly in the output dir. -->
+      <Content Include="@(CycloneDdsSecurityFiles)">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <Visible>false</Visible>
+        <Link>%(Filename)%(Extension)</Link>
+      </Content>
+    </ItemGroup>
+    <Warning Condition="'$(CycloneDdsOpenSslDir)' != '' AND !Exists('$(CycloneDdsOpenSslDir)')"
+             Text="CycloneDdsOpenSslDir is set to '$(CycloneDdsOpenSslDir)', which does not exist; OpenSSL DLLs were not copied." />
+  </Target>
+
+  <!-- 7. Clean target — removes the generated dir AND the stamp inside it. -->
   <Target Name="CycloneDDSClean" AfterTargets="Clean">
     <RemoveDir Directories="$(CycloneDdsGeneratedDir)" />
   </Target>

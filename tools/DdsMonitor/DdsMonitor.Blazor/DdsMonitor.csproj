@@ -52,12 +52,24 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>libddsc.so.0</Link>
     </Content>
+    <Content Include="$(MSBuildThisFileDirectory)../../../artifacts/native/linux-x64/libdds_security_*.so"
+             Pack="false"
+             Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>%(Filename)%(Extension)</Link>
+    </Content>
     <!-- Packing on Linux → add the win-x64 runtime library. -->
     <Content Include="$(MSBuildThisFileDirectory)../../../artifacts/native/win-x64/ddsc.dll"
              Pack="false"
              Condition="$([MSBuild]::IsOSPlatform('Linux')) AND Exists('$(MSBuildThisFileDirectory)../../../artifacts/native/win-x64/ddsc.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>ddsc.dll</Link>
+    </Content>
+    <Content Include="$(MSBuildThisFileDirectory)../../../artifacts/native/win-x64/dds_security_*.dll"
+             Pack="false"
+             Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>%(Filename)%(Extension)</Link>
     </Content>
   </ItemGroup>
 

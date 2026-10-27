@@ -37,7 +37,8 @@ jobs:
           10.0.x
 
     - name: Install native build prerequisites
-      run: sudo apt-get update && sudo apt-get install -y cmake build-essential patchelf
+      # libssl-dev: headers for building the DDS Security plugins (OpenSSL is not shipped).
+      run: sudo apt-get update && sudo apt-get install -y cmake build-essential patchelf libssl-dev
 
     - name: Display Tools Versions
       run: |
@@ -45,7 +46,28 @@ jobs:
         cmake --version
         gcc --version
 
+    # The native build only depends on the pinned Cyclone DDS submodule, our native/
+    # sources and the build script, so it is cached instead of rebuilt for every
+    # managed-code change. The key includes the runner image, so a toolchain change
+    # (new compiler / glibc / OpenSSL) also rebuilds.
+    - name: Resolve native cache key
+      id: native-key
+      shell: bash
+      # ImageOS/ImageVersion are runner environment variables, not part of the
+      # workflow's env context, so they are read here.
+      run: |
+        echo "submodule=$(git rev-parse HEAD:cyclonedds)" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache native linux-x64 build
+      id: native-cache
+      uses: actions/cache@v4
+      with:
+        path: artifacts/native/linux-x64
+        key: native-linux-x64-${{ steps.native-key.outputs.image }}-${{ steps.native-key.outputs.submodule }}-${{ hashFiles('native/**', 'build/native-linux.sh') }}
+
     - name: Build Native (linux-x64)
+      if: steps.native-cache.outputs.cache-hit != 'true'
       shell: bash
       run: build/native-linux.sh Release
 
@@ -105,9 +127,26 @@ jobs:
         name: native-linux-x64
         path: artifacts/native/linux-x64/
 
+    # Same native build cache as the Linux job. OpenSSL is only needed to BUILD the
+    # security plugins (the image ships it under C:\Program Files\OpenSSL); it is not
+    # packaged. The security tests preload it from there at test time.
+    - name: Resolve native cache key
+      id: native-key
+      shell: pwsh
+      run: |
+        "submodule=$(git rev-parse HEAD:cyclonedds)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "image=$($env:ImageOS)-$($env:ImageVersion)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+    - name: Cache native win-x64 build
+      id: native-cache
+      uses: actions/cache@v4
+      with:
+        path: artifacts/native/win-x64
+        key: native-win-x64-${{ steps.native-key.outputs.image }}-${{ steps.native-key.outputs.submodule }}-${{ hashFiles('native/**', 'build/native-win.ps1') }}
+
     - name: Build, Test, and Pack
       shell: pwsh
-      run: .\build\pack.ps1
+      run: .\build\pack.ps1 ${{ steps.native-cache.outputs.cache-hit == 'true' && '-SkipNativeBuild' || '' }}
 
     - name: Smoke-test the packed package (Windows)
       shell: pwsh

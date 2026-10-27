@@ -42,6 +42,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- DDS Security test fixtures (see Resources/Security/generate.sh). -->
+    <None Include="Resources\Security\*.pem;Resources\Security\*.p7s" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Folder Include="Generated\AdvancedTypes\" />
     <Folder Include="Generated\Probe\" />
   </ItemGroup>

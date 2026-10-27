@@ -39,6 +39,47 @@ if (!(Get-Command cmake -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
+# ===================================================================================
+# Locate OpenSSL - needed to BUILD the DDS Security plugins (ENABLE_SECURITY=ON).
+#
+# OpenSSL is only a build-time dependency here: with ENABLE_TCP_TLS=OFF ddsc.dll does
+# not import it, and the OpenSSL DLLs are deliberately NOT shipped. Applications that
+# configure <Security> provide their own OpenSSL 3 at runtime (see README).
+#
+# The GitHub windows-latest image ships OpenSSL 3.x under "C:\Program Files\OpenSSL".
+# Passing -DOPENSSL_ROOT_DIR explicitly makes a missing install fail here, with an
+# actionable message, rather than deep inside the build.
+# ===================================================================================
+$opensslCandidates = @()
+if ($env:OPENSSL_ROOT_DIR) { $opensslCandidates += $env:OPENSSL_ROOT_DIR }
+$opensslCandidates += @(
+    "C:\Program Files\OpenSSL",
+    "C:\Program Files\OpenSSL-Win64",
+    "C:\OpenSSL-Win64"
+)
+
+$OpenSslRoot = $null
+foreach ($candidate in $opensslCandidates) {
+    if (Test-Path (Join-Path $candidate "include\openssl\ssl.h")) {
+        $OpenSslRoot = (Resolve-Path $candidate).Path
+        break
+    }
+}
+
+if (-not $OpenSslRoot) {
+    throw @"
+OpenSSL development files were not found; they are needed to build the DDS Security plugins.
+
+Searched:
+  $($opensslCandidates -join "`n  ")
+
+Install OpenSSL 3.x with headers and libraries (e.g. the full "Win64 OpenSSL v3"
+installer from https://slproweb.com/products/Win32OpenSSL.html), or point OPENSSL_ROOT_DIR at an existing installation.
+"@
+}
+
+Write-Host "Using OpenSSL at: $OpenSslRoot" -ForegroundColor Green
+
 # Configure CMake
 Write-Host "`n[1/3] Configuring CMake..." -ForegroundColor Yellow
 Push-Location $BuildDir
@@ -63,9 +104,13 @@ try {
         "-DBUILD_IDLC=ON",
         "-DBUILD_TESTING=OFF",
         "-DBUILD_EXAMPLES=OFF",
-        "-DENABLE_SSL=OFF",
         "-DENABLE_SHM=OFF",
-        "-DENABLE_SECURITY=OFF"
+        # DDS Security plugins on; TCP+TLS off so ddsc.dll itself does not import OpenSSL.
+        "-DENABLE_SECURITY=ON",
+        "-DENABLE_SSL=ON",
+        "-DENABLE_TCP_TLS=OFF",
+        # Forward slashes: CMake treats backslashes in -D values as escapes.
+        "-DOPENSSL_ROOT_DIR=$($OpenSslRoot -replace '\\', '/')"
     )
 
     foreach ($gen in $cmakeGenerators) {
@@ -141,6 +186,16 @@ foreach ($file in $RequiredFiles) {
     } else {
         Write-Warning "  [-] Missing $file in output!"
     }
+}
+
+# DDS Security plugins. ddsc.dll loads these by bare name (LoadLibrary) only when the
+# domain configuration has a <Security> section. They import OpenSSL (libcrypto-3-x64.dll),
+# which is NOT shipped: the application provides it (see README).
+foreach ($file in @("dds_security_auth.dll", "dds_security_ac.dll", "dds_security_crypto.dll")) {
+    $src = Join-Path $BinDir $file
+    if (-not (Test-Path $src)) { throw "Missing DDS Security plugin $file in $BinDir." }
+    Copy-Item -Path $src -Destination $ArtifactsDir -Force
+    Write-Host "  [+] Copied $file" -ForegroundColor Green
 }
 
 # Can we locate VC++ runtime?

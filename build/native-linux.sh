@@ -42,6 +42,12 @@ if ! command -v gcc &> /dev/null && ! command -v cc &> /dev/null; then
     exit 1
 fi
 
+if ! [ -f /usr/include/openssl/ssl.h ] && ! pkg-config --exists openssl 2>/dev/null; then
+    echo "ERROR: OpenSSL development files not found (needed for the DDS Security plugins)." >&2
+    echo "       Run: sudo apt-get install -y libssl-dev" >&2
+    exit 1
+fi
+
 if [ ! -d "$CYCLONEDDS_DIR" ] || [ -z "$(ls -A "$CYCLONEDDS_DIR" 2>/dev/null)" ]; then
     echo "ERROR: Cyclone DDS source directory is missing or empty: $CYCLONEDDS_DIR" >&2
     echo "       Run: git submodule update --init --recursive" >&2
@@ -62,9 +68,14 @@ cmake -S "$SOURCE_DIR" -B "$BUILD_DIR" \
     -DBUILD_IDLC=ON \
     -DBUILD_TESTING=OFF \
     -DBUILD_EXAMPLES=OFF \
-    -DENABLE_SSL=OFF \
     -DENABLE_SHM=OFF \
-    -DENABLE_SECURITY=OFF
+    -DENABLE_SECURITY=ON \
+    -DENABLE_SSL=ON \
+    -DENABLE_TCP_TLS=OFF
+# DDS Security: the plugins (libdds_security_*.so) link OpenSSL, but with
+# ENABLE_TCP_TLS=OFF libddsc itself does not, so applications that never configure
+# <Security> have no OpenSSL dependency at all. Building needs the OpenSSL headers
+# (libssl-dev); at runtime the plugins use the distribution's libcrypto.so.3.
 
 # ----------------------------------------------------------------
 # [2/3] Build & Install
@@ -122,6 +133,19 @@ copy_lib libddsc
 copy_lib libcycloneddsidl
 copy_lib libcycloneddsidlc
 copy_lib libcycloneddsidljson
+
+# DDS Security plugins. libddsc dlopen()s them by bare name only when the domain
+# configuration has a <Security> section; dlopen resolves that through libddsc's
+# RUNPATH, which is set to $ORIGIN below, so they are staged flat next to it.
+for plugin in libdds_security_auth libdds_security_ac libdds_security_crypto; do
+    if [ -f "$LIB_DIR/${plugin}.so" ]; then
+        cp -f "$LIB_DIR/${plugin}.so" "$ARTIFACTS_DIR/${plugin}.so"
+        echo "  [+] ${plugin}.so"
+    else
+        echo "  [-] Missing ${plugin}.so in $LIB_DIR" >&2
+        exit 1
+    fi
+done
 
 # IDL compiler executable.
 if [ -f "$BIN_DIR/idlc" ]; then

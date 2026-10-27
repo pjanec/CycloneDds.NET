@@ -26,6 +26,10 @@
     <CycloneDdsCodeGenProject>$(MSBuildThisFileDirectory)CycloneDDS.CodeGen.csproj</CycloneDdsCodeGenProject>
     <CycloneDdsCodeGenPath Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)bin\Release\net8.0\CycloneDDS.CodeGen.dll</CycloneDdsCodeGenPath>
     <CycloneDdsCodeGenPath Condition="'$(Configuration)' != 'Release'">$(MSBuildThisFileDirectory)bin\Debug\net8.0\CycloneDDS.CodeGen.dll</CycloneDdsCodeGenPath>
+
+    <!-- In-repo the win-x64 native files sit in the staged artifacts, not in a
+         package's runtimes/ layout. -->
+    <CycloneDdsWinNativeDir>$(MSBuildThisFileDirectory)..\..\artifacts\native\win-x64\</CycloneDdsWinNativeDir>
   </PropertyGroup>
 
   <Import Project="$(MSBuildThisFileDirectory)..\..\build\targets\CycloneDDS.targets" />

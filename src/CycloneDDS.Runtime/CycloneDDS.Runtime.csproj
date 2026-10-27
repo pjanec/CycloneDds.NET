@@ -24,6 +24,15 @@
     <None Include="..\..\artifacts\native\linux-x64\libddsc.so.0" Pack="true" PackagePath="runtimes/linux-x64/native"
           Condition="Exists('..\..\artifacts\native\linux-x64\libddsc.so.0')" />
 
+    <!-- Runtime: DDS Security plugins. ddsc loads them by bare name, and only when the
+         domain configuration has a <Security> section. Linux: dlopen() resolves them
+         through libddsc.so's RUNPATH ($ORIGIN), so sitting next to it here is enough.
+         Windows: LoadLibrary() searches the application directory, so they are also
+         copied there by IncludeCycloneDdsSecurityPlugins in CycloneDDS.targets.
+         They need OpenSSL 3 at runtime, which is NOT shipped (see README). -->
+    <None Include="..\..\artifacts\native\win-x64\dds_security_*.dll" Pack="true" PackagePath="runtimes/win-x64/native" />
+    <None Include="..\..\artifacts\native\linux-x64\libdds_security_*.so" Pack="true" PackagePath="runtimes/linux-x64/native" />
+
     <!-- Build: Targets (buildTransitive → imported by direct AND transitive consumers) -->
     <None Include="..\..\build\targets\CycloneDDS.targets" Pack="true" PackagePath="buildTransitive/CycloneDDS.NET.targets" />
     <!-- Build: direct-reference marker (build/ → imported ONLY by direct consumers).
@@ -42,7 +51,8 @@
          idlc is Exists-guarded for the same reason. -->
     <None Include="..\..\artifacts\native\linux-x64\idlc" Pack="true" PackagePath="tools/"
           Condition="Exists('..\..\artifacts\native\linux-x64\idlc')" />
-    <None Include="..\..\artifacts\native\linux-x64\*.so" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\artifacts\native\linux-x64\*.so" Pack="true" PackagePath="tools/"
+          Exclude="..\..\artifacts\native\linux-x64\libdds_security_*.so" />
     <None Include="..\..\artifacts\native\linux-x64\*.so.*" Pack="true" PackagePath="tools/" />
 
     <!-- Tools: Shared Managed Libraries -->

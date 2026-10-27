@@ -12,8 +12,16 @@
 #   This is what runs in CI to produce release artifacts.
 #
 # USAGE:
-#   .\build\pack.ps1
+#   .\build\pack.ps1 [-SkipNativeBuild]
 # ===================================================================================
+
+param (
+    # Reuse the native assets already staged in artifacts/native/win-x64 instead of
+    # rebuilding them. CI passes this when its native build cache hits; the contents
+    # are validated below so a partial or stale cache fails loudly instead of
+    # producing a package with pieces missing.
+    [switch]$SkipNativeBuild
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -34,10 +42,33 @@ Write-Host "  Unified Build & Pack" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
 # 1. Native Build
-Write-Host "`n[1/6] Building Native Assets..." -ForegroundColor Yellow
-$NativeScript = Join-Path $PSScriptRoot "native-win.ps1"
-& $NativeScript -Configuration Release
-if ($LASTEXITCODE -ne 0) { throw "Native build failed." }
+if ($SkipNativeBuild) {
+    Write-Host "`n[1/6] Reusing prebuilt native assets (-SkipNativeBuild)..." -ForegroundColor Yellow
+
+    $NativeDir = Join-Path $ArtifactsDir "native\win-x64"
+    $Expected = @(
+        "ddsc.dll",
+        "idlc.exe",
+        "cycloneddsidl.dll",
+        "cycloneddsidlc.dll",
+        "cycloneddsidljson.dll",
+        "dds_security_auth.dll",
+        "dds_security_ac.dll",
+        "dds_security_crypto.dll"
+    )
+    $Missing = $Expected | Where-Object { -not (Test-Path (Join-Path $NativeDir $_)) }
+    if ($Missing) {
+        throw "-SkipNativeBuild was requested but $NativeDir is missing: $($Missing -join ', '). Re-run without -SkipNativeBuild."
+    }
+
+    Write-Host "  [+] Native assets present in $NativeDir" -ForegroundColor Green
+}
+else {
+    Write-Host "`n[1/6] Building Native Assets..." -ForegroundColor Yellow
+    $NativeScript = Join-Path $PSScriptRoot "native-win.ps1"
+    & $NativeScript -Configuration Release
+    if ($LASTEXITCODE -ne 0) { throw "Native build failed." }
+}
 
 # 2. Restore
 Write-Host "`n[2/6] Restoring (core - examples excluded)..." -ForegroundColor Yellow

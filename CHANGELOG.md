@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## unreleased
 
+### Added
+- **DDS Security** (authentication, access control, encryption). The native build enables
+  Cyclone DDS's security plugins and the package ships them; they are loaded only when the
+  domain configuration contains a `<Security>` section, so nothing changes for applications
+  that don't configure it. TCP+TLS stays off, so `ddsc`/`libddsc` themselves do **not**
+  depend on OpenSSL. The plugins need OpenSSL 3 at runtime, which is **not shipped**: Linux
+  uses the distribution's `libcrypto.so.3`; on Windows the application provides it (on `PATH`,
+  via the new `CycloneDdsOpenSslDir` MSBuild property, or preloaded). On Windows the build
+  targets copy the plugins next to the application (`CycloneDdsStageSecurityPlugins=false`
+  opts out). Building the natives now needs the OpenSSL development files.
+  Based on [pjanec/CycloneDds.NET#4](https://github.com/pjanec/CycloneDds.NET/pull/4).
+- CI caches the native builds (keyed on the Cyclone DDS revision, `native/`, the build
+  script and the runner image); `build/pack.ps1 -SkipNativeBuild` reuses staged natives.
+
 ### Changed
 - **Native Cyclone DDS upgraded to 11.x** (upstream `master` as of 2026-10-22, i.e. 11.0.1
   plus later fixes), from the January 2026 pre-11.0 snapshot. Brings upstream's hardening
