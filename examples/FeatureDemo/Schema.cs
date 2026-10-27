@@ -109,7 +109,9 @@ public partial struct SensorData
 /// Features: Client-side predicates, efficient data selection.
 /// </summary>
 [DdsTopic("StockTick")]
-[DdsQos(Reliability = DdsReliability.Reliable)]
+// The topic is not keyed, so all symbols share one instance: KEEP_LAST 1 (the default)
+// would leave a reader only the last tick of each burst (e.g. TSLA). Keep a backlog.
+[DdsQos(Reliability = DdsReliability.Reliable, HistoryDepth = 100)]
 public partial struct StockTick
 {
     /// <summary>Unique tick identifier</summary>

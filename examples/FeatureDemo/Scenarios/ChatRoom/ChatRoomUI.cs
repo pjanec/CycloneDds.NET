@@ -28,17 +28,21 @@ public class ChatRoomUI
             .BorderColor(isMe ? Color.Green : Color.Blue)
             .RoundedBorder();
 
-        // Workaround for alignment since Panel alignment in console is tricky without a Padder
-        // or Grid. We'll simply print it.
-        
-        // For right alignment (Me), we can pad left.
-        if (isMe)
+        // Offset the bubble to its side by padding the other side. Only when the console is
+        // wide enough: on a narrow (or redirected) console the padding would leave no room
+        // and Spectre.Console throws, so the bubble is printed as is.
+        const int BubbleOffset = 20;
+        if (AnsiConsole.Profile.Width < BubbleOffset * 3)
         {
-             AnsiConsole.Write(new Padder(panel).PadLeft(20));
+             AnsiConsole.Write(panel);
+        }
+        else if (isMe)
+        {
+             AnsiConsole.Write(new Padder(panel).PadLeft(BubbleOffset));
         }
         else
         {
-             AnsiConsole.Write(new Padder(panel).PadRight(20));
+             AnsiConsole.Write(new Padder(panel).PadRight(BubbleOffset));
         }
     }
 }

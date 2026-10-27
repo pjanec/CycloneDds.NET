@@ -79,6 +79,10 @@ Cyclone DDS major version, new Linux library names and platform baseline.
   bundles `*.so.*`.
 
 ### Fixed
+- **FeatureDemo sample:** the stock ticker topic kept only the last tick (unkeyed topic with
+  the default KEEP_LAST 1), so subscribers mostly saw one symbol; it now keeps a backlog of
+  100. The chat room UI no longer throws on a narrow or redirected console. (Both were
+  failing `FeatureDemo.Tests`.)
 - **Sender identity could stay unresolved for a delivered sample.** When the identity
   sample had arrived but the thread-pool-driven monitor had not processed it yet (e.g.
   under thread-pool starvation), `DdsLoan.GetSender` returned `null`. A miss now
