@@ -18,7 +18,9 @@ set -euo pipefail
 CONFIG="${1:-Release}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-SOURCE_DIR="$REPO_ROOT/cyclonedds"
+# native/ wraps the unmodified Cyclone DDS submodule (cyclonedds/) plus our idljson plugin.
+SOURCE_DIR="$REPO_ROOT/native"
+CYCLONEDDS_DIR="$REPO_ROOT/cyclonedds"
 BUILD_DIR="$REPO_ROOT/build/native-linux"
 INSTALL_DIR="$REPO_ROOT/artifacts/native-install-linux"
 ARTIFACTS_DIR="$REPO_ROOT/artifacts/native/linux-x64"
@@ -40,8 +42,8 @@ if ! command -v gcc &> /dev/null && ! command -v cc &> /dev/null; then
     exit 1
 fi
 
-if [ ! -d "$SOURCE_DIR" ] || [ -z "$(ls -A "$SOURCE_DIR" 2>/dev/null)" ]; then
-    echo "ERROR: Native source directory is missing or empty: $SOURCE_DIR" >&2
+if [ ! -d "$CYCLONEDDS_DIR" ] || [ -z "$(ls -A "$CYCLONEDDS_DIR" 2>/dev/null)" ]; then
+    echo "ERROR: Cyclone DDS source directory is missing or empty: $CYCLONEDDS_DIR" >&2
     echo "       Run: git submodule update --init --recursive" >&2
     exit 1
 fi

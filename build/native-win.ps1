@@ -22,7 +22,8 @@ Write-Host "============================================================" -Foreg
 
 # Paths
 $RepoRoot = $PSScriptRoot | Split-Path -Parent
-$SourceDir = Join-Path $RepoRoot "cyclonedds"
+# native/ wraps the unmodified Cyclone DDS submodule (cyclonedds/) plus our idljson plugin.
+$SourceDir = Join-Path $RepoRoot "native"
 $BuildDir = Join-Path $RepoRoot "build/native"
 $InstallDir = Join-Path $RepoRoot "artifacts/native-install" # Intermediate install dir
 $ArtifactsDir = Join-Path $RepoRoot "artifacts/native/win-x64"

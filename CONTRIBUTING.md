@@ -18,6 +18,11 @@ Thank you for your interest in contributing to CycloneDDS.NET! We welcome contri
    cd CycloneDds.NET
    ```
 
+   If you cloned before the submodule moved from the `pjanec/cyclonedds` fork to upstream, re-point it once:
+   ```bash
+   git submodule sync && git submodule update --init --recursive
+   ```
+
 2. Build the native Cyclone DDS libraries (one-time setup):
    ```powershell
    .\build\native-win.ps1
@@ -41,7 +46,8 @@ Thank you for your interest in contributing to CycloneDDS.NET! We welcome contri
   - `CycloneDDS.Schema/` - Schema definition attributes
 - `tools/` - Build-time code generation tools
 - `tests/` - Unit and integration tests
-- `cyclonedds/` - Native Cyclone DDS submodule
+- `cyclonedds/` - Native Cyclone DDS submodule (unmodified upstream `eclipse-cyclonedds/cyclonedds`)
+- `native/` - CMake project that builds `cyclonedds/` together with `native/idljson`, the `idlc -l json` plugin the code generator relies on
 - `build/` - Build scripts
 
 ## Making Changes

@@ -1,4 +1,4 @@
 [submodule "cyclonedds"]
 	path = cyclonedds
-	url = https://github.com/pjanec/cyclonedds.git
-	branch = pj/idlcjson
+	url = https://github.com/eclipse-cyclonedds/cyclonedds.git
+	branch = master

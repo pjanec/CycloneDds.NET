@@ -20,4 +20,8 @@ Copyright (c) Eclipse Foundation and Contributors
 The full license text is available in the cyclonedds subdirectory of this
 repository or at the URLs above.
 
+The idljson IDL compiler plugin (native/idljson in this repository) is derived
+from the Cyclone DDS IDL compiler sources and is distributed under the same
+license.
+
 ================================================================================

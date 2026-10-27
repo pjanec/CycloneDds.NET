@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The wire protocol is unchanged: nodes on the previous package and on this one interoperate.
   Generated type descriptors now carry the new required-prefix / try-construct metadata, so
   generated code must be used with the native library of the same package (as before).
+- **The `cyclonedds` submodule now tracks the official `eclipse-cyclonedds/cyclonedds`**
+  repository, unmodified, instead of the `pjanec/cyclonedds` fork. The only fork change,
+  the `idljson` IDL compiler plugin used by the code generator, now lives in this
+  repository under `native/idljson` and is built next to Cyclone DDS by the new
+  `native/CMakeLists.txt` (used by both native build scripts). Its fork-era workarounds
+  for recursive structs and union default labels are superseded by upstream fixes.
+  Existing clones: `git submodule sync && git submodule update --init --recursive`.
 - On Linux the native libraries now carry the SONAME `.so.11` (was `.so.0`);
   `build/native-linux.sh` stages each library under its real SONAME and the package
   bundles `*.so.*`.
