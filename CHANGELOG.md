@@ -89,6 +89,12 @@ Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 0.4 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- **DdsMonitor headless mode no longer grabs port 5000.** Headless record/replay serves no UI,
+  but its web host still bound Kestrel's default `http://localhost:5000`, so a second headless
+  instance (or anything else on 5000) failed to start (the host aborted). It now binds a free
+  port. `build/test-package.sh` (run by CI's linux-verify job against the cross-platform
+  package) now also runs a DDS round trip between two installed `ddsmonitor` instances, and the
+  same with DDS Security on (secured peers exchange data, an unsecured one gets nothing).
 - **Linux: the SONAME file now ships where the loader looks.** Since the Cyclone DDS 11 upgrade `libddsc` carries SONAME `.so.11`, but
   the pack items for `runtimes/linux-x64/native` (CycloneDDS.NET) and for the ddsmonitor tool still named `libddsc.so.0`, so they matched
   nothing and silently packed nothing (`libddsc.so.11` only reached `tools/`). Both now use a `libddsc.so.*` glob, so the SONAME file

@@ -74,6 +74,14 @@ if (!isHeadless)
         : GetFreePort();
     builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 }
+else
+{
+    // Headless mode serves nothing, but the web host still starts Kestrel, which would
+    // otherwise fall back to its default http://localhost:5000 — so a second headless
+    // instance (or anything else on 5000) made the host fail to start. Port 0 lets the
+    // OS pick a free one.
+    builder.WebHost.UseUrls("http://127.0.0.1:0");
+}
 
 var app = builder.Build();
 
