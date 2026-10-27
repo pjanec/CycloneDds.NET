@@ -1,0 +1,50 @@
+<Project>
+  <!--
+    Records which native Cyclone DDS a package was built from, at pack time:
+      - in the package Description and ReleaseNotes, and
+      - as native_version.json in the package root.
+    The version comes from Cyclone DDS's own CMakeLists.txt (project VERSION), so it
+    needs no git history; the commit is the checked-out cyclonedds submodule. Note that
+    an upstream master snapshot keeps the last release's version until the next one.
+    Imported by the packable projects that ship the native libraries.
+  -->
+  <Target Name="GetNativeVersionInfo" BeforeTargets="GenerateNuspec;Pack">
+    <PropertyGroup>
+      <NativeDir>$(MSBuildThisFileDirectory)..\..\cyclonedds</NativeDir>
+      <UpstreamRepoUrl>https://github.com/eclipse-cyclonedds/cyclonedds</UpstreamRepoUrl>
+      <_CycloneCMakeLists>$([System.IO.File]::ReadAllText('$(NativeDir)\CMakeLists.txt'))</_CycloneCMakeLists>
+      <NativeVersion>$([System.Text.RegularExpressions.Regex]::Match($(_CycloneCMakeLists), 'project\(CycloneDDS\s+VERSION\s+([0-9.]+)').Result('$1'))</NativeVersion>
+    </PropertyGroup>
+
+    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" WorkingDirectory="$(NativeDir)" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="NativeCommit" />
+    </Exec>
+
+    <PropertyGroup>
+      <NativeVersionInfo>
+{
+  "CycloneDDS": {
+    "Repository": "$(UpstreamRepoUrl)",
+    "Version": "$(NativeVersion)",
+    "Commit": "$(NativeCommit)",
+    "Modified": false
+  },
+  "IdlJsonPlugin": "native/idljson in https://github.com/pjanec/CycloneDds.NET"
+}
+      </NativeVersionInfo>
+      <NativeVersionFile>$(IntermediateOutputPath)native_version.json</NativeVersionFile>
+      <_NativeVersionText>Native: Eclipse Cyclone DDS $(NativeVersion), unmodified ($(UpstreamRepoUrl) commit $(NativeCommit)), plus the idljson IDL compiler plugin from this repository.</_NativeVersionText>
+    </PropertyGroup>
+
+    <WriteLinesToFile File="$(NativeVersionFile)" Lines="$(NativeVersionInfo)" Overwrite="true" />
+
+    <ItemGroup>
+      <None Include="$(NativeVersionFile)" Pack="true" PackagePath="/" Visible="false" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <Description>$(Description)%0a%0a$(_NativeVersionText)</Description>
+      <PackageReleaseNotes>$(PackageReleaseNotes)%0a$(_NativeVersionText)</PackageReleaseNotes>
+    </PropertyGroup>
+  </Target>
+</Project>
