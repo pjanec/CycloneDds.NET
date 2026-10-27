@@ -60,6 +60,17 @@ jobs:
     # the runner (ubuntu-latest): a binary only runs on distributions whose glibc is at
     # least the build host's, and ubuntu-latest's glibc 2.39 would exclude Ubuntu 22.04,
     # Debian 12 and RHEL 9. Everything else (managed build, tests) stays on the runner.
+    # The container's downloaded .deb packages are cached between runs: package download
+    # speed from GitHub runners varies a lot (seen: 84 kB/s, i.e. ~20 min for ~100 MB),
+    # and with the cache a run downloads nothing once a previous run succeeded.
+    - name: Cache apt packages for the native build container
+      if: steps.native-cache.outputs.cache-hit != 'true'
+      uses: actions/cache@v4
+      with:
+        path: .apt-cache
+        key: apt-ubuntu22.04-${{ hashFiles('.github/workflows/ci.yml') }}
+        restore-keys: apt-ubuntu22.04-
+
     # libssl-dev: headers for building the DDS Security plugins (OpenSSL is not shipped).
     - name: Build Native (linux-x64, in ubuntu:22.04)
       if: steps.native-cache.outputs.cache-hit != 'true'
@@ -68,17 +79,22 @@ jobs:
       timeout-minutes: 20
       shell: bash
       run: |
-        docker run --rm -v "$PWD:/src" -w /src ubuntu:22.04 bash -euc '
+        mkdir -p .apt-cache
+        docker run --rm -v "$PWD:/src" -v "$PWD/.apt-cache:/var/cache/apt/archives" -w /src ubuntu:22.04 bash -euc '
           # Use the Azure-hosted Ubuntu mirror the GitHub runners themselves use: the
           # default archive.ubuntu.com can be very slow from GitHub (seen: 15 min).
           sed -i -e "s|http://archive.ubuntu.com|http://azure.archive.ubuntu.com|g" \
                  -e "s|http://security.ubuntu.com|http://azure.archive.ubuntu.com|g" /etc/apt/sources.list
+          # Keep downloaded packages (the image deletes them after install by default).
+          rm -f /etc/apt/apt.conf.d/docker-clean
           apt-get update
+          # Cyclone DDS and native/ are plain C: gcc + libc6-dev + make instead of
+          # build-essential, which also pulls in g++, perl and dpkg-dev.
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            cmake build-essential patchelf ca-certificates libssl-dev pkg-config
+            cmake gcc libc6-dev make patchelf ca-certificates libssl-dev pkg-config
           build/native-linux.sh Release'
         # The container ran as root; hand the outputs back to the runner user.
-        sudo chown -R "$(id -u):$(id -g)" artifacts build
+        sudo chown -R "$(id -u):$(id -g)" artifacts build .apt-cache
 
     # Guard the glibc baseline: fail if any staged binary needs a newer glibc than
     # ubuntu:22.04 provides (2.35), e.g. after a base image or toolchain change.

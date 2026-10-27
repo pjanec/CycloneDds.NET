@@ -63,3 +63,6 @@ test-output/
 **/Generated/*
 check-*/
 cyclonedds.log
+
+# CI: apt package cache of the native build container
+.apt-cache/
