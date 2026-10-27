@@ -77,6 +77,12 @@ Cyclone DDS major version, new Linux library names and platform baseline.
 - On Linux the native libraries now carry the SONAME `.so.11` (was `.so.0`);
   `build/native-linux.sh` stages each library under its real SONAME and the package
   bundles `*.so.*`.
+- **The code generator refuses an enum whose values do not fit the IDL enum, with a message in C# terms.** Cyclone DDS 11's
+  `idlc` reads an enumerator as a **signed** value of `@bit_bound` bits, so a `byte` enum holds 0..127 (not 0..255), a `ushort`
+  enum 0..32767 and a `uint` enum 0..2147483647. Such an enum used to reach `idlc` and fail there with `Enumerator overflow` /
+  `@value(…) cannot be applied to 'enumerator' element`; the generator now stops first and names the C# type, the member(s), the
+  allowed range and the two ways out (lower the value, or widen the underlying type — which changes the enum's size on the wire).
+  It does not widen silently: the wire size is part of the contract. A `[Flags]` enum on `uint` with the top bit set cannot be an IDL enum.
 
 ### Fixed
 - **FeatureDemo sample:** the stock ticker topic kept only the last tick (unkeyed topic with

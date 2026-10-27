@@ -525,5 +525,79 @@ namespace Me1
             // Should cast directly: (T.EVal)source.Val
             Assert.Contains("(T.EVal)source.Val", code);
         }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // IdlEmitter — enum values that do not fit the IDL enum's SIGNED range
+        // Cyclone DDS 11's idlc reads an enumerator as a SIGNED value of @bit_bound bits (a `byte` enum holds
+        // 0..127, not 0..255; a `uint` enum holds 0..2147483647). The generator must say so in C# terms instead of
+        // letting idlc fail with "Enumerator overflow" / "@value(...) cannot be applied to 'enumerator' element".
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static InvalidOperationException EmitExpectingFailure(string name, int bitBound, string[] members, long[] values, string tempDir)
+        {
+            var registry = new GlobalTypeRegistry();
+            registry.RegisterLocal(new TypeInfo
+            {
+                Name = name, Namespace = "Me1", IsEnum = true, EnumBitBound = bitBound,
+                EnumMembers = new List<string>(members), EnumMemberValues = new List<long>(values)
+            }, "src.cs", "File1", "Me1");
+            var outputDir = Path.Combine(tempDir, "idl_overflow_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(outputDir);
+            return Assert.Throws<InvalidOperationException>(() => new IdlEmitter().EmitIdlFiles(registry, outputDir));
+        }
+
+        [Fact]
+        public void IdlEmitter_ByteEnumHolding255_FailsWithAClearMessageNamingTypeMemberAndRange()
+        {
+            var ex = EmitExpectingFailure("EOrigin", 8, new[] { "None", "Self" }, new long[] { 0, 255 }, _tempDir);
+
+            Assert.Contains("Me1.EOrigin", ex.Message);          // the C# type, fully qualified
+            Assert.Contains("Self", ex.Message);                  // the member
+            Assert.Contains("255", ex.Message);                   // its value
+            Assert.Contains("127", ex.Message);                   // the largest value the enum can hold
+            Assert.Contains("signed", ex.Message);                // WHY — idlc reads the value as signed
+            Assert.Contains("ushort", ex.Message);                // what to do about it
+        }
+
+        [Fact]
+        public void IdlEmitter_UShortEnumHolding40000_Fails()
+        {
+            var ex = EmitExpectingFailure("EWide", 16, new[] { "A", "Big" }, new long[] { 0, 40000 }, _tempDir);
+            Assert.Contains("Me1.EWide", ex.Message);
+            Assert.Contains("40000", ex.Message);
+            Assert.Contains("32767", ex.Message);
+        }
+
+        [Fact]
+        public void IdlEmitter_UIntEnumHoldingAllBitsSet_Fails()
+        {
+            var ex = EmitExpectingFailure("EMask", 32, new[] { "None", "All" }, new long[] { 0, 0xFFFFFFFFL }, _tempDir);
+            Assert.Contains("Me1.EMask", ex.Message);
+            Assert.Contains("All", ex.Message);
+            Assert.Contains("4294967295", ex.Message);
+            Assert.Contains("2147483647", ex.Message);
+        }
+
+        [Fact]
+        public void IdlEmitter_EnumsAtTheEdgeOfTheSignedRange_StillEmit()
+        {
+            var registry = new GlobalTypeRegistry();
+            registry.RegisterLocal(new TypeInfo
+            {
+                Name = "EEdge", Namespace = "Me1", IsEnum = true, EnumBitBound = 8,
+                EnumMembers = new List<string> { "None", "Max" }, EnumMemberValues = new List<long> { 0, 127 }
+            }, "src.cs", "File1", "Me1");
+            registry.RegisterLocal(new TypeInfo
+            {
+                Name = "ESigned", Namespace = "Me1", IsEnum = true, EnumBitBound = 8,
+                EnumMembers = new List<string> { "Zero", "Low" }, EnumMemberValues = new List<long> { 0, -128 }   // an sbyte enum
+            }, "src.cs", "File2", "Me1");
+            var outputDir = Path.Combine(_tempDir, "idl_edge");
+            Directory.CreateDirectory(outputDir);
+
+            new IdlEmitter().EmitIdlFiles(registry, outputDir);
+
+            Assert.Contains("@value(127) Max", File.ReadAllText(Path.Combine(outputDir, "File1.idl")));
+        }
     }
 }

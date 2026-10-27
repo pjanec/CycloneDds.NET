@@ -502,6 +502,10 @@ namespace CycloneDDS.CodeGen
              string indent = GetIndent(indentLevel);
              string memberIndent = GetIndent(indentLevel + 1);
 
+             // Cyclone DDS 11 idlc reads an enumerator as a SIGNED value of @bit_bound bits (a `byte` enum holds 0..127, a `uint` enum
+             // 0..2147483647). Say so here, in C# terms, instead of letting idlc fail later with "Enumerator overflow".
+             ValidateEnumValuesFitSignedRange(type);
+
              // ME1-T01: emit @bit_bound annotation for narrow enums (8-bit or 16-bit backing)
              if (type.EnumBitBound == 8)
                  sb.AppendLine($"{indent}@bit_bound(8)");
@@ -522,6 +526,37 @@ namespace CycloneDDS.CodeGen
              }
              
              sb.AppendLine($"{indent}}};");
+        }
+
+        /// <summary>
+        /// An IDL enum with <c>@bit_bound(N)</c> holds the SIGNED range <c>-2^(N-1) .. 2^(N-1)-1</c> (Cyclone DDS 11's idlc). A C# enum whose
+        /// underlying type is unsigned or wider than its values suggest can declare members outside it; fail here with a message that names the
+        /// C# type, the member and what to change.
+        /// </summary>
+        private static void ValidateEnumValuesFitSignedRange(TypeInfo type)
+        {
+            int bits = type.EnumBitBound;
+            long max = (1L << (bits - 1)) - 1;
+            long min = -(1L << (bits - 1));
+
+            var offenders = new List<string>();
+            for (int i = 0; i < type.EnumMembers.Count && i < type.EnumMemberValues.Count; i++)
+            {
+                long v = type.EnumMemberValues[i];
+                if (v < min || v > max) offenders.Add($"{type.EnumMembers[i]} = {v}");
+            }
+            if (offenders.Count == 0) return;
+
+            string advice = bits switch
+            {
+                8 => "Lower the value to 127 or less to keep the enum one byte on the wire, or give it a wider underlying type (ushort/short, or int) - which changes its size on the wire.",
+                16 => "Lower the value to 32767 or less to keep the enum two bytes on the wire, or give it a wider underlying type (int) - which changes its size on the wire.",
+                _ => "An IDL enumerator cannot exceed 2147483647: use a smaller value, or keep the field as a plain integer instead of an enum (a 'uint' enum with the top bit set, such as a flags mask, cannot be an IDL enum)."
+            };
+            throw new InvalidOperationException(
+                $"Enum '{type.FullName}' has member(s) outside the range its IDL type can hold: {string.Join(", ", offenders)}. " +
+                $"It maps to IDL @bit_bound({bits}), and Cyclone DDS's IDL compiler (idlc) reads enumerator values as signed numbers, so the allowed range is {min}..{max} " +
+                $"(a 'byte' enum holds 0..127, not 0..255). {advice}");
         }
 
         private void EmitUnion(StringBuilder sb, TypeInfo type, int indentLevel, GlobalTypeRegistry registry)
