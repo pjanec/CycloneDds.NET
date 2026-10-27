@@ -53,10 +53,8 @@ public sealed class TopicMetadata
                 $"Type '{topicType.Name}' is missing [{nameof(DdsTopicAttribute)}] attribute.");
         }
 
-        // ME1-T03: resolve topic name – use explicit name when provided, else derive from full type name
-        TopicName = string.IsNullOrWhiteSpace(topicAttribute.TopicName)
-            ? (topicType.FullName?.Replace('.', '_') ?? topicType.Name)
-            : topicAttribute.TopicName;
+        // ME1-T03: resolve topic name – same rule as the runtime and the code generator
+        TopicName = DdsTopicName.Of(topicType);
         ShortName = topicType.Name;
         Namespace = topicType.Namespace ?? string.Empty;
 

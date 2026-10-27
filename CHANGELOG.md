@@ -23,6 +23,33 @@ Cyclone DDS major version, new Linux library names and platform baseline.
   Based on [pjanec/CycloneDds.NET#4](https://github.com/pjanec/CycloneDds.NET/pull/4).
 - CI caches the native builds (keyed on the Cyclone DDS revision, `native/`, the build
   script and the runner image); `build/pack.ps1 -SkipNativeBuild` reuses staged natives.
+- **`[DdsQos(AutodisposeUnregisteredInstances = ...)]`** — the writer data lifecycle
+  QoS. The default `true` keeps today's behaviour (unregistering an instance also
+  disposes it, readers see `NotAliveDisposed`). With `false`, `UnregisterInstance`
+  only releases this writer's ownership — readers see `NotAliveNoWriters` once no
+  writer is left — so a keyed instance can be handed over to another writer.
+  `DdsApi.dds_qset_writer_data_lifecycle` is imported for writers created with an
+  explicit QoS handle.
+- **`DdsWriter<T>.WaitForAcks(TimeSpan timeout)`** — wraps `dds_wait_for_acks`.
+  Returns `true` once every matched reliable reader has acknowledged everything
+  written so far (disposes and unregisters included), `false` on timeout; any other
+  failure throws `DdsException`. `DdsApi.dds_wait_for_acks` is imported too.
+- **Ownership, liveliness and deadline QoS.** `[DdsQos]` gains `Ownership`
+  (`DdsOwnershipKind`), `LivelinessKind` (`DdsLivelinessKind`), `LivelinessLeaseDurationMs`
+  and `DeadlineMs`; all default to the DDS defaults, so existing types are unchanged.
+- **`DdsWriterOptions` / `DdsReaderOptions`** — per-entity QoS passed through new constructor
+  overloads `DdsWriter(participant, topicName, DdsWriterOptions, partition)` /
+  `DdsReader(participant, topicName, DdsReaderOptions, partition)`: `OwnershipStrength`, and
+  overrides of the attribute's `AutodisposeUnregisteredInstances`, liveliness and deadline.
+  The existing constructors are unchanged.
+- **Liveliness and deadline status:** `DdsWriter.AssertLiveliness()`; events
+  `DdsReader.LivelinessChanged` / `RequestedDeadlineMissed` and `DdsWriter.LivelinessLost` /
+  `OfferedDeadlineMissed`, plus the matching `...Status` properties. The `DdsApi` imports
+  behind them (`dds_qset_ownership`, `dds_qset_ownership_strength`, `dds_qset_liveliness`,
+  `dds_qset_deadline`, `dds_assert_liveliness`, the listener setters and status getters) are public.
+- **`CycloneDDS.Schema.DdsTopicName`** — the one rule for a type's DDS topic name
+  (`Of<T>()`, `Of(Type)`, and the string core `Of(string ns, IEnumerable<string> typePath)`),
+  now shared by the runtime, the code generator and DdsMonitor.
 
 ### Changed
 - **Package metadata names the native Cyclone DDS version.** The description, release
@@ -50,6 +77,24 @@ Cyclone DDS major version, new Linux library names and platform baseline.
 - On Linux the native libraries now carry the SONAME `.so.11` (was `.so.0`);
   `build/native-linux.sh` stages each library under its real SONAME and the package
   bundles `*.so.*`.
+
+### Fixed
+- **Sender identity could stay unresolved for a delivered sample.** When the identity
+  sample had arrived but the thread-pool-driven monitor had not processed it yet (e.g.
+  under thread-pool starvation), `DdsLoan.GetSender` returned `null`. A miss now
+  drains the identity reader synchronously (under a lock) before giving up.
+- **Noisy participant dispose.** Disposing a participant with sender tracking could
+  print `[SenderRegistry] Monitor task failed: ...` (`ObjectDisposedException` or
+  `dds_take failed: BadParameter`). The registry now stops and awaits its monitor
+  before disposing the identity reader.
+- **A `[DdsTopic]` without a name now works at runtime.** `DdsWriter`/`DdsReader`
+  opened such a topic with a `null` name; they now use the documented derived name
+  (namespace + containing types + type name, joined with `_`; a whitespace name counts
+  as none). Explicit names are unchanged.
+- **The derived topic name is spelled the same everywhere.** For a nested type the
+  code generator dropped the outer type (`Ns_Inner`) and DdsMonitor kept the CLR
+  `+` (`Ns_Outer+Inner`); both now give `Ns_Outer_Inner`. Top-level types are unchanged.
+
 
 ## 0.3.2
 

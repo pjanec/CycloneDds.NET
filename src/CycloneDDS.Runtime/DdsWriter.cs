@@ -34,6 +34,10 @@ namespace CycloneDDS.Runtime
         private readonly DdsApi.DdsOnPublicationMatched _publicationMatchedHandler;
         private volatile TaskCompletionSource<bool>? _waitForReaderTaskSource;
         private EventHandler<DdsApi.DdsPublicationMatchedStatus>? _publicationMatched;
+        private readonly DdsApi.DdsOnLivelinessLost _livelinessLostHandler;
+        private readonly DdsApi.DdsOnOfferedDeadlineMissed _offeredDeadlineMissedHandler;
+        private EventHandler<DdsApi.DdsLivelinessLostStatus>? _livelinessLost;
+        private EventHandler<DdsApi.DdsOfferedDeadlineMissedStatus>? _offeredDeadlineMissed;
 
         // Native Marshaling Delegates
         private delegate int GetNativeSizeDelegate(in T sample);
@@ -75,11 +79,27 @@ namespace CycloneDDS.Runtime
         }
 
         public DdsWriter(DdsParticipant participant, string? topicName = null, IntPtr qos = default, string? partition = null)
+            : this(participant, topicName, qos, partition, null)
+        {
+        }
+
+        /// <summary>
+        /// Creates a writer whose QoS comes from <see cref="DdsQosAttribute"/> on <typeparamref name="T"/>,
+        /// overridden by <paramref name="options"/> (e.g. the ownership strength).
+        /// </summary>
+        public DdsWriter(DdsParticipant participant, string? topicName, DdsWriterOptions options, string? partition = null)
+            : this(participant, topicName, IntPtr.Zero, partition, options ?? throw new ArgumentNullException(nameof(options)))
+        {
+        }
+
+        private DdsWriter(DdsParticipant participant, string? topicName, IntPtr qos, string? partition, DdsWriterOptions? options)
         {
             topicName ??= GetTopicNameFromAttribute();
             _participant = participant;
             _topicName = topicName!;
             _publicationMatchedHandler = OnPublicationMatched;
+            _livelinessLostHandler = OnLivelinessLost;
+            _offeredDeadlineMissedHandler = OnOfferedDeadlineMissed;
 
             if (_nativeSizer == null || _nativeMarshaller == null)
             {
@@ -93,26 +113,7 @@ namespace CycloneDDS.Runtime
 
             if (actualQos == IntPtr.Zero)
             {
-                var qosAttr = typeof(T).GetCustomAttribute<DdsQosAttribute>();
-                if (qosAttr != null)
-                {
-                    actualQos = DdsApi.dds_create_qos();
-                    // Default max_blocking_time is 100ms (100 million nanoseconds)
-                    long maxBlockingTime = 100 * 1000 * 1000;
-                    DdsApi.dds_qset_reliability(actualQos, (int)qosAttr.Reliability, maxBlockingTime);
-                    DdsApi.dds_qset_durability(actualQos, (int)qosAttr.Durability);
-                    int depth = qosAttr.HistoryDepth;
-                    if (qosAttr.HistoryKind == DdsHistoryKind.KeepAll) 
-                    {
-                         depth = -1; // DDS_LENGTH_UNLIMITED
-                         DdsApi.dds_qset_resource_limits(actualQos, -1, -1, -1);
-                    }
-                    DdsApi.dds_qset_history(actualQos, (int)qosAttr.HistoryKind, depth);
-                }
-                else
-                {
-                    actualQos = DdsApi.dds_create_qos();
-                }
+                actualQos = DdsQosBuilder.Create(typeof(T), options);
                 ownQos = true;
             }
 
@@ -153,12 +154,7 @@ namespace CycloneDDS.Runtime
             }
         }
 
-        private static string GetTopicNameFromAttribute()
-        {
-            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
-            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
-            return attr.TopicName;
-        }
+        private static string GetTopicNameFromAttribute() => DdsTopicName.Of<T>();
 
         public void Write(in T sample)
         {
@@ -259,6 +255,71 @@ namespace CycloneDDS.Runtime
         }
 
         
+        /// <summary>
+        /// Blocks until every matched reliable reader has acknowledged everything this writer
+        /// has written so far (writes, disposes and unregisters), or until <paramref name="timeout"/> elapses.
+        /// </summary>
+        /// <param name="timeout">Maximum time to wait; <see cref="Timeout.InfiniteTimeSpan"/> (or any negative value) waits forever.</param>
+        /// <returns><c>true</c> when all data was acknowledged; <c>false</c> on timeout.</returns>
+        /// <exception cref="DdsException">The native call failed for any reason other than a timeout.</exception>
+        public bool WaitForAcks(TimeSpan timeout)
+        {
+            if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+
+            int ret = DdsApi.dds_wait_for_acks(_writerHandle.NativeHandle.Handle, DdsQosBuilder.ToDuration(timeout));
+            if (ret == (int)DdsApi.DdsReturnCode.Timeout) return false;
+            if (ret < 0) throw new DdsException((DdsApi.DdsReturnCode)ret, $"dds_wait_for_acks failed: {ret}");
+            return true;
+        }
+
+        /// <summary>
+        /// Asserts that this writer is alive. Needed with <see cref="DdsLivelinessKind.ManualByTopic"/>
+        /// (and <see cref="DdsLivelinessKind.ManualByParticipant"/>) liveliness when the writer has
+        /// nothing to write within its lease; any write asserts liveliness too.
+        /// </summary>
+        public void AssertLiveliness()
+        {
+            if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+            int ret = DdsApi.dds_assert_liveliness(_writerHandle.NativeHandle.Handle);
+            if (ret < 0) throw new DdsException((DdsApi.DdsReturnCode)ret, $"dds_assert_liveliness failed: {ret}");
+        }
+
+        /// <summary>Raised when this writer failed to assert liveliness within its lease.</summary>
+        public event EventHandler<DdsApi.DdsLivelinessLostStatus>? LivelinessLost
+        {
+            add { lock (_listenerLock) { _livelinessLost += value; EnsureListenerAttached(); } }
+            remove { lock (_listenerLock) { _livelinessLost -= value; } }
+        }
+
+        /// <summary>Raised when this writer did not update an instance within its deadline.</summary>
+        public event EventHandler<DdsApi.DdsOfferedDeadlineMissedStatus>? OfferedDeadlineMissed
+        {
+            add { lock (_listenerLock) { _offeredDeadlineMissed += value; EnsureListenerAttached(); } }
+            remove { lock (_listenerLock) { _offeredDeadlineMissed -= value; } }
+        }
+
+        /// <summary>Cumulative liveliness-lost status of this writer.</summary>
+        public DdsApi.DdsLivelinessLostStatus LivelinessLostStatus
+        {
+            get
+            {
+                if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+                DdsApi.dds_get_liveliness_lost_status(_writerHandle.NativeHandle.Handle, out var status);
+                return status;
+            }
+        }
+
+        /// <summary>Cumulative offered-deadline-missed status of this writer.</summary>
+        public DdsApi.DdsOfferedDeadlineMissedStatus OfferedDeadlineMissedStatus
+        {
+            get
+            {
+                if (_writerHandle == null) throw new ObjectDisposedException(nameof(DdsWriter<T>));
+                DdsApi.dds_get_offered_deadline_missed_status(_writerHandle.NativeHandle.Handle, out var status);
+                return status;
+            }
+        }
+
         public event EventHandler<DdsApi.DdsPublicationMatchedStatus>? PublicationMatched
         {
             add 
@@ -321,6 +382,8 @@ namespace CycloneDDS.Runtime
                  _paramHandle = GCHandle.Alloc(this);
                  _listener = DdsApi.dds_create_listener(GCHandle.ToIntPtr(_paramHandle));
                  DdsApi.dds_lset_publication_matched(_listener, _publicationMatchedHandler);
+                 DdsApi.dds_lset_liveliness_lost(_listener, _livelinessLostHandler);
+                 DdsApi.dds_lset_offered_deadline_missed(_listener, _offeredDeadlineMissedHandler);
                  
                  if (_writerHandle != null)
                  {
@@ -345,6 +408,30 @@ namespace CycloneDDS.Runtime
                          self._waitForReaderTaskSource?.TrySetResult(true);
                      }
                  }
+             }
+             catch { }
+        }
+
+        private static void OnLivelinessLost(int writer, DdsApi.DdsLivelinessLostStatus status, IntPtr arg)
+        {
+             if (arg == IntPtr.Zero) return;
+             try
+             {
+                 var handle = GCHandle.FromIntPtr(arg);
+                 if (handle.IsAllocated && handle.Target is DdsWriter<T> self)
+                     self._livelinessLost?.Invoke(self, status);
+             }
+             catch { }
+        }
+
+        private static void OnOfferedDeadlineMissed(int writer, DdsApi.DdsOfferedDeadlineMissedStatus status, IntPtr arg)
+        {
+             if (arg == IntPtr.Zero) return;
+             try
+             {
+                 var handle = GCHandle.FromIntPtr(arg);
+                 if (handle.IsAllocated && handle.Target is DdsWriter<T> self)
+                     self._offeredDeadlineMissed?.Invoke(self, status);
              }
              catch { }
         }

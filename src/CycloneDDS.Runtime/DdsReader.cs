@@ -27,6 +27,10 @@ namespace CycloneDDS.Runtime
         private volatile TaskCompletionSource<bool>? _waitTaskSource;
         private readonly DdsApi.DdsOnDataAvailable _dataAvailableHandler;
         private readonly DdsApi.DdsOnSubscriptionMatched _subscriptionMatchedHandler;
+        private readonly DdsApi.DdsOnLivelinessChanged _livelinessChangedHandler;
+        private readonly DdsApi.DdsOnRequestedDeadlineMissed _requestedDeadlineMissedHandler;
+        private EventHandler<DdsApi.DdsLivelinessChangedStatus>? _livelinessChanged;
+        private EventHandler<DdsApi.DdsRequestedDeadlineMissedStatus>? _requestedDeadlineMissed;
         private readonly object _listenerLock = new object();
         
         private volatile Predicate<T>? _filter;
@@ -49,6 +53,42 @@ namespace CycloneDDS.Runtime
             }
         }
         
+        /// <summary>Raised when a matched writer becomes alive or not alive (liveliness lease).</summary>
+        public event EventHandler<DdsApi.DdsLivelinessChangedStatus>? LivelinessChanged
+        {
+            add { lock (_listenerLock) { _livelinessChanged += value; EnsureListenerAttached(); } }
+            remove { lock (_listenerLock) { _livelinessChanged -= value; } }
+        }
+
+        /// <summary>Raised when an instance was not updated within the requested deadline.</summary>
+        public event EventHandler<DdsApi.DdsRequestedDeadlineMissedStatus>? RequestedDeadlineMissed
+        {
+            add { lock (_listenerLock) { _requestedDeadlineMissed += value; EnsureListenerAttached(); } }
+            remove { lock (_listenerLock) { _requestedDeadlineMissed -= value; } }
+        }
+
+        /// <summary>Current liveliness-changed status of this reader.</summary>
+        public DdsApi.DdsLivelinessChangedStatus LivelinessChangedStatus
+        {
+            get
+            {
+                if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
+                DdsApi.dds_get_liveliness_changed_status(_readerHandle.NativeHandle.Handle, out var status);
+                return status;
+            }
+        }
+
+        /// <summary>Cumulative requested-deadline-missed status of this reader.</summary>
+        public DdsApi.DdsRequestedDeadlineMissedStatus RequestedDeadlineMissedStatus
+        {
+            get
+            {
+                if (_readerHandle == null) throw new ObjectDisposedException(nameof(DdsReader<T>));
+                DdsApi.dds_get_requested_deadline_missed_status(_readerHandle.NativeHandle.Handle, out var status);
+                return status;
+            }
+        }
+
         public DdsApi.DdsSubscriptionMatchedStatus CurrentStatus
         {
             get
@@ -89,9 +129,25 @@ namespace CycloneDDS.Runtime
         }
 
         public DdsReader(DdsParticipant participant, string? topicName = null, IntPtr qos = default, string? partition = null)
+            : this(participant, topicName, qos, partition, null)
+        {
+        }
+
+        /// <summary>
+        /// Creates a reader whose QoS comes from <see cref="DdsQosAttribute"/> on <typeparamref name="T"/>,
+        /// overridden by <paramref name="options"/> (e.g. autopurge delays).
+        /// </summary>
+        public DdsReader(DdsParticipant participant, string? topicName, DdsReaderOptions options, string? partition = null)
+            : this(participant, topicName, IntPtr.Zero, partition, options ?? throw new ArgumentNullException(nameof(options)))
+        {
+        }
+
+        private DdsReader(DdsParticipant participant, string? topicName, IntPtr qos, string? partition, DdsReaderOptions? options)
         {
             _dataAvailableHandler = OnDataAvailable;
             _subscriptionMatchedHandler = OnSubscriptionMatched;
+            _livelinessChangedHandler = OnLivelinessChanged;
+            _requestedDeadlineMissedHandler = OnRequestedDeadlineMissed;
 
             topicName ??= GetTopicNameFromAttribute();
             _participant = participant;
@@ -101,26 +157,7 @@ namespace CycloneDDS.Runtime
 
             if (actualQos == IntPtr.Zero)
             {
-                var qosAttr = typeof(T).GetCustomAttribute<DdsQosAttribute>();
-                if (qosAttr != null)
-                {
-                    actualQos = DdsApi.dds_create_qos();
-                    // Default max_blocking_time is 100ms
-                    long maxBlockingTime = 100 * 1000 * 1000;
-                    DdsApi.dds_qset_reliability(actualQos, (int)qosAttr.Reliability, maxBlockingTime);
-                    DdsApi.dds_qset_durability(actualQos, (int)qosAttr.Durability);
-                    int depth = qosAttr.HistoryDepth;
-                    if (qosAttr.HistoryKind == DdsHistoryKind.KeepAll) 
-                    {
-                        depth = -1;
-                        DdsApi.dds_qset_resource_limits(actualQos, -1, -1, -1);
-                    }
-                    DdsApi.dds_qset_history(actualQos, (int)qosAttr.HistoryKind, depth);
-                }
-                else
-                {
-                    actualQos = DdsApi.dds_create_qos();
-                }
+                actualQos = DdsQosBuilder.Create(typeof(T), options);
                 ownQos = true;
             }
 
@@ -156,12 +193,7 @@ namespace CycloneDDS.Runtime
 
         public void SetFilter(Predicate<T>? filter) => _filter = filter;
 
-        private static string GetTopicNameFromAttribute()
-        {
-            var attr = typeof(T).GetCustomAttribute<DdsTopicAttribute>();
-            if (attr == null) throw new InvalidOperationException($"Type {typeof(T).Name} is missing [DdsTopic] attribute. You must specify topicName manually.");
-            return attr.TopicName;
-        }
+        private static string GetTopicNameFromAttribute() => DdsTopicName.Of<T>();
 
         public DdsLoan<T> Take(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, true);
         public DdsLoan<T> Read(int maxSamples = 32) => ReadOrTake(maxSamples, 0xFFFFFFFF, false);
@@ -253,6 +285,8 @@ namespace CycloneDDS.Runtime
                  _listener = DdsApi.dds_create_listener(GCHandle.ToIntPtr(_paramHandle));
                  DdsApi.dds_lset_data_available(_listener, _dataAvailableHandler);
                  DdsApi.dds_lset_subscription_matched(_listener, _subscriptionMatchedHandler);
+                 DdsApi.dds_lset_liveliness_changed(_listener, _livelinessChangedHandler);
+                 DdsApi.dds_lset_requested_deadline_missed(_listener, _requestedDeadlineMissedHandler);
                  
                  if (_readerHandle != null)
                  {
@@ -271,6 +305,30 @@ namespace CycloneDDS.Runtime
                  {
                      self._subscriptionMatched?.Invoke(self, status);
                  }
+             }
+             catch { }
+        }
+
+        private static void OnLivelinessChanged(int reader, DdsApi.DdsLivelinessChangedStatus status, IntPtr arg)
+        {
+             if (arg == IntPtr.Zero) return;
+             try
+             {
+                 var handle = GCHandle.FromIntPtr(arg);
+                 if (handle.IsAllocated && handle.Target is DdsReader<T> self)
+                     self._livelinessChanged?.Invoke(self, status);
+             }
+             catch { }
+        }
+
+        private static void OnRequestedDeadlineMissed(int reader, DdsApi.DdsRequestedDeadlineMissedStatus status, IntPtr arg)
+        {
+             if (arg == IntPtr.Zero) return;
+             try
+             {
+                 var handle = GCHandle.FromIntPtr(arg);
+                 if (handle.IsAllocated && handle.Target is DdsReader<T> self)
+                     self._requestedDeadlineMissed?.Invoke(self, status);
              }
              catch { }
         }

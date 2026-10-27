@@ -216,5 +216,92 @@ namespace CycloneDDS.Runtime.Tests
              Assert.True(saw10, "Did not identify sender 10");
              Assert.True(saw20, "Did not identify sender 20");
         }
+
+        /// <summary>
+        /// The identity sample has ARRIVED at the receiver but the background monitor has not
+        /// PROCESSED it (as under thread-pool starvation). The first Take that delivers a data
+        /// sample must still resolve its sender.
+        /// </summary>
+        [Fact]
+        public void GetSender_IdentityArrivedButMonitorNotRun_ResolvesOnFirstTake()
+        {
+            string topic = "SenderTrackingStarved_" + Guid.NewGuid().ToString("N");
+
+            using var pReceiver = new DdsParticipant();
+            pReceiver.EnableSenderMonitoring();
+            var registry = pReceiver.SenderRegistry!;
+            // Stand-in for a starved pool: the monitor's continuation never runs.
+            registry.StopMonitor();
+
+            using var reader = new DdsReader<SenderTrackingTestMsg>(pReceiver, topic);
+            reader.EnableSenderTracking(registry);
+            using var identityProbe = new DdsReader<SenderIdentity>(pReceiver, "__FcdcSenderIdentity");
+
+            using var pSender = new DdsParticipant();
+            pSender.EnableSenderTracking(new SenderIdentityConfig { AppDomainId = 7, AppInstanceId = 42 });
+            using var writer = new DdsWriter<SenderTrackingTestMsg>(pSender, topic);
+
+            // The identity has arrived at the receiving participant...
+            bool identityArrived = false;
+            for (int i = 0; i < 100 && !identityArrived; i++)
+            {
+                using var ids = identityProbe.Take();
+                for (int k = 0; k < ids.Count; k++)
+                    if (ids[k].AppInstanceId == 42) identityArrived = true;
+                if (!identityArrived) Thread.Sleep(50);
+            }
+            Assert.True(identityArrived, "identity sample never arrived");
+            Assert.True(writer.WaitForReaderAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult());
+
+            writer.Write(new SenderTrackingTestMsg { Id = 1, Value = 1 });
+
+            for (int i = 0; i < 100; i++)
+            {
+                using var scope = reader.Take();
+                if (scope.Count == 0) { Thread.Sleep(50); continue; }
+
+                // ...so the very first Take that delivers data resolves the sender.
+                var sender = scope.GetSender(0);
+                Assert.NotNull(sender);
+                Assert.Equal(42, sender!.Value.AppInstanceId);
+                Assert.Equal(7, sender.Value.AppDomainId);
+                return;
+            }
+            Assert.Fail("data sample never arrived");
+        }
+
+        /// <summary>
+        /// Disposing a participant with sender tracking must not print
+        /// "[SenderRegistry] Monitor task failed: ObjectDisposedException".
+        /// </summary>
+        [Fact]
+        public void Dispose_WithSenderTracking_WritesNothingToConsole()
+        {
+            var originalOut = Console.Out;
+            var captured = new System.IO.StringWriter();
+            var syncCaptured = System.IO.TextWriter.Synchronized(captured);
+            Console.SetOut(syncCaptured);
+            try
+            {
+                for (int i = 0; i < 20; i++)
+                {
+                    var participant = new DdsParticipant();
+                    participant.EnableSenderTracking(new SenderIdentityConfig { AppInstanceId = i });
+                    var writer = new DdsWriter<SenderTrackingTestMsg>(participant, TEST_TOPIC);
+                    writer.Write(new SenderTrackingTestMsg { Id = i });
+                    writer.Dispose();
+                    participant.Dispose();
+                }
+
+                // Give late monitor continuations a chance to run (and to print).
+                Thread.Sleep(500);
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+            }
+
+            Assert.DoesNotContain("[SenderRegistry]", captured.ToString());
+        }
     }
 }

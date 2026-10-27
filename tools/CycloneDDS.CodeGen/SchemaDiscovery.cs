@@ -306,7 +306,7 @@ namespace CycloneDDS.CodeGen
 
         /// <summary>
         /// ME1-T03: Resolves the DDS topic name from the <c>[DdsTopic]</c> attribute argument
-        /// or falls back to the namespace-qualified type name with dots replaced by underscores.
+        /// or falls back to the shared default rule (<see cref="DdsTopicName"/>).
         /// </summary>
         private static void ResolveTopicName(INamedTypeSymbol typeSymbol, TypeInfo typeInfo)
         {
@@ -323,10 +323,11 @@ namespace CycloneDDS.CodeGen
             }
             else
             {
-                var fullName = string.IsNullOrEmpty(typeInfo.Namespace)
-                    ? typeInfo.Name
-                    : $"{typeInfo.Namespace}.{typeInfo.Name}";
-                typeInfo.TopicName = fullName.Replace('.', '_');
+                // Same rule as the runtime and DdsMonitor (CycloneDDS.Schema.DdsTopicName).
+                var typePath = new List<string>();
+                for (var t = typeSymbol; t != null; t = t.ContainingType)
+                    typePath.Insert(0, t.Name);
+                typeInfo.TopicName = DdsTopicName.Of(typeInfo.Namespace, typePath);
             }
         }
 

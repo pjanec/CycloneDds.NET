@@ -29,6 +29,11 @@ namespace CycloneDDS.Runtime.Tracking
         private readonly Task _monitorTask;
         private readonly DdsParticipant _participant;
 
+        // Serializes draining of the identity reader: the background monitor and the
+        // lazy-resolution path in TryResolveLazy may both call ProcessIncomingIdentities.
+        private readonly object _identityLock = new();
+        private bool _disposed;
+
         internal SenderRegistry(DdsParticipant participant)
         {
             _participant = participant;
@@ -53,11 +58,12 @@ namespace CycloneDDS.Runtime.Tracking
         /// </summary>
         private async Task MonitorIdentitiesAsync()
         {
+            var token = _cancellation.Token;
             try
             {
-                while (!_cancellation.Token.IsCancellationRequested)
+                while (!token.IsCancellationRequested)
                 {
-                    if (await _identityReader.WaitDataAsync(_cancellation.Token))
+                    if (await _identityReader.WaitDataAsync(token))
                     {
                         ProcessIncomingIdentities();
                     }
@@ -67,6 +73,10 @@ namespace CycloneDDS.Runtime.Tracking
             { 
                 // Expected on dispose 
             }
+            catch (ObjectDisposedException) when (token.IsCancellationRequested)
+            {
+                // Expected on dispose: the identity reader went away under a late continuation
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"[SenderRegistry] Monitor task failed: {ex}");
@@ -75,14 +85,16 @@ namespace CycloneDDS.Runtime.Tracking
 
         private void ProcessIncomingIdentities()
         {
-            using var scope = _identityReader.Take(100);
-            for (int i = 0; i < scope.Count; i++)
+            lock (_identityLock)
             {
-                var identity = scope[i];
-                _guidToIdentity[identity.ParticipantGuid] = identity;
-                
-                // Also retry resolving any pending handles for this participant
-                // (In a real implementation we might want to optimize this)
+                if (_disposed) return;
+
+                using var scope = _identityReader.Take(100);
+                for (int i = 0; i < scope.Count; i++)
+                {
+                    var identity = scope[i];
+                    _guidToIdentity[identity.ParticipantGuid] = identity;
+                }
             }
         }
 
@@ -130,6 +142,15 @@ namespace CycloneDDS.Runtime.Tracking
                     _handleToIdentity[publicationHandle] = identity;
                     return true;
                 }
+
+                // The identity may have arrived but not been processed yet (the background
+                // monitor runs on the thread pool and can be starved). Drain it synchronously.
+                ProcessIncomingIdentities();
+                if (_guidToIdentity.TryGetValue(participantGuid, out identity))
+                {
+                    _handleToIdentity[publicationHandle] = identity;
+                    return true;
+                }
             }
             
             identity = default;
@@ -159,18 +180,38 @@ namespace CycloneDDS.Runtime.Tracking
             return participantGuid;
         }
 
-        public void Dispose()
+        /// <summary>
+        /// Stops the background identity monitor and waits (briefly) for it to finish.
+        /// Identities are then only picked up by the lazy path in <see cref="TryGetIdentity"/>.
+        /// </summary>
+        internal void StopMonitor()
         {
             _cancellation.Cancel();
-            _identityReader?.Dispose();
-            _cancellation.Dispose();
-            
+
             // Wait for monitor task to complete (with timeout)
             try 
             { 
                 _monitorTask?.Wait(TimeSpan.FromSeconds(1)); 
             }
             catch { /* Best effort */ }
+        }
+
+        public void Dispose()
+        {
+            lock (_identityLock)
+            {
+                if (_disposed) return;
+            }
+
+            // Stop the monitor before disposing the reader it is waiting on
+            StopMonitor();
+
+            lock (_identityLock)
+            {
+                _disposed = true;
+                _identityReader?.Dispose();
+            }
+            _cancellation.Dispose();
         }
     }
 }
