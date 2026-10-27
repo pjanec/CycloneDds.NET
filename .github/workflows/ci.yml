@@ -63,9 +63,16 @@ jobs:
     # libssl-dev: headers for building the DDS Security plugins (OpenSSL is not shipped).
     - name: Build Native (linux-x64, in ubuntu:22.04)
       if: steps.native-cache.outputs.cache-hit != 'true'
+      # Normally about a minute; fail fast (with a readable log) instead of hanging
+      # until the 6-hour job limit.
+      timeout-minutes: 20
       shell: bash
       run: |
         docker run --rm -v "$PWD:/src" -w /src ubuntu:22.04 bash -euc '
+          # Use the Azure-hosted Ubuntu mirror the GitHub runners themselves use: the
+          # default archive.ubuntu.com can be very slow from GitHub (seen: 15 min).
+          sed -i -e "s|http://archive.ubuntu.com|http://azure.archive.ubuntu.com|g" \
+                 -e "s|http://security.ubuntu.com|http://azure.archive.ubuntu.com|g" /etc/apt/sources.list
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             cmake build-essential patchelf ca-certificates libssl-dev pkg-config
