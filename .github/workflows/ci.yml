@@ -36,18 +36,36 @@ jobs:
           8.0.x
           10.0.x
 
-    - name: Install native build prerequisites
-      run: sudo apt-get update && sudo apt-get install -y cmake build-essential patchelf
-
     - name: Display Tools Versions
       run: |
         dotnet --version
-        cmake --version
-        gcc --version
 
-    - name: Build Native (linux-x64)
+    # The native libraries are built inside an ubuntu:22.04 container rather than on
+    # the runner (ubuntu-latest): a binary only runs on distributions whose glibc is at
+    # least the build host's, and ubuntu-latest's glibc 2.39 would exclude Ubuntu 22.04,
+    # Debian 12 and RHEL 9. Everything else (managed build, tests) stays on the runner.
+    - name: Build Native (linux-x64, in ubuntu:22.04)
       shell: bash
-      run: build/native-linux.sh Release
+      run: |
+        docker run --rm -v "$PWD:/src" -w /src ubuntu:22.04 bash -euc '
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            cmake build-essential patchelf ca-certificates
+          build/native-linux.sh Release'
+        # The container ran as root; hand the outputs back to the runner user.
+        sudo chown -R "$(id -u):$(id -g)" artifacts build
+
+    # Guard the glibc baseline: fail if any staged binary needs a newer glibc than
+    # ubuntu:22.04 provides (2.35), e.g. after a base image or toolchain change.
+    - name: Check glibc baseline (<= 2.35)
+      shell: bash
+      run: |
+        max=$(objdump -T artifacts/native/linux-x64/*.so artifacts/native/linux-x64/idlc \
+              | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+        echo "Highest required glibc: $max"
+        if [ "$(printf '%s\n' "$max" 2.35 | sort -V | tail -1)" != "2.35" ]; then
+          echo "::error::Native binaries require glibc $max (> 2.35)"; exit 1
+        fi
 
     - name: Build Managed Code
       run: dotnet build CycloneDDS.NET.Core.slnf -c Release
