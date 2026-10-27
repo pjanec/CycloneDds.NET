@@ -100,7 +100,8 @@ using CycloneDDS.Schema;
 
 namespace Factory.Monitoring;
 
-// Topic name defaults to namespace + class name ("Factory_Monitoring_SensorData") if omitted
+// Topic name defaults to namespace + containing types + class name, joined with '_'
+// ("Factory_Monitoring_SensorData") if omitted. DdsTopicName.Of<SensorData>() returns it.
 [DdsTopic]
 public partial struct SensorData
 {
@@ -192,6 +193,12 @@ public partial struct MachineState
     public StateEnum CurrentState;
 }
 ```
+
+`AutodisposeUnregisteredInstances` (writers only, default `true`) controls the writer data
+lifecycle — see [Lifecycle](#8-lifecycle-dispose--unregister).
+
+The attribute applies only when no explicit QoS handle is passed to the `DdsWriter`/`DdsReader`
+constructor; with an explicit handle, set the policies yourself via `DdsApi.dds_qset_*`.
 ---
 
 ## 2. Basic Usage
@@ -394,6 +401,10 @@ writer.PublicationMatched += (s, status) =>
 // Solves the "Lost First Message" problem
 await writer.WaitForReaderAsync(TimeSpan.FromSeconds(5));
 writer.Write(new Message("Hello")); // Guaranteed to have a route
+
+// Wait until every matched reliable reader acknowledged everything written so far
+// (writes, disposes and unregisters). Returns false on timeout.
+bool delivered = writer.WaitForAcks(TimeSpan.FromSeconds(5));
 ```
 
 ---
@@ -410,8 +421,19 @@ var key = new SensorData { SensorId = 1 };
 writer.DisposeInstance(key);
 
 // 2. Writer is shutting down (graceful disconnect)
-// Readers receive InstanceState = NOT_ALIVE_NO_WRITERS (if ownership exclusive)
+// By default (AutodisposeUnregisteredInstances = true) unregistering ALSO disposes:
+// readers receive InstanceState = NOT_ALIVE_DISPOSED
 writer.UnregisterInstance(key);
+```
+
+To unregister **without** disposing — e.g. to hand a keyed instance over to another
+writer — turn auto-dispose off. Readers then see `NOT_ALIVE_NO_WRITERS` only once no
+writer is left for the instance:
+
+```csharp
+[DdsTopic]
+[DdsQos(AutodisposeUnregisteredInstances = false)]
+public partial struct Descriptor { [DdsKey] public int Id; public int Owner; }
 ```
 
 ## 9. Partitions
