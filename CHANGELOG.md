@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `native/CMakeLists.txt` (used by both native build scripts). Its fork-era workarounds
   for recursive structs and union default labels are superseded by upstream fixes.
   Existing clones: `git submodule sync && git submodule update --init --recursive`.
+- **Linux: native libraries are built in an `ubuntu:22.04` container**, so they need
+  glibc 2.35 or older instead of the CI runner's 2.38+ (previous packages did not load
+  on Ubuntu 22.04 / Debian 12). CI fails if a binary ever requires a newer glibc.
 - On Linux the native libraries now carry the SONAME `.so.11` (was `.so.0`);
   `build/native-linux.sh` stages each library under its real SONAME and the package
   bundles `*.so.*`.

@@ -36,40 +36,54 @@ jobs:
           8.0.x
           10.0.x
 
-    - name: Install native build prerequisites
-      # libssl-dev: headers for building the DDS Security plugins (OpenSSL is not shipped).
-      run: sudo apt-get update && sudo apt-get install -y cmake build-essential patchelf libssl-dev
-
     - name: Display Tools Versions
       run: |
         dotnet --version
-        cmake --version
-        gcc --version
 
     # The native build only depends on the pinned Cyclone DDS submodule, our native/
-    # sources and the build script, so it is cached instead of rebuilt for every
-    # managed-code change. The key includes the runner image, so a toolchain change
-    # (new compiler / glibc / OpenSSL) also rebuilds.
+    # sources, the build script and the build container below, so it is cached instead
+    # of rebuilt for every managed-code change. The workflow file is part of the key
+    # because it defines the container and its packages.
     - name: Resolve native cache key
       id: native-key
       shell: bash
-      # ImageOS/ImageVersion are runner environment variables, not part of the
-      # workflow's env context, so they are read here.
-      run: |
-        echo "submodule=$(git rev-parse HEAD:cyclonedds)" >> "$GITHUB_OUTPUT"
-        echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+      run: echo "submodule=$(git rev-parse HEAD:cyclonedds)" >> "$GITHUB_OUTPUT"
 
     - name: Cache native linux-x64 build
       id: native-cache
       uses: actions/cache@v4
       with:
         path: artifacts/native/linux-x64
-        key: native-linux-x64-${{ steps.native-key.outputs.image }}-${{ steps.native-key.outputs.submodule }}-${{ hashFiles('native/**', 'build/native-linux.sh') }}
+        key: native-linux-x64-ubuntu22.04-${{ steps.native-key.outputs.submodule }}-${{ hashFiles('native/**', 'build/native-linux.sh', '.github/workflows/ci.yml') }}
 
-    - name: Build Native (linux-x64)
+    # The native libraries are built inside an ubuntu:22.04 container rather than on
+    # the runner (ubuntu-latest): a binary only runs on distributions whose glibc is at
+    # least the build host's, and ubuntu-latest's glibc 2.39 would exclude Ubuntu 22.04,
+    # Debian 12 and RHEL 9. Everything else (managed build, tests) stays on the runner.
+    # libssl-dev: headers for building the DDS Security plugins (OpenSSL is not shipped).
+    - name: Build Native (linux-x64, in ubuntu:22.04)
       if: steps.native-cache.outputs.cache-hit != 'true'
       shell: bash
-      run: build/native-linux.sh Release
+      run: |
+        docker run --rm -v "$PWD:/src" -w /src ubuntu:22.04 bash -euc '
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            cmake build-essential patchelf ca-certificates libssl-dev pkg-config
+          build/native-linux.sh Release'
+        # The container ran as root; hand the outputs back to the runner user.
+        sudo chown -R "$(id -u):$(id -g)" artifacts build
+
+    # Guard the glibc baseline: fail if any staged binary needs a newer glibc than
+    # ubuntu:22.04 provides (2.35), e.g. after a base image or toolchain change.
+    - name: Check glibc baseline (<= 2.35)
+      shell: bash
+      run: |
+        max=$(objdump -T artifacts/native/linux-x64/*.so artifacts/native/linux-x64/idlc \
+              | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+        echo "Highest required glibc: $max"
+        if [ "$(printf '%s\n' "$max" 2.35 | sort -V | tail -1)" != "2.35" ]; then
+          echo "::error::Native binaries require glibc $max (> 2.35)"; exit 1
+        fi
 
     - name: Build Managed Code
       run: dotnet build CycloneDDS.NET.Core.slnf -c Release
