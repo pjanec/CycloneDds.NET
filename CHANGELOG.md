@@ -82,7 +82,11 @@ Cyclone DDS major version, new Linux library names and platform baseline.
   enum 0..32767 and a `uint` enum 0..2147483647. Such an enum used to reach `idlc` and fail there with `Enumerator overflow` /
   `@value(…) cannot be applied to 'enumerator' element`; the generator now stops first and names the C# type, the member(s), the
   allowed range and the two ways out (lower the value, or widen the underlying type — which changes the enum's size on the wire).
-  It does not widen silently: the wire size is part of the contract. A `[Flags]` enum on `uint` with the top bit set cannot be an IDL enum.
+  It does not widen silently: the wire size is part of the contract.
+  **Limitation (upgrading from 0.3.x):** IDL has no unsigned enum, so an enum that used the *unsigned* half of its type — `byte`
+  values 128..255, a `ushort` above 32767, a `uint` (a flags mask with the top bit set, `0xFFFFFFFF`) — can no longer be a DDS
+  type. Such an enum builds with 0.3.x and fails the build with 0.4. Renumber it to the limit or below, or widen the underlying
+  type (which changes its size on the wire, so nodes on 0.3.x and 0.4 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
 - **FeatureDemo sample:** the stock ticker topic kept only the last tick (unkeyed topic with
