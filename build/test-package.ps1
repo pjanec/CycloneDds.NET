@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Smoke-test the CycloneDDS.NET NuGet package (and the DdsMonitor global tool)
-  from a local feed — whether built locally (build\pack.ps1) or downloaded from a
+  from a local feed - whether built locally (build\pack.ps1) or downloaded from a
   CI run (the 'nuget-packages' artifact).
 
 .DESCRIPTION
@@ -30,6 +30,16 @@ function Get-Newest($pattern) {
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
 }
 
+# 'dotnet tool uninstall' exits non-zero and writes to stderr when the tool is not installed. Under
+# $ErrorActionPreference = 'Stop', Windows PowerShell 5.1 turns that redirected stderr into a terminating
+# NativeCommandError - so run it with 'Continue' and reset the exit code.
+function Uninstall-DdsMonitorTool {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { dotnet tool uninstall --global CycloneDDS.NET.DdsMonitor *> $null } finally { $ErrorActionPreference = $old }
+    $global:LASTEXITCODE = 0
+}
+
 $rt = Get-Newest 'CycloneDDS.NET.[0-9]*.nupkg'
 if (-not $rt) { throw "No CycloneDDS.NET.<version>.nupkg found in $Feed" }
 $rtVer = $rt.Name -replace '^CycloneDDS\.NET\.(.+)\.nupkg$', '$1'
@@ -56,11 +66,11 @@ Write-Host "  [+] runtime package smoke test PASSED"
 if ($NoDdsMon) { Write-Host "`nSkipping DdsMonitor tool check (-NoDdsMon)."; Write-Host "All good."; exit 0 }
 
 $mon = Get-Newest 'CycloneDDS.NET.DdsMonitor.*.nupkg'
-if (-not $mon) { Write-Host "`nNo DdsMonitor package in feed — skipping tool check."; Write-Host "All good."; exit 0 }
+if (-not $mon) { Write-Host "`nNo DdsMonitor package in feed - skipping tool check."; Write-Host "All good."; exit 0 }
 $monVer = $mon.Name -replace '^CycloneDDS\.NET\.DdsMonitor\.(.+)\.nupkg$', '$1'
 
 Write-Host "`n[2/2] Testing the ddsmonitor global tool $monVer ..."
-dotnet tool uninstall --global CycloneDDS.NET.DdsMonitor 2>$null | Out-Null
+Uninstall-DdsMonitorTool
 dotnet tool install --global --add-source $Feed --version $monVer CycloneDDS.NET.DdsMonitor | Out-Null
 
 # Invoke by absolute path: the global-tools dir may not be on PATH in this session
@@ -88,10 +98,10 @@ if ($port) {
 }
 
 if (-not $proc.HasExited) { $proc.Kill(); $proc.WaitForExit() }
-dotnet tool uninstall --global CycloneDDS.NET.DdsMonitor 2>$null | Out-Null
+Uninstall-DdsMonitorTool
 
 if ($ok -and $code -eq 200) {
-    Write-Host "  [+] ddsmonitor started (port $port) and served HTTP 200 — native loaded OK"
+    Write-Host "  [+] ddsmonitor started (port $port) and served HTTP 200 - native loaded OK"
     Write-Host "`nAll good."
     exit 0
 }

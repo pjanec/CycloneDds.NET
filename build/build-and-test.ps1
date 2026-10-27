@@ -75,4 +75,4 @@ if ($LASTEXITCODE -ne 0) {
     throw "Tests FAILED."
 }
 
-Write-Host "`n✅ All Tests Passed Successfully!" -ForegroundColor Green
+Write-Host "`n[+] All Tests Passed Successfully!" -ForegroundColor Green
