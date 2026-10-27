@@ -21,8 +21,8 @@
          downloads the linux-x64 artifacts before packing. -->
     <None Include="..\..\artifacts\native\linux-x64\libddsc.so" Pack="true" PackagePath="runtimes/linux-x64/native"
           Condition="Exists('..\..\artifacts\native\linux-x64\libddsc.so')" />
-    <None Include="..\..\artifacts\native\linux-x64\libddsc.so.0" Pack="true" PackagePath="runtimes/linux-x64/native"
-          Condition="Exists('..\..\artifacts\native\linux-x64\libddsc.so.0')" />
+    <!-- The SONAME file (libddsc.so.11 since the Cyclone DDS 11 upgrade; it was .so.0): a glob, so a future SONAME bump needs no edit here. -->
+    <None Include="..\..\artifacts\native\linux-x64\libddsc.so.*" Pack="true" PackagePath="runtimes/linux-x64/native" />
 
     <!-- Runtime: DDS Security plugins. ddsc loads them by bare name, and only when the
          domain configuration has a <Security> section. Linux: dlopen() resolves them

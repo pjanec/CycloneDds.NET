@@ -46,11 +46,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>libddsc.so</Link>
     </Content>
-    <Content Include="$(MSBuildThisFileDirectory)../../../artifacts/native/linux-x64/libddsc.so.0"
+    <!-- The SONAME file (libddsc.so.11 since the Cyclone DDS 11 upgrade; it was .so.0): a glob, so a future SONAME bump needs no edit here. -->
+    <Content Include="$(MSBuildThisFileDirectory)../../../artifacts/native/linux-x64/libddsc.so.*"
              Pack="false"
-             Condition="$([MSBuild]::IsOSPlatform('Windows')) AND Exists('$(MSBuildThisFileDirectory)../../../artifacts/native/linux-x64/libddsc.so.0')">
+             Condition="$([MSBuild]::IsOSPlatform('Windows'))">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>libddsc.so.0</Link>
+      <Link>%(Filename)%(Extension)</Link>
     </Content>
     <Content Include="$(MSBuildThisFileDirectory)../../../artifacts/native/linux-x64/libdds_security_*.so"
              Pack="false"

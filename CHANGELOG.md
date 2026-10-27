@@ -89,6 +89,11 @@ Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 0.4 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- **Linux: the SONAME file now ships where the loader looks.** Since the Cyclone DDS 11 upgrade `libddsc` carries SONAME `.so.11`, but
+  the pack items for `runtimes/linux-x64/native` (CycloneDDS.NET) and for the ddsmonitor tool still named `libddsc.so.0`, so they matched
+  nothing and silently packed nothing (`libddsc.so.11` only reached `tools/`). Both now use a `libddsc.so.*` glob, so the SONAME file
+  sits next to `libddsc.so` and a future SONAME bump needs no edit. Checked on the package listing with stand-in files; the real Linux
+  libraries are built and exercised by the CI Linux jobs.
 - **FeatureDemo sample:** the stock ticker topic kept only the last tick (unkeyed topic with
   the default KEEP_LAST 1), so subscribers mostly saw one symbol; it now keeps a backlog of
   100. The chat room UI no longer throws on a narrow or redirected console. (Both were
