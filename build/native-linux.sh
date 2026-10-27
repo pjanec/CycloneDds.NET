@@ -87,7 +87,8 @@ BIN_DIR="$INSTALL_DIR/bin"
 
 # Copy a shared library, resolving the SONAME symlink chain to the real file so
 # we don't have to hard-code the version suffix. The file is staged as both
-# <base>.so (linker/convention name) and <base>.so.0 (the runtime SONAME).
+# <base>.so (linker/convention name) and under its SONAME (e.g. <base>.so.0 or
+# <base>.so.11), which is the name dependent binaries (idlc) load at runtime.
 copy_lib() {
     local base="$1"
     local real=""
@@ -105,9 +106,13 @@ copy_lib() {
         return 1
     fi
 
+    local soname
+    soname="$(readelf -d "$real" 2>/dev/null | sed -n 's/.*(SONAME).*\[\(.*\)\].*/\1/p')"
+    [ -n "$soname" ] || soname="${base}.so.0"
+
     cp -f "$real" "$ARTIFACTS_DIR/${base}.so"
-    cp -f "$real" "$ARTIFACTS_DIR/${base}.so.0"
-    echo "  [+] ${base}.so / ${base}.so.0"
+    cp -f "$real" "$ARTIFACTS_DIR/${soname}"
+    echo "  [+] ${base}.so / ${soname}"
 }
 
 # Runtime library and IDL-compiler support libraries.

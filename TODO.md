@@ -7,7 +7,7 @@ The IDL generator is using the field's position in the struct (0, 1, 2, 3, 4) in
 
 
 
-[TODO] Upgrade to cyclone dds 11.0.
+[DONE] Upgrade to cyclone dds 11.0.
 
 
 

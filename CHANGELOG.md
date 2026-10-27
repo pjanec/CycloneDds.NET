@@ -6,7 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## unreleased
-nothing yet
+
+### Changed
+- **Native Cyclone DDS upgraded to 11.x** (upstream `master` as of 2026-10-22, i.e. 11.0.1
+  plus later fixes), from the January 2026 pre-11.0 snapshot. Brings upstream's hardening
+  against malformed network input (CDR deserialization and discovery bounds checks, stricter
+  SPDP/SEDP GUID-prefix validation, an address-set use-after-free fix), XTypes improvements
+  (recursive types, try-construct, sparse enums, union label fixes) and networking fixes.
+  The wire protocol is unchanged: nodes on the previous package and on this one interoperate.
+  Generated type descriptors now carry the new required-prefix / try-construct metadata, so
+  generated code must be used with the native library of the same package (as before).
+- On Linux the native libraries now carry the SONAME `.so.11` (was `.so.0`);
+  `build/native-linux.sh` stages each library under its real SONAME and the package
+  bundles `*.so.*`.
 
 ## 0.3.2
 

@@ -43,7 +43,7 @@
     <None Include="..\..\artifacts\native\linux-x64\idlc" Pack="true" PackagePath="tools/"
           Condition="Exists('..\..\artifacts\native\linux-x64\idlc')" />
     <None Include="..\..\artifacts\native\linux-x64\*.so" Pack="true" PackagePath="tools/" />
-    <None Include="..\..\artifacts\native\linux-x64\*.so.0" Pack="true" PackagePath="tools/" />
+    <None Include="..\..\artifacts\native\linux-x64\*.so.*" Pack="true" PackagePath="tools/" />
 
     <!-- Tools: Shared Managed Libraries -->
     <None Include="..\..\tools\CycloneDDS.CodeGen\bin\$(Configuration)\net8.0\CycloneDDS.Compiler.Common.dll" Pack="true" PackagePath="tools/" />
