@@ -22,6 +22,22 @@ public sealed class FixedBufferJsonConverterFactory : JsonConverterFactory
     /// <summary>Shared singleton instance.</summary>
     public static readonly FixedBufferJsonConverterFactory Instance = new();
 
+    /// <summary>Instance that writes byte buffers as one base64 string (reading accepts both forms).</summary>
+    public static readonly FixedBufferJsonConverterFactory Base64Bytes = new(bytesAsBase64: true);
+
+    private readonly bool _bytesAsBase64;
+
+    /// <summary>Creates a factory that writes buffers as JSON arrays.</summary>
+    public FixedBufferJsonConverterFactory()
+        : this(bytesAsBase64: false)
+    {
+    }
+
+    private FixedBufferJsonConverterFactory(bool bytesAsBase64)
+    {
+        _bytesAsBase64 = bytesAsBase64;
+    }
+
     /// <inheritdoc />
     public override bool CanConvert(Type typeToConvert)
     {
@@ -52,7 +68,7 @@ public sealed class FixedBufferJsonConverterFactory : JsonConverterFactory
     public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options)
     {
         var converterType = typeof(FixedBufferJsonConverter<>).MakeGenericType(typeToConvert);
-        return (JsonConverter)Activator.CreateInstance(converterType)!;
+        return (JsonConverter)Activator.CreateInstance(converterType, new object[] { _bytesAsBase64 })!;
     }
 }
 
@@ -65,6 +81,13 @@ internal sealed class FixedBufferJsonConverter<TBuffer> : JsonConverter<TBuffer>
     where TBuffer : struct
 {
     private static readonly FieldInfo ElemField = GetSingleElementField();
+
+    private readonly bool _bytesAsBase64;
+
+    public FixedBufferJsonConverter(bool bytesAsBase64)
+    {
+        _bytesAsBase64 = bytesAsBase64;
+    }
 
     private static FieldInfo GetSingleElementField()
     {
@@ -95,6 +118,14 @@ internal sealed class FixedBufferJsonConverter<TBuffer> : JsonConverter<TBuffer>
 
     public override void Write(Utf8JsonWriter writer, TBuffer value, JsonSerializerOptions options)
     {
+        if (_bytesAsBase64 && ElementType == typeof(byte))
+        {
+            var bytes = new byte[Count];
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)).Slice(0, Count).CopyTo(bytes);
+            writer.WriteBase64StringValue(bytes);
+            return;
+        }
+
         writer.WriteStartArray();
 
         var boxed = (object)value;
@@ -142,6 +173,15 @@ internal sealed class FixedBufferJsonConverter<TBuffer> : JsonConverter<TBuffer>
     public override TBuffer Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         TBuffer buf = default;
+
+        if (reader.TokenType == JsonTokenType.String && ElementType == typeof(byte))
+        {
+            // A byte buffer recorded with RecordBytesAsBase64.
+            var bytes = reader.GetBytesFromBase64();
+            bytes.AsSpan(0, Math.Min(bytes.Length, Count))
+                .CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref buf, 1)));
+            return buf;
+        }
 
         if (reader.TokenType != JsonTokenType.StartArray)
         {

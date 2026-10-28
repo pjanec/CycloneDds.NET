@@ -87,6 +87,12 @@ public interface IDdsBridge : IDisposable
     event Action? ReadersChanged;
 
     /// <summary>
+    /// Raised on a reader thread when reading a topic fails; that topic receives no more
+    /// samples, the others are not affected.
+    /// </summary>
+    event Action<TopicMetadata, Exception>? ReaderFailed { add { } remove { } }
+
+    /// <summary>
     /// Adds a new participant for the specified domain and partition.
     /// </summary>
     void AddParticipant(uint domainId, string partitionName);

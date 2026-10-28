@@ -25,6 +25,12 @@ public static class DdsJsonOptions
     public static readonly JsonSerializerOptions Export = Build(indented: false);
 
     /// <summary>
+    /// Like <see cref="Export"/>, but fixed-size byte buffers are written as one base64 string
+    /// (headless <c>RecordBytesAsBase64</c>). <see cref="Import"/> reads both forms.
+    /// </summary>
+    public static readonly JsonSerializerOptions ExportBase64Bytes = Build(indented: false, bytesAsBase64: true);
+
+    /// <summary>
     /// Options used by <see cref="Import.ImportService"/>:
     /// case-insensitive, fields included, fixed-buffer converter registered, enums as strings.
     /// </summary>
@@ -36,7 +42,7 @@ public static class DdsJsonOptions
     /// </summary>
     public static readonly JsonSerializerOptions Display = Build(indented: true);
 
-    private static JsonSerializerOptions Build(bool indented, bool caseInsensitive = false)
+    private static JsonSerializerOptions Build(bool indented, bool caseInsensitive = false, bool bytesAsBase64 = false)
     {
         var options = new JsonSerializerOptions
         {
@@ -51,7 +57,7 @@ public static class DdsJsonOptions
         options.Converters.Add(DdsUnionJsonConverterFactory.Instance);
         // FixedStringN: serialize as JSON string (not {"Length":N} which is useless)
         options.Converters.Add(FixedStringJsonConverterFactory.Instance);
-        options.Converters.Add(FixedBufferJsonConverterFactory.Instance);
+        options.Converters.Add(bytesAsBase64 ? FixedBufferJsonConverterFactory.Base64Bytes : FixedBufferJsonConverterFactory.Instance);
         return options;
     }
 }

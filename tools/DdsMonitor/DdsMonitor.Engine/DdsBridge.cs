@@ -491,11 +491,15 @@ public sealed class DdsBridge : IDdsBridge
     // Private helpers
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <inheritdoc />
+    public event Action<TopicMetadata, Exception>? ReaderFailed;
+
     private void ReportReadError(TopicMetadata meta, Exception ex)
     {
         _logger?.LogError(ex,
             "Reading topic {TopicName} ({TopicType}) failed; no more samples of it will be received. The other topics are not affected.",
             meta.TopicName, meta.TopicType.FullName);
+        ReaderFailed?.Invoke(meta, ex);
     }
 
     private IDynamicReader CreateReader(TopicMetadata meta, int participantIndex)

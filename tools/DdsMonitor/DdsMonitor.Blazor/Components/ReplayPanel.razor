@@ -207,14 +207,14 @@
     else if (!_isLoading)
     {
         <div class="replay-panel__empty">
-            Browse and load a JSON export file to begin replay.
+            Browse and load a JSON export or JSON Lines capture to begin replay.
         </div>
     }
 
     <!-- FileDialog for loading a recording -->
     <FileDialog IsOpen="_showFileBrowser"
                 Mode="FileDialogMode.Open"
-                Filter="*.json"
+                Filter="*.json*"
                 OnResult="OnFileBrowserResult" />
 </div>
 

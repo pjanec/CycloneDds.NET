@@ -237,9 +237,10 @@ public sealed class DynamicReader<T> : IDynamicReader
         var infos = loan.Infos;
         for (var i = 0; i < loan.Count; i++)
         {
-            // Never pass a T by value: the JIT rejects a method whose struct argument is 64 KiB or
-            // larger (InvalidProgramException), which is exactly the SUMO blob topics' sample size.
-            // Size it by reference and box it once here; everything downstream takes the box.
+            // Never pass a T by value alongside other arguments: when a struct of 64 KiB or more is
+            // followed by another stack argument, that argument's offset no longer fits the JIT's
+            // limit and the method is rejected (InvalidProgramException) - the SUMO blob topics'
+            // case. Size it by reference and box it once here; everything downstream takes the box.
             var sample = loan[i];
             var estimatedSize = _nativeSizer != null && sample != null ? _nativeSizer(in sample) : UnknownSizeBytes;
             EmitSample(sample, estimatedSize, infos[i], loan.GetSender(i));

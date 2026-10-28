@@ -5,6 +5,7 @@ using DdsMonitor.Components;
 using DdsMonitor.Engine;
 using DdsMonitor.Engine.Hosting;
 using DdsMonitor.Engine.Plugins;
+using DdsMonitor.Engine.Recording;
 using DdsMonitor.Engine.Ui;
 using DdsMonitor.Services;
 using Microsoft.AspNetCore.Components.Server.Circuits;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -23,13 +25,22 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 var headlessModeStr = builder.Configuration.GetSection("DdsSettings")["HeadlessMode"] ?? "None";
 var isHeadless = !string.Equals(headlessModeStr, "None", StringComparison.OrdinalIgnoreCase);
 
+// Recording to stdout (HeadlessFilePath=-): stdout carries the capture only, so every log line goes to stderr.
+var captureToStdout = isHeadless
+    && builder.Configuration.GetSection("DdsSettings")["HeadlessFilePath"] == HeadlessRecorder.StdoutPath;
+if (captureToStdout)
+    builder.Services.Configure<ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+
 // Bootstrap logger factory: used by PluginConfigService during startup (before the host
 // DI container is built) so that corrupt enabled-plugins.json emits a Warning to the
 // console rather than silently falling through.  The factory is disposed after
 // AddDdsMonitorServices returns because PluginConfigService only reads the file during
 // its constructor; no logging is needed after that startup phase.
 using var startupLoggers = LoggerFactory.Create(b =>
-    b.SetMinimumLevel(LogLevel.Warning).AddConsole());
+    b.SetMinimumLevel(LogLevel.Warning).AddConsole(o =>
+    {
+        if (captureToStdout) o.LogToStandardErrorThreshold = LogLevel.Trace;
+    }));
 builder.Services.AddDdsMonitorServices(builder.Configuration, startupLoggers);
 // DevelSettings is registered inside AddDdsMonitorServices
 
@@ -183,7 +194,14 @@ if (!isHeadless)
 else
 {
     // ── Headless mode: start hosted services only; no HTTP listener ───────────────────
+    // Resolved up front: RunAsync disposes the service provider on its way out.
+    var runner = app.Services.GetServices<IHostedService>().OfType<HeadlessRunnerService>().FirstOrDefault();
+
     await app.RunAsync();
+
+    // 0 = success, 2 = the run failed, 3 = a recording lost at least one topic (see the log / summary file).
+    if (runner != null)
+        Environment.ExitCode = runner.ExitCode;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────────────

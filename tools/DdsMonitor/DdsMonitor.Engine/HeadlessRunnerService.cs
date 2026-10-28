@@ -5,7 +5,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using DdsMonitor.Engine.Json;
+using System.Linq;
+using DdsMonitor.Engine.Recording;
 using DdsMonitor.Engine.Replay;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -34,8 +35,11 @@ namespace DdsMonitor.Engine;
 /// </summary>
 public sealed class HeadlessRunnerService : BackgroundService
 {
-    private const int FileBufferSize = 65_536;
-    private const int FlushEveryN = 200;
+    /// <summary>Exit code when the run itself failed (bad arguments, unexpected error).</summary>
+    public const int ExitCodeError = 2;
+
+    /// <summary>Exit code of a recording during which at least one topic could not be read.</summary>
+    public const int ExitCodeTopicFailed = 3;
 
     private readonly DdsSettings _settings;
     private readonly AppSettings _appSettings;
@@ -65,6 +69,15 @@ public sealed class HeadlessRunnerService : BackgroundService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _channelReader = channelReader;
     }
+
+    /// <summary>
+    /// The process exit code the headless run asks for: 0 on success, <see cref="ExitCodeError"/>
+    /// or <see cref="ExitCodeTopicFailed"/>. Applied by the host program after shutdown.
+    /// </summary>
+    public int ExitCode { get; private set; }
+
+    /// <summary>The outcome of the last recording, or null if none ran.</summary>
+    public RecordResult? RecordResult { get; private set; }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -109,6 +122,7 @@ public sealed class HeadlessRunnerService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Headless runner encountered an unexpected error.");
+            ExitCode = ExitCodeError;
         }
         finally
         {
@@ -125,59 +139,25 @@ public sealed class HeadlessRunnerService : BackgroundService
         if (_channelReader == null)
         {
             _logger.LogError("HeadlessRunnerService: Record mode requires a ChannelReader<SampleData>.");
+            ExitCode = ExitCodeError;
             return;
         }
 
-        var filePath = _settings.HeadlessFilePath;
-        if (string.IsNullOrWhiteSpace(filePath))
+        if (string.IsNullOrWhiteSpace(_settings.HeadlessFilePath))
         {
             _logger.LogError("HeadlessRunnerService: HeadlessFilePath must be set for Record mode.");
+            ExitCode = ExitCodeError;
             return;
         }
 
-        _logger.LogInformation("Headless Record → {FilePath}", filePath);
-
-        await using var fileStream = new FileStream(
-            filePath,
-            FileMode.Create,
-            FileAccess.Write,
-            FileShare.None,
-            FileBufferSize,
-            useAsync: true);
-
-        await using var jsonWriter = new Utf8JsonWriter(fileStream, new JsonWriterOptions { Indented = true });
-
-        jsonWriter.WriteStartArray();
-
-        long count = 0;
-        var skippedTopics = new HashSet<Type>();
-
-        try
-        {
-            await foreach (var sample in _channelReader.ReadAllAsync(stoppingToken))
-            {
-                if (!TryWriteRecord(jsonWriter, sample, skippedTopics))
-                    continue;
-                count++;
-
-                Console.WriteLine($"[RECORD] Ordinal={sample.Ordinal} Topic={sample.TopicMetadata.ShortName}");
-
-                if (count % FlushEveryN == 0)
-                    await jsonWriter.FlushAsync(stoppingToken);
-            }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Ctrl+C: the normal end of a recording.
-        }
-        finally
-        {
-            // Always close the array, whatever ended the recording, so the capture stays valid JSON.
-            jsonWriter.WriteEndArray();
-            await jsonWriter.FlushAsync(CancellationToken.None);
-        }
-
-        _logger.LogInformation("Headless Record complete – {Count} samples written to {FilePath}.", count, filePath);
+        var subscribed = _topicRegistry.AllTopics
+            .Where(t => !_ddsBridge.ExplicitlyUnsubscribedTopicTypes.Contains(t.TopicType))
+            .ToList();
+        var recorder = new HeadlessRecorder(_settings, _ddsBridge, subscribed, _channelReader, _logger);
+        var result = await recorder.RunAsync(stoppingToken);
+        RecordResult = result;
+        if (result.FailedTopics > 0)
+            ExitCode = ExitCodeTopicFailed;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -190,6 +170,7 @@ public sealed class HeadlessRunnerService : BackgroundService
         if (string.IsNullOrWhiteSpace(filePath))
         {
             _logger.LogError("HeadlessRunnerService: HeadlessFilePath must be set for Replay mode.");
+            ExitCode = ExitCodeError;
             return;
         }
 
@@ -237,74 +218,5 @@ public sealed class HeadlessRunnerService : BackgroundService
         }
 
         _logger.LogInformation("Headless Replay complete.");
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // JSON writer helpers (same schema as ExportService)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private static readonly JsonSerializerOptions PayloadOptions = DdsJsonOptions.Export;
-
-    /// <summary>
-    /// Writes one sample. A payload that cannot be serialized is skipped (and logged once per
-    /// topic) instead of ending the recording; it is serialized before anything is written so a
-    /// failure never leaves a half-written record behind.
-    /// </summary>
-    private bool TryWriteRecord(Utf8JsonWriter writer, SampleData sample, HashSet<Type> skippedTopics)
-    {
-        JsonElement payloadElement;
-        try
-        {
-            payloadElement = JsonSerializer.SerializeToElement(
-                sample.Payload,
-                sample.Payload.GetType(),
-                PayloadOptions);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            if (skippedTopics.Add(sample.TopicMetadata.TopicType))
-            {
-                _logger.LogError(ex,
-                    "Cannot record samples of topic {TopicName} ({TopicType}); they are left out of the capture.",
-                    sample.TopicMetadata.TopicName, sample.TopicMetadata.TopicType.FullName);
-            }
-            return false;
-        }
-
-        WriteRecord(writer, sample, payloadElement);
-        return true;
-    }
-
-    private static void WriteRecord(Utf8JsonWriter writer, SampleData sample, JsonElement payloadElement)
-    {
-        writer.WriteStartObject();
-
-        writer.WriteNumber("Ordinal", sample.Ordinal);
-        writer.WriteString("TopicTypeName", sample.TopicMetadata.TopicType.FullName);
-        writer.WriteString("Timestamp", sample.Timestamp.ToUniversalTime());
-        writer.WriteNumber("DomainId", sample.DomainId);
-        writer.WriteString("PartitionName", sample.PartitionName);
-
-        if (sample.Sender != null)
-        {
-            writer.WriteStartObject("Sender");
-            writer.WriteNumber("ProcessId", sample.Sender.ProcessId);
-            if (sample.Sender.MachineName != null)
-                writer.WriteString("MachineName", sample.Sender.MachineName);
-            if (sample.Sender.IpAddress != null)
-                writer.WriteString("IpAddress", sample.Sender.IpAddress);
-            writer.WriteEndObject();
-        }
-        else
-        {
-            writer.WriteNull("Sender");
-        }
-
-        writer.WriteString("InstanceState", sample.SampleInfo.InstanceState.ToString());
-
-        writer.WritePropertyName("Payload");
-        payloadElement.WriteTo(writer);
-
-        writer.WriteEndObject();
     }
 }

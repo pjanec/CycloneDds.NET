@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using CycloneDDS.Runtime;
 using CycloneDDS.Runtime.Interop;
 
@@ -53,10 +54,11 @@ public sealed class ImportService : IImportService
             FileBufferSize,
             useAsync: true);
 
-        await foreach (var record in JsonSerializer.DeserializeAsyncEnumerable<SampleExportRecord>(
-                           fileStream,
-                           SerializerOptions,
-                           cancellationToken))
+        var records = await IsJsonLinesAsync(fileStream, cancellationToken)
+            ? ReadJsonLinesAsync(fileStream, cancellationToken)
+            : JsonSerializer.DeserializeAsyncEnumerable<SampleExportRecord>(fileStream, SerializerOptions, cancellationToken);
+
+        await foreach (var record in records)
         {
             if (record == null)
             {
@@ -68,6 +70,55 @@ public sealed class ImportService : IImportService
             {
                 yield return sample;
             }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // JSON Lines (headless RecordFormat=JsonLines)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A JSON array export starts with <c>[</c>, a JSON Lines capture with <c>{</c>.
+    /// Leaves the stream at its start.
+    /// </summary>
+    private static async Task<bool> IsJsonLinesAsync(FileStream stream, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[256];
+        int read = await stream.ReadAsync(buffer, cancellationToken);
+        stream.Position = 0;
+        int i = 0;
+        if (read >= 3 && buffer[0] == 0xEF && buffer[1] == 0xBB && buffer[2] == 0xBF)
+            i = 3; // UTF-8 BOM
+        for (; i < read; i++)
+        {
+            if (!char.IsWhiteSpace((char)buffer[i]))
+                return buffer[i] == (byte)'{';
+        }
+        return false;
+    }
+
+    private static async IAsyncEnumerable<SampleExportRecord?> ReadJsonLinesAsync(
+        Stream stream,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(stream, leaveOpen: true);
+        string? line;
+        while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            SampleExportRecord? record;
+            try
+            {
+                record = JsonSerializer.Deserialize<SampleExportRecord>(line, SerializerOptions);
+            }
+            catch (JsonException)
+            {
+                // A capture still being written (or cut off by a crash) can end in a partial line.
+                continue;
+            }
+            yield return record;
         }
     }
 

@@ -26,6 +26,32 @@ public enum HeadlessMode
     Replay,
 }
 
+/// <summary>File format of a headless recording.</summary>
+public enum RecordFormat
+{
+    /// <summary>One indented JSON array of samples (the default; the format the UI exports and imports).</summary>
+    Json,
+
+    /// <summary>
+    /// JSON Lines: one compact, self-contained JSON object per line. The file is readable while it
+    /// is being written (only whole lines are flushed) and a crash costs at most the last line.
+    /// </summary>
+    JsonLines,
+}
+
+/// <summary>What a headless recording prints to the console.</summary>
+public enum RecordConsoleOutput
+{
+    /// <summary>One <c>[RECORD]</c> line per sample (the default).</summary>
+    PerSample,
+
+    /// <summary>A short status line every few seconds and a per-topic summary at the end, on stderr.</summary>
+    Status,
+
+    /// <summary>Nothing but warnings and errors.</summary>
+    Quiet,
+}
+
 /// <summary>
 /// Configuration for a single DDS participant (domain + optional partition).
 /// </summary>
@@ -114,9 +140,43 @@ public sealed class DdsSettings
 
     /// <summary>
     /// Gets or sets the file path used as the source (<c>Replay</c>) or destination
-    /// (<c>Record</c>) for headless operation.
+    /// (<c>Record</c>) for headless operation. When recording, <c>-</c> writes to stdout
+    /// (logs then go to stderr).
     /// </summary>
     public string HeadlessFilePath { get; set; } = string.Empty;
+
+    // ── Headless record options (all opt-in; the defaults keep the original behaviour) ──
+
+    /// <summary>File format of a recording. Default: <see cref="RecordFormat.Json"/>.</summary>
+    public RecordFormat RecordFormat { get; set; } = RecordFormat.Json;
+
+    /// <summary>Stop the recording after this many seconds. 0 (default): record until interrupted.</summary>
+    public double RecordDurationSeconds { get; set; }
+
+    /// <summary>Stop the recording after this many samples. 0 (default): no limit.</summary>
+    public long RecordMaxSamples { get; set; }
+
+    /// <summary>Console output while recording. Default: <see cref="RecordConsoleOutput.PerSample"/>.</summary>
+    public RecordConsoleOutput RecordConsole { get; set; } = RecordConsoleOutput.PerSample;
+
+    /// <summary>
+    /// Optional path of a small JSON summary (per-topic counts, failed topics, running/stopped),
+    /// rewritten every second while recording and once at the end. Empty (default): none.
+    /// </summary>
+    public string RecordSummaryFile { get; set; } = string.Empty;
+
+    /// <summary>
+    /// <see cref="RecordFormat.JsonLines"/> only: start a new numbered file
+    /// (<c>name.0001.jsonl</c>, <c>name.0002.jsonl</c>, ...) once the current one reaches this many MB.
+    /// 0 (default): a single file.
+    /// </summary>
+    public int RecordMaxFileSizeMB { get; set; }
+
+    /// <summary>
+    /// Write fixed-size byte buffers (e.g. <c>fixed byte Payload[65536]</c>) as one base64 string
+    /// instead of an array of numbers. Import and replay read both forms. Default: false.
+    /// </summary>
+    public bool RecordBytesAsBase64 { get; set; }
 
     /// <summary>
     /// Gets or sets the replay speed multiplier relative to the original capture rate.

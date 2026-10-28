@@ -54,6 +54,24 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   (`Of<T>()`, `Of(Type)`, and the string core `Of(string ns, IEnumerable<string> typePath)`),
   now shared by the runtime, the code generator and DdsMonitor.
 
+- **DdsMonitor headless recording for scripts and AI agents.** New `--DdsSettings:` options, all
+  opt-in; with none of them set, recording works exactly as before:
+  - `RecordFormat=JsonLines`: one compact record per line (with the DDS `TopicName`), flushed in
+    whole lines so the file can be read while it is being written.
+  - `RecordDurationSeconds`, `RecordMaxSamples`: stop by itself.
+  - `RecordConsole=Status|Quiet`: a status line every 5 s plus a final per-topic summary on stderr,
+    or nothing, instead of one line per sample.
+  - `RecordSummaryFile`: a small JSON file with per-topic counts, failed topics and
+    running/stopped state, rewritten every second.
+  - `RecordMaxFileSizeMB`: JSON Lines rotation to `name.0001.jsonl`, `name.0002.jsonl`, ...
+  - `RecordBytesAsBase64`: fixed byte buffers as one base64 string (import reads both forms).
+  - `HeadlessFilePath=-`: write the capture to stdout; logs then go to stderr.
+  - Headless exit codes: `2` when the run fails, `3` when a topic could not be recorded.
+  - Import, replay and the UI's replay panel read JSON Lines captures too.
+  - The DdsMonitor README has a short runbook: "Recording for scripts and AI agents".
+- `IDdsBridge.ReaderFailed` (with a default no-op implementation, so existing implementations
+  still compile).
+
 ### Changed
 - **Package metadata names the native Cyclone DDS version.** The description, release
   notes and `native_version.json` now state the Cyclone DDS version (from its CMake
@@ -93,8 +111,10 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
 
 ### Fixed
 - **DdsMonitor reads topics whose sample is 64 KiB or larger** (e.g. a `fixed byte Payload[65536]`
-  blob). The reader passed each sample by value to a helper, and the .NET JIT rejects a method
-  with a struct argument that large (`InvalidProgramException` in `DynamicReader.DrainReader`).
+  blob). The reader passed each sample by value to a helper, followed by more arguments; the .NET
+  JIT rejects such a call once the struct is 64 KiB or more (`InvalidProgramException` in
+  `DynamicReader.DrainReader`). The `CycloneDDS.NET` reader and writer APIs take samples by
+  reference (or as their only argument, like `SetFilter`'s predicate) and are not affected.
   These topics recorded nothing, and the error only came out at shutdown, where it killed the process.
   Samples are now sized by reference and boxed once.
 - **A topic that cannot be read no longer takes ddsmonitor down.** The error is logged when it
