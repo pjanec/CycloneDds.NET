@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using DdsMonitor.Components;
 using DdsMonitor.Engine;
 using DdsMonitor.Engine.Hosting;
@@ -14,6 +15,14 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+
+if (CommandLineHelp.IsHelpRequest(args) || CommandLineHelp.IsVersionRequest(args))
+{
+    var version = typeof(HeadlessRunnerService).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+    Console.WriteLine(CommandLineHelp.IsHelpRequest(args) ? CommandLineHelp.Text(version) : version);
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {

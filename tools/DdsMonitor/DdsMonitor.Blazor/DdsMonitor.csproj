@@ -15,6 +15,12 @@
     <Description>Global dotnet tool for CycloneDDS network monitoring</Description>
   </PropertyGroup>
 
+  <!-- The tool's own README is its package readme; Directory.Build.props packs the library's. -->
+  <ItemGroup>
+    <None Remove="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../../../README.md'))" />
+    <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components" Version="8.0.0" />
   </ItemGroup>

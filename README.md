@@ -17,6 +17,8 @@ Install the CycloneDDS.NET package from NuGet:
 ```bash
 dotnet add package CycloneDDS.NET
 ```
+
+For watching a DDS domain (browser UI, or headless recording for scripts and AI agents) there is a companion tool, `dotnet tool install -g CycloneDDS.NET.DdsMonitor`: see [DDS Monitor tool](#dds-monitor-tool).
  
 This single package includes:
 - **Runtime Library:** High-performance managed bindings (targets `net8.0`; runs on .NET 8 and later).
@@ -658,6 +660,18 @@ If OpenSSL or a plugin cannot be loaded, creating a participant on a secured dom
 On Windows the plugins are copied next to your application by the package's build targets, because
 Windows looks for them there. Set `<CycloneDdsStageSecurityPlugins>false</CycloneDdsStageSecurityPlugins>`
 to opt out.
+
+## DDS Monitor tool
+
+**DDS Monitor** (`ddsmonitor`) is a companion .NET global tool for watching a DDS domain. It has a browser UI with live sample grids, instance tracking, filtering, sample sending and replay. It can also record headless, to a JSON Lines file that scripts and AI agents can read while it is being written, and replay a recording back onto the network.
+
+```bash
+dotnet tool install -g CycloneDDS.NET.DdsMonitor
+ddsmonitor --help
+ddsmonitor --AppSettings:TopicSources:0=./bin/Debug/net8.0      # UI, with your topic types
+```
+
+It ships with the same version number as this package. See the [DDS Monitor README](https://github.com/pjanec/CycloneDds.NET/blob/main/tools/DdsMonitor/README.md), including its [runbook for scripts and AI agents](https://github.com/pjanec/CycloneDds.NET/blob/main/tools/DdsMonitor/README.md#recording-for-scripts-and-ai-agents).
 
 ## Examples
 

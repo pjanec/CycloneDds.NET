@@ -69,6 +69,11 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   - Headless exit codes: `2` when the run fails, `3` when a topic could not be recorded.
   - Import, replay and the UI's replay panel read JSON Lines captures too.
   - The DdsMonitor README has a short runbook: "Recording for scripts and AI agents".
+- **`ddsmonitor --help`** prints every command-line argument and the recording workflow on one
+  screen, so the installed tool documents itself; `ddsmonitor --version` prints the version. A
+  test fails when a setting is missing from the help.
+- The `CycloneDDS.NET.DdsMonitor` package carries the DDS Monitor README (with a new quick
+  start) instead of the library's, and the main README introduces the tool.
 - `IDdsBridge.ReaderFailed` (with a default no-op implementation, so existing implementations
   still compile).
 
@@ -114,6 +119,9 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 1.2 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- The DDS Monitor README documented a `PluginDirectories` option that does not exist (plugins
+  load from the `plugins` folder next to the executable), and said self-send is on by default
+  (it is off).
 - **DdsMonitor filter macros no longer leak between compilers.** All filter compilers shared
   one static macro registry, so the most recently created compiler's macros applied everywhere;
   each compiler now resolves its own.

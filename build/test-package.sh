@@ -79,6 +79,13 @@ dotnet tool uninstall --global CycloneDDS.NET.DdsMonitor >/dev/null 2>&1 || true
 dotnet tool install --global --add-source "$FEED_ABS" --version "$MON_VER" CycloneDDS.NET.DdsMonitor >/dev/null
 
 TOOL="$HOME/.dotnet/tools/ddsmonitor"
+# The installed tool documents itself: --help must print the reference, including the recording workflow.
+if "$TOOL" --help | grep -q 'RECORDING FOR SCRIPTS AND AI AGENTS'; then
+    echo "  [+] ddsmonitor --help prints the reference ($("$TOOL" --version))"
+else
+    echo "  [-] ddsmonitor --help did not print the reference" >&2
+    exit 1
+fi
 LOG="$(mktemp)"
 "$TOOL" --NoBrowser true >"$LOG" 2>&1 &
 TOOL_PID=$!
