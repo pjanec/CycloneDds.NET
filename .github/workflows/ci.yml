@@ -20,13 +20,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0 # Required for Nerdbank.GitVersioning to determine version
         submodules: recursive
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v5
       with:
         # net8.0 is the target framework, but the code uses C# 13 language
         # features (e.g. ref structs in async methods), which require the .NET 10
@@ -51,7 +51,7 @@ jobs:
 
     - name: Cache native linux-x64 build
       id: native-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: artifacts/native/linux-x64
         key: native-linux-x64-ubuntu22.04-${{ steps.native-key.outputs.submodule }}-${{ hashFiles('native/**', 'build/native-linux.sh', '.github/workflows/ci.yml') }}
@@ -65,7 +65,7 @@ jobs:
     # and with the cache a run downloads nothing once a previous run succeeded.
     - name: Cache apt packages for the native build container
       if: steps.native-cache.outputs.cache-hit != 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: .apt-cache
         key: apt-ubuntu22.04-${{ hashFiles('.github/workflows/ci.yml') }}
@@ -115,7 +115,7 @@ jobs:
       run: dotnet test tests/CycloneDDS.Runtime.Tests/CycloneDDS.Runtime.Tests.csproj -c Release --no-build --logger "console;verbosity=normal"
 
     - name: Upload linux-x64 Native Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: native-linux-x64
         path: artifacts/native/linux-x64/*
@@ -137,13 +137,13 @@ jobs:
       CMAKE_GENERATOR: "Visual Studio 17 2022"
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0 # Required for Nerdbank.GitVersioning to determine version
         submodules: recursive
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v5
       with:
         # net8.0 is the target framework, but the code uses C# 13 language
         # features (e.g. ref structs in async methods), which require the .NET 10
@@ -159,7 +159,7 @@ jobs:
         cmake --version
 
     - name: Download linux-x64 Native Artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: native-linux-x64
         path: artifacts/native/linux-x64/
@@ -176,7 +176,7 @@ jobs:
 
     - name: Cache native win-x64 build
       id: native-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: artifacts/native/win-x64
         key: native-win-x64-${{ steps.native-key.outputs.image }}-${{ steps.native-key.outputs.submodule }}-${{ hashFiles('native/**', 'build/native-win.ps1') }}
@@ -190,7 +190,7 @@ jobs:
       run: .\build\test-package.ps1
 
     - name: Upload win-x64 Native Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: native-win-x64
@@ -198,7 +198,7 @@ jobs:
         if-no-files-found: warn
 
     - name: Upload NuGet Packages
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: nuget-packages
@@ -206,7 +206,7 @@ jobs:
         if-no-files-found: warn
 
     - name: Upload Symbol Packages
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: symbol-packages
@@ -225,19 +225,19 @@ jobs:
     needs: [ build ]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0 # Required for Nerdbank.GitVersioning (applies to the smoke-test project)
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: |
           8.0.x
           10.0.x
 
     - name: Download cross-platform packages
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: nuget-packages
         path: artifacts/nuget/
@@ -264,18 +264,18 @@ jobs:
 
     steps:
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
 
     - name: Download packages
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: nuget-packages
         path: artifacts/nuget/
 
     - name: Download symbol packages
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: symbol-packages
         path: artifacts/nuget/

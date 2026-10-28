@@ -671,7 +671,7 @@ ddsmonitor --help
 ddsmonitor --AppSettings:TopicSources:0=./bin/Debug/net8.0      # UI, with your topic types
 ```
 
-On a secured domain it needs the same `CYCLONEDDS_URI` security configuration as any other participant; the Windows specifics (config-file URI form, OpenSSL on `PATH`) are in [Running with DDS Security](tools/DdsMonitor/README.md#running-with-dds-security).
+On a secured domain it needs the same `CYCLONEDDS_URI` security configuration as any other participant; the Windows specifics (config-file URI form, OpenSSL on `PATH`) are in [Running with DDS Security](https://github.com/pjanec/CycloneDds.NET/blob/main/tools/DdsMonitor/README.md#running-with-dds-security).
 
 It ships with the same version number as this package. See the [DDS Monitor README](https://github.com/pjanec/CycloneDds.NET/blob/main/tools/DdsMonitor/README.md), including its [runbook for scripts and AI agents](https://github.com/pjanec/CycloneDds.NET/blob/main/tools/DdsMonitor/README.md#recording-for-scripts-and-ai-agents).
 
