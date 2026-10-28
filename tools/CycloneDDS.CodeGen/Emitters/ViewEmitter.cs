@@ -9,6 +9,7 @@ namespace CycloneDDS.CodeGen.Emitters
     {
         public string EmitViewStruct(TypeInfo type, GlobalTypeRegistry? registry, bool generateUsings = true)
         {
+            _currentNamespace = type.Namespace ?? string.Empty;
             var sb = new StringBuilder();
             
             if (generateUsings)
@@ -71,6 +72,7 @@ namespace CycloneDDS.CodeGen.Emitters
         /// </summary>
         public string EmitViewStructInsideNamespace(TypeInfo type, GlobalTypeRegistry? registry)
         {
+            _currentNamespace = type.Namespace ?? string.Empty;
             var sb = new StringBuilder();
             var indent = "    ";
 
@@ -310,6 +312,29 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine();
                 sb.AppendLine($"{indent}    CycloneDDS.Runtime.Interop.DdsGuid* arr = (CycloneDDS.Runtime.Interop.DdsGuid*)_ptr->{nativeFieldName}.Buffer;");
                 sb.AppendLine($"{indent}    return arr[index].ToManaged();");
+                sb.AppendLine($"{indent}}}");
+            }
+           else if (IsEnum(elementType, registry))
+            {
+                sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
+                sb.AppendLine($"{indent}public int {propName}Count");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    get");
+                sb.AppendLine($"{indent}    {{");
+                sb.AppendLine($"{indent}        unsafe {{ return (int)_ptr->{nativeFieldName}.Length; }}");
+                sb.AppendLine($"{indent}    }}");
+                sb.AppendLine($"{indent}}}");
+                sb.AppendLine();
+
+                // Native enum elements are 4-byte ints whatever the C# underlying type.
+                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at specified index.</summary>");
+                sb.AppendLine($"{indent}public unsafe {elementType} Get{propName}(int index)");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
+                sb.AppendLine($"{indent}        throw new ArgumentOutOfRangeException(nameof(index));");
+                sb.AppendLine();
+                sb.AppendLine($"{indent}    int* arr = (int*)_ptr->{nativeFieldName}.Buffer;");
+                sb.AppendLine($"{indent}    return ({elementType})arr[index];");
                 sb.AppendLine($"{indent}}}");
             }
            else if (elementType == "System.DateTime" || elementType == "DateTime")
@@ -774,7 +799,8 @@ namespace CycloneDDS.CodeGen.Emitters
                          sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i);");
                          sb.AppendLine($"{indent}}}");
                      }
-                     else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime")
+                     else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime"
+                              || IsEnum(elementType, registry))
                      {
                          sb.AppendLine($"{indent}target.{targetProp} = new {elementType}[this.{propName}Count];");
                          sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
@@ -809,7 +835,8 @@ namespace CycloneDDS.CodeGen.Emitters
                      sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i));");
                      sb.AppendLine($"{indent}}}");
                  }
-                 else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime")
+                 else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime"
+                          || IsEnum(elementType, registry))
                  {
                      sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<{elementType}>(this.{propName}Count);");
                      sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
@@ -840,6 +867,17 @@ namespace CycloneDDS.CodeGen.Emitters
         }
 
         // Helpers
+        private string _currentNamespace = string.Empty;
+
+        /// <summary>True when <paramref name="typeName"/> (qualified or not) is a DDS enum: in native memory a 4-byte int.</summary>
+        private bool IsEnum(string typeName, GlobalTypeRegistry? registry)
+        {
+            if (registry == null) return false;
+            if (registry.TryGetDefinition(typeName, out var def) && def?.TypeInfo?.IsEnum == true) return true;
+            return !typeName.Contains('.') && _currentNamespace.Length > 0
+                && registry.TryGetDefinition(_currentNamespace + "." + typeName, out def) && def?.TypeInfo?.IsEnum == true;
+        }
+
         private string ResolveType(string typeName, GlobalTypeRegistry? registry)
         {
              if (registry != null && registry.TryGetDefinition(typeName, out var def))
