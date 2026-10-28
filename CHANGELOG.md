@@ -5,7 +5,7 @@ All notable changes to CycloneDDS.NET will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 1.2.12
+## 1.2.20
 
 Versioned **1.2** for both packages. `CycloneDDS.NET` jumps from 0.3 to 1.2 to share the version
 of `CycloneDDS.NET.DdsMonitor` (which already shipped 1.1); from now on the two always carry the
