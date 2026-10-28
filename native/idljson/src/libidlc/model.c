@@ -131,6 +131,12 @@ void resolve_type_size(const char* type_name, uint32_t* size, uint32_t* align) {
              uint32_t base_size = 0, base_align = 1;
              resolve_type_size(rec->type, &base_size, &base_align);
              
+             /* A bounded string typedef is an inline char[bound + 1] in C, not a pointer. */
+             if (rec->type && strcmp(rec->type, "string") == 0 && rec->bound > 0) {
+                 base_size = rec->bound + 1;
+                 base_align = 1;
+             }
+
              if (rec->is_array) { 
                  *size = base_size * rec->size; // rec->size is count
              } else {

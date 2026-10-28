@@ -60,6 +60,24 @@ namespace CycloneDDS.IdlImporter.Tests
         }
         
         [Fact]
+        public void MapMember_StringTypedef_TakesTheTypedefsBound_ThroughAChain()
+        {
+            var mapper = new TypeMapper();
+            mapper.RegisterType(new JsonTypeDefinition { Name = "T_Short", Kind = "alias", Type = "string", Bound = 8 });
+            mapper.RegisterType(new JsonTypeDefinition { Name = "T_Short2", Kind = "alias", Type = "T_Short" });
+            mapper.RegisterType(new JsonTypeDefinition { Name = "T_Any", Kind = "alias", Type = "string" });
+
+            var (shortType, _, _, shortBound) = mapper.MapMember(new JsonMember { Name = "a", Type = "T_Short" });
+            var (chainType, _, _, chainBound) = mapper.MapMember(new JsonMember { Name = "b", Type = "T_Short2" });
+            var (anyType, anyManaged, _, anyBound) = mapper.MapMember(new JsonMember { Name = "c", Type = "T_Any" });
+
+            Assert.Equal(("string", 8), (shortType, shortBound));
+            Assert.Equal(("string", 8), (chainType, chainBound));
+            Assert.Equal(("string", 0), (anyType, anyBound));
+            Assert.True(anyManaged);
+        }
+
+        [Fact]
         public void MapMember_BoundedString()
         {
             var mapper = new TypeMapper();

@@ -77,6 +77,43 @@ module Geom {
             Assert.Contains("public Geom.Point center;", shapeContent); // Original case retained + Namespaced type
         }
         
+        /// <summary>
+        /// GitHub issue #5: string typedefs (bounded or not) were imported as byte, because the
+        /// idljson plugin recorded the typedef's C type ("char") instead of "string" and its bound.
+        /// </summary>
+        [Fact]
+        public void Import_StringTypedefs_BecomeStrings_WithTheirBounds()
+        {
+            string idl = Path.Combine(_sourceRoot, "HelloWorld.idl");
+            File.WriteAllText(idl, @"
+typedef int64 T_Int64;
+typedef string T_String;
+typedef string<8> T_ShortString;
+typedef string<512> T_LongString;
+typedef T_ShortString T_ShortString2;
+
+module HelloWorld {
+    struct Msg {
+        @key T_Int64 userID;
+        T_String unbounded;
+        T_ShortString shortString;
+        T_LongString message;
+        T_ShortString2 chained;
+    };
+};");
+
+            new Importer().Import(idl, _sourceRoot, _outputRoot);
+
+            string cs = File.ReadAllText(Path.Combine(_outputRoot, "HelloWorld.cs"));
+            Assert.DoesNotContain("public byte", cs);
+            Assert.Contains("public long userID;", cs);
+            Assert.Contains("public string unbounded;", cs);
+            Assert.Matches(@"\[MaxLength\(8\)\]\s*\[DdsManaged\]\s*public string shortString;", cs);
+            Assert.Matches(@"\[MaxLength\(512\)\]\s*\[DdsManaged\]\s*public string message;", cs);
+            Assert.Matches(@"\[MaxLength\(8\)\]\s*\[DdsManaged\]\s*public string chained;", cs);
+            Assert.DoesNotMatch(@"\[MaxLength\(\d+\)\]\s*\[DdsManaged\]\s*public string unbounded;", cs);
+        }
+
         [Fact]
         public void Import_HandlesSubdirectories()
         {

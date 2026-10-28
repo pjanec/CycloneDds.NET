@@ -5,7 +5,7 @@ All notable changes to CycloneDDS.NET will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 1.2.11
+## 1.2.12
 
 Versioned **1.2** for both packages. `CycloneDDS.NET` jumps from 0.3 to 1.2 to share the version
 of `CycloneDDS.NET.DdsMonitor` (which already shipped 1.1); from now on the two always carry the
@@ -129,6 +129,12 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 1.2 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- **The IDL importer maps string typedefs to strings** ([#5](https://github.com/pjanec/CycloneDds.NET/issues/5)).
+  `typedef string T_String;` and `typedef string<8> T_ShortString;` came out as `byte` fields: the
+  idljson plugin recorded a string typedef's C type (`char`) instead of `string` and its bound.
+  They now import exactly like the same members declared without the typedef (`string`, with
+  `[MaxLength(N)]` for a bounded one, also through a typedef of a typedef), and the plugin's
+  layout gives a bounded string typedef its inline `char[N+1]` size.
 - **The native Cyclone DDS version is recorded in the package as intended:** in the package
   description and as `native_version.json` in the package root (it reached only the release
   notes, because NuGet had read the description and collected the files before it was added).

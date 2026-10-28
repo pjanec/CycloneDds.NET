@@ -39,6 +39,7 @@ public class TypeMapper
 
     private readonly Dictionary<string, string> _flattenedToScoped = new();
     private readonly Dictionary<string, string> _typedefMapping = new();
+    private readonly Dictionary<string, int> _typedefBound = new();
 
     public void RegisterType(JsonTypeDefinition type)
     {
@@ -59,6 +60,9 @@ public class TypeMapper
                 // e.g. "CommonLib::Point2D" -> "CommonLib::Point"
                 // The target type will be resolved recursively
                 _typedefMapping[scopedName] = type.Type;
+                // typedef string<8> T_ShortString: the bound belongs to the typedef, not to the members using it.
+                if (type.Bound is > 0)
+                    _typedefBound[scopedName] = type.Bound.Value;
             }
         }
     }
@@ -135,6 +139,10 @@ public class TypeMapper
                 {
                     bound = member.Bound.Value;
                 }
+                else if (ResolveTypedefBound(baseType) is int typedefBound)
+                {
+                    bound = typedefBound;
+                }
             }
             
             // Handle optional
@@ -150,6 +158,23 @@ public class TypeMapper
         }
 
         return (csType, isManaged, arrayLen, bound);
+    }
+
+    /// <summary>
+    /// The bound of a (possibly chained) typedef such as <c>typedef string&lt;8&gt; T_ShortString</c>,
+    /// or null when no typedef in the chain carries one.
+    /// </summary>
+    private int? ResolveTypedefBound(string idlType)
+    {
+        for (int depth = 0; depth < 10; depth++)
+        {
+            if (_typedefBound.TryGetValue(idlType, out var bound))
+                return bound;
+            if (!_typedefMapping.TryGetValue(idlType, out var next))
+                return null;
+            idlType = next;
+        }
+        return null;
     }
 
     private string MapPrimitiveOrUserType(string idlType)

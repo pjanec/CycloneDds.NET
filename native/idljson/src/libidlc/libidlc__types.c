@@ -789,6 +789,13 @@ emit_typedef(
 
       rec->type = idl_strdup(type);
 
+      /* A string typedef records "string"/"wstring" and its bound, as a string member does;
+         print_type gives the C type ("char"), which made importers read it as a byte. */
+      if (idl_type(type_spec) == IDL_STRING || idl_type(type_spec) == IDL_WSTRING) {
+          rec->type = idl_strdup(idl_type(type_spec) == IDL_STRING ? "string" : "wstring");
+          if (idl_is_bounded(type_spec)) rec->bound = idl_bound(type_spec);
+      }
+
       if (idl_is_sequence(type_spec)) {
           rec->kind = idl_strdup("sequence");
           // Type for sequence is the element type.
