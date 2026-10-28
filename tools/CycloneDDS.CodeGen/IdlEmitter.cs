@@ -49,11 +49,16 @@ namespace CycloneDDS.CodeGen
                 if (dependencies.Any())
                     sb.AppendLine();
                 
-                // 2. Group by module and emit
-                var moduleGroups = fileGroup.GroupBy(t => t.TargetModule);
-                foreach (var moduleGroup in moduleGroups.OrderBy(g => g.Key))
+                // 2. Emit the file's types in dependency order. A type may use a type of another module
+                //    in the same file (Other::UsesOuter -> Outer::Holder), so the order is computed over
+                //    the whole file and each run of same-module types gets its own (re)opened module block.
+                var ordered = TopologicalSort(fileGroup, registry).ToList();
+                for (int i = 0; i < ordered.Count; )
                 {
-                    EmitModuleHierarchy(sb, moduleGroup.Key, moduleGroup, registry);
+                    var module = ordered[i].TargetModule;
+                    var run = new List<IdlTypeDefinition>();
+                    while (i < ordered.Count && ordered[i].TargetModule == module) run.Add(ordered[i++]);
+                    EmitModuleHierarchy(sb, module, run, registry);
                 }
                 
                 sb.AppendLine($"#endif // {guard}");
@@ -359,22 +364,37 @@ namespace CycloneDDS.CodeGen
         private IEnumerable<IdlTypeDefinition> TopologicalSort(IEnumerable<IdlTypeDefinition> types, GlobalTypeRegistry registry)
         {
             var typeList = types.ToList();
+            var members = new HashSet<IdlTypeDefinition>(typeList);
+            // Simple names only as a last resort, and only when unique among the types being sorted.
+            var bySimpleName = typeList.Where(t => t.TypeInfo != null)
+                .GroupBy(t => t.TypeInfo!.Name)
+                .Where(g => g.Count() == 1)
+                .ToDictionary(g => g.Key, g => g.First());
             var visited = new HashSet<IdlTypeDefinition>();
             var sorted = new List<IdlTypeDefinition>();
-            var recursionStack = new HashSet<IdlTypeDefinition>();
-
-            // Map TypeName -> Definition for fast lookup
-            var lookUp = typeList.Where(t => t.TypeInfo != null).ToDictionary(t => t.TypeInfo!.Name, t => t);
+            var stack = new HashSet<IdlTypeDefinition>();
 
             foreach (var type in typeList)
-            {
-                Visit(type, visited, sorted, recursionStack, lookUp, registry);
-            }
+                Visit(type, visited, sorted, stack, members, bySimpleName, registry);
 
             return sorted;
         }
 
-        private void Visit(IdlTypeDefinition type, HashSet<IdlTypeDefinition> visited, List<IdlTypeDefinition> sorted, HashSet<IdlTypeDefinition> stack, Dictionary<string, IdlTypeDefinition> lookUp, GlobalTypeRegistry registry)
+        /// <summary>The type, among those being sorted, that a field of <paramref name="owner"/> refers to.</summary>
+        private IdlTypeDefinition? ResolveDependency(string typeName, IdlTypeDefinition owner, HashSet<IdlTypeDefinition> members,
+            Dictionary<string, IdlTypeDefinition> bySimpleName, GlobalTypeRegistry registry)
+        {
+            if (registry.TryGetDefinition(typeName, out var def) && def != null && members.Contains(def))
+                return def;
+            var ns = owner.TypeInfo?.Namespace;
+            if (!typeName.Contains('.') && !string.IsNullOrEmpty(ns)
+                && registry.TryGetDefinition(ns + "." + typeName, out def) && def != null && members.Contains(def))
+                return def;
+            return bySimpleName.TryGetValue(typeName.Split('.').Last(), out var bySimple) ? bySimple : null;
+        }
+
+        private void Visit(IdlTypeDefinition type, HashSet<IdlTypeDefinition> visited, List<IdlTypeDefinition> sorted, HashSet<IdlTypeDefinition> stack,
+            HashSet<IdlTypeDefinition> members, Dictionary<string, IdlTypeDefinition> bySimpleName, GlobalTypeRegistry registry)
         {
             if (visited.Contains(type)) return;
             if (stack.Contains(type)) throw new Exception($"Circular dependency detected within module for type {type.TypeInfo?.Name}"); // Should be caught earlier by file cycle check, but intra-file cycles are possible
@@ -385,48 +405,9 @@ namespace CycloneDDS.CodeGen
             {
                 foreach (var field in type.TypeInfo.Fields)
                 {
-                    string typeName = StripGenerics(field.TypeName);
-                    // Check if this typeName maps to one of our local types in this collection
-                    // We need to resolve fully qualified names or simple names.
-                    // Assuming types in same module are referred by simple name or full name.
-                    // registry keys are full names.
-                    
-                    if (registry.TryGetDefinition(typeName, out var depDef))
-                    {
-                        // Check if depDef is in our module grouping (i.e. in lookUp)
-                        // If typeName was simple, registry might not find it if keys are full.
-                        // But StripGenerics returns what was in the field.
-                        // Assuming field types are fully qualified or we can match them.
-                        
-                        // Try matching by name in lookUp directly (if simple name)
-                        // Or check if depDef is one of the types we are sorting.
-                        
-                        IdlTypeDefinition? dep = null;
-                        if (depDef != null && lookUp.Values.Contains(depDef))
-                        {
-                            dep = depDef;
-                        }
-                        // Fallback: simple name match (e.g. "ProcessAddress" vs "CycloneDDS...ProcessAddress")
-                        if (dep == null)
-                        {
-                             var simpleName = typeName.Split('.').Last();
-                             if (lookUp.TryGetValue(simpleName, out var d)) dep = d;
-                        }
-
-                        if (dep != null)
-                        {
-                            Visit(dep, visited, sorted, stack, lookUp, registry);
-                        }
-                    }
-                    else
-                    {
-                        // Try simple name lookup in current module list
-                        var simpleName = typeName.Split('.').Last();
-                        if (lookUp.TryGetValue(simpleName, out var dep))
-                        {
-                            Visit(dep, visited, sorted, stack, lookUp, registry);
-                        }
-                    }
+                    var dep = ResolveDependency(StripGenerics(field.TypeName), type, members, bySimpleName, registry);
+                    if (dep != null && dep != type)
+                        Visit(dep, visited, sorted, stack, members, bySimpleName, registry);
                 }
             }
 
@@ -449,7 +430,8 @@ namespace CycloneDDS.CodeGen
                     return typeName.Substring(idx + 1, end - idx - 1).Trim();
                 }
             }
-            return typeName.TrimEnd('?');
+            typeName = typeName.TrimEnd('?');
+            return typeName.EndsWith("[]") ? typeName.Substring(0, typeName.Length - 2) : typeName;
         }
 
         // Updated helper methods to accept indent
