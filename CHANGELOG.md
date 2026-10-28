@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## unreleased
 
-Versioned **0.4** (`CycloneDDS.NET`) and **1.2** (`CycloneDDS.NET.DdsMonitor`): new native
-Cyclone DDS major version, new Linux library names and platform baseline.
+Versioned **1.2** for both packages. `CycloneDDS.NET` jumps from 0.3 to 1.2 to share the version
+of `CycloneDDS.NET.DdsMonitor` (which already shipped 1.1); from now on the two always carry the
+same version, so a monitor matches the library and native Cyclone DDS of the same number. The
+1.x line keeps the public API compatible (additive changes only). This release brings a new
+native Cyclone DDS major version, new Linux library names and platform baseline.
 
 ### Added
 - **DDS Security** (authentication, access control, encryption). The native build enables
@@ -85,8 +88,8 @@ Cyclone DDS major version, new Linux library names and platform baseline.
   It does not widen silently: the wire size is part of the contract.
   **Limitation (upgrading from 0.3.x):** IDL has no unsigned enum, so an enum that used the *unsigned* half of its type — `byte`
   values 128..255, a `ushort` above 32767, a `uint` (a flags mask with the top bit set, `0xFFFFFFFF`) — can no longer be a DDS
-  type. Such an enum builds with 0.3.x and fails the build with 0.4. Renumber it to the limit or below, or widen the underlying
-  type (which changes its size on the wire, so nodes on 0.3.x and 0.4 no longer agree on it), or carry the value as a plain integer field.
+  type. Such an enum builds with 0.3.x and fails the build with 1.2. Renumber it to the limit or below, or widen the underlying
+  type (which changes its size on the wire, so nodes on 0.3.x and 1.2 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
 - **DdsMonitor headless mode no longer grabs port 5000.** Headless record/replay serves no UI,

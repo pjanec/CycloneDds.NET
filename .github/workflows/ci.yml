@@ -255,7 +255,7 @@ jobs:
   # Requires a repository secret named NUGET_API_KEY:
   #   Repo -> Settings -> Secrets and variables -> Actions -> New repository secret.
   # To release: create a GitHub Release with a tag matching the NBGV version of
-  # the target commit (e.g. v0.3.2 — check with `nbgv get-version` first).
+  # the target commit (e.g. v1.2.5 — check with `nbgv get-version` first).
   # ---------------------------------------------------------------------------
   publish:
     runs-on: ubuntu-latest

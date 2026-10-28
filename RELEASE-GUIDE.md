@@ -116,10 +116,12 @@ This project uses **Nerdbank.GitVersioning (NBGV)** for automatic semantic versi
 
 ### Version Configuration
 
-Version settings are stored in `version.json`:
+Version settings are stored in the root `version.json`, which both packages
+(`CycloneDDS.NET` and `CycloneDDS.NET.DdsMonitor`) share, so they always carry the
+same version:
 ```json
 {
-  "version": "1.0",
+  "version": "1.2",
   "publicReleaseRefSpec": [
     "^refs/heads/main$",
     "^refs/tags/v\\d+\\.\\d+"
@@ -269,12 +271,13 @@ verification jobs. The `publish` job pushes both `CycloneDDS.NET` and
 1. Make sure `main` is green and at the commit you want to ship.
 2. Check the version NBGV will produce for that commit:
    ```bash
-   nbgv get-version            # e.g. 0.3.2  (dotnet tool install -g nbgv)
+   nbgv get-version            # e.g. 1.2.5  (dotnet tool install -g nbgv)
    ```
    The published version is `version.json` base + git height — the tag name does
-   **not** set it, so name the tag to match (e.g. `v0.3.2`).
+   **not** set it, so name the tag to match (e.g. `v1.2.5`). Both packages get this
+   same version.
 3. **Create a GitHub Release** with tag `vX.Y.Z` targeting that commit (or
-   `git tag v0.3.2 && git push origin v0.3.2`). The tag push runs CI; on success
+   `git tag v1.2.5 && git push origin v1.2.5`). The tag push runs CI; on success
    the `publish` job pushes to NuGet.org.
 4. **Verify on NuGet.org** that the new version (and the DdsMonitor tool) appear.
 
