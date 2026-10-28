@@ -249,8 +249,11 @@ namespace CycloneDDS.CodeGen
 
         private bool IsReferenceType(string typeName)
         {
-            return typeName == "string" || typeName.StartsWith("BoundedSeq");
+            return typeName == "string" || typeName == "System.String" || typeName.StartsWith("BoundedSeq") || IsSequenceTypeName(typeName);
         }
+
+        private static bool IsSequenceTypeName(string typeName) =>
+            typeName.EndsWith("[]") || typeName.StartsWith("List<") || typeName.StartsWith("System.Collections.Generic.List<");
         
         private bool IsPrimitive(string typeName)
         {
@@ -395,8 +398,10 @@ namespace CycloneDDS.CodeGen
              if (IsOptional(field))
              {
                  string baseType = GetBaseType(field.TypeName);
-                 string check = field.TypeName == "string?" ? $"{sourceAccess} != null" : $"{sourceAccess}.HasValue";
-                 string valAccess = (field.TypeName == "string?" || IsReferenceType(baseType)) ? sourceAccess : $"{sourceAccess}.Value";
+                 // Optional string / List<T> / T[]: absent is null (a reference type has no HasValue).
+                 bool isReference = IsReferenceType(baseType);
+                 string check = isReference ? $"{sourceAccess} != null" : $"{sourceAccess}.HasValue";
+                 string valAccess = isReference ? sourceAccess : $"{sourceAccess}.Value";
                  
                  sb.AppendLine($"            if ({check})");
                  sb.AppendLine("            {");
@@ -415,9 +420,19 @@ namespace CycloneDDS.CodeGen
                  {
                      sb.AppendLine($"                {targetAccess} = arena.CreateString({valAccess});");
                  }
-                 else if (baseType.EndsWith("[]") || baseType.StartsWith("List") || baseType.StartsWith("BoundedSeq")) 
+                 else if (IsSequenceTypeName(baseType) || baseType.StartsWith("BoundedSeq")) 
                  {
-                      // Optional Sequence fall through
+                      // C: an optional sequence is a pointer to its dds_sequence_t header.
+                      sb.AppendLine($"                var __hdr = arena.AllocateArray<DdsSequenceNative>(1);");
+                      EmitSequenceMarshal(sb, new FieldInfo { Name = field.Name, TypeName = baseType, Attributes = field.Attributes }, valAccess, "__hdr[0]");
+                      sb.AppendLine($"                {targetAccess} = (IntPtr)Unsafe.AsPointer(ref __hdr[0]);");
+                 }
+                 else if (IsEnumType(baseType))
+                 {
+                      // C: an optional enum is a pointer to a 4-byte int.
+                      sb.AppendLine($"                var __span = arena.AllocateArray<int>(1);");
+                      sb.AppendLine($"                __span[0] = (int){valAccess};");
+                      sb.AppendLine($"                {targetAccess} = (IntPtr)Unsafe.AsPointer(ref __span[0]);");
                  }
                  else if (baseType == "System.Guid" || baseType == "Guid")
                  {
@@ -851,6 +866,10 @@ namespace CycloneDDS.CodeGen
                       sb.AppendLine($"                var __seqPtr = (DdsSequenceNative*){sourceAccess};");
                       EmitSequenceUnmarshal(sb, field, "(*__seqPtr)", targetAccess);
                  }
+                 else if (IsEnumType(baseType))
+                 {
+                      sb.AppendLine($"                {targetAccess} = ({baseType})(*(int*){sourceAccess});");
+                 }
                  else if (baseType == "System.Guid" || baseType == "Guid")
                  {
                       sb.AppendLine($"                var __native = *(CycloneDDS.Runtime.Interop.DdsGuid*){sourceAccess};");
@@ -1148,6 +1167,21 @@ namespace CycloneDDS.CodeGen
              {
                  fieldType = def?.TypeInfo; if (fieldType != null) field.Type = fieldType;
              }
+
+             // Optional string / List<T> / T[]: sized like the plain field (null = absent); an optional
+             // sequence also needs its dds_sequence_t header, which the native field points to.
+             if (IsOptional(field) && IsReferenceType(typeName.TrimEnd('?')))
+             {
+                 typeName = typeName.TrimEnd('?');
+                 if (IsSequenceTypeName(typeName) || typeName.StartsWith("BoundedSeq"))
+                 {
+                     sb.AppendLine($"            if (source.{field.Name} != null)");
+                     sb.AppendLine($"            {{");
+                     sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
+                     sb.AppendLine($"                currentOffset += Unsafe.SizeOf<DdsSequenceNative>();");
+                     sb.AppendLine($"            }}");
+                 }
+             }
              
              if (typeName == "string" || typeName == "System.String")
              {
@@ -1227,6 +1261,7 @@ namespace CycloneDDS.CodeGen
              {
                  string baseType = field.TypeName.TrimEnd('?');
                  if (baseType == "bool" || baseType == "Boolean" || baseType == "System.Boolean") baseType = "byte";
+                 if (IsEnumType(baseType)) baseType = "int";
 
                  sb.AppendLine($"            if (source.{field.Name}.HasValue)");
                  sb.AppendLine($"            {{");

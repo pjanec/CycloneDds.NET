@@ -118,9 +118,9 @@ namespace CycloneDDS.CodeGen.Emitters
             }
 
             // Optional
-            if (IsOptional(field.TypeName))
+            if (IsOptional(field))
             {
-                EmitOptionalProperty(sb, field, indent, nativeFieldName);
+                EmitOptionalProperty(sb, field, indent, nativeFieldName, registry);
                 return;
             }
 
@@ -656,6 +656,7 @@ namespace CycloneDDS.CodeGen.Emitters
 
         private void GenerateToManagedMethod(StringBuilder sb, TypeInfo type, GlobalTypeRegistry? registry, string indent)
         {
+            _currentTypeName = type.Name;
             sb.AppendLine($"{indent}public {type.Name} ToManaged()");
             sb.AppendLine($"{indent}{{");
             sb.AppendLine($"{indent}    unsafe");
@@ -729,10 +730,20 @@ namespace CycloneDDS.CodeGen.Emitters
             var propName = field.Name;
             var targetProp = propName;
             
-            if (IsOptional(field.TypeName))
+            if (IsOptional(field))
             {
                 var baseType = GetBaseType(field.TypeName);
-                if (IsPrimitive(baseType, registry) || IsBool(baseType, registry) || IsEnum(field, registry) || 
+                if (IsSequenceType(baseType))
+                {
+                     // The native field points to the sequence header; reuse the serializer's conversion for it.
+                     sb.AppendLine($"{indent}if (_ptr->{propName} != default)");
+                     sb.AppendLine($"{indent}{{");
+                     sb.AppendLine($"{indent}    var __full = new {_currentTypeName}();");
+                     sb.AppendLine($"{indent}    {_currentTypeName}.MarshalFromNative(ref __full, in *_ptr);");
+                     sb.AppendLine($"{indent}    target.{targetProp} = __full.{targetProp};");
+                     sb.AppendLine($"{indent}}}");
+                }
+                else if (IsPrimitive(baseType, registry) || IsBool(baseType, registry) || IsEnum(field, registry) || IsEnum(baseType, registry) || 
                     baseType == "System.Guid" || baseType == "Guid" || baseType == "System.DateTime" || baseType == "DateTime")
                 {
                     sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
@@ -868,6 +879,7 @@ namespace CycloneDDS.CodeGen.Emitters
 
         // Helpers
         private string _currentNamespace = string.Empty;
+        private string _currentTypeName = string.Empty;
 
         /// <summary>True when <paramref name="typeName"/> (qualified or not) is a DDS enum: in native memory a 4-byte int.</summary>
         private bool IsEnum(string typeName, GlobalTypeRegistry? registry)
@@ -963,6 +975,9 @@ namespace CycloneDDS.CodeGen.Emitters
              return typeName;
         }
 
+        /// <summary>Optional by a nullable type (int?) or by [DdsOptional] (string / List&lt;T&gt; / T[] have no '?').</summary>
+        private bool IsOptional(FieldInfo field) => IsOptional(field.TypeName) || field.HasAttribute("DdsOptional");
+
         private bool IsOptional(string typeName)
         {
             return typeName.EndsWith("?") || typeName.StartsWith("System.Nullable<") || typeName.StartsWith("Nullable<");
@@ -982,10 +997,48 @@ namespace CycloneDDS.CodeGen.Emitters
             return typeName;
         }
 
-        private void EmitOptionalProperty(StringBuilder sb, FieldInfo field, string indent, string nativeFieldName)
+        private void EmitOptionalProperty(StringBuilder sb, FieldInfo field, string indent, string nativeFieldName, GlobalTypeRegistry? registry)
         {
             var baseType = GetBaseType(field.TypeName);
             var propName = field.Name;
+
+            if (IsEnum(baseType, registry))
+            {
+                // Native: pointer to a 4-byte int.
+                sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe {baseType}? {propName}");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    get");
+                sb.AppendLine($"{indent}    {{");
+                sb.AppendLine($"{indent}        if (_ptr->{nativeFieldName} == default) return null;");
+                sb.AppendLine($"{indent}        return ({baseType})(*(int*)_ptr->{nativeFieldName});");
+                sb.AppendLine($"{indent}    }}");
+                sb.AppendLine($"{indent}}}");
+                return;
+            }
+
+            if (IsSequenceType(baseType))
+            {
+                // Native: pointer to the sequence header (null when absent).
+                var element = baseType.EndsWith("[]") ? baseType.Substring(0, baseType.Length - 2)
+                    : baseType.Substring(baseType.IndexOf('<') + 1, baseType.LastIndexOf('>') - baseType.IndexOf('<') - 1);
+                sb.AppendLine($"{indent}/// <summary>Returns true if optional {field.Name} is set.</summary>");
+                sb.AppendLine($"{indent}public unsafe bool Has{propName} => _ptr->{nativeFieldName} != default;");
+                if (IsPrimitive(element, registry))
+                {
+                    sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy); empty when absent.</summary>");
+                    sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{element}> {propName}");
+                    sb.AppendLine($"{indent}{{");
+                    sb.AppendLine($"{indent}    get");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        if (_ptr->{nativeFieldName} == default) return ReadOnlySpan<{element}>.Empty;");
+                    sb.AppendLine($"{indent}        var __seq = (DdsSequenceNative*)_ptr->{nativeFieldName};");
+                    sb.AppendLine($"{indent}        return new ReadOnlySpan<{element}>((void*)__seq->Buffer, (int)__seq->Length);");
+                    sb.AppendLine($"{indent}    }}");
+                    sb.AppendLine($"{indent}}}");
+                }
+                return;
+            }
 
             if (IsPrimitive(baseType) || IsBool(baseType))
             {
