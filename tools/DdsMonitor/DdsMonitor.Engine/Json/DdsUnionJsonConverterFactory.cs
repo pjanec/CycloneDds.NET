@@ -85,7 +85,7 @@ internal sealed class DdsUnionJsonConverter<T> : JsonConverter<T>
         {
             if (m == discMember) continue;
             var caseAttr = m.GetCustomAttribute<DdsCaseAttribute>();
-            if (caseAttr != null && UnionValuesEqual(caseAttr.Value, discValue))
+            if (caseAttr != null && caseAttr.Values.Any(v => UnionValuesEqual(v, discValue)))
             {
                 activeArm = m;
                 anyExplicitMatch = true;

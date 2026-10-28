@@ -73,6 +73,8 @@ namespace CycloneDDS.CodeGen
         private void ValidateFieldType(FieldInfo field, string containerName, List<string> errors)
         {
             string typeName = field.TypeName;
+
+            ValidateCollectionAttributes(field, containerName, errors);
             
             // Handle nullable
             if (typeName.EndsWith("?"))
@@ -128,6 +130,43 @@ namespace CycloneDDS.CodeGen
             }
         }
    
+        /// <summary>
+        /// [ArrayLength] and [MaxLength] combinations the marshaller cannot honour: they would make the
+        /// IDL (and so the wire format and type identity) disagree with the native layout it writes.
+        /// </summary>
+        private void ValidateCollectionAttributes(FieldInfo field, string containerName, List<string> errors)
+        {
+            string typeName = field.TypeName;
+            bool isList = typeName.StartsWith("List<") || typeName.StartsWith("System.Collections.Generic.List<");
+            bool isArray = typeName.EndsWith("[]");
+            var arrayLength = field.GetAttribute("ArrayLength");
+
+            if (arrayLength != null && !field.IsFixedSizeBuffer && (isList || isArray))
+            {
+                errors.Add($"Field '{containerName}.{field.Name}': [ArrayLength] is not supported on '{typeName}', " +
+                           "which is always a sequence. For a fixed-length IDL array use a fixed buffer " +
+                           "(`public fixed int X[4];`), or bound the sequence with [DdsBound(n)].");
+            }
+
+            if (arrayLength != null && field.IsFixedSizeBuffer && arrayLength.Arguments.Count > 0)
+            {
+                long product = 1;
+                foreach (var d in arrayLength.Arguments) product *= Convert.ToInt64(d);
+                if (product != field.FixedSize)
+                    errors.Add($"Field '{containerName}.{field.Name}': [ArrayLength({string.Join(", ", arrayLength.Arguments)})] " +
+                               $"has {product} elements but the fixed buffer has {field.FixedSize}.");
+            }
+
+            if ((isList || isArray) && field.HasAttribute("MaxLength"))
+            {
+                string element = isArray ? typeName.Substring(0, typeName.Length - 2) : ExtractGenericArgument(typeName);
+                if (element == "string" || element == "System.String")
+                    errors.Add($"Field '{containerName}.{field.Name}': [MaxLength] on a string collection is not supported " +
+                               "(bounded-string elements are stored inline in C). Bound the sequence with [DdsBound(n)] " +
+                               "and leave the strings unbounded.");
+            }
+        }
+
         private void ValidateUnion(TypeInfo type, List<string> errors)
         {
             // Must have exactly one [DdsDiscriminator]

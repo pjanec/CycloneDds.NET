@@ -309,11 +309,11 @@ else
             _explicitCaseValuesByDiscPath = ActiveFields
                 .Where(f => !f.IsDefaultUnionCase
                          && f.DependentDiscriminatorPath != null
-                         && f.ActiveWhenDiscriminatorValue != null)
+                         && f.ActiveWhenDiscriminatorValues.Count > 0)
                 .GroupBy(f => f.DependentDiscriminatorPath!)
                 .ToDictionary(
                     g => g.Key,
-                    g => g.Select(f => f.ActiveWhenDiscriminatorValue!).ToList(),
+                    g => g.SelectMany(f => f.ActiveWhenDiscriminatorValues).ToList(),
                     StringComparer.Ordinal);
         }
     }
@@ -361,8 +361,7 @@ else
         }
 
         // Explicit case: visible only when discriminator matches the case value.
-        return field.ActiveWhenDiscriminatorValue != null &&
-               UnionValuesEqual(field.ActiveWhenDiscriminatorValue, currentDisc);
+        return field.ActiveWhenDiscriminatorValues.Any(v => UnionValuesEqual(v, currentDisc));
     }
 
     /// <summary>

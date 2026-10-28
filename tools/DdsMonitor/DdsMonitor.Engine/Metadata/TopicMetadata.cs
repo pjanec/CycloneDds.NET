@@ -158,6 +158,7 @@ public sealed class TopicMetadata
             bool isDiscriminatorField = false;
             bool isUnionArm = false;
             object? activeWhenDiscriminatorValue = null;
+            IReadOnlyList<object>? activeWhenDiscriminatorValues = null;
             bool isDefaultUnionCase = false;
             string? dependentDiscriminatorPath = null;
 
@@ -172,6 +173,7 @@ public sealed class TopicMetadata
                     {
                         isUnionArm = true;
                         activeWhenDiscriminatorValue = caseAttr.Value;
+                        activeWhenDiscriminatorValues = caseAttr.Values;
                         dependentDiscriminatorPath = unionDiscriminatorPath;
                     }
                     else if (defaultCaseAttr != null)
@@ -209,7 +211,8 @@ public sealed class TopicMetadata
                         dependentDiscriminatorPath: dependentDiscriminatorPath,
                         activeWhenDiscriminatorValue: activeWhenDiscriminatorValue,
                         isDefaultUnionCase: isDefaultUnionCase,
-                        isDiscriminatorField: isDiscriminatorField);
+                        isDiscriminatorField: isDiscriminatorField,
+                        activeWhenDiscriminatorValues: activeWhenDiscriminatorValues);
                     continue;
                 }
             }
@@ -264,7 +267,8 @@ public sealed class TopicMetadata
                 activeWhenDiscriminatorValue: activeWhenDiscriminatorValue,
                 isDefaultUnionCase: isDefaultUnionCase,
                 isDiscriminatorField: isDiscriminatorField,
-                isOptional: isOptional);
+                isOptional: isOptional,
+                activeWhenDiscriminatorValues: activeWhenDiscriminatorValues);
 
             allFields.Add(fieldMetadata);
 
@@ -443,7 +447,8 @@ public sealed class TopicMetadata
         string? dependentDiscriminatorPath = null,
         object? activeWhenDiscriminatorValue = null,
         bool isDefaultUnionCase = false,
-        bool isDiscriminatorField = false)
+        bool isDiscriminatorField = false,
+        IReadOnlyList<object>? activeWhenDiscriminatorValues = null)
     {
         var inlineType = inlineField.FieldType;
         var length = inlineAttr.Length;
@@ -478,7 +483,8 @@ public sealed class TopicMetadata
             dependentDiscriminatorPath: dependentDiscriminatorPath,
             activeWhenDiscriminatorValue: activeWhenDiscriminatorValue,
             isDefaultUnionCase: isDefaultUnionCase,
-            isDiscriminatorField: isDiscriminatorField);
+            isDiscriminatorField: isDiscriminatorField,
+            activeWhenDiscriminatorValues: activeWhenDiscriminatorValues);
 
         allFields.Add(meta);
     }

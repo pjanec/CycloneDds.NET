@@ -39,6 +39,10 @@ public sealed class FieldMetadata
     /// The discriminator value (from <c>[DdsCase(value)]</c>) for which this arm is active.
     /// <c>null</c> for non-arm fields and for the <c>[DdsDefaultCase]</c> arm.
     /// </param>
+    /// <param name="activeWhenDiscriminatorValues">
+    /// All the case labels of the arm (<c>[DdsCase(2, 3)]</c>); defaults to
+    /// <paramref name="activeWhenDiscriminatorValue"/> alone.
+    /// </param>
     /// <param name="isDefaultUnionCase">
     /// <c>true</c> when this arm is decorated with <c>[DdsDefaultCase]</c> and is shown
     /// when no explicit case matches the current discriminator value.
@@ -67,7 +71,8 @@ public sealed class FieldMetadata
         object? activeWhenDiscriminatorValue = null,
         bool isDefaultUnionCase = false,
         bool isDiscriminatorField = false,
-        bool isOptional = false)
+        bool isOptional = false,
+        IReadOnlyList<object>? activeWhenDiscriminatorValues = null)
     {
         StructuredName = structuredName ?? throw new ArgumentNullException(nameof(structuredName));
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
@@ -81,7 +86,9 @@ public sealed class FieldMetadata
         ElementType = elementType;
         FixedArrayLength = fixedArrayLength;
         DependentDiscriminatorPath = dependentDiscriminatorPath;
-        ActiveWhenDiscriminatorValue = activeWhenDiscriminatorValue;
+        ActiveWhenDiscriminatorValue = activeWhenDiscriminatorValue ?? activeWhenDiscriminatorValues?.FirstOrDefault();
+        ActiveWhenDiscriminatorValues = activeWhenDiscriminatorValues
+            ?? (activeWhenDiscriminatorValue != null ? new[] { activeWhenDiscriminatorValue } : Array.Empty<object>());
         IsDefaultUnionCase = isDefaultUnionCase;
         IsDiscriminatorField = isDiscriminatorField;
         IsOptional = isOptional;
@@ -164,6 +171,12 @@ public sealed class FieldMetadata
     /// <c>null</c> for non-arm fields and for the <c>[DdsDefaultCase]</c> arm.
     /// </summary>
     public object? ActiveWhenDiscriminatorValue { get; }
+
+    /// <summary>
+    /// Gets every discriminator value that activates this arm (a case may have several labels).
+    /// Empty for non-arm fields and for the <c>[DdsDefaultCase]</c> arm.
+    /// </summary>
+    public IReadOnlyList<object> ActiveWhenDiscriminatorValues { get; }
 
     /// <summary>
     /// Gets a value indicating whether this arm is the default union case

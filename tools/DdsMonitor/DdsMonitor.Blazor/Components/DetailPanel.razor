@@ -1056,12 +1056,10 @@ else
             return !_currentSample!.TopicMetadata.AllFields.Any(f =>
                 f.DependentDiscriminatorPath == field.DependentDiscriminatorPath
                 && !f.IsDefaultUnionCase
-                && f.ActiveWhenDiscriminatorValue != null
-                && UnionValuesEqualTree(f.ActiveWhenDiscriminatorValue, discValue));
+                && f.ActiveWhenDiscriminatorValues.Any(v => UnionValuesEqualTree(v, discValue)));
         }
 
-        return field.ActiveWhenDiscriminatorValue != null
-               && UnionValuesEqualTree(field.ActiveWhenDiscriminatorValue, discValue);
+        return field.ActiveWhenDiscriminatorValues.Any(v => UnionValuesEqualTree(v, discValue));
     }
 
     // ─────────────────────────────────────────────────────────────────────

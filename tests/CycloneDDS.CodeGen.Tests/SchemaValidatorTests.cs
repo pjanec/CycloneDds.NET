@@ -142,6 +142,68 @@ namespace CycloneDDS.CodeGen.Tests
             Assert.False(result.IsValid);
             Assert.Contains("must have exactly one [DdsDiscriminator]", result.Errors[0]);
         }
+
+        private static ValidationResult ValidateOne(FieldInfo field)
+        {
+            var type = new TypeInfo { Name = "T", Fields = new List<FieldInfo> { field } };
+            return new SchemaValidator(new[] { type }).Validate(type);
+        }
+
+        private static AttributeInfo Attr(string name, params object[] args) =>
+            new AttributeInfo { Name = name, Arguments = new List<object>(args) };
+
+        [Fact]
+        public void ArrayLength_OnAManagedArray_IsRejected()
+        {
+            var result = ValidateOne(new FieldInfo
+            {
+                Name = "A", TypeName = "int[]", Attributes = new List<AttributeInfo> { Attr("ArrayLength", 4) }
+            });
+            Assert.False(result.IsValid);
+            Assert.Contains("fixed buffer", result.Errors[0]);
+        }
+
+        [Fact]
+        public void ArrayLength_DimensionsMustMatchTheFixedBuffer()
+        {
+            var ok = ValidateOne(new FieldInfo
+            {
+                Name = "M", TypeName = "double", IsFixedSizeBuffer = true, FixedSize = 6,
+                Attributes = new List<AttributeInfo> { Attr("ArrayLength", 2, 3) }
+            });
+            Assert.True(ok.IsValid);
+
+            var bad = ValidateOne(new FieldInfo
+            {
+                Name = "M", TypeName = "double", IsFixedSizeBuffer = true, FixedSize = 6,
+                Attributes = new List<AttributeInfo> { Attr("ArrayLength", 2, 4) }
+            });
+            Assert.False(bad.IsValid);
+            Assert.Contains("has 8 elements but the fixed buffer has 6", bad.Errors[0]);
+        }
+
+        [Theory]
+        [InlineData("List<string>")]
+        [InlineData("string[]")]
+        public void MaxLength_OnAStringCollection_IsRejected(string typeName)
+        {
+            var result = ValidateOne(new FieldInfo
+            {
+                Name = "S", TypeName = typeName, Attributes = new List<AttributeInfo> { Attr("MaxLength", 8) }
+            });
+            Assert.False(result.IsValid);
+            Assert.Contains("[DdsBound(n)]", result.Errors[0]);
+        }
+
+        [Fact]
+        public void MaxLength_OnANumericList_BoundsTheSequence()
+        {
+            var result = ValidateOne(new FieldInfo
+            {
+                Name = "L", TypeName = "List<int>", Attributes = new List<AttributeInfo> { Attr("MaxLength", 8) }
+            });
+            Assert.True(result.IsValid);
+        }
     }
 }
 

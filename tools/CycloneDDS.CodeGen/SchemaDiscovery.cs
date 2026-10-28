@@ -348,7 +348,13 @@ namespace CycloneDDS.CodeGen
 
                 foreach (var arg in attr.ConstructorArguments)
                 {
-                    if (arg.Value != null)
+                    // A params argument ([DdsCase(2, 3)], [ArrayLength(2, 3)]) arrives as one array constant.
+                    if (arg.Kind == TypedConstantKind.Array)
+                    {
+                        foreach (var element in arg.Values)
+                            if (element.Value != null) attrInfo.Arguments.Add(element.Value);
+                    }
+                    else if (arg.Value != null)
                     {
                         attrInfo.Arguments.Add(arg.Value);
                     }

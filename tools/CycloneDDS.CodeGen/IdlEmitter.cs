@@ -482,6 +482,19 @@ namespace CycloneDDS.CodeGen
         }
 
         /// <summary>
+        /// The bound of a List&lt;T&gt; / T[] sequence: <c>[DdsBound(n)]</c>, or <c>[MaxLength(n)]</c> when the
+        /// elements are not strings (on a string collection [MaxLength] would bound the strings, which the
+        /// validator rejects). In C a bounded sequence has the same layout as an unbounded one.
+        /// </summary>
+        private static string SequenceBoundSuffix(FieldInfo field, string elementType)
+        {
+            var bound = field.GetAttribute("DdsBound")?.Arguments.FirstOrDefault();
+            if (bound == null && elementType != "string" && elementType != "System.String")
+                bound = field.GetAttribute("MaxLength")?.Arguments.FirstOrDefault();
+            return bound != null ? $", {bound}" : string.Empty;
+        }
+
+        /// <summary>
         /// <c>@id(N)</c> for a member with [DdsId(N)]: the member id is on the wire for mutable types
         /// (and part of the type identity), so it must reach the IDL idlc builds the serializer from.
         /// </summary>
@@ -655,6 +668,10 @@ namespace CycloneDDS.CodeGen
             {
                 var innerField = new FieldInfo { TypeName = field.TypeName };
                 var (innerIdl, innerSuffix) = MapType(innerField);
+                // [ArrayLength(2, 3)] on the buffer: a multi-dimensional IDL array (validated: product == size).
+                var dims = field.GetAttribute("ArrayLength");
+                if (dims != null && dims.Arguments.Count > 1)
+                    return (innerIdl, innerSuffix + string.Concat(dims.Arguments.Select(d => $"[{d}]")));
                 return (innerIdl, innerSuffix + $"[{field.FixedSize}]");
             }
 
@@ -712,7 +729,7 @@ namespace CycloneDDS.CodeGen
                 var innerField = new FieldInfo { TypeName = innerType };
                 var (innerIdl, innerSuffix) = MapType(innerField);
                 
-                return ($"sequence<{innerIdl}>", "");
+                return ($"sequence<{innerIdl}{SequenceBoundSuffix(field, innerType)}>", "");
             }
 
             // Arrays
@@ -720,25 +737,10 @@ namespace CycloneDDS.CodeGen
             {
                 var elementTypeName = typeName.Substring(0, typeName.Length - 2);
                 var innerField = new FieldInfo { TypeName = elementTypeName };
-                
-                // Propagate attributes if element is string, so we can detect string bound
-                if (elementTypeName == "string" || elementTypeName == "System.String")
-                {
-                    innerField.Attributes = field.Attributes; 
-                }
-
+                // A managed T[] is always a sequence: it is marshalled as one, so [ArrayLength] on it is
+                // rejected by the validator (inline arrays are `fixed` buffers).
                 var (innerIdl, innerSuffix) = MapType(innerField);
-                
-                // Check for ArrayLength (Fixed Array)
-                var arrayLen = field.GetAttribute("ArrayLength");
-                if (arrayLen != null && arrayLen.Arguments.Count > 0)
-                {
-                    string dims = "";
-                    foreach(var arg in arrayLen.Arguments) dims += $"[{arg}]";
-                    return (innerIdl, innerSuffix + dims);
-                }
-
-                return ($"sequence<{innerIdl}>", "");
+                return ($"sequence<{innerIdl}{SequenceBoundSuffix(field, elementTypeName)}>", "");
             }
 
             // BoundedSeq
