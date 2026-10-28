@@ -103,7 +103,7 @@ namespace CycloneDDS.CodeGen.Emitters
         private void ProcessField(StringBuilder sb, FieldInfo field, string indent, GlobalTypeRegistry? registry, bool isUnion)
         {
             Stack<string> nativeFieldPath = new Stack<string>();
-            string nativeFieldName = field.Name;
+            string nativeFieldName = CSharpIdentifier.Escape(field.Name);
             
             if (isUnion)
             {
@@ -113,7 +113,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 }
                 else
                 {
-                    nativeFieldName = $"_u.{field.Name}";
+                    nativeFieldName = $"_u.{CSharpIdentifier.Escape(field.Name)}";
                 }
             }
 
@@ -149,7 +149,7 @@ namespace CycloneDDS.CodeGen.Emitters
             {
                 var fixedView = GetFixedStringViewType(resolvedTypeName);
                 var fixedType = GetFixedStringType(resolvedTypeName);
-                sb.AppendLine($"{indent}public unsafe {fixedView} {field.Name} => new {fixedView}(({fixedType}*)&_ptr->{nativeFieldName});");
+                sb.AppendLine($"{indent}public unsafe {fixedView} {CSharpIdentifier.Escape(field.Name)} => new {fixedView}(({fixedType}*)&_ptr->{nativeFieldName});");
             }
             // C# fixed-size buffer (e.g. `public fixed byte Buf[64];`)
             else if (field.IsFixedSizeBuffer)
@@ -159,23 +159,23 @@ namespace CycloneDDS.CodeGen.Emitters
             // Primitive
             else if (IsPrimitive(field.TypeName, registry))
             {
-               sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {field.Name} => _ptr->{nativeFieldName};");
+               sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {CSharpIdentifier.Escape(field.Name)} => _ptr->{nativeFieldName};");
             }
             // Boolean
             else if (IsBool(field.TypeName, registry))
             {
-               sb.AppendLine($"{indent}public unsafe bool {field.Name} => _ptr->{nativeFieldName} != 0;");
+               sb.AppendLine($"{indent}public unsafe bool {CSharpIdentifier.Escape(field.Name)} => _ptr->{nativeFieldName} != 0;");
             }
             // Enum
             else if (IsEnum(field, registry))
             {
-                 sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {field.Name} => ({resolvedTypeName})_ptr->{nativeFieldName};");
+                 sb.AppendLine($"{indent}public unsafe {resolvedTypeName} {CSharpIdentifier.Escape(field.Name)} => ({resolvedTypeName})_ptr->{nativeFieldName};");
             }
             // String (Scalar)
             else if (IsString(field.TypeName, registry))
             {
                sb.AppendLine($"{indent}public unsafe ReadOnlySpan<byte> {field.Name}Raw => DdsTextEncoding.GetSpanFromPtr((IntPtr)_ptr->{nativeFieldName});");
-               sb.AppendLine($"{indent}public unsafe string? {field.Name} => DdsTextEncoding.FromNativeUtf8((IntPtr)_ptr->{nativeFieldName});");
+               sb.AppendLine($"{indent}public unsafe string? {CSharpIdentifier.Escape(field.Name)} => DdsTextEncoding.FromNativeUtf8((IntPtr)_ptr->{nativeFieldName});");
             }
             // Fixed Array
             else if (IsFixedArray(field))
@@ -192,12 +192,12 @@ namespace CycloneDDS.CodeGen.Emitters
             // System.Guid
             else if (field.TypeName == "System.Guid" || field.TypeName == "Guid")
             {
-               sb.AppendLine($"{indent}public unsafe System.Guid {field.Name} => _ptr->{nativeFieldName}.ToManaged();");
+               sb.AppendLine($"{indent}public unsafe System.Guid {CSharpIdentifier.Escape(field.Name)} => _ptr->{nativeFieldName}.ToManaged();");
             }
             // System.DateTime
             else if (field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
             {
-               sb.AppendLine($"{indent}public unsafe System.DateTime {field.Name} => new System.DateTime(_ptr->{nativeFieldName}, System.DateTimeKind.Utc);");
+               sb.AppendLine($"{indent}public unsafe System.DateTime {CSharpIdentifier.Escape(field.Name)} => new System.DateTime(_ptr->{nativeFieldName}, System.DateTimeKind.Utc);");
             }
             // Nested Struct
             else
@@ -229,7 +229,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 // Has to be a struct view
                 string viewName = $"{fullName}View";
                 string nativeType = $"{fullName}_Native";
-               sb.AppendLine($"{indent}public unsafe {viewName} {field.Name} => new {viewName}(({nativeType}*)&_ptr->{nativeFieldName});");
+               sb.AppendLine($"{indent}public unsafe {viewName} {CSharpIdentifier.Escape(field.Name)} => new {viewName}(({nativeType}*)&_ptr->{nativeFieldName});");
             }
         }
         
@@ -246,8 +246,8 @@ namespace CycloneDDS.CodeGen.Emitters
             if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
             {
                 // FCDC-ZC009
-                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} as ReadOnlySpan (zero-copy).</summary>");
-                sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{elementType}> {propName}");
+                sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} as ReadOnlySpan (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{elementType}> {CSharpIdentifier.Escape(propName)}");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
                 sb.AppendLine($"{indent}    {{");
@@ -261,7 +261,7 @@ namespace CycloneDDS.CodeGen.Emitters
             else if (IsString(elementType, registry))
             {
                 // FCDC-ZC011
-                sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets the number of {CSharpIdentifier.Escape(field.Name)} elements.</summary>");
                 sb.AppendLine($"{indent}public int {propName}Count");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
@@ -271,7 +271,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}}}");
                 sb.AppendLine();
 
-                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at index as UTF-8 bytes (zero-copy).</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} element at index as UTF-8 bytes (zero-copy).</summary>");
                 sb.AppendLine($"{indent}public unsafe ReadOnlySpan<byte> Get{propName}Raw(int index)");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
@@ -282,7 +282,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}}}");
                 sb.AppendLine();
 
-                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at index as C# string (allocates).</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} element at index as C# string (allocates).</summary>");
                 sb.AppendLine($"{indent}public unsafe string? Get{propName}(int index)");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
@@ -294,7 +294,7 @@ namespace CycloneDDS.CodeGen.Emitters
             }
             else if (elementType == "System.Guid" || elementType == "Guid")
             {
-                sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets the number of {CSharpIdentifier.Escape(field.Name)} elements.</summary>");
                 sb.AppendLine($"{indent}public int {propName}Count");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
@@ -304,7 +304,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}}}");
                 sb.AppendLine();
 
-                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at specified index.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} element at specified index.</summary>");
                 sb.AppendLine($"{indent}public unsafe System.Guid Get{propName}(int index)");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
@@ -316,7 +316,7 @@ namespace CycloneDDS.CodeGen.Emitters
             }
            else if (IsEnum(elementType, registry))
             {
-                sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets the number of {CSharpIdentifier.Escape(field.Name)} elements.</summary>");
                 sb.AppendLine($"{indent}public int {propName}Count");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
@@ -327,7 +327,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine();
 
                 // Native enum elements are 4-byte ints whatever the C# underlying type.
-                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at specified index.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} element at specified index.</summary>");
                 sb.AppendLine($"{indent}public unsafe {elementType} Get{propName}(int index)");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
@@ -339,7 +339,7 @@ namespace CycloneDDS.CodeGen.Emitters
             }
            else if (elementType == "System.DateTime" || elementType == "DateTime")
             {
-                sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets the number of {CSharpIdentifier.Escape(field.Name)} elements.</summary>");
                 sb.AppendLine($"{indent}public int {propName}Count");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
@@ -349,7 +349,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 sb.AppendLine($"{indent}}}");
                 sb.AppendLine();
 
-                sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at specified index.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} element at specified index.</summary>");
                 sb.AppendLine($"{indent}public unsafe System.DateTime Get{propName}(int index)");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
@@ -381,7 +381,7 @@ namespace CycloneDDS.CodeGen.Emitters
                     var elementView = $"{elementType}View";
                     var elementNative = $"{elementType}_Native";
 
-                    sb.AppendLine($"{indent}/// <summary>Gets the number of {field.Name} elements.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets the number of {CSharpIdentifier.Escape(field.Name)} elements.</summary>");
                     sb.AppendLine($"{indent}public int {propName}Count");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
@@ -391,7 +391,7 @@ namespace CycloneDDS.CodeGen.Emitters
                     sb.AppendLine($"{indent}}}");
                     sb.AppendLine();
 
-                    sb.AppendLine($"{indent}/// <summary>Gets {field.Name} element at specified index.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} element at specified index.</summary>");
                     sb.AppendLine($"{indent}public unsafe {elementView} Get{propName}(int index)");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    if (index < 0 || index >= {propName}Count)");
@@ -403,7 +403,7 @@ namespace CycloneDDS.CodeGen.Emitters
                 }
                 else
                 {
-                    sb.AppendLine($"{indent}// View for sequence of '{elementType}' (Field: {field.Name}) is not supported in ZeroCopy yet.");
+                    sb.AppendLine($"{indent}// View for sequence of '{elementType}' (Field: {CSharpIdentifier.Escape(field.Name)}) is not supported in ZeroCopy yet.");
                 }
             }
         }
@@ -415,8 +415,8 @@ namespace CycloneDDS.CodeGen.Emitters
             
             var viewName = $"{unionType.FullName}View";
             var nativeType = $"{unionType.FullName}_Native";
-            sb.AppendLine($"{indent}/// <summary>Gets view for {memberName}.</summary>");
-            sb.AppendLine($"{indent}public unsafe {viewName} {propName} => new {viewName}(({nativeType}*)&_ptr->{fieldName});");
+            sb.AppendLine($"{indent}/// <summary>Gets view for {CSharpIdentifier.Escape(memberName)}.</summary>");
+            sb.AppendLine($"{indent}public unsafe {viewName} {CSharpIdentifier.Escape(propName)} => new {viewName}(({nativeType}*)&_ptr->{CSharpIdentifier.Escape(fieldName)});");
             sb.AppendLine();
             
             // Find discriminator field
@@ -425,18 +425,18 @@ namespace CycloneDDS.CodeGen.Emitters
             string discriminatorEnum = discriminatorType;
 
             // Discriminator accessor
-            sb.AppendLine($"{indent}/// <summary>Gets the discriminator for {memberName}.</summary>");
+            sb.AppendLine($"{indent}/// <summary>Gets the discriminator for {CSharpIdentifier.Escape(memberName)}.</summary>");
             sb.AppendLine($"{indent}public unsafe {discriminatorEnum} {propName}Kind");
             sb.AppendLine($"{indent}{{");
             sb.AppendLine($"{indent}    get");
             sb.AppendLine($"{indent}    {{");
             if (discriminatorEnum == "bool" || discriminatorEnum == "Boolean" || discriminatorEnum == "System.Boolean")
             {
-                sb.AppendLine($"{indent}        unsafe {{ return _ptr->{fieldName}._d != 0; }}");
+                sb.AppendLine($"{indent}        unsafe {{ return _ptr->{CSharpIdentifier.Escape(fieldName)}._d != 0; }}");
             }
             else
             {
-                sb.AppendLine($"{indent}        unsafe {{ return ({discriminatorEnum})_ptr->{fieldName}._d; }}");
+                sb.AppendLine($"{indent}        unsafe {{ return ({discriminatorEnum})_ptr->{CSharpIdentifier.Escape(fieldName)}._d; }}");
             }
             sb.AppendLine($"{indent}    }}");
             sb.AppendLine($"{indent}}}");
@@ -484,26 +484,26 @@ namespace CycloneDDS.CodeGen.Emitters
 
                 if (IsString(caseType, registry))
                 {
-                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as string if discriminator matches (allocates).</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as string if discriminator matches (allocates).</summary>");
                     sb.AppendLine($"{indent}public unsafe string? {propName}As{caseName}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
                     sb.AppendLine($"{indent}        if ({conditionExpr})");
-                    sb.AppendLine($"{indent}             return DdsTextEncoding.FromNativeUtf8((IntPtr)_ptr->{fieldName}._u.{caseField});");
+                    sb.AppendLine($"{indent}             return DdsTextEncoding.FromNativeUtf8((IntPtr)_ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)});");
                     sb.AppendLine($"{indent}        return null;");
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
                 }
                 else if (IsBool(caseType, registry))
                 {
-                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as bool if discriminator matches.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as bool if discriminator matches.</summary>");
                     sb.AppendLine($"{indent}public unsafe bool? {propName}As{caseName}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
                     sb.AppendLine($"{indent}        if ({conditionExpr})");
-                    sb.AppendLine($"{indent}             return _ptr->{fieldName}._u.{caseField} != 0;");
+                    sb.AppendLine($"{indent}             return _ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)} != 0;");
                     sb.AppendLine($"{indent}        return null;");
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
@@ -514,13 +514,13 @@ namespace CycloneDDS.CodeGen.Emitters
                     // FixedStringXxxView is a ref struct so cannot be Nullable<T>; throw on mismatch.
                     var fixedView = GetFixedStringViewType(caseType);
                     var fixedType = GetFixedStringType(caseType);
-                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {fixedView}. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as {fixedView}. Throws if discriminator mismatch.</summary>");
                     sb.AppendLine($"{indent}public unsafe {fixedView} {propName}As{caseName}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
                     sb.AppendLine($"{indent}        if ({conditionExpr})");
-                    sb.AppendLine($"{indent}             return new {fixedView}(({fixedType}*)&_ptr->{fieldName}._u.{caseField});");
+                    sb.AppendLine($"{indent}             return new {fixedView}(({fixedType}*)&_ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)});");
                     sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
@@ -531,13 +531,13 @@ namespace CycloneDDS.CodeGen.Emitters
                     // ReadOnlySpan<T> is a ref struct so cannot be Nullable<T>; throw on mismatch.
                     int bufLen = member.FixedSize;
                     string bufLenStr = bufLen > 0 ? bufLen.ToString() : "0";
-                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as ReadOnlySpan. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as ReadOnlySpan. Throws if discriminator mismatch.</summary>");
                     sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{caseType}> {propName}As{caseName}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
                     sb.AppendLine($"{indent}        if ({conditionExpr})");
-                    sb.AppendLine($"{indent}             return new ReadOnlySpan<{caseType}>(_ptr->{fieldName}._u.{caseField}, {bufLenStr});");
+                    sb.AppendLine($"{indent}             return new ReadOnlySpan<{caseType}>(_ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)}, {bufLenStr});");
                     sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
@@ -549,14 +549,14 @@ namespace CycloneDDS.CodeGen.Emitters
                     string elemType = GetElementType(caseType);
                     int? arrLen = GetArrayLength(member);
                     string arrLenStr = arrLen.HasValue ? arrLen.Value.ToString() : "0";
-                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as ReadOnlySpan. Throws if discriminator mismatch.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as ReadOnlySpan. Throws if discriminator mismatch.</summary>");
                     sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{elemType}> {propName}As{caseName}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
                     sb.AppendLine($"{indent}        if ({conditionExpr})");
                     sb.AppendLine($"{indent}        {{");
-                    sb.AppendLine($"{indent}             {elemType}* ptr = _ptr->{fieldName}._u.{caseField};");
+                    sb.AppendLine($"{indent}             {elemType}* ptr = _ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)};");
                     sb.AppendLine($"{indent}             return new ReadOnlySpan<{elemType}>(ptr, {arrLenStr});");
                     sb.AppendLine($"{indent}        }}");
                     sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
@@ -565,39 +565,39 @@ namespace CycloneDDS.CodeGen.Emitters
                 }
                 else if (IsPrimitive(caseType, registry) || IsEnum(member, registry))
                 {
-                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {caseType} if discriminator matches.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as {caseType} if discriminator matches.</summary>");
                     sb.AppendLine($"{indent}public unsafe {caseType}? {propName}As{caseName}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
                     sb.AppendLine($"{indent}        if ({conditionExpr})");
-                    sb.AppendLine($"{indent}             return ({caseType})_ptr->{fieldName}._u.{caseField};");
+                    sb.AppendLine($"{indent}             return ({caseType})_ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)};");
                     sb.AppendLine($"{indent}        return null;");
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
                 }
                 else if (caseType == "System.Guid" || caseType == "Guid")
                 {
-                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as System.Guid if discriminator matches.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as System.Guid if discriminator matches.</summary>");
                     sb.AppendLine($"{indent}public unsafe System.Guid? {propName}As{caseName}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
                     sb.AppendLine($"{indent}        if ({conditionExpr})");
-                    sb.AppendLine($"{indent}             return _ptr->{fieldName}._u.{caseField}.ToManaged();");
+                    sb.AppendLine($"{indent}             return _ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)}.ToManaged();");
                     sb.AppendLine($"{indent}        return null;");
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
                 }
                 else if (caseType == "System.DateTime" || caseType == "DateTime")
                 {
-                    sb.AppendLine($"{indent}/// <summary>Gets {memberName} as System.DateTime if discriminator matches.</summary>");
+                    sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as System.DateTime if discriminator matches.</summary>");
                     sb.AppendLine($"{indent}public unsafe System.DateTime? {propName}As{caseName}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
                     sb.AppendLine($"{indent}        if ({conditionExpr})");
-                    sb.AppendLine($"{indent}             return new System.DateTime(_ptr->{fieldName}._u.{caseField}, System.DateTimeKind.Utc);");
+                    sb.AppendLine($"{indent}             return new System.DateTime(_ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)}, System.DateTimeKind.Utc);");
                     sb.AppendLine($"{indent}        return null;");
                     sb.AppendLine($"{indent}    }}");
                     sb.AppendLine($"{indent}}}");
@@ -608,13 +608,13 @@ namespace CycloneDDS.CodeGen.Emitters
                      var caseViewName = $"{caseType}View";
                      var caseNativeType = $"{caseType}_Native";
                      
-                     sb.AppendLine($"{indent}/// <summary>Gets {memberName} as {caseType} view if discriminator matches. Throws if mismatch.</summary>");
+                     sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(memberName)} as {caseType} view if discriminator matches. Throws if mismatch.</summary>");
                      sb.AppendLine($"{indent}public unsafe {caseViewName} {propName}As{caseName}");
                      sb.AppendLine($"{indent}{{");
                      sb.AppendLine($"{indent}    get");
                      sb.AppendLine($"{indent}    {{");
                      sb.AppendLine($"{indent}        if ({conditionExpr})");
-                     sb.AppendLine($"{indent}             return new {caseViewName}(({caseNativeType}*)&_ptr->{fieldName}._u.{caseField});");
+                     sb.AppendLine($"{indent}             return new {caseViewName}(({caseNativeType}*)&_ptr->{CSharpIdentifier.Escape(fieldName)}._u.{CSharpIdentifier.Escape(caseField)});");
                      sb.AppendLine($"{indent}        throw new InvalidOperationException($\"Union discriminator mismatch: Expected {caseName}, but got {propName}Kind\");");
                      sb.AppendLine($"{indent}    }}");
                      sb.AppendLine($"{indent}}}");
@@ -629,8 +629,8 @@ namespace CycloneDDS.CodeGen.Emitters
              string elementType = GetElementType(field.TypeName);
              int? arrayLen = GetArrayLength(field);
              
-             sb.AppendLine($"{indent}/// <summary>Gets {field.Name} as ReadOnlySpan (zero-copy).</summary>");
-             sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{elementType}> {propName}");
+             sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} as ReadOnlySpan (zero-copy).</summary>");
+             sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{elementType}> {CSharpIdentifier.Escape(propName)}");
              sb.AppendLine($"{indent}{{");
              sb.AppendLine($"{indent}    get");
              sb.AppendLine($"{indent}    {{");
@@ -644,8 +644,8 @@ namespace CycloneDDS.CodeGen.Emitters
         {
              // For a C# fixed buffer `public fixed T Buf[N]` in the native struct,
              // `_ptr->Buf` returns a T* to the first element – wrap as ReadOnlySpan<T>.
-             sb.AppendLine($"{indent}/// <summary>Gets {field.Name} as ReadOnlySpan (zero-copy).</summary>");
-             sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{field.TypeName}> {field.Name}");
+             sb.AppendLine($"{indent}/// <summary>Gets {CSharpIdentifier.Escape(field.Name)} as ReadOnlySpan (zero-copy).</summary>");
+             sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{field.TypeName}> {CSharpIdentifier.Escape(field.Name)}");
              sb.AppendLine($"{indent}{{");
              sb.AppendLine($"{indent}    get");
              sb.AppendLine($"{indent}    {{");
@@ -736,27 +736,27 @@ namespace CycloneDDS.CodeGen.Emitters
                 if (IsSequenceType(baseType))
                 {
                      // The native field points to the sequence header; reuse the serializer's conversion for it.
-                     sb.AppendLine($"{indent}if (_ptr->{propName} != default)");
+                     sb.AppendLine($"{indent}if (_ptr->{CSharpIdentifier.Escape(propName)} != default)");
                      sb.AppendLine($"{indent}{{");
                      sb.AppendLine($"{indent}    var __full = new {_currentTypeName}();");
                      sb.AppendLine($"{indent}    {_currentTypeName}.MarshalFromNative(ref __full, in *_ptr);");
-                     sb.AppendLine($"{indent}    target.{targetProp} = __full.{targetProp};");
+                     sb.AppendLine($"{indent}    target.{CSharpIdentifier.Escape(targetProp)} = __full.{CSharpIdentifier.Escape(targetProp)};");
                      sb.AppendLine($"{indent}}}");
                 }
                 else if (IsPrimitive(baseType, registry) || IsBool(baseType, registry) || IsEnum(field, registry) || IsEnum(baseType, registry) || 
                     baseType == "System.Guid" || baseType == "Guid" || baseType == "System.DateTime" || baseType == "DateTime")
                 {
-                    sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
+                    sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = this.{CSharpIdentifier.Escape(propName)};");
                 }
                 else if (IsString(baseType, registry))
                 {
-                    sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
+                    sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = this.{CSharpIdentifier.Escape(propName)};");
                 }
                 else
                 {
                      sb.AppendLine($"{indent}if (this.Has{propName})");
                      sb.AppendLine($"{indent}{{");
-                     sb.AppendLine($"{indent}    target.{targetProp} = this.{propName}.ToManaged();");
+                     sb.AppendLine($"{indent}    target.{CSharpIdentifier.Escape(targetProp)} = this.{CSharpIdentifier.Escape(propName)}.ToManaged();");
                      sb.AppendLine($"{indent}}}");
                 }
                 return;
@@ -766,17 +766,17 @@ namespace CycloneDDS.CodeGen.Emitters
             {
                 // Copy from ReadOnlySpan (view) into the local managed fixed buffer.
                 sb.AppendLine($"{indent}{{");
-                sb.AppendLine($"{indent}    var __srcSpan = this.{propName};");
+                sb.AppendLine($"{indent}    var __srcSpan = this.{CSharpIdentifier.Escape(propName)};");
                 if (field.IsInlineArray)
                 {
                     // ME1-T02: [InlineArray] target cannot be implicitly converted to T*.
                     // Use Unsafe.AsPointer to obtain the element pointer.
-                    sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = ({field.TypeName}*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref target.{targetProp});");
+                    sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = ({field.TypeName}*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref target.{CSharpIdentifier.Escape(targetProp)});");
                 }
                 else
                 {
                     // Normal unsafe fixed buffer: target.Name converts to T* implicitly in unsafe context.
-                    sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = target.{targetProp};");
+                    sb.AppendLine($"{indent}    {field.TypeName}* __dstPtr = target.{CSharpIdentifier.Escape(targetProp)};");
                 }
                 sb.AppendLine($"{indent}    for (int __i = 0; __i < {field.FixedSize}; __i++)");
                 sb.AppendLine($"{indent}        __dstPtr[__i] = __srcSpan[__i];");
@@ -784,11 +784,11 @@ namespace CycloneDDS.CodeGen.Emitters
             }
             else if (IsPrimitive(field.TypeName, registry) || IsBool(field.TypeName, registry) || IsEnum(field, registry) || IsString(field.TypeName, registry))
             {
-                 sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
+                 sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = this.{CSharpIdentifier.Escape(propName)};");
             }
             else if (IsFixedArray(field))
             {
-                 sb.AppendLine($"{indent}target.{targetProp} = this.{propName}.ToArray();");
+                 sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = this.{CSharpIdentifier.Escape(propName)}.ToArray();");
             }
             else if (IsSequence(field))
             {
@@ -800,32 +800,32 @@ namespace CycloneDDS.CodeGen.Emitters
                      if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
                      {
                          // Primitive/bool: view property returns ReadOnlySpan<T>, ToArray() returns T[].
-                         sb.AppendLine($"{indent}target.{targetProp} = this.{propName}.ToArray();");
+                         sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = this.{CSharpIdentifier.Escape(propName)}.ToArray();");
                      }
                      else if (IsString(elementType, registry))
                      {
-                         sb.AppendLine($"{indent}target.{targetProp} = new string[this.{propName}Count];");
+                         sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = new string[this.{propName}Count];");
                          sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
                          sb.AppendLine($"{indent}{{");
-                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i);");
+                         sb.AppendLine($"{indent}    target.{CSharpIdentifier.Escape(targetProp)}[i] = this.Get{propName}(i);");
                          sb.AppendLine($"{indent}}}");
                      }
                      else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime"
                               || IsEnum(elementType, registry))
                      {
-                         sb.AppendLine($"{indent}target.{targetProp} = new {elementType}[this.{propName}Count];");
+                         sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = new {elementType}[this.{propName}Count];");
                          sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
                          sb.AppendLine($"{indent}{{");
-                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i);");
+                         sb.AppendLine($"{indent}    target.{CSharpIdentifier.Escape(targetProp)}[i] = this.Get{propName}(i);");
                          sb.AppendLine($"{indent}}}");
                      }
                      else
                      {
                          // Struct sequence: view uses {Name}Count + Get{Name}(i).ToManaged()
-                         sb.AppendLine($"{indent}target.{targetProp} = new {elementType}[this.{propName}Count];");
+                         sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = new {elementType}[this.{propName}Count];");
                          sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
                          sb.AppendLine($"{indent}{{");
-                         sb.AppendLine($"{indent}    target.{targetProp}[i] = this.Get{propName}(i).ToManaged();");
+                         sb.AppendLine($"{indent}    target.{CSharpIdentifier.Escape(targetProp)}[i] = this.Get{propName}(i).ToManaged();");
                          sb.AppendLine($"{indent}}}");
                      }
                  }
@@ -836,32 +836,32 @@ namespace CycloneDDS.CodeGen.Emitters
 
                  if (IsPrimitive(elementType, registry) || IsBool(elementType, registry))
                  {
-                     sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<{elementType}>(this.{propName}.ToArray());");
+                     sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = new {targetCollectionType}<{elementType}>(this.{CSharpIdentifier.Escape(propName)}.ToArray());");
                  }
                  else if (IsString(elementType, registry))
                  {
-                     sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<string>(this.{propName}Count);");
+                     sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = new {targetCollectionType}<string>(this.{propName}Count);");
                      sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
                      sb.AppendLine($"{indent}{{");
-                     sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i));");
+                     sb.AppendLine($"{indent}    target.{CSharpIdentifier.Escape(targetProp)}.Add(this.Get{propName}(i));");
                      sb.AppendLine($"{indent}}}");
                  }
                  else if (elementType == "System.Guid" || elementType == "Guid" || elementType == "System.DateTime" || elementType == "DateTime"
                           || IsEnum(elementType, registry))
                  {
-                     sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<{elementType}>(this.{propName}Count);");
+                     sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = new {targetCollectionType}<{elementType}>(this.{propName}Count);");
                      sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
                      sb.AppendLine($"{indent}{{");
-                     sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i));");
+                     sb.AppendLine($"{indent}    target.{CSharpIdentifier.Escape(targetProp)}.Add(this.Get{propName}(i));");
                      sb.AppendLine($"{indent}}}");
                  }
                  else
                  {
                      var elementTargetType = elementType; 
-                     sb.AppendLine($"{indent}target.{targetProp} = new {targetCollectionType}<{elementTargetType}>(this.{propName}Count);");
+                     sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = new {targetCollectionType}<{elementTargetType}>(this.{propName}Count);");
                      sb.AppendLine($"{indent}for (int i = 0; i < this.{propName}Count; i++)");
                      sb.AppendLine($"{indent}{{");
-                     sb.AppendLine($"{indent}    target.{targetProp}.Add(this.Get{propName}(i).ToManaged());");
+                     sb.AppendLine($"{indent}    target.{CSharpIdentifier.Escape(targetProp)}.Add(this.Get{propName}(i).ToManaged());");
                      sb.AppendLine($"{indent}}}");
                  }
                  } // end non-array-typed sequence branch
@@ -869,11 +869,11 @@ namespace CycloneDDS.CodeGen.Emitters
             else if (field.TypeName == "System.Guid" || field.TypeName == "Guid" || 
                      field.TypeName == "System.DateTime" || field.TypeName == "DateTime")
             {
-                 sb.AppendLine($"{indent}target.{targetProp} = this.{propName};");
+                 sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = this.{CSharpIdentifier.Escape(propName)};");
             }
             else
             {
-                 sb.AppendLine($"{indent}target.{targetProp} = this.{propName}.ToManaged();");
+                 sb.AppendLine($"{indent}target.{CSharpIdentifier.Escape(targetProp)} = this.{CSharpIdentifier.Escape(propName)}.ToManaged();");
             }
         }
 
@@ -1005,8 +1005,8 @@ namespace CycloneDDS.CodeGen.Emitters
             if (IsEnum(baseType, registry))
             {
                 // Native: pointer to a 4-byte int.
-                sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy).</summary>");
-                sb.AppendLine($"{indent}public unsafe {baseType}? {propName}");
+                sb.AppendLine($"{indent}/// <summary>Gets optional {CSharpIdentifier.Escape(field.Name)} (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe {baseType}? {CSharpIdentifier.Escape(propName)}");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
                 sb.AppendLine($"{indent}    {{");
@@ -1022,12 +1022,12 @@ namespace CycloneDDS.CodeGen.Emitters
                 // Native: pointer to the sequence header (null when absent).
                 var element = baseType.EndsWith("[]") ? baseType.Substring(0, baseType.Length - 2)
                     : baseType.Substring(baseType.IndexOf('<') + 1, baseType.LastIndexOf('>') - baseType.IndexOf('<') - 1);
-                sb.AppendLine($"{indent}/// <summary>Returns true if optional {field.Name} is set.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Returns true if optional {CSharpIdentifier.Escape(field.Name)} is set.</summary>");
                 sb.AppendLine($"{indent}public unsafe bool Has{propName} => _ptr->{nativeFieldName} != default;");
                 if (IsPrimitive(element, registry))
                 {
-                    sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy); empty when absent.</summary>");
-                    sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{element}> {propName}");
+                    sb.AppendLine($"{indent}/// <summary>Gets optional {CSharpIdentifier.Escape(field.Name)} (zero-copy); empty when absent.</summary>");
+                    sb.AppendLine($"{indent}public unsafe ReadOnlySpan<{element}> {CSharpIdentifier.Escape(propName)}");
                     sb.AppendLine($"{indent}{{");
                     sb.AppendLine($"{indent}    get");
                     sb.AppendLine($"{indent}    {{");
@@ -1043,8 +1043,8 @@ namespace CycloneDDS.CodeGen.Emitters
             if (IsPrimitive(baseType) || IsBool(baseType))
             {
                 // Primitive/Bool: Native type is IntPtr
-                sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy).</summary>");
-                sb.AppendLine($"{indent}public unsafe {baseType}? {propName}");
+                sb.AppendLine($"{indent}/// <summary>Gets optional {CSharpIdentifier.Escape(field.Name)} (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe {baseType}? {CSharpIdentifier.Escape(propName)}");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
                 sb.AppendLine($"{indent}    {{");
@@ -1056,8 +1056,8 @@ namespace CycloneDDS.CodeGen.Emitters
             else if (IsString(baseType))
             {
                 // Optional String
-                sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy).</summary>");
-                sb.AppendLine($"{indent}public unsafe string? {propName}");
+                sb.AppendLine($"{indent}/// <summary>Gets optional {CSharpIdentifier.Escape(field.Name)} (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe string? {CSharpIdentifier.Escape(propName)}");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
                 sb.AppendLine($"{indent}    {{");
@@ -1068,8 +1068,8 @@ namespace CycloneDDS.CodeGen.Emitters
             }
             else if (baseType == "System.Guid" || baseType == "Guid")
             {
-                sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy).</summary>");
-                sb.AppendLine($"{indent}public unsafe System.Guid? {propName}");
+                sb.AppendLine($"{indent}/// <summary>Gets optional {CSharpIdentifier.Escape(field.Name)} (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe System.Guid? {CSharpIdentifier.Escape(propName)}");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
                 sb.AppendLine($"{indent}    {{");
@@ -1080,8 +1080,8 @@ namespace CycloneDDS.CodeGen.Emitters
             }
             else if (baseType == "System.DateTime" || baseType == "DateTime")
             {
-                sb.AppendLine($"{indent}/// <summary>Gets optional {field.Name} (zero-copy).</summary>");
-                sb.AppendLine($"{indent}public unsafe System.DateTime? {propName}");
+                sb.AppendLine($"{indent}/// <summary>Gets optional {CSharpIdentifier.Escape(field.Name)} (zero-copy).</summary>");
+                sb.AppendLine($"{indent}public unsafe System.DateTime? {CSharpIdentifier.Escape(propName)}");
                 sb.AppendLine($"{indent}{{");
                 sb.AppendLine($"{indent}    get");
                 sb.AppendLine($"{indent}    {{");
@@ -1096,11 +1096,11 @@ namespace CycloneDDS.CodeGen.Emitters
                 var viewName = $"{baseType}View";
                 var nativeType = $"{baseType}_Native";
 
-                sb.AppendLine($"{indent}/// <summary>Returns true if optional {field.Name} is set.</summary>");
+                sb.AppendLine($"{indent}/// <summary>Returns true if optional {CSharpIdentifier.Escape(field.Name)} is set.</summary>");
                 sb.AppendLine($"{indent}public unsafe bool Has{propName} => _ptr->{nativeFieldName} != default;");
 
-                sb.AppendLine($"{indent}/// <summary>Gets view for optional {field.Name}. Accessing this when Has{propName} is false may lead to undefined behavior.</summary>");
-                sb.AppendLine($"{indent}public unsafe {viewName} {propName} => new {viewName}(({nativeType}*)_ptr->{nativeFieldName});");
+                sb.AppendLine($"{indent}/// <summary>Gets view for optional {CSharpIdentifier.Escape(field.Name)}. Accessing this when Has{propName} is false may lead to undefined behavior.</summary>");
+                sb.AppendLine($"{indent}public unsafe {viewName} {CSharpIdentifier.Escape(propName)} => new {viewName}(({nativeType}*)_ptr->{nativeFieldName});");
             }
         }
 

@@ -157,7 +157,7 @@ namespace CycloneDDS.CodeGen
             {
                 var fieldName  = m.Groups[1].Value;
                 var formatStr  = m.Groups[2].Success ? m.Groups[2].Value : string.Empty;
-                return string.IsNullOrEmpty(formatStr) ? $"{{{fieldName}}}" : $"{{{fieldName}:{formatStr}}}";
+                return string.IsNullOrEmpty(formatStr) ? $"{{{CSharpIdentifier.Escape(fieldName)}}}" : $"{{{CSharpIdentifier.Escape(fieldName)}:{formatStr}}}";
             });
 
             sb.AppendLine();
@@ -188,8 +188,8 @@ namespace CycloneDDS.CodeGen
                 // Emit field token — always use InvariantCulture so that float/double
                 // values render with "." as the decimal separator regardless of OS locale.
                 var toStringCall = string.IsNullOrEmpty(formatStr)
-                    ? $"System.String.Format(System.Globalization.CultureInfo.InvariantCulture, \"{{0}}\", this.{fieldName})"
-                    : $"System.String.Format(System.Globalization.CultureInfo.InvariantCulture, \"{{0:{EscapeString(formatStr)}}}\", this.{fieldName})";
+                    ? $"System.String.Format(System.Globalization.CultureInfo.InvariantCulture, \"{{0}}\", this.{CSharpIdentifier.Escape(fieldName)})"
+                    : $"System.String.Format(System.Globalization.CultureInfo.InvariantCulture, \"{{0:{EscapeString(formatStr)}}}\", this.{CSharpIdentifier.Escape(fieldName)})";
 
                 sb.AppendLine($"            yield return new CycloneDDS.Schema.Formatting.FormattedToken({toStringCall}, CycloneDDS.Schema.Formatting.TokenType.{tokenType});");
 
@@ -309,7 +309,7 @@ namespace CycloneDDS.CodeGen
              
              if (discriminator.TypeName == "bool" || discriminator.TypeName == "Boolean" || discriminator.TypeName == "System.Boolean")
              {
-                 sb.AppendLine($"            target._d = source.{discriminator.Name} ? (byte)1 : (byte)0;");
+                 sb.AppendLine($"            target._d = source.{CSharpIdentifier.Escape(discriminator.Name)} ? (byte)1 : (byte)0;");
              }
              else
              {
@@ -317,10 +317,10 @@ namespace CycloneDDS.CodeGen
                  string castExpr = castType == "bool" ? "" : $"({castType})";
                  // Native _d field is always int; cast enum discriminator to int.
                  if (discriminator.Type != null && discriminator.Type.IsEnum) castExpr = "(int)";
-                 sb.AppendLine($"            target._d = {castExpr}source.{discriminator.Name};");
+                 sb.AppendLine($"            target._d = {castExpr}source.{CSharpIdentifier.Escape(discriminator.Name)};");
              }
              
-             sb.AppendLine($"            switch (source.{discriminator.Name})");
+             sb.AppendLine($"            switch (source.{CSharpIdentifier.Escape(discriminator.Name)})");
              sb.AppendLine("            {");
 
              foreach (var field in type.Fields)
@@ -368,8 +368,8 @@ namespace CycloneDDS.CodeGen
 
         private void EmitFieldMarshal(StringBuilder sb, FieldInfo field, TypeInfo parentType, string targetPrefix, string sourcePrefix)
         {
-             string sourceAccess = $"{sourcePrefix}.{field.Name}";
-             string targetAccess = $"{targetPrefix}.{field.Name}";
+             string sourceAccess = $"{sourcePrefix}.{CSharpIdentifier.Escape(field.Name)}";
+             string targetAccess = $"{targetPrefix}.{CSharpIdentifier.Escape(field.Name)}";
 
              // Fixed-size buffers: inline memcpy, zero allocation.
              if (field.IsFixedSizeBuffer)
@@ -640,7 +640,7 @@ namespace CycloneDDS.CodeGen
 
                   sb.AppendLine($"            if ({nullCheck}{sourceAccess}.{countProp} > 0)");
                   sb.AppendLine($"            {{");
-                  // sb.AppendLine($"                System.Console.WriteLine(\"Marshalling Sequence {field.Name} Count: \" + {sourceAccess}.{countProp});");
+                  // sb.AppendLine($"                System.Console.WriteLine(\"Marshalling Sequence {CSharpIdentifier.Escape(field.Name)} Count: \" + {sourceAccess}.{countProp});");
                   sb.AppendLine($"                var __span = arena.AllocateArray<{nativeEl}>({sourceAccess}.{countProp});");
                   sb.AppendLine($"                for (int i = 0; i < {sourceAccess}.{countProp}; i++)");
                   sb.AppendLine($"                {{");
@@ -695,7 +695,7 @@ namespace CycloneDDS.CodeGen
             // {
             //    foreach(var field in type.Fields)
             //    {
-            //         sb.AppendLine($"            System.Console.WriteLine(\"Offset {field.Name}: \" + System.Runtime.InteropServices.Marshal.OffsetOf(typeof({type.Name}_Native), \"{field.Name}\"));");
+            //         sb.AppendLine($"            System.Console.WriteLine(\"Offset {CSharpIdentifier.Escape(field.Name)}: \" + System.Runtime.InteropServices.Marshal.OffsetOf(typeof({type.Name}_Native), \"{field.Name}\"));");
             //    }
             //    sb.AppendLine($"            System.Console.WriteLine(\"Size {type.Name}_Native: \" + System.Runtime.CompilerServices.Unsafe.SizeOf<{type.Name}_Native>());");
             // }
@@ -747,16 +747,16 @@ namespace CycloneDDS.CodeGen
              
              if (discriminator.TypeName == "bool" || discriminator.TypeName == "Boolean" || discriminator.TypeName == "System.Boolean")
              {
-                 sb.AppendLine($"            target.{discriminator.Name} = source._d != 0;");
+                 sb.AppendLine($"            target.{CSharpIdentifier.Escape(discriminator.Name)} = source._d != 0;");
              }
              else
              {
                  string castType = GetDiscriminatorCastType(discriminator.TypeName);
                  string castExpr = castType == "bool" ? "" : $"({castType})";
-                 sb.AppendLine($"            target.{discriminator.Name} = {castExpr}source._d;");
+                 sb.AppendLine($"            target.{CSharpIdentifier.Escape(discriminator.Name)} = {castExpr}source._d;");
              }
              
-             sb.AppendLine($"            switch (target.{discriminator.Name})");
+             sb.AppendLine($"            switch (target.{CSharpIdentifier.Escape(discriminator.Name)})");
              sb.AppendLine("            {");
 
              foreach (var field in type.Fields)
@@ -804,8 +804,8 @@ namespace CycloneDDS.CodeGen
 
         private void EmitFieldUnmarshal(StringBuilder sb, FieldInfo field, TypeInfo parentType, string targetPrefix, string sourcePrefix)
         {
-             string sourceAccess = $"{sourcePrefix}.{field.Name}";
-             string targetAccess = $"{targetPrefix}.{field.Name}";
+             string sourceAccess = $"{sourcePrefix}.{CSharpIdentifier.Escape(field.Name)}";
+             string targetAccess = $"{targetPrefix}.{CSharpIdentifier.Escape(field.Name)}";
 
              // Resolve TypeInfo if missing
              TypeInfo? fieldType = field.Type;
@@ -1175,7 +1175,7 @@ namespace CycloneDDS.CodeGen
                  typeName = typeName.TrimEnd('?');
                  if (IsSequenceTypeName(typeName) || typeName.StartsWith("BoundedSeq"))
                  {
-                     sb.AppendLine($"            if (source.{field.Name} != null)");
+                     sb.AppendLine($"            if (source.{CSharpIdentifier.Escape(field.Name)} != null)");
                      sb.AppendLine($"            {{");
                      sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
                      sb.AppendLine($"                currentOffset += Unsafe.SizeOf<DdsSequenceNative>();");
@@ -1185,16 +1185,16 @@ namespace CycloneDDS.CodeGen
              
              if (typeName == "string" || typeName == "System.String")
              {
-                 sb.AppendLine($"            if (source.{field.Name} != null)"); 
+                 sb.AppendLine($"            if (source.{CSharpIdentifier.Escape(field.Name)} != null)"); 
                  sb.AppendLine($"            {{");
                  sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
-                 sb.AppendLine($"                currentOffset += CycloneDDS.Core.DdsTextEncoding.GetUtf8Size(source.{field.Name});");
+                 sb.AppendLine($"                currentOffset += CycloneDDS.Core.DdsTextEncoding.GetUtf8Size(source.{CSharpIdentifier.Escape(field.Name)});");
                  sb.AppendLine($"            }}");
              }
              else if (typeName.StartsWith("List<") || typeName.EndsWith("[]") || typeName.StartsWith("System.Collections.Generic.List<"))
              {
                  string countProp = typeName.EndsWith("[]") ? "Length" : "Count";
-                 sb.AppendLine($"            if (source.{field.Name} != null && source.{field.Name}.{countProp} > 0)");
+                 sb.AppendLine($"            if (source.{CSharpIdentifier.Escape(field.Name)} != null && source.{CSharpIdentifier.Escape(field.Name)}.{countProp} > 0)");
                  sb.AppendLine($"            {{");
                  sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
                  
@@ -1205,14 +1205,14 @@ namespace CycloneDDS.CodeGen
                       if (nativeType == "bool") nativeType = "byte";
                       if (nativeType == "string" || nativeType == "System.String") nativeType = "IntPtr"; 
                       
-                      sb.AppendLine($"                currentOffset += source.{field.Name}.{countProp} * Unsafe.SizeOf<{nativeType}>();");
+                      sb.AppendLine($"                currentOffset += source.{CSharpIdentifier.Escape(field.Name)}.{countProp} * Unsafe.SizeOf<{nativeType}>();");
                  }
                  else
                  {
                       string nativeElem = GetNativeTypeForSequenceElement(field);
                       
-                      sb.AppendLine($"                currentOffset += source.{field.Name}.{countProp} * Unsafe.SizeOf<{nativeElem}>();");
-                      sb.AppendLine($"                foreach(var item in source.{field.Name})");
+                      sb.AppendLine($"                currentOffset += source.{CSharpIdentifier.Escape(field.Name)}.{countProp} * Unsafe.SizeOf<{nativeElem}>();");
+                      sb.AppendLine($"                foreach(var item in source.{CSharpIdentifier.Escape(field.Name)})");
                       sb.AppendLine("                {");
                       string managedType = typeName.EndsWith("[]") ? typeName.Substring(0, typeName.Length - 2) : ExtractGenericType(typeName); 
                       
@@ -1241,15 +1241,15 @@ namespace CycloneDDS.CodeGen
                  string fullTypeName = fieldType.FullName;
                  if (IsOptional(field))
                  {
-                     sb.AppendLine($"            if (source.{field.Name} != null)");
+                     sb.AppendLine($"            if (source.{CSharpIdentifier.Escape(field.Name)} != null)");
                      sb.AppendLine($"            {{");
                      sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
-                     sb.AppendLine($"                currentOffset += {fullTypeName}.GetNativeSize(source.{field.Name}.Value);");
+                     sb.AppendLine($"                currentOffset += {fullTypeName}.GetNativeSize(source.{CSharpIdentifier.Escape(field.Name)}.Value);");
                      sb.AppendLine($"            }}");
                  }
                  else
                  {
-                     sb.AppendLine($"            var __{field.Name}_dyn = {fullTypeName}.GetNativeSize(source.{field.Name}) - Unsafe.SizeOf<{fullTypeName}_Native>();");
+                     sb.AppendLine($"            var __{field.Name}_dyn = {fullTypeName}.GetNativeSize(source.{CSharpIdentifier.Escape(field.Name)}) - Unsafe.SizeOf<{fullTypeName}_Native>();");
                      sb.AppendLine($"            if (__{field.Name}_dyn > 0)");
                      sb.AppendLine($"            {{");
                      sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
@@ -1263,7 +1263,7 @@ namespace CycloneDDS.CodeGen
                  if (baseType == "bool" || baseType == "Boolean" || baseType == "System.Boolean") baseType = "byte";
                  if (IsEnumType(baseType)) baseType = "int";
 
-                 sb.AppendLine($"            if (source.{field.Name}.HasValue)");
+                 sb.AppendLine($"            if (source.{CSharpIdentifier.Escape(field.Name)}.HasValue)");
                  sb.AppendLine($"            {{");
                  sb.AppendLine($"                currentOffset = (currentOffset + 7) & ~7;");
                  sb.AppendLine($"                currentOffset += Unsafe.SizeOf<{baseType}>();");
@@ -1404,7 +1404,7 @@ namespace CycloneDDS.CodeGen
                     if (field.IsFixedSizeBuffer)
                     {
                         sb.AppendLine($"        [FieldOffset(0)]");
-                        sb.AppendLine($"        public fixed {field.TypeName} {field.Name}[{field.FixedSize}];");
+                        sb.AppendLine($"        public fixed {field.TypeName} {CSharpIdentifier.Escape(field.Name)}[{field.FixedSize}];");
                     }
                     else
                     {
@@ -1412,13 +1412,13 @@ namespace CycloneDDS.CodeGen
                         if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
                         {
                             sb.AppendLine($"        [FieldOffset(0)]");
-                            sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                            sb.AppendLine($"        public fixed byte {CSharpIdentifier.Escape(field.Name)}[{maxLen.Value + 1}];");
                         }
                         else
                         {
                             string nativeType = GetNativeType(field);
                             sb.AppendLine($"        [FieldOffset(0)]");
-                            sb.AppendLine($"        public {nativeType} {field.Name};");
+                            sb.AppendLine($"        public {nativeType} {CSharpIdentifier.Escape(field.Name)};");
                         }
                     }
                 }
@@ -1433,19 +1433,19 @@ namespace CycloneDDS.CodeGen
                 {
                     if (field.IsFixedSizeBuffer)
                     {
-                        sb.AppendLine($"        public fixed {field.TypeName} {field.Name}[{field.FixedSize}];");
+                        sb.AppendLine($"        public fixed {field.TypeName} {CSharpIdentifier.Escape(field.Name)}[{field.FixedSize}];");
                     }
                     else
                     {
                         int? maxLen = GetMaxLength(field);
                         if (maxLen.HasValue && (field.TypeName == "string" || field.TypeName == "System.String"))
                         {
-                            sb.AppendLine($"        public fixed byte {field.Name}[{maxLen.Value + 1}];");
+                            sb.AppendLine($"        public fixed byte {CSharpIdentifier.Escape(field.Name)}[{maxLen.Value + 1}];");
                         }
                         else
                         {
                             string nativeType = GetNativeType(field);
-                            sb.AppendLine($"        public {nativeType} {field.Name};");
+                            sb.AppendLine($"        public {nativeType} {CSharpIdentifier.Escape(field.Name)};");
                         }
                     }
                 }

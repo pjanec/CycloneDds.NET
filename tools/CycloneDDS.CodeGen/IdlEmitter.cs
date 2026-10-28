@@ -326,7 +326,7 @@ namespace CycloneDDS.CodeGen
             int indent = 0;
             foreach (var module in modules)
             {
-                sb.AppendLine($"{GetIndent(indent)}module {module} {{");
+                sb.AppendLine($"{GetIndent(indent)}module {IdlIdentifier.Escape(module)} {{");
                 indent++;
             }
             
@@ -478,7 +478,7 @@ namespace CycloneDDS.CodeGen
                     break;
             }
 
-            sb.AppendLine($"{indent}struct {type.Name} {{");
+            sb.AppendLine($"{indent}struct {IdlIdentifier.Escape(type.Name)} {{");
             
             foreach (var field in type.Fields)
             {
@@ -493,7 +493,7 @@ namespace CycloneDDS.CodeGen
 
                 annotations += MemberIdAnnotation(field);
                 
-                sb.AppendLine($"{fieldIndent}{annotations}{idlType} {field.Name}{suffix};");
+                sb.AppendLine($"{fieldIndent}{annotations}{idlType} {IdlIdentifier.Escape(field.Name)}{suffix};");
             }
             
             sb.AppendLine($"{indent}}};");
@@ -524,7 +524,7 @@ namespace CycloneDDS.CodeGen
              else if (type.EnumBitBound == 16)
                  sb.AppendLine($"{indent}@bit_bound(16)");
 
-             sb.AppendLine($"{indent}enum {type.Name} {{");
+             sb.AppendLine($"{indent}enum {IdlIdentifier.Escape(type.Name)} {{");
              
              for (int i = 0; i < type.EnumMembers.Count; i++)
              {
@@ -534,7 +534,7 @@ namespace CycloneDDS.CodeGen
                  long memberValue = i < type.EnumMemberValues.Count ? type.EnumMemberValues[i] : i;
                  bool hasExplicitValue = memberValue >= 0 && memberValue != i;
                  string valueAnnotation = hasExplicitValue ? $"@value({memberValue}) " : "";
-                 sb.AppendLine($"{memberIndent}{valueAnnotation}{type.EnumMembers[i]}{comma}");
+                 sb.AppendLine($"{memberIndent}{valueAnnotation}{IdlIdentifier.Escape(type.EnumMembers[i])}{comma}");
              }
              
              sb.AppendLine($"{indent}}};");
@@ -595,7 +595,7 @@ namespace CycloneDDS.CodeGen
                     break;
             }
 
-            sb.AppendLine($"{indent}union {type.Name} switch ({switchType}) {{");
+            sb.AppendLine($"{indent}union {IdlIdentifier.Escape(type.Name)} switch ({switchType}) {{");
             
             IdlTypeDefinition? enumDef = null;
             foreach(var t in registry.AllTypes)
@@ -605,9 +605,10 @@ namespace CycloneDDS.CodeGen
                      string idlName = t.TypeInfo.Name;
                      if (!string.IsNullOrEmpty(t.TargetModule))
                          idlName = t.TargetModule.Replace(".", "::") + "::" + idlName;
+                     idlName = IdlIdentifier.EscapeScoped(idlName);
                      
                      if (idlName == switchType) { enumDef = t; break; }
-                     string csMapped = t.CSharpFullName.Replace(".", "::");
+                     string csMapped = IdlIdentifier.EscapeScoped(t.CSharpFullName.Replace(".", "::"));
                      if (csMapped == switchType) { enumDef = t; break; }
                  }
             }
@@ -634,7 +635,7 @@ namespace CycloneDDS.CodeGen
                                     : (iVal >= 0 && iVal < enumDef.TypeInfo.EnumMembers.Count ? (int)iVal : -1);
 
                                 if (memberIndex >= 0)
-                                    label = enumDef.TypeInfo.EnumMembers[memberIndex];
+                                    label = IdlIdentifier.Escape(enumDef.TypeInfo.EnumMembers[memberIndex]);
                             }
                             catch (InvalidCastException) { }
                             catch (OverflowException) { }
@@ -657,7 +658,7 @@ namespace CycloneDDS.CodeGen
                 }
 
                 var (idlType, suffix) = MapType(field);
-                sb.AppendLine($"{fieldIndent}    {MemberIdAnnotation(field)}{idlType} {field.Name}{suffix};");
+                sb.AppendLine($"{fieldIndent}    {MemberIdAnnotation(field)}{idlType} {IdlIdentifier.Escape(field.Name)}{suffix};");
             }
             sb.AppendLine($"{indent}}};");
         }
@@ -796,7 +797,7 @@ namespace CycloneDDS.CodeGen
             if (field.Type != null)
             {
                 // Use scoped name for cross-module reference
-                return (field.Type.FullName.Replace(".", "::"), "");
+                return (IdlIdentifier.EscapeScoped(field.Type.FullName.Replace(".", "::")), "");
             }
 
             // Generic inner
@@ -812,7 +813,7 @@ namespace CycloneDDS.CodeGen
             }
             
             // Fallback to scoped name (e.g. Enums, Structs)
-            return (typeName.Replace(".", "::"), "");
+            return (IdlIdentifier.EscapeScoped(typeName.Replace(".", "::")), "");
         }
 
 
