@@ -8,7 +8,9 @@
     an upstream master snapshot keeps the last release's version until the next one.
     Imported by the packable projects that ship the native libraries.
   -->
-  <Target Name="GetNativeVersionInfo" BeforeTargets="GenerateNuspec;Pack">
+  <!-- Before _LoadPackInputItems: NuGet collects the files to pack and reads PackageDescription
+       there, so a later target (e.g. before GenerateNuspec) reached only the release notes. -->
+  <Target Name="GetNativeVersionInfo" BeforeTargets="_LoadPackInputItems;GenerateNuspec;Pack">
     <PropertyGroup>
       <NativeDir>$(MSBuildThisFileDirectory)..\..\cyclonedds</NativeDir>
       <UpstreamRepoUrl>https://github.com/eclipse-cyclonedds/cyclonedds</UpstreamRepoUrl>
@@ -44,6 +46,8 @@
 
     <PropertyGroup>
       <Description>$(Description)%0a%0a$(_NativeVersionText)</Description>
+      <!-- What NuGet writes to the nuspec; it was defaulted from Description before this target ran. -->
+      <PackageDescription>$(Description)</PackageDescription>
       <PackageReleaseNotes>$(PackageReleaseNotes)%0a$(_NativeVersionText)</PackageReleaseNotes>
     </PropertyGroup>
   </Target>

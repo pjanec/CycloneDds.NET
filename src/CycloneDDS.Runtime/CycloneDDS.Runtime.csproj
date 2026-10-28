@@ -5,7 +5,9 @@
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <NoWarn>CS8600;CS8601;CS8603;CS8604</NoWarn>
+    <NoWarn>CS8600;CS8601;CS8603;CS8604;CS1591</NoWarn>
+    <!-- IntelliSense for package users: the XML doc file is packed next to the DLL. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>CycloneDDS.NET</PackageId>
     <Description>Cyclone DDS Runtime bindings for .NET (Windows x64, Linux x64)</Description>
     <IsPackable>true</IsPackable>
@@ -93,6 +95,11 @@
   <ItemGroup>
     <None Include="$(OutputPath)\CycloneDDS.Core.dll" Pack="true" PackagePath="lib\$(TargetFramework)" Visible="false" />
     <None Include="$(OutputPath)\CycloneDDS.Schema.dll" Pack="true" PackagePath="lib\$(TargetFramework)" Visible="false" />
+    <!-- Their XML docs too, so the attributes and core types show their documentation in the editor. -->
+    <None Include="$(OutputPath)\CycloneDDS.Core.xml" Pack="true" PackagePath="lib\$(TargetFramework)" Visible="false"
+          Condition="Exists('$(OutputPath)\CycloneDDS.Core.xml')" />
+    <None Include="$(OutputPath)\CycloneDDS.Schema.xml" Pack="true" PackagePath="lib\$(TargetFramework)" Visible="false"
+          Condition="Exists('$(OutputPath)\CycloneDDS.Schema.xml')" />
     <!-- Ship the SourceLink-enabled PDBs next to their DLLs so consumers can debug
          into CycloneDDS.Core / CycloneDDS.Schema too (not just CycloneDDS.Runtime).
          These are manually-packed project-reference outputs, so their symbols are
@@ -101,15 +108,6 @@
           Condition="Exists('$(OutputPath)\CycloneDDS.Core.pdb')" />
     <None Include="$(OutputPath)\CycloneDDS.Schema.pdb" Pack="true" PackagePath="lib\$(TargetFramework)" Visible="false"
           Condition="Exists('$(OutputPath)\CycloneDDS.Schema.pdb')" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.8.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
   </ItemGroup>
 
   <Import Project="..\..\build\targets\NativeVersionInfo.targets" />

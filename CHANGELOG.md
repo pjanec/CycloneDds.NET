@@ -5,7 +5,7 @@ All notable changes to CycloneDDS.NET will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 1.2.10
+## 1.2.11
 
 Versioned **1.2** for both packages. `CycloneDDS.NET` jumps from 0.3 to 1.2 to share the version
 of `CycloneDDS.NET.DdsMonitor` (which already shipped 1.1); from now on the two always carry the
@@ -14,6 +14,9 @@ same version, so a monitor matches the library and native Cyclone DDS of the sam
 native Cyclone DDS major version, new Linux library names and platform baseline.
 
 ### Added
+- **IntelliSense documentation:** the package now ships the XML doc files of
+  `CycloneDDS.Runtime`, `CycloneDDS.Core` and `CycloneDDS.Schema`, so the documentation
+  comments show in the editor.
 - **DDS Security** (authentication, access control, encryption). The native build enables
   Cyclone DDS's security plugins and the package ships them; they are loaded only when the
   domain configuration contains a `<Security>` section, so nothing changes for applications
@@ -78,6 +81,11 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   still compile).
 
 ### Changed
+- **`CycloneDDS.NET` no longer depends on Roslyn** (`Microsoft.CodeAnalysis.CSharp` /
+  `.Common` 4.8.0), which pulled about 9 MB of the C# compiler into every application using
+  the package. Nothing in the library used it; the code generator runs from the package's
+  `tools/` folder with its own copy. The `ddsmonitor` tool is about as much smaller. An
+  application that used Roslyn only through this package must now reference it itself.
 - **DdsMonitor's built-in `SelfTest.*` topics exist only while self-send is on.** They used to be
   registered and subscribed on every start, cluttering the topic list and every recording.
 - **DdsMonitor headless recording defaults changed.** It now writes JSON Lines with base64 byte
@@ -121,6 +129,9 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 1.2 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- **The native Cyclone DDS version is recorded in the package as intended:** in the package
+  description and as `native_version.json` in the package root (it reached only the release
+  notes, because NuGet had read the description and collected the files before it was added).
 - **DDS Monitor installed as a `dotnet tool` can run on a secured domain on Windows.** Windows
   looks for the security plugins beside the started executable, which for a tool is the small
   launcher, not the tool's store folder, so a secured monitor stopped with `Could not load
