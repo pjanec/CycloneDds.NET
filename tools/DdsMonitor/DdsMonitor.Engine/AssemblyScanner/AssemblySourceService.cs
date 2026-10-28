@@ -233,7 +233,9 @@ public sealed class AssemblySourceService : IAssemblySourceService
                     continue;
                 }
 
-                var entry = new AssemblySourceEntry { Path = path };
+                // Relative paths (e.g. --AppSettings:TopicSources:0=./bin) are taken from the
+                // current directory; the assembly loader would reject them.
+                var entry = new AssemblySourceEntry { Path = System.IO.Path.GetFullPath(path) };
                 var topics = ScanEntry(entry);
                 _entries.Add(entry);
                 _entryTopics.Add(topics);
@@ -350,4 +352,4 @@ public sealed class AssemblySourceService : IAssemblySourceService
 /// <summary>
 /// Manages the persistent list of user-configured external DLL assemblies and
 /// scans them for DDS topic types on startup and whenever a new path is added.
-/// </summary>
+/// </summary>

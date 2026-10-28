@@ -110,6 +110,23 @@ public sealed class HeadlessRecordOptionsTests : IDisposable
     }
 
     [Fact(Timeout = 30000)]
+    public async Task ARecordingThatEndsWhileTheHostStarts_StopsTheHostOnlyOnceItHasStarted()
+    {
+        // A sample cap met by durable history the moment the reader matches ends the recording
+        // before the host has finished starting; stopping it then crashed ddsmonitor (exit 134).
+        var file = PathOf("cap.jsonl");
+        await using var run = Start(new DdsSettings { HeadlessFilePath = file, RecordMaxSamples = 1 }, NewBridge(), startedHost: false);
+
+        Send(_keyed, 1);
+        await run.Service.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(0, run.Lifetime.StopRequests);
+
+        run.Lifetime.Started.Cancel();
+        Assert.Equal(1, run.Lifetime.StopRequests);
+        Assert.Single(File.ReadAllLines(file));
+    }
+
+    [Fact(Timeout = 30000)]
     public async Task Duration_StopsTheRecordingByItself_AndTheJsonArrayIsClosed()
     {
         var file = PathOf("cap.json");
@@ -249,13 +266,18 @@ public sealed class HeadlessRecordOptionsTests : IDisposable
     private DdsBridge NewBridge() =>
         new(_channel.Writer, new[] { new ParticipantConfig { DomainId = _domain } }, null, null, null, null);
 
-    private Run Start(DdsSettings settings, DdsBridge bridge, params TopicMetadata[] topics)
+    private Run Start(DdsSettings settings, DdsBridge bridge, params TopicMetadata[] topics) =>
+        Start(settings, bridge, startedHost: true, topics);
+
+    private Run Start(DdsSettings settings, DdsBridge bridge, bool startedHost, params TopicMetadata[] topics)
     {
         settings.HeadlessMode = HeadlessMode.Record;
         var registry = new TopicRegistry();
         foreach (var t in topics) registry.Register(t);
         var provider = new ServiceCollection().BuildServiceProvider();
         var lifetime = new TestLifetime();
+        if (startedHost)
+            lifetime.Started.Cancel();
         var service = new HeadlessRunnerService(settings, new AppSettings(), registry, bridge,
             provider.GetRequiredService<IServiceScopeFactory>(), lifetime,
             NullLogger<HeadlessRunnerService>.Instance, _channel.Reader);
@@ -336,7 +358,8 @@ public sealed class HeadlessRecordOptionsTests : IDisposable
     private sealed class TestLifetime : IHostApplicationLifetime
     {
         public int StopRequests;
-        public CancellationToken ApplicationStarted => CancellationToken.None;
+        public readonly CancellationTokenSource Started = new();
+        public CancellationToken ApplicationStarted => Started.Token;
         public CancellationToken ApplicationStopping => CancellationToken.None;
         public CancellationToken ApplicationStopped => CancellationToken.None;
         public void StopApplication() => Interlocked.Increment(ref StopRequests);

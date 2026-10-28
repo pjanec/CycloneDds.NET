@@ -88,11 +88,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAssemblySourceService>(assemblySourceService);
         services.AddHostedService<AssemblySourcePersistenceService>();
 
-        // Register self-send topic types eagerly so they are present in the registry
-        // before any hosted service (e.g. SelfSendService) or pre-startup exclusion
-        // bootstrap runs.  SelfSendService.ExecuteAsync() previously did this, but
-        // that was too late when SelfSendEnabled=true causes an immediate subscription.
-        SelfSendTopics.Register(topicRegistry);
+        // The self-send (SelfTest.*) topics exist only while self-send is on, so they never
+        // clutter the topic list or a recording otherwise. When it is on from the start they
+        // are registered here, before the pre-startup exclusion bootstrap runs; switching it
+        // on later from the UI registers them in SelfSendService.
+        if (settings.SelfSendEnabled)
+            SelfSendTopics.Register(topicRegistry);
 
         // ── Phase 5: Plugin infrastructure ───────────────────────────────────────────
         // Create plugin singletons eagerly (before the container is built) so that

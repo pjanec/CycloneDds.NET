@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Linq;
+using DdsMonitor.Engine.AssemblyScanner;
 using DdsMonitor.Engine.Recording;
 using DdsMonitor.Engine.Replay;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +50,7 @@ public sealed class HeadlessRunnerService : BackgroundService
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<HeadlessRunnerService> _logger;
     private readonly ChannelReader<SampleData>? _channelReader;
+    private readonly IAssemblySourceService? _assemblySources;
 
     public HeadlessRunnerService(
         DdsSettings settings,
@@ -58,8 +60,10 @@ public sealed class HeadlessRunnerService : BackgroundService
         IServiceScopeFactory scopeFactory,
         IHostApplicationLifetime lifetime,
         ILogger<HeadlessRunnerService> logger,
-        ChannelReader<SampleData>? channelReader = null)
+        ChannelReader<SampleData>? channelReader = null,
+        IAssemblySourceService? assemblySources = null)
     {
+        _assemblySources = assemblySources;
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _appSettings = appSettings ?? throw new ArgumentNullException(nameof(appSettings));
         _topicRegistry = topicRegistry ?? throw new ArgumentNullException(nameof(topicRegistry));
@@ -96,6 +100,16 @@ public sealed class HeadlessRunnerService : BackgroundService
                 workspaceState?.WorkspaceFilePath);
         }
 
+        // A topic source that yields nothing usually means a wrong path: say so, since nothing
+        // of those topics would be recorded.
+        foreach (var source in _assemblySources?.Entries ?? Array.Empty<AssemblySourceEntry>())
+        {
+            if (source.LoadError != null)
+                _logger.LogWarning("Topic source {Path} could not be loaded: {Error}", source.Path, source.LoadError);
+            else if (source.TopicCount == 0)
+                _logger.LogWarning("Topic source {Path} contains no [DdsTopic] types (missing, or not a build output with topic types).", source.Path);
+        }
+
         foreach (var topic in _topicRegistry.AllTopics)
         {
             if (!_ddsBridge.ExplicitlyUnsubscribedTopicTypes.Contains(topic.TopicType))
@@ -126,7 +140,11 @@ public sealed class HeadlessRunnerService : BackgroundService
         }
         finally
         {
-            _lifetime.StopApplication();
+            // Stop the host only once it has finished starting: a recording can end during start-up
+            // (a sample cap met by durable history the moment the reader matches), and stopping
+            // then cancels the start-up, which the host reports as an unhandled exception.
+            // A registration on an already-started host runs at once.
+            _lifetime.ApplicationStarted.Register(_lifetime.StopApplication);
         }
     }
 

@@ -217,7 +217,14 @@ else
     // Resolved up front: RunAsync disposes the service provider on its way out.
     var runner = app.Services.GetServices<IHostedService>().OfType<HeadlessRunnerService>().FirstOrDefault();
 
-    await app.RunAsync();
+    try
+    {
+        await app.RunAsync();
+    }
+    catch (OperationCanceledException)
+    {
+        // Ctrl+C or SIGTERM while the host was still starting: a normal stop.
+    }
 
     // 0 = success, 2 = the run failed, 3 = a recording lost at least one topic (see the log / summary file).
     if (runner != null)

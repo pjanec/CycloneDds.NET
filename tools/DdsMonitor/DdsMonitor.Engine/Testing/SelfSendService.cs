@@ -36,10 +36,6 @@ public sealed class SelfSendService : BackgroundService
         List<IDynamicWriter>? writers = null;
         bool wasEnabled = false;
 
-        // Self-send topic types are now registered eagerly in ServiceCollectionExtensions
-        // so they appear in the topic explorer immediately on startup even before self-sending
-        // is enabled, without requiring this service to be running first.
-
         var keyCount = Math.Max(1, _settings.SelfSendKeyCount);
         var keyIndex = 0;
 
@@ -51,9 +47,11 @@ public sealed class SelfSendService : BackgroundService
 
                 if (isEnabled && !wasEnabled)
                 {
-                    // Turning on: subscribe to DDS and create writers.
+                    // Turning on: register the SelfTest topics (only present while self-send
+                    // has been on), subscribe to DDS and create writers.
                     // Respect the explicit-unsubscribe set (populated before the host started
                     // from workspace/CLI exclusions) so that excluded topics are not subscribed.
+                    SelfSendTopics.Register(_topicRegistry);
                     var topics = GetSelfSendTopics();
                     if (topics.Count > 0)
                     {
@@ -109,6 +107,10 @@ public sealed class SelfSendService : BackgroundService
                     await Task.Delay(IdleCheckMs, stoppingToken);
                 }
             }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal shutdown.
         }
         finally
         {

@@ -74,6 +74,7 @@ public sealed class DynamicReader<T> : IDynamicReader
     private readonly string? _initialPartition;
     private readonly DynamicReaderConfig? _config;
     private readonly object _sync = new();
+    private readonly object _orderLock = new();
     private DdsReader<T>? _reader;
     private CancellationTokenSource? _cancellation;
     private Task? _readTask;
@@ -289,32 +290,39 @@ public sealed class DynamicReader<T> : IDynamicReader
                 return; // Reject without incrementing the ordinal.
             }
 
-            var ordinal = _config?.OrdinalCounter != null
-                ? _config.OrdinalCounter.Increment()
-                : Interlocked.Increment(ref _nextOrdinal);
-
-            OnSampleReceived?.Invoke(tempSample with { Ordinal = ordinal });
+            lock (OrderLock)
+            {
+                OnSampleReceived?.Invoke(tempSample with { Ordinal = NextOrdinal() });
+            }
         }
         else
         {
             // Fast path (no filter): build the final SampleData in a single allocation.
-            var ordinal = _config?.OrdinalCounter != null
-                ? _config.OrdinalCounter.Increment()
-                : Interlocked.Increment(ref _nextOrdinal);
-
-            OnSampleReceived?.Invoke(new SampleData
+            lock (OrderLock)
             {
-                Ordinal = ordinal,
-                Payload = payload!,
-                TopicMetadata = TopicMetadata,
-                SampleInfo = info,
-                Sender = sender,
-                Timestamp = DateTime.UtcNow,
-                SizeBytes = estimatedSize,
-                DomainId = _config?.DomainId ?? 0,
-                PartitionName = _config?.PartitionName ?? string.Empty,
-                ParticipantIndex = _config?.ParticipantIndex ?? 0
-            });
+                OnSampleReceived?.Invoke(new SampleData
+                {
+                    Ordinal = NextOrdinal(),
+                    Payload = payload!,
+                    TopicMetadata = TopicMetadata,
+                    SampleInfo = info,
+                    Sender = sender,
+                    Timestamp = DateTime.UtcNow,
+                    SizeBytes = estimatedSize,
+                    DomainId = _config?.DomainId ?? 0,
+                    PartitionName = _config?.PartitionName ?? string.Empty,
+                    ParticipantIndex = _config?.ParticipantIndex ?? 0
+                });
+            }
         }
     }
+
+    // Taking the ordinal and handing the sample on happen under one lock shared by every reader
+    // on the same counter, so samples from several topics' reader threads leave in ordinal order
+    // (a capture reader that remembers the last ordinal it saw would otherwise skip samples).
+    private object OrderLock => _config?.OrdinalCounter?.SyncRoot ?? _orderLock;
+
+    private long NextOrdinal() => _config?.OrdinalCounter != null
+        ? _config.OrdinalCounter.Increment()
+        : Interlocked.Increment(ref _nextOrdinal);
 }

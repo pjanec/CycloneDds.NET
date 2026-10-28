@@ -125,29 +125,39 @@ WORK="$(mktemp -d)"
 cleanup() { dotnet tool uninstall --global CycloneDDS.NET.DdsMonitor >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT
 
-# run_mon <name> <domain> <CYCLONEDDS_URI or ""> <self-send true|false>  (background, ~12 s)
+# The publisher is the smoke-test app built above (its "publish" mode); the recorders load its
+# topic type from its build output with TopicSources, as a user or an AI agent would.
+SMOKE_DIR="$REPO_ROOT/examples/PackageSmokeTest/bin/Release/net8.0"
+
+# run_mon <name> <domain> <CYCLONEDDS_URI or "">  (background, ~12 s)
 # Records the exit code: 124 means it was still running when the timeout stopped it.
 run_mon() {
     ( cd "$WORK" && rc=0 && CYCLONEDDS_URI="$3" timeout 12 "$TOOL" --DdsSettings:DomainId="$2" \
-        --AppSettings:ConfigFolder="$WORK/cfg-$1" \
+        --AppSettings:ConfigFolder="$WORK/cfg-$1" --AppSettings:TopicSources:0="$SMOKE_DIR" \
         --DdsSettings:HeadlessMode=Record --DdsSettings:HeadlessFilePath="$WORK/$1.jsonl" \
-        --DdsSettings:SelfSendEnabled="$4" > "$WORK/$1.log" 2>&1 || rc=$?; echo "$rc" > "$WORK/$1.exit" ) &
+        > "$WORK/$1.log" 2>&1 || rc=$?; echo "$rc" > "$WORK/$1.exit" ) &
 }
-# True when every named instance ran until the timeout (none crashed or quit early).
+# run_pub <name> <domain> <CYCLONEDDS_URI or "">  (background, publishes for 8 s; exit code 0 = ok)
+run_pub() {
+    ( cd "$WORK" && rc=0 && CYCLONEDDS_URI="$3" timeout 30 dotnet "$SMOKE_DIR/PackageSmokeTest.dll" publish "$2" 8 \
+        > "$WORK/$1.log" 2>&1 || rc=$?; echo "$rc" > "$WORK/$1.exit" ) &
+}
+# True when every named recorder ran until the timeout (none crashed or quit early).
 all_ran() { local n; for n in "$@"; do [ "$(cat "$WORK/$n.exit" 2>/dev/null)" = "124" ] || return 1; done; }
+published() { [ "$(cat "$WORK/$1.exit" 2>/dev/null)" = "0" ]; }
 # Samples recorded by an instance: complete lines of its JSON Lines capture.
 recorded() { local n; n="$(wc -l < "$WORK/$1.jsonl" 2>/dev/null || true)"; echo "${n:-0}"; }
 
 # Random domain per run, so concurrent runs on one machine do not see each other.
 DOMAIN=$(( 100 + RANDOM % 100 ))
-run_mon rec  "$DOMAIN" "" false
+run_mon rec  "$DOMAIN" ""
 sleep 2
-run_mon pub  "$DOMAIN" "" true
+run_pub pub  "$DOMAIN" ""
 wait
-if all_ran pub rec && [ "$(recorded rec)" -gt 0 ]; then
-    echo "  [+] ddsmonitor DDS round trip between two processes: $(recorded rec) samples received"
+if all_ran rec && published pub && [ "$(recorded rec)" -gt 0 ]; then
+    echo "  [+] DDS round trip, smoke app -> ddsmonitor (topic type loaded via TopicSources): $(recorded rec) samples received"
 else
-    echo "  [-] ddsmonitor DDS round trip FAILED (received: $(recorded rec), exit codes pub/rec: $(cat "$WORK/pub.exit")/$(cat "$WORK/rec.exit"), 124 = ran to the end). Logs:" >&2
+    echo "  [-] ddsmonitor DDS round trip FAILED (received: $(recorded rec), exit codes pub/rec: $(cat "$WORK/pub.exit")/$(cat "$WORK/rec.exit"), pub 0 = ok, rec 124 = ran to the end). Logs:" >&2
     tail -n 15 "$WORK/pub.log" "$WORK/rec.log" >&2
     exit 1
 fi
@@ -170,12 +180,12 @@ if [ -f "$SEC/identity_cert.pem" ] && grep -q 'libcrypto\.so\.3' <(ldconfig -p 2
 </Security></Domain></CycloneDDS>
 XML
     DOMAIN=$(( DOMAIN + 1 ))
-    run_mon srec   "$DOMAIN" "file://$WORK/secure.xml" false
-    run_mon splain "$DOMAIN" "" false
+    run_mon srec   "$DOMAIN" "file://$WORK/secure.xml"
+    run_mon splain "$DOMAIN" ""
     sleep 2
-    run_mon spub   "$DOMAIN" "file://$WORK/secure.xml" true
+    run_pub spub   "$DOMAIN" "file://$WORK/secure.xml"
     wait
-    if all_ran spub srec splain && [ "$(recorded srec)" -gt 0 ] && [ "$(recorded splain)" -eq 0 ]; then
+    if all_ran srec splain && published spub && [ "$(recorded srec)" -gt 0 ] && [ "$(recorded splain)" -eq 0 ]; then
         echo "  [+] ddsmonitor DDS Security: secured recorder got $(recorded srec) samples, unsecured got none"
     else
         echo "  [-] ddsmonitor DDS Security check FAILED (secured: $(recorded srec), unsecured: $(recorded splain)). Logs:" >&2

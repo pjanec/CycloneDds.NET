@@ -123,6 +123,8 @@ public sealed class TopicDiscoveryService
     /// </summary>
     private IReadOnlyList<TopicMetadata> LoadAndScanAssemblyDetailed(string dllPath)
     {
+        // The assembly loader needs an absolute path; a relative one is taken from the current directory.
+        dllPath = Path.GetFullPath(dllPath);
         var loadContext = new CollectiblePluginLoadContext(dllPath);
         var assembly = loadContext.LoadFromAssemblyPath(dllPath);
 

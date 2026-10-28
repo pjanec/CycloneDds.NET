@@ -10,6 +10,12 @@ public sealed class OrdinalCounter
 {
     private long _value;
 
+    /// <summary>
+    /// Held by readers while they take an ordinal and hand the sample on, so samples leave
+    /// in ordinal order across reader threads.
+    /// </summary>
+    public object SyncRoot { get; } = new();
+
     /// <summary>Atomically increments the counter and returns the new value.</summary>
     public long Increment() => Interlocked.Increment(ref _value);
 

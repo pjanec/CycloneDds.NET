@@ -78,6 +78,8 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   still compile).
 
 ### Changed
+- **DdsMonitor's built-in `SelfTest.*` topics exist only while self-send is on.** They used to be
+  registered and subscribed on every start, cluttering the topic list and every recording.
 - **DdsMonitor headless recording defaults changed.** It now writes JSON Lines with base64 byte
   buffers and prints nothing per sample, instead of one indented JSON array with a `[RECORD]`
   console line per sample. For the old output use `--DdsSettings:RecordFormat=Json
@@ -122,6 +124,16 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
 - The DDS Monitor README documented a `PluginDirectories` option that does not exist (plugins
   load from the `plugins` folder next to the executable), and said self-send is on by default
   (it is off).
+- **DdsMonitor samples leave in ordinal order.** Reader threads of different topics could hand
+  on samples out of ordinal order (neighbouring pairs swapped), so a capture reader that keeps
+  the last ordinal it saw (`select(.Ordinal > N)`) could skip a sample. Taking the ordinal and
+  handing the sample on are now one step.
+- **A headless recording that ends while ddsmonitor is still starting** (e.g. `RecordMaxSamples`
+  met at once by durable history) no longer aborts the process (exit 134); the host is stopped
+  once it has started, and the recorder's exit code stands.
+- **A relative `--AppSettings:TopicSources` path loads its topics.** It silently loaded nothing,
+  because the assembly loader needs an absolute path; a headless run now also warns when a
+  topic source yields no topic types.
 - **DdsMonitor filter macros no longer leak between compilers.** All filter compilers shared
   one static macro registry, so the most recently created compiler's macros applied everywhere;
   each compiler now resolves its own.

@@ -30,7 +30,7 @@ public static class CommandLineHelp
 
         TOPICS
           Topics are known from the assemblies holding their [DdsTopic] types, not from the network:
-          point at the DLLs or build folders (otherwise only the saved list and the built-in SelfTest.*).
+          point at the DLLs or build folders (relative paths are from the current directory).
           --AppSettings:TopicSources:0=<dll|dir>     assemblies to scan (overrides the saved list for this run)
           --AppSettings:IncludeTopics:0=<pattern>    subscribe only to matching types ("MyApp.*"; CLR full name)
           --AppSettings:ExcludeTopics:0=<pattern>    do not subscribe to matching types
@@ -48,7 +48,8 @@ public static class CommandLineHelp
           --DdsSettings:HeadlessFilePath=<path|->    capture file; "-" = stdout (logs go to stderr)
           --DdsSettings:RecordFormat=JsonLines|Json  default JsonLines: one record per line, readable
                                                      while recording; Json = one array, readable once closed
-          --DdsSettings:RecordDurationSeconds=<s>    stop after s seconds (default: until Ctrl+C/SIGTERM)
+          --DdsSettings:RecordDurationSeconds=<s>    stop after s seconds (default: until Ctrl+C/SIGTERM;
+                                                     scripts: send SIGTERM, a background job ignores SIGINT)
           --DdsSettings:RecordMaxSamples=<n>         stop after n samples
           --DdsSettings:RecordSummaryFile=<path>     per-topic counts, failed topics, Running/StopReason;
                                                      rewritten every second
@@ -83,7 +84,8 @@ public static class CommandLineHelp
           --AppSettings:ConfigFolder=<dir>           folder for saved state (workspace, assembly sources)
 
         TESTING
-          --DdsSettings:SelfSendEnabled=true         publish demo samples (SelfTest.* topics)
+          --DdsSettings:SelfSendEnabled=true         publish demo samples on the SelfTest.* topics
+                                                     (they exist only while self-send is on)
           --DdsSettings:SelfSendRateHz=<n>  --DdsSettings:SelfSendKeyCount=<n>
 
         More: {{ReadmeUrl}}
