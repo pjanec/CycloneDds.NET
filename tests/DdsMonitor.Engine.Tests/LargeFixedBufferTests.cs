@@ -169,3 +169,28 @@ public sealed class LargeFixedBufferTests
         reader.Stop();
     }
 }
+
+/// <summary>
+/// The capture path for the SUMO blob shape: its JSON must round-trip with the blob intact.
+/// </summary>
+public sealed class LargeFixedBufferJsonTests
+{
+    [Fact]
+    public void SumoWireFrame_RoundTripsThroughTheCaptureJson()
+    {
+        var metadata = new TopicMetadata(typeof(SumoLikeWireFrame));
+        var payloadField = metadata.AllFields.Single(f => f.StructuredName == "Payload");
+        object boxed = Activator.CreateInstance<SumoLikeWireFrame>();
+        var bytes = new byte[65536];
+        bytes[0] = 0x11;
+        bytes[65535] = 0x22;
+        payloadField.Setter(boxed, bytes);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(boxed, boxed.GetType(), DdsJsonOptions.Export);
+        var back = System.Text.Json.JsonSerializer.Deserialize(json, boxed.GetType(), DdsJsonOptions.Import)!;
+
+        var got = Assert.IsType<byte[]>(payloadField.Getter(back));
+        Assert.Equal(0x11, got[0]);
+        Assert.Equal(0x22, got[65535]);
+    }
+}

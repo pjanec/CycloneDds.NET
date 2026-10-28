@@ -168,7 +168,9 @@ public static class ServiceCollectionExtensions
             var instanceStore = sp.GetRequiredService<IInstanceStore>();
             var ordinal = sp.GetRequiredService<OrdinalCounter>();
 
-            var bridge = new DdsBridge(writer, s.Participants, null, sampleStore, instanceStore, ordinal);
+            var logger = sp.GetService<ILogger<DdsBridge>>();
+
+            var bridge = new DdsBridge(writer, s.Participants, null, sampleStore, instanceStore, ordinal, logger);
 
             // Apply startup filter expression if configured (ME1-T07).
             if (!string.IsNullOrWhiteSpace(s.FilterExpression))

@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Threading.Channels;
 using CycloneDDS.Runtime;
 using CycloneDDS.Runtime.Tracking;
+using Microsoft.Extensions.Logging;
 
 namespace DdsMonitor.Engine;
 
@@ -29,6 +30,7 @@ public sealed class DdsBridge : IDdsBridge
     private readonly ISampleStore? _sampleStore;
     private readonly IInstanceStore? _instanceStore;
     private readonly OrdinalCounter _ordinalCounter;
+    private readonly ILogger? _logger;
     private Func<SampleData, bool>? _filter;
     private bool _disposed;
 
@@ -57,7 +59,23 @@ public sealed class DdsBridge : IDdsBridge
         ISampleStore? sampleStore,
         IInstanceStore? instanceStore,
         OrdinalCounter? ordinalCounter)
+        : this(channelWriter, participants, initialPartition, sampleStore, instanceStore, ordinalCounter, null)
     {
+    }
+
+    /// <summary>
+    /// Full constructor with a logger that reports a topic whose reading failed.
+    /// </summary>
+    public DdsBridge(
+        ChannelWriter<SampleData> channelWriter,
+        IReadOnlyList<ParticipantConfig>? participants,
+        string? initialPartition,
+        ISampleStore? sampleStore,
+        IInstanceStore? instanceStore,
+        OrdinalCounter? ordinalCounter,
+        ILogger? logger)
+    {
+        _logger = logger;
         _channelWriter = channelWriter ?? throw new ArgumentNullException(nameof(channelWriter));
         _sampleStore = sampleStore;
         _instanceStore = instanceStore;
@@ -473,6 +491,13 @@ public sealed class DdsBridge : IDdsBridge
     // Private helpers
     // ─────────────────────────────────────────────────────────────────────────
 
+    private void ReportReadError(TopicMetadata meta, Exception ex)
+    {
+        _logger?.LogError(ex,
+            "Reading topic {TopicName} ({TopicType}) failed; no more samples of it will be received. The other topics are not affected.",
+            meta.TopicName, meta.TopicType.FullName);
+    }
+
     private IDynamicReader CreateReader(TopicMetadata meta, int participantIndex)
     {
         var participant = _participants[participantIndex];
@@ -487,7 +512,8 @@ public sealed class DdsBridge : IDdsBridge
             DomainId = cfg.DomainId,
             PartitionName = cfg.PartitionName,
             ParticipantIndex = participantIndex,
-            SenderRegistry = participant.SenderRegistry
+            SenderRegistry = participant.SenderRegistry,
+            OnReadError = ReportReadError
         };
 
         var partition = string.IsNullOrEmpty(cfg.PartitionName) ? CurrentPartition : cfg.PartitionName;

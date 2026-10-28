@@ -92,6 +92,18 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 1.2 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- **DdsMonitor reads topics whose sample is 64 KiB or larger** (e.g. a `fixed byte Payload[65536]`
+  blob). The reader passed each sample by value to a helper, and the .NET JIT rejects a method
+  with a struct argument that large (`InvalidProgramException` in `DynamicReader.DrainReader`).
+  These topics recorded nothing, and the error only came out at shutdown, where it killed the process.
+  Samples are now sized by reference and boxed once.
+- **A topic that cannot be read no longer takes ddsmonitor down.** The error is logged when it
+  happens, naming the topic, and only that topic stops. Previously the failed read task stayed silent
+  and its exception was rethrown at shutdown. New: `DynamicReaderConfig.OnReadError`,
+  `DynamicReader<T>.ReadError`, and a `DdsBridge` constructor overload that takes an `ILogger`.
+- **A headless recording is always valid JSON.** Stopping it with Ctrl+C used to skip writing the
+  closing `]`. A sample whose payload cannot be serialized is now skipped and logged once per
+  topic, instead of ending the recording.
 - **DdsMonitor headless mode no longer grabs port 5000.** Headless record/replay serves no UI,
   but its web host still bound Kestrel's default `http://localhost:5000`, so a second headless
   instance (or anything else on 5000) failed to start (the host aborted). It now binds a free

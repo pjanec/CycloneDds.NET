@@ -36,6 +36,12 @@ public sealed class DynamicReaderConfig
     /// sender tracking so that <see cref="SampleData.Sender"/> is populated for live samples.
     /// </summary>
     public SenderRegistry? SenderRegistry { get; init; }
+
+    /// <summary>
+    /// Called on the read thread when reading the topic fails. The reader stops reading that
+    /// topic (the failure would only repeat); every other topic keeps going.
+    /// </summary>
+    public Action<TopicMetadata, Exception>? OnReadError { get; init; }
 }
 
 /// <summary>
@@ -104,6 +110,9 @@ public sealed class DynamicReader<T> : IDynamicReader
     /// <inheritdoc />
     public event Action<SampleData>? OnSampleReceived;
 
+    /// <summary>The error that stopped reading this topic, or null while reading works.</summary>
+    public Exception? ReadError { get; private set; }
+
     /// <inheritdoc />
     public void Start(string? partition)
     {
@@ -111,6 +120,7 @@ public sealed class DynamicReader<T> : IDynamicReader
         {
             StopInternal();
 
+            ReadError = null;
             var activePartition = partition ?? _initialPartition;
             _reader = new DdsReader<T>(_participant, TopicMetadata.TopicName, partition: activePartition);
 
@@ -200,6 +210,14 @@ public sealed class DynamicReader<T> : IDynamicReader
             {
                 break;
             }
+            catch (Exception ex)
+            {
+                // Report it now: a faulted read task would otherwise stay silent until Stop
+                // rethrew it, typically at shutdown, taking the process and the capture with it.
+                ReadError = ex;
+                _config?.OnReadError?.Invoke(TopicMetadata, ex);
+                break;
+            }
         }
     }
 
@@ -219,15 +237,19 @@ public sealed class DynamicReader<T> : IDynamicReader
         var infos = loan.Infos;
         for (var i = 0; i < loan.Count; i++)
         {
-            EmitSample(loan[i], infos[i], loan.GetSender(i));
+            // Never pass a T by value: the JIT rejects a method whose struct argument is 64 KiB or
+            // larger (InvalidProgramException), which is exactly the SUMO blob topics' sample size.
+            // Size it by reference and box it once here; everything downstream takes the box.
+            var sample = loan[i];
+            var estimatedSize = _nativeSizer != null && sample != null ? _nativeSizer(in sample) : UnknownSizeBytes;
+            EmitSample(sample, estimatedSize, infos[i], loan.GetSender(i));
         }
 
         return true; // Took a full batch; there may still be more.
     }
 
-    private void EmitSample(T? payload, DdsApi.DdsSampleInfo info, RtSenderIdentity? runtimeSender)
+    private void EmitSample(object? payload, int estimatedSize, DdsApi.DdsSampleInfo info, RtSenderIdentity? runtimeSender)
     {
-        var estimatedSize = _nativeSizer != null && payload != null ? _nativeSizer(payload) : UnknownSizeBytes;
         var filter = _config?.Filter;
 
         // Map the runtime tracking sender to the engine model, if available.
