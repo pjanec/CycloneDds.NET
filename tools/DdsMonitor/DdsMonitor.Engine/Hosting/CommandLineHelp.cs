@@ -42,6 +42,7 @@ public static class CommandLineHelp
           --DdsSettings:FilterExpression=<expr>      drop samples not matching, e.g. "Payload.Id gt 10"
                                                      (ops: == != > < >= <= or eq ne gt lt ge le)
           CYCLONEDDS_URI=<xml|file://...>            (environment) Cyclone config, e.g. DDS Security
+                                                     (Windows: file://D:/dir/secure.xml; OpenSSL 3 bin on PATH)
 
         HEADLESS RECORD (no UI)
           --DdsSettings:HeadlessMode=Record

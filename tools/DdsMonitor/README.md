@@ -110,7 +110,7 @@ By default DDS Monitor starts a Kestrel HTTP server on a random free port and la
 
 ### Running with DDS Security
 
-The monitor joins a secured domain like any other application: give it the same `<Security>` configuration through `CYCLONEDDS_URI` (see [DDS Security](../../README.md#12-dds-security-optional)). A monitor without it is an unauthenticated peer and sees nothing of a secured domain - by design.
+The monitor joins a secured domain like any other application: give it the same `<Security>` configuration through `CYCLONEDDS_URI` (see [DDS Security](https://github.com/pjanec/CycloneDds.NET/blob/main/README.md#12-dds-security-optional)). A monitor without it is an unauthenticated peer and sees nothing of a secured domain - by design.
 
 ```powershell
 # Windows
@@ -128,7 +128,7 @@ Windows specifics:
 
 - **The configuration file is given as `file://D:/path/secure.xml`.** The certificate, key, governance and permissions paths *inside* it use `file:D:/path/identity_cert.pem` (see the example linked above).
 - **OpenSSL 3 must be loadable** - its `bin` folder on `PATH` (the package does not ship it).
-- **The security plugins (`dds_security_*.dll`) need no setup**: the monitor adds its own folder to `PATH` at start-up, because a `dotnet tool` keeps them in the tool's store folder, not beside the `ddsmonitor.exe` launcher. (Versions before this fix stopped with `Could not load Authentication library: The specified module could not be found`; there, put `%USERPROFILE%\.dotnet\tools\.store\cyclonedds.net.ddsmonitor\<version>\cyclonedds.net.ddsmonitor\<version>\tools\net8.0\any` on `PATH`.)
+- **The security plugins (`dds_security_*.dll`) need no setup**: the monitor adds its own folder to `PATH` at start-up, because a `dotnet tool` keeps them in the tool's store folder, not beside the `ddsmonitor.exe` launcher.
 - A secured and an unsecured monitor on the same domain do not see each other's data: that is the expected outcome, not a fault.
 
 ---

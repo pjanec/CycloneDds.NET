@@ -78,6 +78,15 @@ dotnet tool install --global --add-source $Feed --version $monVer CycloneDDS.NET
 $toolExe = Join-Path $env:USERPROFILE ".dotnet\tools\ddsmonitor.exe"
 if (-not (Test-Path $toolExe)) { $toolExe = "ddsmonitor" }
 
+# The installed tool documents itself: --help must print the reference, including the recording workflow.
+$help = (& $toolExe --help) -join "`n"
+if ($LASTEXITCODE -ne 0 -or $help -notmatch 'RECORDING FOR SCRIPTS AND AI AGENTS') {
+    Uninstall-DdsMonitorTool
+    Write-Host "  [-] ddsmonitor --help did not print the reference (exit $LASTEXITCODE)" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  [+] ddsmonitor --help prints the reference ($(& $toolExe --version))"
+
 $out = [System.IO.Path]::GetTempFileName()
 $err = [System.IO.Path]::GetTempFileName()
 $proc = Start-Process -FilePath $toolExe -ArgumentList "--NoBrowser true" `
@@ -120,6 +129,10 @@ $smokeExe = Join-Path $smokeDir "PackageSmokeTest.exe"   # the apphost: Windows 
 $secDir = Join-Path $RepoRoot "tests\CycloneDDS.Runtime.Tests\Resources\Security"
 $recSeconds = 12
 
+# Start-Process joins -ArgumentList with spaces and does not quote: an argument holding a path with a
+# space (a temp folder under "C:\Users\First Last") would split. Quote those.
+function Quote-Args($list) { $list | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } } }
+
 # Start a headless recorder (runs RecordDurationSeconds, then stops cleanly). $uri = CYCLONEDDS_URI or "".
 # $extraPath is prepended to PATH for this child only (OpenSSL for the secured ones).
 function Start-Recorder($name, $domain, $uri, $extraPath) {
@@ -130,7 +143,7 @@ function Start-Recorder($name, $domain, $uri, $extraPath) {
         $a = @("--DdsSettings:DomainId=$domain", "--AppSettings:ConfigFolder=$work\cfg-$name",
                "--AppSettings:TopicSources:0=$smokeDir", "--DdsSettings:HeadlessMode=Record",
                "--DdsSettings:HeadlessFilePath=$work\$name.jsonl", "--DdsSettings:RecordDurationSeconds=$recSeconds")
-        $p = Start-Process -FilePath $toolExe -ArgumentList $a -RedirectStandardOutput "$work\$name.log" `
+        $p = Start-Process -FilePath $toolExe -ArgumentList (Quote-Args $a) -RedirectStandardOutput "$work\$name.log" `
             -RedirectStandardError "$work\$name.err" -PassThru -WindowStyle Hidden
         $null = $p.Handle   # Windows PowerShell 5.1: without the handle cached, ExitCode stays empty after the process ends
         $p
