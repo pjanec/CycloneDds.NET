@@ -24,6 +24,9 @@ if (CommandLineHelp.IsHelpRequest(args) || CommandLineHelp.IsVersionRequest(args
     return;
 }
 
+// Before any participant exists: lets a dotnet-tool install find its DDS Security plugins on Windows.
+NativeSearchPath.AddApplicationDirectory();
+
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,

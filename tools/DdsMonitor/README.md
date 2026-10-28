@@ -68,6 +68,7 @@ The DdsMonitor tool exposes a comprehensive feature set for interacting with DDS
 
 - [Quick start](#quick-start)
 - [Running DDS Monitor](#running-dds-monitor)
+  - [Running with DDS Security](#running-with-dds-security)
 - [Command-Line Arguments](#command-line-arguments)
   - [Application Settings](#application-settings-appsettings)
   - [DDS Settings](#dds-settings-ddssettings)
@@ -104,6 +105,31 @@ DdsMonitor.exe [options]
 ```
 
 By default DDS Monitor starts a Kestrel HTTP server on a random free port and launches Chrome (or Edge, or the system default browser) in app mode. The application shuts down automatically when all browser tabs close.
+
+---
+
+### Running with DDS Security
+
+The monitor joins a secured domain like any other application: give it the same `<Security>` configuration through `CYCLONEDDS_URI` (see [DDS Security](../../README.md#12-dds-security-optional)). A monitor without it is an unauthenticated peer and sees nothing of a secured domain - by design.
+
+```powershell
+# Windows
+$env:CYCLONEDDS_URI = "file://D:/certs/secure.xml"        # the configuration file: note file:// and forward slashes
+$env:PATH = "C:\Program Files\OpenSSL\bin;" + $env:PATH   # OpenSSL 3: libcrypto-3-x64.dll + libssl-3-x64.dll
+ddsmonitor --DdsSettings:DomainId=7 --AppSettings:TopicSources:0=./bin/Debug/net8.0
+```
+
+```bash
+# Linux (OpenSSL 3 is the distribution's libcrypto.so.3)
+CYCLONEDDS_URI=file:///etc/dds/secure.xml ddsmonitor --DdsSettings:DomainId=7
+```
+
+Windows specifics:
+
+- **The configuration file is given as `file://D:/path/secure.xml`.** The certificate, key, governance and permissions paths *inside* it use `file:D:/path/identity_cert.pem` (see the example linked above).
+- **OpenSSL 3 must be loadable** - its `bin` folder on `PATH` (the package does not ship it).
+- **The security plugins (`dds_security_*.dll`) need no setup**: the monitor adds its own folder to `PATH` at start-up, because a `dotnet tool` keeps them in the tool's store folder, not beside the `ddsmonitor.exe` launcher. (Versions before this fix stopped with `Could not load Authentication library: The specified module could not be found`; there, put `%USERPROFILE%\.dotnet\tools\.store\cyclonedds.net.ddsmonitor\<version>\cyclonedds.net.ddsmonitor\<version>\tools\net8.0\any` on `PATH`.)
+- A secured and an unsecured monitor on the same domain do not see each other's data: that is the expected outcome, not a fault.
 
 ---
 

@@ -121,6 +121,13 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 1.2 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- **DDS Monitor installed as a `dotnet tool` can run on a secured domain on Windows.** Windows
+  looks for the security plugins beside the started executable, which for a tool is the small
+  launcher, not the tool's store folder, so a secured monitor stopped with `Could not load
+  Authentication library`. The monitor now adds its own folder to `PATH` at start-up. The
+  Windows package test (`build/test-package.ps1`) gained a real publish/record round trip and a
+  secured/unsecured check, as `test-package.sh` has on Linux; the README documents the secured
+  setup on Windows.
 - The DDS Monitor README documented a `PluginDirectories` option that does not exist (plugins
   load from the `plugins` folder next to the executable), and said self-send is on by default
   (it is off).
