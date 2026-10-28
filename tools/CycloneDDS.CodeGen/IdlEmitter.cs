@@ -636,6 +636,12 @@ namespace CycloneDDS.CodeGen
                             catch (OverflowException) { }
                         }
                         
+                        if (switchType == "char" && val != null && !(val is string))
+                        {
+                            long c = Convert.ToInt64(val);
+                            label = c >= 0x20 && c < 0x7f && c != '\'' && c != '\\' ? $"'{(char)c}'" : $"'\\x{c & 0xff:x2}'";
+                        }
+
                         if (switchType == "boolean")
                         {
                             if (val is int i) label = (i != 0) ? "TRUE" : "FALSE";
@@ -661,6 +667,18 @@ namespace CycloneDDS.CodeGen
 
         
         private (string Type, string Suffix) MapType(FieldInfo field)
+        {
+            var mapped = MapTypeCore(field);
+            // [DdsChar] byte/sbyte (or a collection of them) is IDL char: the same single byte, another type identity.
+            if (field.HasAttribute("DdsChar"))
+                mapped.Type = System.Text.RegularExpressions.Regex.Replace(mapped.Type, @"\b(octet|int8|uint8)\b", "char");
+            // [DdsUInt8] byte is IDL uint8: the same unsigned byte as octet, another type to XTypes.
+            else if (field.HasAttribute("DdsUInt8"))
+                mapped.Type = System.Text.RegularExpressions.Regex.Replace(mapped.Type, @"\boctet\b", "uint8");
+            return mapped;
+        }
+
+        private (string Type, string Suffix) MapTypeCore(FieldInfo field)
         {
             // C# fixed-size buffers: `public fixed byte Buf[64];`
             // Treat as a fixed-length IDL array of the element type.

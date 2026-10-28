@@ -92,6 +92,26 @@ namespace CycloneDDS.Compiler.Common.IdlJson
         /// </summary>
         [JsonPropertyName("TopicDescriptor")]
         public JsonTopicDescriptor? TopicDescriptor { get; set; }
+
+        /// <summary>"Mod::Name" of a typedef, enum or bitmask, whose <see cref="Name"/> is the C name ("Mod_Name").</summary>
+        [JsonPropertyName("ScopedName")]
+        public string? ScopedName { get; set; }
+
+        /// <summary>A typedef's type (a union's discriminator type) in IDL syntax with scoped names, e.g. "sequence&lt;string&lt;8&gt;, 4&gt;".</summary>
+        [JsonPropertyName("IdlType")]
+        public string? IdlType { get; set; }
+
+        /// <summary>Scoped name of the base struct of a struct with inheritance.</summary>
+        [JsonPropertyName("Base")]
+        public string? Base { get; set; }
+
+        /// <summary>Array dimensions of an array typedef.</summary>
+        [JsonPropertyName("Dimensions")]
+        public List<int>? Dimensions { get; set; }
+
+        /// <summary>@bit_bound of an enum or bitmask.</summary>
+        [JsonPropertyName("BitBound")]
+        public int? BitBound { get; set; }
     }
 
     /// <summary>
@@ -182,6 +202,10 @@ namespace CycloneDDS.Compiler.Common.IdlJson
         /// </summary>
         [JsonPropertyName("Members")]
         public List<JsonMember>? Members { get; set; }
+
+        /// <summary>The member's type in IDL syntax with scoped names, e.g. "sequence&lt;Mod::Point, 10&gt;" (array dimensions are in <see cref="Dimensions"/>).</summary>
+        [JsonPropertyName("IdlType")]
+        public string? IdlType { get; set; }
     }
 
     /// <summary>

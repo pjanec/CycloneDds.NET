@@ -180,6 +180,18 @@ public partial struct LogEvent
 }
 ```
 
+### Matching an Existing IDL Exactly
+To talk to applications built from an IDL file, the C# type must give the same IDL. The
+[IDL Importer](IDL-IMPORT.md) writes these attributes for you; when writing the type by hand:
+
+| IDL | C# |
+|---|---|
+| `sequence<long, 10>` | `[DdsBound(10)] List<int>` (or `[MaxLength(10)]`) |
+| `string<32>` | `[MaxLength(32)] string` |
+| `double m[2][3]` | `[ArrayLength(2, 3)] fixed double m[6]` |
+| `case 2: case 3:` | `[DdsCase(2, 3)]` |
+| `char` / `uint8` | `[DdsChar] byte` / `[DdsUInt8] byte` (a plain `byte` is `octet`; a C# `char` is rejected) |
+
 ### Configuration & QoS
 You can define Quality of Service settings directly on the type using the `[DdsQos]` attribute. The Runtime automatically applies these settings when creating Writers and Readers for this topic.
 

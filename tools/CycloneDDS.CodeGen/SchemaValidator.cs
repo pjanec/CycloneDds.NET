@@ -157,6 +157,28 @@ namespace CycloneDDS.CodeGen
                                $"has {product} elements but the fixed buffer has {field.FixedSize}.");
             }
 
+            if (typeName is "char" or "System.Char" or "char?" or "List<char>" or "char[]")
+            {
+                errors.Add($"Field '{containerName}.{field.Name}': a C# char is two bytes, an IDL char one. " +
+                           "Use [DdsChar] byte (or sbyte, List<byte>, byte[], fixed byte) for IDL char.");
+            }
+
+            if (field.HasAttribute("DdsChar"))
+            {
+                string element = isArray ? typeName.Substring(0, typeName.Length - 2)
+                    : isList ? ExtractGenericArgument(typeName) : typeName.TrimEnd('?');
+                if (element is not ("byte" or "sbyte" or "System.Byte" or "System.SByte"))
+                    errors.Add($"Field '{containerName}.{field.Name}': [DdsChar] applies to byte or sbyte (or a collection of them), not '{typeName}'.");
+            }
+
+            if (field.HasAttribute("DdsUInt8"))
+            {
+                string element = isArray ? typeName.Substring(0, typeName.Length - 2)
+                    : isList ? ExtractGenericArgument(typeName) : typeName.TrimEnd('?');
+                if (element is not ("byte" or "System.Byte"))
+                    errors.Add($"Field '{containerName}.{field.Name}': [DdsUInt8] applies to byte (or a collection of bytes), not '{typeName}'.");
+            }
+
             if ((isList || isArray) && field.HasAttribute("MaxLength"))
             {
                 string element = isArray ? typeName.Substring(0, typeName.Length - 2) : ExtractGenericArgument(typeName);

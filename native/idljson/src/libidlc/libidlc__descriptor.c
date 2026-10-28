@@ -3625,6 +3625,12 @@ static uint32_t resolve_constant_value(const char* value_str) {
     if (!value_str) return 0;
     if (strcmp(value_str, "true") == 0) return 1;
     if (strcmp(value_str, "false") == 0) return 0;
+    /* a char case label, printed as C source: 'a' or an octal escape '\141' */
+    if (value_str[0] == '\'') {
+        if (value_str[1] == '\\')
+            return (uint32_t)(strtoul(value_str + 2, NULL, 8) & 0xffu);
+        return (uint32_t)(unsigned char)value_str[1];
+    }
     return (uint32_t)strtoul(value_str, NULL, 0); 
 }
 

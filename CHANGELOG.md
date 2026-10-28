@@ -79,8 +79,17 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   start) instead of the library's, and the main README introduces the tool.
 - `IDdsBridge.ReaderFailed` (with a default no-op implementation, so existing implementations
   still compile).
+- **Attributes to match an existing IDL exactly:** `[DdsBound(n)]` (or `[MaxLength(n)]` on a
+  non-string collection) on a `List<T>`/`T[]` gives `sequence<T, n>`; `[DdsCase(2, 3)]` gives an
+  arm several labels; `[ArrayLength(2, 3)]` on a `fixed` buffer gives `T m[2][3]`; `[DdsChar]` and
+  `[DdsUInt8]` on a `byte` give IDL `char` and `uint8` (a plain `byte` stays `octet`). The DDS
+  Monitor shows and exports a multi-label arm for each of its labels.
 
 ### Changed
+- **The code generator rejects schemas it would get wrong** instead of building them: a C# `char`
+  field (two bytes, IDL `char` is one: use `[DdsChar] byte`), `[ArrayLength]` on a `List<T>`/`T[]`
+  (always a sequence: use a `fixed` buffer), `[MaxLength]` on a string collection (use
+  `[DdsBound]`), and `[ArrayLength]` dimensions that do not multiply to the buffer size.
 - **`CycloneDDS.NET` no longer depends on Roslyn** (`Microsoft.CodeAnalysis.CSharp` /
   `.Common` 4.8.0), which pulled about 9 MB of the C# compiler into every application using
   the package. Nothing in the library used it; the code generator runs from the package's
@@ -129,6 +138,32 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 1.2 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- **Members after an `sbyte` field were at the wrong offset.** The idljson plugin's layout table
+  did not know `int8_t` (IDL `int8`, a C# `sbyte`) and sized it as 4 bytes, so every later member
+  of the struct was serialized from, and deserialized to, the wrong place: wrong values, a failed
+  write, or a crash. Any type with an `sbyte` field followed by others was affected.
+- **Union case labels of a `char` discriminator** reached the serializer as 0.
+- **The IDL importer reproduces the IDL exactly, or says why it cannot.** It used to change types
+  silently, so that a C# application did not match peers built from the same IDL, or produced C#
+  that did not build. The idljson plugin now records each member's full IDL type (scoped names,
+  bounds, nesting, array dimensions), typedef names, base structs, bitmasks and enum bit bounds,
+  and the importer maps from that:
+  - `char` and `uint8` keep their type (were `octet`); enums keep their `@bit_bound` (were 32 bit);
+    arrays keep every dimension (were sequences); bounded sequences keep their bound (became
+    unbounded); unions keep their extensibility; an arm with several labels gets one
+    `[DdsCase(a, b)]` (was a duplicate-attribute build error); `boolean` discriminators stay `bool`.
+  - Typedefs of sequences and arrays are resolved (were unknown types).
+  - Arrays of primitives become `fixed` buffers.
+  - What CycloneDDS.NET cannot represent (wchar/wstring, bitmasks, struct inheritance, nested
+    sequences, sequences of bounded strings, arrays of non-primitives, `@optional` arrays,
+    `@external`) stops the import with a list of every such member and what to use instead.
+  A test imports an IDL with every supported construct and checks that the generated C# gives
+  `idlc` the same serializer ops and type information as the original, and that every member
+  survives a write/read. See [IDL-IMPORT.md](IDL-IMPORT.md).
+- **Code generator:** `List<Enum>`/`Enum[]` fields; `@optional` strings, `List<T>`, `T[]` and
+  enums; fields named after C# or IDL keywords (`@base`, `Fixed`, `Interface`...); types of several
+  namespaces in one file referencing each other (emitted in dependency order); `[DdsId]` reaching
+  the IDL as `@id` (the member ids of a mutable type were renumbered).
 - **The IDL importer maps string typedefs to strings** ([#5](https://github.com/pjanec/CycloneDds.NET/issues/5)).
   `typedef string T_String;` and `typedef string<8> T_ShortString;` came out as `byte` fields: the
   idljson plugin recorded a string typedef's C type (`char`) instead of `string` and its bound.

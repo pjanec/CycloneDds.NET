@@ -3,6 +3,7 @@
 #include "idl/string.h"
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 #include <stdio.h>
 #include <inttypes.h>
 
@@ -86,6 +87,7 @@ size_t get_primitive_size_align(const char* type_name) {
     
     // C Mapped Types
     if (strcmp(type_name, "bool") == 0) return 1;
+    if (strcmp(type_name, "int8_t") == 0) return 1;
     if (strcmp(type_name, "uint8_t") == 0) return 1;
     if (strcmp(type_name, "int16_t") == 0) return 2;
     if (strcmp(type_name, "uint16_t") == 0) return 2;
@@ -95,6 +97,7 @@ size_t get_primitive_size_align(const char* type_name) {
     if (strcmp(type_name, "uint64_t") == 0) return 8;
     
     if (strcmp(type_name, "long double") == 0) return sizeof(long double);
+    if (strcmp(type_name, "wchar_t") == 0) return sizeof(wchar_t);
     if (strcmp(type_name, "string") == 0) return 8; // pointer
     if (strcmp(type_name, "wstring") == 0) return 8; // pointer
     
@@ -536,6 +539,34 @@ static void dm_print_rec(FILE* fh, dm_rec_t* rec, int indent, int is_member) {
         fprintf(fh, "\"Align\": %d,\n", rec->align);
     }
     
+    if (rec->scoped_name) {
+        dm_indent(fh, indent + 1);
+        fprintf(fh, "\"ScopedName\": \"%s\",\n", dm_escapize(rec->scoped_name));
+    }
+
+    if (rec->idl_type) {
+        dm_indent(fh, indent + 1);
+        fprintf(fh, "\"IdlType\": \"%s\",\n", dm_escapize(rec->idl_type));
+    }
+
+    if (rec->base) {
+        dm_indent(fh, indent + 1);
+        fprintf(fh, "\"Base\": \"%s\",\n", dm_escapize(rec->base));
+    }
+
+    if (rec->n_dims > 0) {
+        dm_indent(fh, indent + 1);
+        fprintf(fh, "\"Dimensions\": [");
+        for (int i = 0; i < rec->n_dims; i++)
+            fprintf(fh, "%s%u", i ? ", " : "", rec->dims[i]);
+        fprintf(fh, "],\n");
+    }
+
+    if (rec->bit_bound > 0) {
+        dm_indent(fh, indent + 1);
+        fprintf(fh, "\"BitBound\": %d,\n", rec->bit_bound);
+    }
+
     if (!rec->is_array && rec->size > 0) {
         dm_indent(fh, indent + 1);
         fprintf(fh, "\"Size\": %d,\n", rec->size);

@@ -55,6 +55,8 @@ public class CSharpEmitter
             return new { Type = t, Namespace = ns, Parents = parents, SimpleName = simpleName };
         }).ToList();
 
+        var unsupported = new List<string>();
+
         var typesByNamespace = typeInfos
             .GroupBy(t => t.Namespace)
             .OrderBy(g => g.Key);
@@ -84,7 +86,14 @@ public class CSharpEmitter
                     baseIndent++;
                 }
 
-                EmitType(sb, item.Type, item.SimpleName, baseIndent);
+                try
+                {
+                    EmitType(sb, item.Type, item.SimpleName, baseIndent);
+                }
+                catch (UnsupportedIdlException ex)
+                {
+                    unsupported.Add(ex.Message);
+                }
 
                 // Close parents
                 for (int i = item.Parents.Count - 1; i >= 0; i--)
@@ -102,6 +111,11 @@ public class CSharpEmitter
             }
         }
         
+        if (unsupported.Count > 0)
+            throw new UnsupportedIdlException(
+                $"{originalIdlFileName}: some types cannot be imported:" + Environment.NewLine +
+                string.Join(Environment.NewLine, unsupported.Select(u => "  - " + u)));
+
         File.WriteAllText(outputFilePath, sb.ToString());
     }
 
@@ -178,157 +192,127 @@ public class CSharpEmitter
 
     private void EmitUnion(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
     {
+        var disc = _typeMapper.MapDiscriminator(type);
+        bool isUnsafe = MapAll(type).Any(m => m.IsFixedBuffer);
+
+        EmitExtensibility(sb, type, indent);
         sb.AppendLine($"{indent}[DdsUnion]");
-        sb.AppendLine($"{indent}public partial struct {typeName}");
+        sb.AppendLine($"{indent}public {(isUnsafe ? "unsafe " : "")}partial struct {typeName}");
         sb.AppendLine($"{indent}{{");
-        
-        // Emit Discriminator
-        // Use declared discriminator type from JSON or default to int/long?
-        // IDL default is usually long if not specified, but JSON has it.
-        string discType = "int"; // fallback
-        if (!string.IsNullOrEmpty(type.Discriminator))
-        {
-             // Special case for boolean discriminator: map to int, as DdsCase attributes use int
-             if (type.Discriminator == "boolean")
-             {
-                 discType = "int";
-             }
-             else
-             {
-                 try { discType = _typeMapper.MapPrimitive(type.Discriminator); }
-                 catch { discType = _typeMapper.GetCSharpNamespace(type.Discriminator); }
-             }
-        }
 
         sb.AppendLine($"{indent}    [DdsDiscriminator]");
-        sb.AppendLine($"{indent}    public {discType} _d;");
+        if (disc.IsChar) sb.AppendLine($"{indent}    [DdsChar]");
+        if (disc.IsUInt8) sb.AppendLine($"{indent}    [DdsUInt8]");
+        sb.AppendLine($"{indent}    public {disc.CsType} _d;");
 
-        // Emit members
         foreach (var member in type.Members)
         {
-            // Skip if idlc includes _d (it usually doesn't in modern versions but check)
             if (member.Name == "_d") continue;
-            EmitUnionMember(sb, member, indent + "    ");
+            EmitUnionMember(sb, type, member, disc.CsType, indent + "    ");
         }
 
         sb.AppendLine($"{indent}}}");
         sb.AppendLine();
     }
 
-    private void EmitUnionMember(StringBuilder sb, JsonMember member, string indent)
+    private void EmitUnionMember(StringBuilder sb, JsonTypeDefinition union, JsonMember member, string discType, string indent)
     {
-        if (member.Labels != null)
+        var labels = member.Labels ?? new List<string>();
+        var values = labels.Where(l => l != "default").ToList();
+        // All the labels of one arm go in one [DdsCase(a, b)]; a bool discriminator takes true/false.
+        if (values.Count > 0)
         {
-            foreach (var label in member.Labels)
-            {
-                if (label == "default")
-                {
-                    sb.AppendLine($"{indent}[DdsDefaultCase]");
-                }
-                else
-                {
-                    sb.AppendLine($"{indent}[DdsCase({label})]");
-                }
-            }
+            var literals = values.Select(v => discType == "bool" ? (v == "0" ? "false" : "true") : v);
+            sb.AppendLine($"{indent}[DdsCase({string.Join(", ", literals)})]");
         }
-        
-        var (csType, isManaged, arrayLen, bound) = _typeMapper.MapMember(member);
-        
-        if (member.IsOptional) sb.AppendLine($"{indent}[DdsOptional]");
-        if (member.Id.HasValue) sb.AppendLine($"{indent}[DdsId({member.Id.Value})]");
-        
-        if (arrayLen > 0)
-        {
-            sb.AppendLine($"{indent}[ArrayLength({arrayLen})]");
-        }
+        if (labels.Contains("default"))
+            sb.AppendLine($"{indent}[DdsDefaultCase]");
 
-        if (bound > 0)
-        {
-            if (csType == "string")
-            {
-                sb.AppendLine($"{indent}[MaxLength({bound})]");
-            }
-            else
-            {
-                sb.AppendLine($"{indent}[MaxLength({bound})]");
-            }
-        }
-
-        if (isManaged) sb.AppendLine($"{indent}[DdsManaged]");
-        
-        sb.AppendLine($"{indent}public {csType} {SanitizeName(member.Name)};");
+        EmitMemberBody(sb, union, member, indent, isKey: false);
     }
 
     private void EmitStruct(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
     {
-        bool hasIdsKey = type.Members.Any(m => m.IsKey);
-        
-        if (hasIdsKey)
-        {
-             sb.AppendLine($"{indent}[DdsTopic(\"{type.Name}\")]"); 
-        }
-        else
-        {
-             sb.AppendLine($"{indent}[DdsStruct]");
-        }
-        
-        if (!string.IsNullOrEmpty(type.Extensibility))
-        {
-            string kind = type.Extensibility.ToLower() switch 
-            {
-                "final" => "Final",
-                "appendable" => "Appendable",
-                "mutable" => "Mutable",
-                _ => "Final"
-            };
-            sb.AppendLine($"{indent}[DdsExtensibility(DdsExtensibilityKind.{kind})]");
-        }
+        if (!string.IsNullOrEmpty(type.Base))
+            throw new UnsupportedIdlException(
+                $"'{type.Name}' inherits from '{type.Base}', which CycloneDDS.NET cannot represent with the same wire format and type identity: " +
+                "copy the base members into the struct, or make the base a member.");
 
-        sb.AppendLine($"{indent}public partial struct {typeName}");
+        bool hasKey = type.Members.Any(m => m.IsKey);
+        bool isUnsafe = MapAll(type).Any(m => m.IsFixedBuffer);
+
+        if (hasKey)
+            sb.AppendLine($"{indent}[DdsTopic(\"{type.Name}\")]");
+        else
+            sb.AppendLine($"{indent}[DdsStruct]");
+        EmitExtensibility(sb, type, indent);
+
+        sb.AppendLine($"{indent}public {(isUnsafe ? "unsafe " : "")}partial struct {typeName}");
         sb.AppendLine($"{indent}{{");
-        
+
         foreach (var member in type.Members)
-        {
-            EmitStructMember(sb, member, indent + "    ");
-        }
+            EmitMemberBody(sb, type, member, indent + "    ", member.IsKey);
 
         sb.AppendLine($"{indent}}}");
         sb.AppendLine();
     }
 
-    private void EmitStructMember(StringBuilder sb, JsonMember member, string indent)
+    /// <summary>Maps every member, reporting all the unsupported ones at once.</summary>
+    private List<MemberMapping> MapAll(JsonTypeDefinition type)
     {
-        var (csType, isManaged, arrayLen, bound) = _typeMapper.MapMember(member);
-        
-        if (member.IsKey) sb.AppendLine($"{indent}[DdsKey]");
+        var mappings = new List<MemberMapping>();
+        var errors = new List<string>();
+        foreach (var member in type.Members.Where(m => m.Name != "_d"))
+        {
+            try { mappings.Add(_typeMapper.MapMember(member, type.Name)); }
+            catch (UnsupportedIdlException ex) { errors.Add(ex.Message); }
+        }
+        if (errors.Count > 0)
+            throw new UnsupportedIdlException(string.Join(Environment.NewLine + "  - ", errors));
+        return mappings;
+    }
+
+    private static void EmitExtensibility(StringBuilder sb, JsonTypeDefinition type, string indent)
+    {
+        if (string.IsNullOrEmpty(type.Extensibility)) return;
+        string kind = type.Extensibility.ToLower() switch
+        {
+            "appendable" => "Appendable",
+            "mutable" => "Mutable",
+            _ => "Final"
+        };
+        sb.AppendLine($"{indent}[DdsExtensibility(DdsExtensibilityKind.{kind})]");
+    }
+
+    private void EmitMemberBody(StringBuilder sb, JsonTypeDefinition owner, JsonMember member, string indent, bool isKey)
+    {
+        var m = _typeMapper.MapMember(member, owner.Name);
+
+        if (isKey) sb.AppendLine($"{indent}[DdsKey]");
         if (member.IsOptional) sb.AppendLine($"{indent}[DdsOptional]");
         if (member.Id.HasValue) sb.AppendLine($"{indent}[DdsId({member.Id.Value})]");
-        
-        if (arrayLen > 0)
-        {
-            sb.AppendLine($"{indent}[ArrayLength({arrayLen})]");
-        }
+        if (m.IsChar) sb.AppendLine($"{indent}[DdsChar]");
+        if (m.IsUInt8) sb.AppendLine($"{indent}[DdsUInt8]");
+        if (m.SequenceBound > 0) sb.AppendLine($"{indent}[DdsBound({m.SequenceBound})]");
+        if (m.StringBound > 0) sb.AppendLine($"{indent}[MaxLength({m.StringBound})]");
+        if (m.IsManaged) sb.AppendLine($"{indent}[DdsManaged]");
 
-        if (bound > 0)
+        if (m.IsFixedBuffer)
         {
-            if (csType == "string")
-            {
-                sb.AppendLine($"{indent}[MaxLength({bound})]");
-            }
-            else
-            {
-                sb.AppendLine($"{indent}[MaxLength({bound})]");
-            }
+            // long arr[2][3] is the row-major buffer double arr[6] with [ArrayLength(2, 3)].
+            if (m.Dimensions.Count > 1)
+                sb.AppendLine($"{indent}[ArrayLength({string.Join(", ", m.Dimensions)})]");
+            sb.AppendLine($"{indent}public fixed {m.CsType} {SanitizeName(member.Name)}[{m.ElementCount}];");
         }
-
-        if (isManaged) sb.AppendLine($"{indent}[DdsManaged]");
-        
-        sb.AppendLine($"{indent}public {csType} {SanitizeName(member.Name)};");
+        else
+        {
+            sb.AppendLine($"{indent}public {m.CsType} {SanitizeName(member.Name)};");
+        }
     }
 
     private void EmitEnum(StringBuilder sb, JsonTypeDefinition type, string typeName, string indent)
     {
-        sb.AppendLine($"{indent}public enum {typeName} : int");
+        sb.AppendLine($"{indent}public enum {typeName} : {TypeMapper.EnumUnderlyingType(type)}");
         sb.AppendLine($"{indent}{{");
         
         for (int i = 0; i < type.Members.Count; i++)

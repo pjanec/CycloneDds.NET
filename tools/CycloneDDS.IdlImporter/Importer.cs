@@ -194,6 +194,11 @@ public class Importer
              
              var parser = new IdlJsonParser();
              var types = parser.Parse(jsonFile);
+
+             // Typedefs, enums and bitmasks are named in C ("Mod_Name"); the plugin also gives the scoped name.
+             foreach (var t in types)
+                 if (!string.IsNullOrEmpty(t.ScopedName))
+                     t.Name = t.ScopedName;
              
              var extraScopes = ParseScopesFromIdl(idlPath);
              UnflattenTypes(types, extraScopes);

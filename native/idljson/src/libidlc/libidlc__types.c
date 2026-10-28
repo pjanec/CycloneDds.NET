@@ -38,6 +38,81 @@ get_type_prefix(const idl_type_spec_t *type_spec)
   return "";
 }
 
+/* Appends the type spec in IDL syntax with scoped names ("sequence<string<8>, 4>", "Td::LongSeq") to buf,
+   for importers: the C names in "Type" ("dds_sequence_string8") lose bounds, nesting and scopes. */
+static void
+append_idl_type(char *buf, size_t size, const idl_type_spec_t *type_spec)
+{
+  size_t len = strlen(buf);
+  if (len + 1 >= size)
+    return;
+  char *out = buf + len;
+  size_t room = size - len;
+
+  if (idl_is_declarator(type_spec)) {
+    /* a typedef: keep its name, the importer resolves the alias */
+    char *name;
+    if (IDL_PRINTA(&name, print_scoped_name, type_spec) >= 0)
+      idl_snprintf(out, room, "%s", name);
+  } else if (idl_is_sequence(type_spec)) {
+    idl_snprintf(out, room, "sequence<");
+    append_idl_type(buf, size, idl_type_spec(type_spec));
+    len = strlen(buf);
+    if (idl_is_bounded(type_spec))
+      idl_snprintf(buf + len, size - len, ", %" PRIu32 ">", idl_bound(type_spec));
+    else
+      idl_snprintf(buf + len, size - len, ">");
+  } else if (idl_is_string(type_spec) || idl_type(type_spec) == IDL_WSTRING) {
+    const char *kw = idl_type(type_spec) == IDL_WSTRING ? "wstring" : "string";
+    if (idl_is_bounded(type_spec))
+      idl_snprintf(out, room, "%s<%" PRIu32 ">", kw, idl_bound(type_spec));
+    else
+      idl_snprintf(out, room, "%s", kw);
+  } else if (idl_is_base_type(type_spec)) {
+    const char *kw;
+    switch (idl_type(type_spec)) {
+      case IDL_BOOL: kw = "boolean"; break;
+      case IDL_CHAR: kw = "char"; break;
+      case IDL_WCHAR: kw = "wchar"; break;
+      case IDL_OCTET: kw = "octet"; break;
+      case IDL_INT8: kw = "int8"; break;
+      case IDL_UINT8: kw = "uint8"; break;
+      case IDL_SHORT: case IDL_INT16: kw = "int16"; break;
+      case IDL_USHORT: case IDL_UINT16: kw = "uint16"; break;
+      case IDL_LONG: case IDL_INT32: kw = "int32"; break;
+      case IDL_ULONG: case IDL_UINT32: kw = "uint32"; break;
+      case IDL_LLONG: case IDL_INT64: kw = "int64"; break;
+      case IDL_ULLONG: case IDL_UINT64: kw = "uint64"; break;
+      case IDL_FLOAT: kw = "float"; break;
+      case IDL_DOUBLE: kw = "double"; break;
+      case IDL_LDOUBLE: kw = "long double"; break;
+      default: kw = "any"; break;
+    }
+    idl_snprintf(out, room, "%s", kw);
+  } else {
+    /* struct, union, enum, bitmask (a forward declaration names its definition) */
+    char *name;
+    if (IDL_PRINTA(&name, print_scoped_name, type_spec) >= 0)
+      idl_snprintf(out, room, "%s", name);
+  }
+}
+
+static char *
+idl_type_string(const idl_type_spec_t *type_spec)
+{
+  char buf[1024] = "";
+  append_idl_type(buf, sizeof(buf), type_spec);
+  return idl_strdup(buf);
+}
+
+static void
+record_dims(dm_rec_t *rec, const idl_declarator_t *declarator)
+{
+  const idl_literal_t *literal = declarator->const_expr;
+  for (; literal && rec->n_dims < (int)(sizeof(rec->dims) / sizeof(rec->dims[0])); literal = idl_next(literal))
+    rec->dims[rec->n_dims++] = literal->value.uint32;
+}
+
 static idl_retcode_t
 emit_implicit_sequence(
   const idl_pstate_t *pstate,
@@ -171,6 +246,10 @@ emit_field(
       } else {
            member->type = idl_strdup(type);
       }
+
+      member->idl_type = idl_type_string(type_spec);
+      if (idl_is_declarator(node))
+          record_dims(member, (const idl_declarator_t *)node);
 
       if (idl_is_array(node)) {
           member->is_array = 1;
@@ -523,6 +602,11 @@ emit_struct(
     dm_last_struct = rec;
 
     const idl_struct_t *_struct = (const idl_struct_t *)node;
+    if (_struct->inherit_spec) {
+      char *base_name;
+      if (IDL_PRINTA(&base_name, print_scoped_name, _struct->inherit_spec->base) >= 0)
+        rec->base = idl_strdup(base_name);
+    }
     const idl_member_t *members = _struct->members;
     /* ensure typedefs for unnamed sequences exist beforehand */
     if (members && (ret = generate_implicit_sequences(pstate, revisit, path, members, user_data)))
@@ -622,6 +706,7 @@ emit_union(
     rec->c_name = idl_strdup(name);
     rec->kind = idl_strdup("union");
     rec->discriminator = idl_strdup(type); // Discriminator type C name
+    rec->idl_type = idl_type_string(switch_type_spec->type_spec); // ... and in IDL syntax
 
     idl_extensibility_t ext = ((const idl_union_t*)node)->extensibility.value;
     if (ext == IDL_MUTABLE) rec->extensibility = idl_strdup("mutable");
@@ -788,6 +873,13 @@ emit_typedef(
       */
 
       rec->type = idl_strdup(type);
+      {
+        char *scoped;
+        if (IDL_PRINTA(&scoped, print_scoped_name, declarator) >= 0)
+          rec->scoped_name = idl_strdup(scoped);
+      }
+      rec->idl_type = idl_type_string(type_spec);
+      record_dims(rec, declarator);
 
       /* A string typedef records "string"/"wstring" and its bound, as a string member does;
          print_type gives the C type ("char"), which made importers read it as a byte. */
@@ -917,6 +1009,12 @@ emit_enum(
   rec->c_name = idl_strdup(type);
   rec->kind = idl_strdup("enum");
   rec->size = 4; rec->align = 4;
+  {
+    char *scoped;
+    if (IDL_PRINTA(&scoped, print_scoped_name, node) >= 0)
+      rec->scoped_name = idl_strdup(scoped);
+  }
+  rec->bit_bound = ((const idl_enum_t*)node)->bit_bound.value;
   
   idl_extensibility_t ext = ((const idl_enum_t*)node)->extensibility.value;
   if (ext == IDL_MUTABLE) rec->extensibility = idl_strdup("mutable");
@@ -982,6 +1080,20 @@ emit_bitmask(
   if (IDL_PRINTA(&type, print_type, node) < 0)
     return IDL_RETCODE_NO_MEMORY;
   uint16_t bit_bound = bitmask->bit_bound.value;
+
+  /* recorded so an importer can name it (and say it does not support it) */
+  dm_rec_t *rec = dm_new();
+  rec->name = idl_strdup(type);
+  rec->c_name = idl_strdup(type);
+  rec->kind = idl_strdup("bitmask");
+  {
+    char *scoped;
+    if (IDL_PRINTA(&scoped, print_scoped_name, node) >= 0)
+      rec->scoped_name = idl_strdup(scoped);
+  }
+  rec->bit_bound = bit_bound;
+  rec->size = rec->align = bit_bound <= 8 ? 1 : bit_bound <= 16 ? 2 : bit_bound <= 32 ? 4 : 8;
+  dm_add(&dm_types, rec);
   if (bit_bound <= 8)
     base_type_str = "uint8_t";
   else if (bit_bound <= 16)

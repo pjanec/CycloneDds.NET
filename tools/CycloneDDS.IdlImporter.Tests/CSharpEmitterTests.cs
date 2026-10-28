@@ -20,7 +20,7 @@ namespace CycloneDDS.IdlImporter.Tests
                     Kind = "struct",
                     Members = new List<JsonMember>
                     {
-                        new JsonMember { Name = "my_field", Type = "long", Offset = 0 }
+                        new JsonMember { Name = "my_field", Type = "long", IdlType = "int32", Offset = 0 }
                     }
                 }
             };
@@ -97,9 +97,9 @@ namespace CycloneDDS.IdlImporter.Tests
                     Kind = "struct",
                     Members = new List<JsonMember>
                     {
-                        new JsonMember { Name = "f1", Type = "int32_t" },
-                        new JsonMember { Name = "f2", Type = "uint32_t" },
-                        new JsonMember { Name = "f3", Type = "boolean" }
+                        new JsonMember { Name = "f1", Type = "int32_t", IdlType = "int32" },
+                        new JsonMember { Name = "f2", Type = "uint32_t", IdlType = "uint32" },
+                        new JsonMember { Name = "f3", Type = "boolean", IdlType = "boolean" }
                     }
                 }
             };
@@ -129,6 +129,7 @@ namespace CycloneDDS.IdlImporter.Tests
             { 
                 Name = "values", 
                 Type = "long", 
+                IdlType = "sequence<int32>",
                 CollectionType = "sequence" 
             };
             
@@ -160,6 +161,7 @@ namespace CycloneDDS.IdlImporter.Tests
             { 
                 Name = "values", 
                 Type = "long", 
+                IdlType = "sequence<int32, 10>",
                 CollectionType = "sequence",
                 Bound = 10
             };
@@ -180,7 +182,8 @@ namespace CycloneDDS.IdlImporter.Tests
                 emitter.GenerateCSharp(types, "test.idl", tempFile);
                 var output = File.ReadAllText(tempFile);
                 
-                Assert.Contains("[MaxLength(10)]", output);
+                Assert.Contains("[DdsBound(10)]", output);
+                Assert.DoesNotContain("[MaxLength", output);
                 Assert.Contains("[DdsManaged]", output);
                 Assert.Contains("public List<int> values;", output);
             } finally { if(File.Exists(tempFile)) File.Delete(tempFile); }
@@ -193,6 +196,7 @@ namespace CycloneDDS.IdlImporter.Tests
             { 
                 Name = "matrix", 
                 Type = "double", 
+                IdlType = "double",
                 CollectionType = "array",
                 Dimensions = new List<int> { 5 }
             };
@@ -213,9 +217,11 @@ namespace CycloneDDS.IdlImporter.Tests
                 emitter.GenerateCSharp(types, "test.idl", tempFile);
                 var output = File.ReadAllText(tempFile);
                 
-                Assert.Contains("[ArrayLength(5)]", output);
-                Assert.Contains("[DdsManaged]", output);
-                Assert.Contains("public double[] matrix;", output);
+                // A primitive array is a fixed buffer, laid out inline like the C array.
+                Assert.Contains("public unsafe partial struct TestType", output);
+                Assert.Contains("public fixed double matrix[5];", output);
+                Assert.DoesNotContain("[ArrayLength", output);
+                Assert.DoesNotContain("[DdsManaged]", output);
             } finally { if(File.Exists(tempFile)) File.Delete(tempFile); }
         }
 
@@ -229,12 +235,13 @@ namespace CycloneDDS.IdlImporter.Tests
                     Name = "TestUnion",
                     Kind = "union",
                     Discriminator = "long",
+                    IdlType = "int32",
                     Members = new List<JsonMember>
                     {
-                        new() { Name = "_d", Type = "long" }, // Discriminator
-                        new() { Name = "int_val", Type = "long", Labels = new List<string> { "0" } },
-                        new() { Name = "str_val", Type = "string", Labels = new List<string> { "1" } },
-                        new() { Name = "def_val", Type = "double", Labels = new List<string> { "default" } }
+                        new() { Name = "_d", Type = "long", IdlType = "int32" }, // Discriminator
+                        new() { Name = "int_val", Type = "long", IdlType = "int32", Labels = new List<string> { "0" } },
+                        new() { Name = "str_val", Type = "string", IdlType = "string", Labels = new List<string> { "1" } },
+                        new() { Name = "def_val", Type = "double", IdlType = "double", Labels = new List<string> { "default" } }
                     }
                 }
             };
@@ -279,8 +286,8 @@ namespace CycloneDDS.IdlImporter.Tests
                     Kind = "struct",
                     Members = new List<JsonMember>
                     {
-                        new JsonMember { Name = "opt_long", Type = "long", IsOptional = true },
-                        new JsonMember { Name = "opt_str", Type = "string", IsOptional = true }
+                        new JsonMember { Name = "opt_long", Type = "long", IdlType = "int32", IsOptional = true },
+                        new JsonMember { Name = "opt_str", Type = "string", IdlType = "string", IsOptional = true }
                     }
                 }
             };
@@ -318,8 +325,8 @@ namespace CycloneDDS.IdlImporter.Tests
                     Extensibility = "mutable",
                     Members = new List<JsonMember>
                     {
-                        new JsonMember { Name = "v1", Type = "long", Id = 1 },
-                        new JsonMember { Name = "v2", Type = "long", Id = 100 }
+                        new JsonMember { Name = "v1", Type = "long", IdlType = "int32", Id = 1 },
+                        new JsonMember { Name = "v2", Type = "long", IdlType = "int32", Id = 100 }
                     }
                 }
             };
@@ -355,11 +362,11 @@ namespace CycloneDDS.IdlImporter.Tests
                     Kind = "struct",
                     Members = new List<JsonMember>
                     {
-                        new JsonMember { Name = "camelCaseField",    Type = "long" },
-                        new JsonMember { Name = "SCREAMING_SNAKE",   Type = "long" },
-                        new JsonMember { Name = "PascalAlready",     Type = "long" },
-                        new JsonMember { Name = "lower_snake_case",  Type = "long" },
-                        new JsonMember { Name = "mixedCamel_Snake",  Type = "long" }
+                        new JsonMember { Name = "camelCaseField",    Type = "long", IdlType = "int32" },
+                        new JsonMember { Name = "SCREAMING_SNAKE",   Type = "long", IdlType = "int32" },
+                        new JsonMember { Name = "PascalAlready",     Type = "long", IdlType = "int32" },
+                        new JsonMember { Name = "lower_snake_case",  Type = "long", IdlType = "int32" },
+                        new JsonMember { Name = "mixedCamel_Snake",  Type = "long", IdlType = "int32" }
                     }
                 }
             };
@@ -396,11 +403,12 @@ namespace CycloneDDS.IdlImporter.Tests
                     Name = "CaseUnion",
                     Kind = "union",
                     Discriminator = "long",
+                    IdlType = "int32",
                     Members = new List<JsonMember>
                     {
-                        new JsonMember { Name = "snake_value",   Type = "long",   Labels = new List<string> { "0" } },
-                        new JsonMember { Name = "camelValue",    Type = "double", Labels = new List<string> { "1" } },
-                        new JsonMember { Name = "UPPER_VALUE",   Type = "long",   Labels = new List<string> { "default" } }
+                        new JsonMember { Name = "snake_value",   Type = "long", IdlType = "int32",   Labels = new List<string> { "0" } },
+                        new JsonMember { Name = "camelValue",    Type = "double", IdlType = "double", Labels = new List<string> { "1" } },
+                        new JsonMember { Name = "UPPER_VALUE",   Type = "long", IdlType = "int32",   Labels = new List<string> { "default" } }
                     }
                 }
             };
@@ -435,9 +443,9 @@ namespace CycloneDDS.IdlImporter.Tests
                     Kind = "struct",
                     Members = new List<JsonMember>
                     {
-                        new JsonMember { Name = "class", Type = "long" },
-                        new JsonMember { Name = "int", Type = "long" },
-                        new JsonMember { Name = "virtual", Type = "boolean" }
+                        new JsonMember { Name = "class", Type = "long", IdlType = "int32" },
+                        new JsonMember { Name = "int", Type = "long", IdlType = "int32" },
+                        new JsonMember { Name = "virtual", Type = "boolean", IdlType = "boolean" }
                     }
                 }
             };

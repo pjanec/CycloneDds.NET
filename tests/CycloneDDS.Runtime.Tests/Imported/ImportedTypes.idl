@@ -1,0 +1,58 @@
+// Every construct the IDL importer supports. ImportedTypes.cs is what `CycloneDDS.IdlImporter` makes of
+// this file (a test in CycloneDDS.IdlImporter.Tests keeps it so); ImportedIdlTests checks that the IDL the
+// code generator emits for it compiles to the same idlc ops and type information as this file, and that
+// every member survives a write/read.
+module Imp {
+  const long N = 3;
+
+  enum Color { RED, GREEN, @value(7) BLUE };
+  @bit_bound(8) enum Small { X, Y };
+  @bit_bound(16) enum Mid { M1, M2 };
+
+  struct Inner { long a; string s; };
+
+  @appendable struct AllKinds {
+    @key long id;
+    // primitives
+    boolean b; char c; octet o; int8 i8; uint8 u8; short sh; unsigned short us; long l; unsigned long ul;
+    long long ll; unsigned long long ull; float f; double d;
+    // arrays of primitives (fixed buffers)
+    char name[16]; boolean flags[N]; double m[2][3]; uint8 raw[4];
+    // strings
+    string u; string<5> s5;
+    // enums of each size
+    Color col; Small sm; Mid md;
+    // sequences
+    sequence<long> sl; sequence<long, 10> bsl; sequence<Inner> si; sequence<Small> sms; sequence<Color, N> bcs;
+    sequence<char> chars; sequence<uint8, 8> u8s; sequence<boolean> bools; sequence<string> words; sequence<string, 2> bwords;
+    // nested struct
+    Inner inner;
+    // optionals
+    @optional long ol; @optional string os; @optional Inner oi; @optional sequence<long> osq; @optional Color oc;
+  };
+
+  @mutable struct Mutable {
+    @key @id(5) long id;
+    @id(10) double x;
+    @id(20) string name;
+  };
+
+  union LongU switch (long) { case 1: long a; case 2: case 3: string s; default: double d; };
+  union BoolU switch (boolean) { case TRUE: long t; case FALSE: double f; };
+  union ColorU switch (Color) { case RED: long r; case BLUE: string<8> b; };
+  union CharU switch (char) { case 'a': case 'b': long ab; case 'z': double z; };
+  union Uint8U switch (uint8) { case 1: long x; default: char c; };
+  @mutable union MutableU switch (Small) { case X: @id(10) long x; case Y: @id(20) string y; };
+
+  @final struct Unions {
+    @key long id;
+    LongU lu; BoolU bu; ColorU cu; CharU chu; Uint8U u8u; MutableU mu;
+  };
+
+  // Typedefs are resolved: the members keep their wire format, but the type information names the
+  // resolved types instead of the aliases (Cyclone DDS still matches it with the original type).
+  typedef sequence<long, 4> LongSeq4;
+  typedef long Mat[2][2];
+  typedef string<8> Name8;
+  @final struct WithTypedefs { @key long id; LongSeq4 ls; Mat mat; Name8 nm; };
+};

@@ -10,14 +10,15 @@ using CycloneDDS.Schema;
 
 namespace AppLib
 {
+    [DdsExtensibility(DdsExtensibilityKind.Final)]
     [DdsUnion]
     public partial struct Result
     {
         [DdsDiscriminator]
         public bool _d;
-        [DdsCase(1)]
+        [DdsCase(true)]
         public CommonLib.Point value;
-        [DdsCase(0)]
+        [DdsCase(false)]
         [DdsManaged]
         public string msg;
     }

@@ -92,6 +92,14 @@ typedef struct dm_rec {
     // Topic specific
     dm_descriptor_t* topic_descriptor;
     dm_qos_t* qos;
+
+    // For importers (the C names in "type" lose bounds, nesting and scopes)
+    char* idl_type;      // type spec in IDL syntax with scoped names, e.g. "sequence<string<8>, 4>"
+    char* scoped_name;   // "Mod::Name" of a typedef/enum/bitmask, whose "name" is the C name
+    char* base;          // scoped name of the base struct
+    uint32_t dims[8];    // array dimensions, in declaration order
+    int n_dims;
+    int bit_bound;       // enum/bitmask @bit_bound
 } dm_rec_t;
 
 // Global state

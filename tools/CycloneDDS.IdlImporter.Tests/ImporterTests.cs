@@ -81,6 +81,53 @@ module Geom {
         /// GitHub issue #5: string typedefs (bounded or not) were imported as byte, because the
         /// idljson plugin recorded the typedef's C type ("char") instead of "string" and its bound.
         /// </summary>
+        /// <summary>
+        /// tests/CycloneDDS.Runtime.Tests/Imported holds an IDL with every construct the importer supports and
+        /// the C# it gives; the runtime tests check that C# against the IDL (wire format, type identity, values).
+        /// This keeps the checked-in C# what the importer actually produces.
+        /// </summary>
+        [Fact]
+        public void Import_SupportedConstructs_GivesTheCheckedInCSharp()
+        {
+            string dir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "tests", "CycloneDDS.Runtime.Tests", "Imported"));
+            string idl = Path.Combine(_sourceRoot, "ImportedTypes.idl");
+            File.Copy(Path.Combine(dir, "ImportedTypes.idl"), idl);
+
+            new Importer().Import(idl, _sourceRoot, _outputRoot);
+
+            string expected = File.ReadAllText(Path.Combine(dir, "ImportedTypes.cs")).Replace("\r\n", "\n");
+            string actual = File.ReadAllText(Path.Combine(_outputRoot, "ImportedTypes.cs")).Replace("\r\n", "\n");
+            Assert.True(expected == actual,
+                "The importer's output for Imported/ImportedTypes.idl changed. If that is intended, regenerate " +
+                "tests/CycloneDDS.Runtime.Tests/Imported/ImportedTypes.cs with the importer and run the runtime tests.\n" + actual);
+        }
+
+        [Fact]
+        public void Import_UnsupportedConstructs_FailWithEveryOneNamed_AndWriteNothing()
+        {
+            string idl = Path.Combine(_sourceRoot, "Bad.idl");
+            File.WriteAllText(idl, @"
+module Bad {
+  @bit_bound(16) bitmask Flags { F1, F2 };
+  struct Inner { long a; };
+  struct Base { @key long id; };
+  struct Derived : Base { long x; };
+  struct S {
+    @key long id;
+    wstring w; wchar wc; Flags f;
+    sequence<sequence<long> > ss; sequence<string<8> > sbs;
+    string as[2]; Inner ai[2]; @optional long oa[2];
+  };
+};");
+
+            var ex = Assert.Throws<UnsupportedIdlException>(() => new Importer().Import(idl, _sourceRoot, _outputRoot));
+
+            foreach (var name in new[] { "Bad::Derived", "Bad::S.w'", "Bad::S.wc'", "Bad::S.f'", "Bad::S.ss'", "Bad::S.sbs'", "Bad::S.as'", "Bad::S.ai'", "Bad::S.oa'" })
+                Assert.Contains(name, ex.Message);
+            Assert.DoesNotContain("Bad::S.id'", ex.Message);
+            Assert.False(File.Exists(Path.Combine(_outputRoot, "Bad.cs")));
+        }
+
         [Fact]
         public void Import_StringTypedefs_BecomeStrings_WithTheirBounds()
         {
@@ -263,7 +310,7 @@ module Business {
 
             // Compile
             var compilation = CSharpCompilation.Create("ComplexAssembly")
-                .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+                .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true))
                 .AddReferences(references)
                 .AddSyntaxTrees(syntaxTrees);
                 
