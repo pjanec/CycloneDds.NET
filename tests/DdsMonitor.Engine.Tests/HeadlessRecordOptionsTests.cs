@@ -64,6 +64,34 @@ public sealed class HeadlessRecordOptionsTests : IDisposable
     }
 
     [Fact(Timeout = 30000)]
+    public async Task Defaults_RecordJsonLines_WithBase64Blobs_AndASilentConsole()
+    {
+        var defaults = new DdsSettings();
+        Assert.Equal(RecordFormat.JsonLines, defaults.RecordFormat);
+        Assert.Equal(RecordConsoleOutput.Quiet, defaults.RecordConsole);
+        Assert.True(defaults.RecordBytesAsBase64);
+
+        var file = PathOf("cap.jsonl");
+        var stdout = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(stdout);
+        try
+        {
+            await using var run = Start(new DdsSettings { HeadlessFilePath = file, RecordMaxSamples = 1 });
+            Send(_blob, 1);
+            await run.Service.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        using var doc = JsonDocument.Parse(File.ReadAllLines(file).Single());
+        Assert.Equal(JsonValueKind.String, doc.RootElement.GetProperty("Payload").GetProperty("Payload").ValueKind);
+        Assert.DoesNotContain("[RECORD]", stdout.ToString());
+    }
+
+    [Fact(Timeout = 30000)]
     public async Task MaxSamples_StopsTheRecordingByItself()
     {
         var file = PathOf("cap.jsonl");
@@ -85,7 +113,7 @@ public sealed class HeadlessRecordOptionsTests : IDisposable
     public async Task Duration_StopsTheRecordingByItself_AndTheJsonArrayIsClosed()
     {
         var file = PathOf("cap.json");
-        await using var run = Start(new DdsSettings { HeadlessFilePath = file, RecordDurationSeconds = 1 });
+        await using var run = Start(new DdsSettings { RecordFormat = RecordFormat.Json, HeadlessFilePath = file, RecordDurationSeconds = 1 });
 
         Send(_keyed, 2);
         await run.Service.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
@@ -126,7 +154,8 @@ public sealed class HeadlessRecordOptionsTests : IDisposable
         var file = PathOf("cap.jsonl");
         await using var run = Start(new DdsSettings
         {
-            RecordFormat = RecordFormat.JsonLines, HeadlessFilePath = file, RecordMaxFileSizeMB = 1, RecordMaxSamples = 8
+            RecordFormat = RecordFormat.JsonLines, HeadlessFilePath = file, RecordMaxFileSizeMB = 1, RecordMaxSamples = 8,
+            RecordBytesAsBase64 = false
         });
 
         // A 64 KiB blob written as a number array is about 128 KiB of JSON: 8 of them need two files.
@@ -223,8 +252,6 @@ public sealed class HeadlessRecordOptionsTests : IDisposable
     private Run Start(DdsSettings settings, DdsBridge bridge, params TopicMetadata[] topics)
     {
         settings.HeadlessMode = HeadlessMode.Record;
-        if (settings.RecordConsole == RecordConsoleOutput.PerSample)
-            settings.RecordConsole = RecordConsoleOutput.Quiet;
         var registry = new TopicRegistry();
         foreach (var t in topics) registry.Register(t);
         var provider = new ServiceCollection().BuildServiceProvider();

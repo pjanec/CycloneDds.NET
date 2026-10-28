@@ -29,27 +29,28 @@ public enum HeadlessMode
 /// <summary>File format of a headless recording.</summary>
 public enum RecordFormat
 {
-    /// <summary>One indented JSON array of samples (the default; the format the UI exports and imports).</summary>
-    Json,
-
     /// <summary>
-    /// JSON Lines: one compact, self-contained JSON object per line. The file is readable while it
-    /// is being written (only whole lines are flushed) and a crash costs at most the last line.
+    /// JSON Lines (the default): one compact, self-contained JSON object per line. The file is
+    /// readable while it is being written (only whole lines are flushed) and a crash costs at most
+    /// the last line.
     /// </summary>
     JsonLines,
+
+    /// <summary>One indented JSON array of samples (the format the UI exports); readable only once closed.</summary>
+    Json,
 }
 
 /// <summary>What a headless recording prints to the console.</summary>
 public enum RecordConsoleOutput
 {
-    /// <summary>One <c>[RECORD]</c> line per sample (the default).</summary>
-    PerSample,
+    /// <summary>Nothing but warnings and errors (the default).</summary>
+    Quiet,
 
     /// <summary>A short status line every few seconds and a per-topic summary at the end, on stderr.</summary>
     Status,
 
-    /// <summary>Nothing but warnings and errors.</summary>
-    Quiet,
+    /// <summary>One <c>[RECORD]</c> line per sample.</summary>
+    PerSample,
 }
 
 /// <summary>
@@ -145,10 +146,10 @@ public sealed class DdsSettings
     /// </summary>
     public string HeadlessFilePath { get; set; } = string.Empty;
 
-    // ── Headless record options (all opt-in; the defaults keep the original behaviour) ──
+    // ── Headless record options ───────────────────────────────────────────────
 
-    /// <summary>File format of a recording. Default: <see cref="RecordFormat.Json"/>.</summary>
-    public RecordFormat RecordFormat { get; set; } = RecordFormat.Json;
+    /// <summary>File format of a recording. Default: <see cref="RecordFormat.JsonLines"/>.</summary>
+    public RecordFormat RecordFormat { get; set; } = RecordFormat.JsonLines;
 
     /// <summary>Stop the recording after this many seconds. 0 (default): record until interrupted.</summary>
     public double RecordDurationSeconds { get; set; }
@@ -156,8 +157,8 @@ public sealed class DdsSettings
     /// <summary>Stop the recording after this many samples. 0 (default): no limit.</summary>
     public long RecordMaxSamples { get; set; }
 
-    /// <summary>Console output while recording. Default: <see cref="RecordConsoleOutput.PerSample"/>.</summary>
-    public RecordConsoleOutput RecordConsole { get; set; } = RecordConsoleOutput.PerSample;
+    /// <summary>Console output while recording. Default: <see cref="RecordConsoleOutput.Quiet"/>.</summary>
+    public RecordConsoleOutput RecordConsole { get; set; } = RecordConsoleOutput.Quiet;
 
     /// <summary>
     /// Optional path of a small JSON summary (per-topic counts, failed topics, running/stopped),
@@ -174,9 +175,9 @@ public sealed class DdsSettings
 
     /// <summary>
     /// Write fixed-size byte buffers (e.g. <c>fixed byte Payload[65536]</c>) as one base64 string
-    /// instead of an array of numbers. Import and replay read both forms. Default: false.
+    /// instead of an array of numbers. Import and replay read both forms. Default: true.
     /// </summary>
-    public bool RecordBytesAsBase64 { get; set; }
+    public bool RecordBytesAsBase64 { get; set; } = true;
 
     /// <summary>
     /// Gets or sets the replay speed multiplier relative to the original capture rate.

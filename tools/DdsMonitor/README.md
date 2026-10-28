@@ -138,17 +138,17 @@ Headless mode runs record or replay operations without starting the Blazor UI.
 | `--DdsSettings:HeadlessFilePath=<path>` | string | `""` | File path used as destination (`Record`) or source (`Replay`). When recording, `-` writes to stdout (logs then go to stderr). |
 | `--DdsSettings:ReplayRate=<factor>` | float | `1.0` | Replay speed multiplier (e.g. `2.0` = twice original speed). |
 
-Record options. All are optional; the defaults keep the original behaviour (one JSON array, a line per sample, until Ctrl+C).
+Record options. All are optional. By default a recording writes JSON Lines (readable while it is being written), byte buffers as base64, prints nothing to the console, and runs until Ctrl+C.
 
 | Argument | Type | Default | Description |
 |---|---|---|---|
-| `--DdsSettings:RecordFormat=<format>` | enum | `Json` | `Json`: one indented JSON array. `JsonLines`: one compact record per line, readable while recording. |
+| `--DdsSettings:RecordFormat=<format>` | enum | `JsonLines` | `JsonLines`: one compact record per line, readable while recording. `Json`: one indented JSON array, readable once closed (the UI's export format). |
 | `--DdsSettings:RecordDurationSeconds=<s>` | number | `0` | Stop after this many seconds. `0` means record until interrupted. |
 | `--DdsSettings:RecordMaxSamples=<n>` | int | `0` | Stop after this many samples. `0` means no limit. |
-| `--DdsSettings:RecordConsole=<mode>` | enum | `PerSample` | `PerSample`: one `[RECORD]` line per sample. `Status`: a status line every 5 s and a per-topic summary at the end, on stderr. `Quiet`: warnings and errors only. |
+| `--DdsSettings:RecordConsole=<mode>` | enum | `Quiet` | `Quiet`: warnings and errors only, including the host's own logs (`--Logging:LogLevel:Default=Information` restores them). `Status`: a status line every 5 s and a per-topic summary at the end, on stderr. `PerSample`: one `[RECORD]` line per sample. |
 | `--DdsSettings:RecordSummaryFile=<path>` | string | `""` | Write a small JSON summary (per-topic counts, failed topics, running/stopped), rewritten every second and at the end. |
 | `--DdsSettings:RecordMaxFileSizeMB=<mb>` | int | `0` | `JsonLines` only: roll over to numbered files `name.0001.jsonl`, `name.0002.jsonl`, … at this size. |
-| `--DdsSettings:RecordBytesAsBase64=true` | bool | `false` | Write fixed-size byte buffers (e.g. `fixed byte Payload[65536]`) as one base64 string instead of a number array, which is 4–8× smaller. Import and replay read both forms. |
+| `--DdsSettings:RecordBytesAsBase64=<bool>` | bool | `true` | Write fixed-size byte buffers (e.g. `fixed byte Payload[65536]`) as one base64 string; `false` writes an array of numbers (4–8× larger). Import and replay read both forms. |
 
 Exit codes in headless mode: `0` success; `2` the run failed (e.g. missing file path); `3` the recording finished but at least one topic could not be read or written (see the log or the summary file).
 
@@ -462,30 +462,28 @@ Headless mode runs without a browser or HTTP server. It is useful in pipelines a
 
 ```
 DdsMonitor.exe --DdsSettings:HeadlessMode=Record ^
-               --DdsSettings:HeadlessFilePath="capture.json"
+               --DdsSettings:HeadlessFilePath="capture.jsonl"
 ```
 
 Optionally restrict which topics are recorded:
 
 ```
 DdsMonitor.exe --DdsSettings:HeadlessMode=Record ^
-               --DdsSettings:HeadlessFilePath="capture.json" ^
+               --DdsSettings:HeadlessFilePath="capture.jsonl" ^
                --AppSettings:IncludeTopics:0="MyApp.*"
 ```
 
-The process runs until `Ctrl+C` (or `SIGTERM`), unless a stop option is given: `RecordDurationSeconds` or `RecordMaxSamples`. The file is always closed properly. The output file is a JSON array. Each entry has `Ordinal`, `TopicTypeName`, `Timestamp`, `DomainId`, `PartitionName`, `Sender`, `InstanceState` and `Payload`. With `RecordFormat=JsonLines` each line is one such entry plus `TopicName`.
+The process runs until `Ctrl+C` (or `SIGTERM`), unless a stop option is given: `RecordDurationSeconds` or `RecordMaxSamples`. The file is always closed properly. Each line of the output is one sample with `Ordinal`, `TopicName`, `TopicTypeName`, `Timestamp`, `DomainId`, `PartitionName`, `Sender`, `InstanceState` and `Payload`. `RecordFormat=Json` writes the same entries (without `TopicName`) as one JSON array instead.
 
 If a topic cannot be read or written, it is logged when it happens and left out of the capture; every other topic keeps recording.
 
 ### Recording for scripts and AI agents
 
-The intended way of working: record in the background as JSON Lines, and read the growing file with ordinary tools.
+The intended way of working: record in the background (the defaults already give JSON Lines and a silent console), and read the growing file with ordinary tools.
 
 ```bash
-ddsmonitor --DdsSettings:HeadlessMode=Record \
-           --DdsSettings:RecordFormat=JsonLines --DdsSettings:HeadlessFilePath=cap.jsonl \
+ddsmonitor --DdsSettings:HeadlessMode=Record --DdsSettings:HeadlessFilePath=cap.jsonl \
            --DdsSettings:RecordSummaryFile=cap.summary.json \
-           --DdsSettings:RecordConsole=Status --DdsSettings:RecordBytesAsBase64=true \
            --DdsSettings:RecordDurationSeconds=120 &
 ```
 

@@ -123,12 +123,13 @@ trap cleanup EXIT
 run_mon() {
     ( cd "$WORK" && rc=0 && CYCLONEDDS_URI="$3" timeout 12 "$TOOL" --DdsSettings:DomainId="$2" \
         --AppSettings:ConfigFolder="$WORK/cfg-$1" \
-        --DdsSettings:HeadlessMode=Record --DdsSettings:HeadlessFilePath="$WORK/$1.json" \
+        --DdsSettings:HeadlessMode=Record --DdsSettings:HeadlessFilePath="$WORK/$1.jsonl" \
         --DdsSettings:SelfSendEnabled="$4" > "$WORK/$1.log" 2>&1 || rc=$?; echo "$rc" > "$WORK/$1.exit" ) &
 }
 # True when every named instance ran until the timeout (none crashed or quit early).
 all_ran() { local n; for n in "$@"; do [ "$(cat "$WORK/$n.exit" 2>/dev/null)" = "124" ] || return 1; done; }
-recorded() { local n; n="$(grep -c '\[RECORD\]' "$WORK/$1.log" 2>/dev/null || true)"; echo "${n:-0}"; }
+# Samples recorded by an instance: complete lines of its JSON Lines capture.
+recorded() { local n; n="$(wc -l < "$WORK/$1.jsonl" 2>/dev/null || true)"; echo "${n:-0}"; }
 
 # Random domain per run, so concurrent runs on one machine do not see each other.
 DOMAIN=$(( 100 + RANDOM % 100 ))

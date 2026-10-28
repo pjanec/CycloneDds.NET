@@ -1,41 +1,57 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Dynamic.Core;
 using System.Linq.Dynamic.Core.CustomTypeProviders;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace DdsMonitor.Engine;
 
 /// <summary>
 /// Static shim type discovered by the Dynamic LINQ <see cref="DefaultDynamicLinqCustomTypeProvider"/>
 /// via the <see cref="DynamicLinqTypeAttribute"/>.  <see cref="FilterCompiler"/> rewrites macro
-/// calls (e.g. <c>DistanceTo(a,b,c,d)</c>) to <c>MacroShim.Invoke("DistanceTo", a, b, c, d)</c>
-/// so that Dynamic LINQ can resolve and call the method.  The active registry is stored in
-/// a static field and refreshed by <see cref="FilterCompiler"/> before each compilation.
+/// calls (e.g. <c>DistanceTo(a,b,c,d)</c>) to <c>MacroShim.Invoke(7, "DistanceTo", a, b, c, d)</c>
+/// so that Dynamic LINQ can resolve and call the method. The leading number identifies the
+/// compiler's macro registry, so compilers with different registries never see each other's macros.
 /// </summary>
 [DynamicLinqType]
 internal static class MacroShim
 {
-    /// <summary>
-    /// The macro registry populated by <see cref="FilterCompiler"/> at creation/compile time.
-    /// At predicate evaluation time the registry is consulted to look up the named macro.
-    /// </summary>
-    internal static IFilterMacroRegistry? Registry;
+    private static readonly ConcurrentDictionary<int, WeakReference<IFilterMacroRegistry>> Registries = new();
+    private static readonly ConditionalWeakTable<IFilterMacroRegistry, object> Ids = new();
+    private static int _nextId;
+
+    /// <summary>Returns the id that compiled filters use to reach <paramref name="registry"/>.</summary>
+    internal static int Register(IFilterMacroRegistry registry)
+    {
+        var boxed = Ids.GetValue(registry, r =>
+        {
+            int id = Interlocked.Increment(ref _nextId);
+            Registries[id] = new WeakReference<IFilterMacroRegistry>(r);
+            return id;
+        });
+        return (int)boxed;
+    }
 
     // Overloads for 0–5 arguments; add more if required by consumers.
-    public static object? Invoke(string name)                                                           => Call(name, Array.Empty<object?>());
-    public static object? Invoke(string name, object? a0)                                              => Call(name, new[] { a0 });
-    public static object? Invoke(string name, object? a0, object? a1)                                  => Call(name, new[] { a0, a1 });
-    public static object? Invoke(string name, object? a0, object? a1, object? a2)                      => Call(name, new[] { a0, a1, a2 });
-    public static object? Invoke(string name, object? a0, object? a1, object? a2, object? a3)          => Call(name, new[] { a0, a1, a2, a3 });
-    public static object? Invoke(string name, object? a0, object? a1, object? a2, object? a3, object? a4) => Call(name, new[] { a0, a1, a2, a3, a4 });
+    public static object? Invoke(int registry, string name)                                                           => Call(registry, name, Array.Empty<object?>());
+    public static object? Invoke(int registry, string name, object? a0)                                              => Call(registry, name, new[] { a0 });
+    public static object? Invoke(int registry, string name, object? a0, object? a1)                                  => Call(registry, name, new[] { a0, a1 });
+    public static object? Invoke(int registry, string name, object? a0, object? a1, object? a2)                      => Call(registry, name, new[] { a0, a1, a2 });
+    public static object? Invoke(int registry, string name, object? a0, object? a1, object? a2, object? a3)          => Call(registry, name, new[] { a0, a1, a2, a3 });
+    public static object? Invoke(int registry, string name, object? a0, object? a1, object? a2, object? a3, object? a4) => Call(registry, name, new[] { a0, a1, a2, a3, a4 });
 
-    private static object? Call(string name, object?[] args)
+    private static object? Call(int registry, string name, object?[] args)
     {
-        var macros = Registry?.GetMacros();
+        IFilterMacroRegistry? target = null;
+        if (Registries.TryGetValue(registry, out var weak))
+            weak.TryGetTarget(out target);
+        var macros = target?.GetMacros();
         if (macros != null && macros.TryGetValue(name, out var fn))
             return fn(args);
         throw new InvalidOperationException($"Filter macro '{name}' is not registered.");
@@ -48,6 +64,7 @@ internal static class MacroShim
 public sealed class FilterCompiler : IFilterCompiler
 {
     private readonly IFilterMacroRegistry? _macroRegistry;
+    private readonly int _macroRegistryId;
 
     /// <summary>
     /// Initialises a <see cref="FilterCompiler"/> with no macro support.
@@ -62,7 +79,7 @@ public sealed class FilterCompiler : IFilterCompiler
     {
         _macroRegistry = macroRegistry;
         if (macroRegistry != null)
-            MacroShim.Registry = macroRegistry;
+            _macroRegistryId = MacroShim.Register(macroRegistry);
     }
 
     private static readonly Regex PayloadFieldRegex = new(
@@ -115,7 +132,7 @@ public sealed class FilterCompiler : IFilterCompiler
             // P6-T09: Expand registered macro calls before Dynamic LINQ parses the expression.
             // e.g. DistanceTo(Payload.X, Payload.Y, 0, 0) → MacroShim.Invoke("DistanceTo", Payload.X, Payload.Y, 0, 0)
             if (_macroRegistry != null)
-                expression = ExpandMacros(expression, _macroRegistry.GetMacros());
+                expression = ExpandMacros(expression, _macroRegistry.GetMacros(), _macroRegistryId);
 
             var config = new ParsingConfig
             {
@@ -206,14 +223,15 @@ public sealed class FilterCompiler : IFilterCompiler
     }
 
     /// <summary>
-    /// Rewrites registered macro calls to <c>MacroShim.Invoke("MacroName", args…)</c> so that
+    /// Rewrites registered macro calls to <c>MacroShim.Invoke(registryId, "MacroName", args…)</c> so that
     /// Dynamic LINQ can resolve them via the <see cref="MacroShim"/> helper.
     /// Example: <c>DistanceTo(Payload.X, Payload.Y, 0, 0)</c>
-    ///       → <c>MacroShim.Invoke("DistanceTo", Payload.X, Payload.Y, 0, 0)</c>
+    ///       → <c>MacroShim.Invoke(3, "DistanceTo", Payload.X, Payload.Y, 0, 0)</c>
     /// </summary>
     private static string ExpandMacros(
         string expression,
-        IReadOnlyDictionary<string, Func<object?[], object?>> macros)
+        IReadOnlyDictionary<string, Func<object?[], object?>> macros,
+        int registryId)
     {
         foreach (var name in macros.Keys)
         {
@@ -223,7 +241,7 @@ public sealed class FilterCompiler : IFilterCompiler
                 $@"(?<![.\w]){Regex.Escape(name)}\s*\(",
                 RegexOptions.Compiled);
 
-            expression = pattern.Replace(expression, $"MacroShim.Invoke(\"{name}\", ");
+            expression = pattern.Replace(expression, $"MacroShim.Invoke({registryId}, \"{name}\", ");
         }
 
         return expression;

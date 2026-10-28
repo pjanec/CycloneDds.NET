@@ -54,17 +54,17 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   (`Of<T>()`, `Of(Type)`, and the string core `Of(string ns, IEnumerable<string> typePath)`),
   now shared by the runtime, the code generator and DdsMonitor.
 
-- **DdsMonitor headless recording for scripts and AI agents.** New `--DdsSettings:` options, all
-  opt-in; with none of them set, recording works exactly as before:
-  - `RecordFormat=JsonLines`: one compact record per line (with the DDS `TopicName`), flushed in
-    whole lines so the file can be read while it is being written.
+- **DdsMonitor headless recording for scripts and AI agents.** New `--DdsSettings:` options:
+  - `RecordFormat`: `JsonLines` (default) writes one compact record per line, with the DDS
+    `TopicName`. Only whole lines are flushed, so the file can be read while it is being written.
+    `Json` writes the previous single JSON array.
   - `RecordDurationSeconds`, `RecordMaxSamples`: stop by itself.
-  - `RecordConsole=Status|Quiet`: a status line every 5 s plus a final per-topic summary on stderr,
-    or nothing, instead of one line per sample.
+  - `RecordConsole`: `Quiet` (default), `Status` (a line every 5 s plus a final per-topic summary,
+    on stderr) or `PerSample` (the previous `[RECORD]` line per sample).
   - `RecordSummaryFile`: a small JSON file with per-topic counts, failed topics and
     running/stopped state, rewritten every second.
   - `RecordMaxFileSizeMB`: JSON Lines rotation to `name.0001.jsonl`, `name.0002.jsonl`, ...
-  - `RecordBytesAsBase64`: fixed byte buffers as one base64 string (import reads both forms).
+  - `RecordBytesAsBase64` (default on): fixed byte buffers as one base64 string; import reads both forms.
   - `HeadlessFilePath=-`: write the capture to stdout; logs then go to stderr.
   - Headless exit codes: `2` when the run fails, `3` when a topic could not be recorded.
   - Import, replay and the UI's replay panel read JSON Lines captures too.
@@ -73,6 +73,10 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   still compile).
 
 ### Changed
+- **DdsMonitor headless recording defaults changed.** It now writes JSON Lines with base64 byte
+  buffers and prints nothing per sample, instead of one indented JSON array with a `[RECORD]`
+  console line per sample. For the old output use `--DdsSettings:RecordFormat=Json
+  --DdsSettings:RecordConsole=PerSample --DdsSettings:RecordBytesAsBase64=false`.
 - **Package metadata names the native Cyclone DDS version.** The description, release
   notes and `native_version.json` now state the Cyclone DDS version (from its CMake
   project), the exact upstream commit and that it is unmodified, instead of the
@@ -110,6 +114,9 @@ native Cyclone DDS major version, new Linux library names and platform baseline.
   type (which changes its size on the wire, so nodes on 0.3.x and 1.2 no longer agree on it), or carry the value as a plain integer field.
 
 ### Fixed
+- **DdsMonitor filter macros no longer leak between compilers.** All filter compilers shared
+  one static macro registry, so the most recently created compiler's macros applied everywhere;
+  each compiler now resolves its own.
 - **DdsMonitor reads topics whose sample is 64 KiB or larger** (e.g. a `fixed byte Payload[65536]`
   blob). The reader passed each sample by value to a helper, followed by more arguments; the .NET
   JIT rejects such a call once the struct is 64 KiB or more (`InvalidProgramException` in

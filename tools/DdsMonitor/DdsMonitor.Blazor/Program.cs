@@ -31,6 +31,17 @@ var captureToStdout = isHeadless
 if (captureToStdout)
     builder.Services.Configure<ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 
+// A quiet recording (the default RecordConsole) logs warnings and errors only, from every logger,
+// so the host's startup and shutdown chatter stays out too. --Logging:LogLevel:Default=Information
+// brings it back.
+var isRecord = string.Equals(headlessModeStr, nameof(HeadlessMode.Record), StringComparison.OrdinalIgnoreCase);
+var recordConsole = Enum.TryParse<RecordConsoleOutput>(
+    builder.Configuration.GetSection("DdsSettings")["RecordConsole"], ignoreCase: true, out var parsedConsole)
+    ? parsedConsole
+    : new DdsSettings().RecordConsole;
+if (isRecord && recordConsole == RecordConsoleOutput.Quiet)
+    builder.Logging.SetMinimumLevel(LogLevel.Warning);
+
 // Bootstrap logger factory: used by PluginConfigService during startup (before the host
 // DI container is built) so that corrupt enabled-plugins.json emits a Warning to the
 // console rather than silently falling through.  The factory is disposed after

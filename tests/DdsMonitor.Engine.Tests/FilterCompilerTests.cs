@@ -112,6 +112,30 @@ public sealed class FilterCompilerTests
     // ── PLA1-P6-T09: Filter macro tests ───────────────────────────────────
 
     [Fact]
+    public void FilterCompiler_EachCompilerUsesItsOwnMacroRegistry()
+    {
+        // Two compilers, each with its own "Pick" macro. Creating the second one used to replace the
+        // macros of the first (one static registry), which made macro tests fail when run in parallel.
+        var first = new FilterMacroRegistry();
+        first.RegisterMacro("Pick", _ => (object?)1);
+        var second = new FilterMacroRegistry();
+        second.RegisterMacro("Pick", _ => (object?)2);
+
+        var metadata = new TopicMetadata(typeof(SampleTopic));
+        var firstCompiler = new FilterCompiler(first);
+        var secondCompiler = new FilterCompiler(second);
+        var sample = CreateSample(metadata, 1, new SampleTopic { Id = 0 });
+
+        var firstResult = firstCompiler.Compile("Pick(Payload.Id) == 1", metadata);
+        var secondResult = secondCompiler.Compile("Pick(Payload.Id) == 2", metadata);
+
+        Assert.True(firstResult.IsValid, firstResult.ErrorMessage);
+        Assert.True(secondResult.IsValid, secondResult.ErrorMessage);
+        Assert.True(firstResult.Predicate!(sample));
+        Assert.True(secondResult.Predicate!(sample));
+    }
+
+    [Fact]
     public void FilterCompiler_WithRegisteredMacro_ExecutesCorrectly()
     {
         // Arrange: register a simple "Squared" macro and compile a filter that uses it.

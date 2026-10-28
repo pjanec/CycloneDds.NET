@@ -36,8 +36,7 @@ public sealed record RecordResult(long Samples, RecordStopReason StopReason, int
 /// <summary>
 /// Streams samples from the bridge channel to a capture file (or stdout) for headless
 /// <see cref="HeadlessMode.Record"/>, honouring the <c>Record*</c> options of <see cref="DdsSettings"/>.
-/// With every option at its default it writes the original format: one indented JSON array,
-/// one <c>[RECORD]</c> console line per sample, until interrupted.
+/// By default: JSON Lines readable while recording, a silent console, until interrupted.
 /// </summary>
 public sealed class HeadlessRecorder
 {

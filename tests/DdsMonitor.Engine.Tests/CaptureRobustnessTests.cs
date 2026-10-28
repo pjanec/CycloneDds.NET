@@ -52,6 +52,7 @@ public sealed class CaptureRobustnessTests
         var settings = new DdsSettings
         {
             HeadlessMode = HeadlessMode.Record,
+            RecordFormat = RecordFormat.Json,
             HeadlessFilePath = path
         };
         var metadata = new TopicMetadata(typeof(SumoLikeWireFrame));
