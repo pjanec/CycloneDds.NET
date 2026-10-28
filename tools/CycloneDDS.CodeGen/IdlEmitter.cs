@@ -490,11 +490,23 @@ namespace CycloneDDS.CodeGen
                 
                 if (field.HasAttribute("DdsOptional"))
                     annotations += "@optional ";
+
+                annotations += MemberIdAnnotation(field);
                 
                 sb.AppendLine($"{fieldIndent}{annotations}{idlType} {field.Name}{suffix};");
             }
             
             sb.AppendLine($"{indent}}};");
+        }
+
+        /// <summary>
+        /// <c>@id(N)</c> for a member with [DdsId(N)]: the member id is on the wire for mutable types
+        /// (and part of the type identity), so it must reach the IDL idlc builds the serializer from.
+        /// </summary>
+        private static string MemberIdAnnotation(FieldInfo field)
+        {
+            var id = field.GetAttribute("DdsId");
+            return id != null && id.Arguments.Count > 0 ? $"@id({id.Arguments[0]}) " : string.Empty;
         }
 
         private void EmitEnum(StringBuilder sb, TypeInfo type, int indentLevel)
@@ -645,7 +657,7 @@ namespace CycloneDDS.CodeGen
                 }
 
                 var (idlType, suffix) = MapType(field);
-                sb.AppendLine($"{fieldIndent}    {idlType} {field.Name}{suffix};");
+                sb.AppendLine($"{fieldIndent}    {MemberIdAnnotation(field)}{idlType} {field.Name}{suffix};");
             }
             sb.AppendLine($"{indent}}};");
         }
