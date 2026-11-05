@@ -41,11 +41,21 @@ namespace CycloneDDS.CodeGen
                 CSharpSyntaxTree.ParseText(File.ReadAllText(f), path: f)).ToList();
             
             // 3. Create compilation
+            // MSBuild supplies reference assemblies for the target framework. Do not
+            // mix them with runtime assemblies (System.Private.CoreLib), because that
+            // prevents Roslyn from resolving enum member constants.
+            bool hasFrameworkRefs = referencePaths?.Any(p =>
+                p.IndexOf("Microsoft.NETCore.App.Ref", StringComparison.OrdinalIgnoreCase) >= 0) ?? false;
+
             var references = new List<MetadataReference>
             {
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(CycloneDDS.Schema.DdsTopicAttribute).Assembly.Location)
             };
+
+            if (!hasFrameworkRefs)
+            {
+                references.Add(MetadataReference.CreateFromFile(typeof(object).Assembly.Location));
+            }
 
             if (referencePaths != null)
             {
@@ -58,15 +68,15 @@ namespace CycloneDDS.CodeGen
                 }
             }
             
-            // Add System.Runtime for net8.0 if needed, but object might be enough for basic types
-            // If running on .NET Core, we might need more refs.
-            // For now, let's trust the environment or add basic refs.
-            var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-            if (trustedAssemblies != null)
+            if (!hasFrameworkRefs)
             {
-                foreach (var path in trustedAssemblies.Split(Path.PathSeparator))
+                var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+                if (trustedAssemblies != null)
                 {
-                    references.Add(MetadataReference.CreateFromFile(path));
+                    foreach (var path in trustedAssemblies.Split(Path.PathSeparator))
+                    {
+                        references.Add(MetadataReference.CreateFromFile(path));
+                    }
                 }
             }
 
